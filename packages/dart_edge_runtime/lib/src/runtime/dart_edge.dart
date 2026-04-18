@@ -2,8 +2,8 @@ import 'dart:async';
 import 'dart:ffi';
 import 'dart:io';
 
-import '../context/request_context.dart';
-import '../contracts/http/json_schema_registry.dart';
+import 'package:dart_edge_core/dart_edge_core.dart';
+
 import '../native/dart_edge_native.dart';
 import 'compiled_route_table.dart';
 import 'dart_edge_codec.dart';
@@ -11,7 +11,6 @@ import 'dart_edge_server.dart';
 import 'open_api_document.dart';
 import 'request_decoder.dart';
 import 'response_writer.dart';
-import 'router.dart';
 import 'rust_middleware.dart';
 
 /// Main application object for a Dart Edge server.
@@ -157,6 +156,23 @@ class DartEdge<TServices> extends Router<TServices> {
         services: _createServices(),
         input: input,
       );
+      for (final guard in compiledRoute.guards) {
+        final decision = await Future.sync(() => guard.authorize(ctx));
+        if (!decision.isAllowed) {
+          final response = encodeResponse(
+            spec: compiledRoute.contract.responses.success,
+            body: decision.response,
+          );
+          DartEdgeNative.tryRespond(
+            requestId,
+            status: response.status,
+            contentType: response.contentType,
+            body: response.body,
+            headers: response.headers,
+          );
+          return;
+        }
+      }
       final body = await Future.sync(() => compiledRoute.route.handle(ctx));
       final response = encodeResponse(
         spec: compiledRoute.contract.responses.success,

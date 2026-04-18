@@ -62,4 +62,34 @@ void main() {
       throwsA(isA<StateError>()),
     );
   });
+
+  test('runs route guards before the handler and can short-circuit', () async {
+    final app = DartEdge<void>(services: () {});
+    final protected = app.router(
+      '',
+      guards: [
+        HandlerGuard<void>(
+          debugName: 'denyAll',
+          handler: (_) => GuardResult.deny(
+            RawResponse.text(status: HttpStatus.unauthorized, body: 'blocked'),
+          ),
+        ),
+      ],
+    );
+    protected.get('/guarded', handler: (_) => 'ok');
+
+    final server = await app.listen(port: 0);
+    final client = HttpClient();
+
+    addTearDown(() async {
+      client.close(force: true);
+      await server.close();
+    });
+
+    final response = await (await client.getUrl(
+      Uri.http('127.0.0.1:${server.port}', '/guarded'),
+    )).close();
+    expect(response.statusCode, HttpStatus.unauthorized);
+    expect(await utf8.decoder.bind(response).join(), 'blocked');
+  });
 }

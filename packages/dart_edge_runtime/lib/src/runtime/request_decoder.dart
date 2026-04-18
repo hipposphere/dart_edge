@@ -1,7 +1,7 @@
 import 'dart:convert';
 
-import '../context/request_input.dart';
-import '../contracts/http/request_body.dart';
+import 'package:dart_edge_core/dart_edge_core.dart';
+
 import 'dart_edge_codec.dart';
 import 'transport_request.dart';
 

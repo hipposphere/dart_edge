@@ -133,6 +133,77 @@ void main() {
     expect(paths.keys, contains('/auth/sign-in/email'));
     expect(paths.keys.where((path) => path.contains('/auth/auth/')), isEmpty);
   });
+
+  test('auth guard resolves identity and protects a route', () async {
+    final app = DartEdge<TestServices>(services: TestServices.new);
+    final auth = DartEdgeAuth(
+      const DartEdgeAuthConfig(
+        secret: 'test-secret-key-that-is-at-least-32-characters-long',
+        baseUrl: 'http://localhost:3000',
+      ),
+    );
+    addTearDown(auth.dispose);
+
+    auth.mount(app);
+    app
+        .router(
+          '',
+          guards: [DartEdgeAuthGuard<TestServices>(auth: auth)],
+        )
+        .get<Map<String, Object?>>(
+          '/me',
+          handler: (ctx) => {
+            'email': ctx.requireAuthIdentity.email,
+            'userId': ctx.requireAuthIdentity.userId,
+          },
+        );
+
+    final server = await app.listen(port: 0);
+    final client = HttpClient();
+
+    addTearDown(() async {
+      client.close(force: true);
+      await server.close();
+    });
+
+    final baseUri = Uri.http('127.0.0.1:${server.port}');
+    final signupRequest = await client.postUrl(
+      baseUri.resolve('/auth/sign-up/email'),
+    );
+    signupRequest.headers.contentType = ContentType.json;
+    signupRequest.headers.set('origin', 'http://localhost:3000');
+    signupRequest.write(
+      jsonEncode({
+        'email': 'guard@example.com',
+        'password': 'password123',
+        'name': 'Guard User',
+      }),
+    );
+    final signupResponse = await signupRequest.close();
+    final signupJson =
+        jsonDecode(await utf8.decoder.bind(signupResponse).join())
+            as Map<String, Object?>;
+    final token = signupJson['token'] as String;
+
+    final unauthorizedResponse = await (await client.getUrl(
+      baseUri.resolve('/me'),
+    )).close();
+    expect(unauthorizedResponse.statusCode, HttpStatus.unauthorized);
+
+    final authorizedRequest = await client.getUrl(baseUri.resolve('/me'));
+    authorizedRequest.headers.set(
+      HttpHeaders.authorizationHeader,
+      'Bearer $token',
+    );
+    final authorizedResponse = await authorizedRequest.close();
+    expect(authorizedResponse.statusCode, HttpStatus.ok);
+
+    final body =
+        jsonDecode(await utf8.decoder.bind(authorizedResponse).join())
+            as Map<String, Object?>;
+    expect(body['email'], 'guard@example.com');
+    expect(body['userId'], isA<String>());
+  });
 }
 
 final class TestServices {

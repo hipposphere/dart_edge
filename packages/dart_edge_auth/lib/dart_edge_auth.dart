@@ -8,3 +8,4 @@ library dart_edge_auth;
 export 'src/dart_edge_auth.dart';
 export 'src/dart_edge_auth_config.dart';
 export 'src/dart_edge_auth_database.dart';
+export 'src/dart_edge_auth_guard.dart';

@@ -1,8 +1,6 @@
 import 'dart:convert';
 
-import '../contracts/http/json_encodable.dart';
-import '../contracts/http/raw_response.dart';
-import '../contracts/http/response_spec.dart';
+import 'package:dart_edge_core/dart_edge_core.dart';
 
 final class EncodedResponse {
   const EncodedResponse({

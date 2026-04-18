@@ -1,8 +1,5 @@
-import '../contracts/http/error_response.dart';
-import '../contracts/http/json_schema_registry.dart';
-import '../contracts/http/request_body.dart';
-import '../contracts/http/response_set.dart';
-import '../contracts/http/response_spec.dart';
+import 'package:dart_edge_core/dart_edge_core.dart';
+
 import 'compiled_route.dart';
 
 /// Application-level OpenAPI metadata and document generation.

@@ -1,13 +1,10 @@
-import '../contracts/http/http_method.dart';
-import '../contracts/http/route_contract.dart';
-import '../routes/json_route_definition.dart';
-import 'route_path.dart';
-import 'route_registry.dart';
+import 'package:dart_edge_core/dart_edge_core.dart';
 
 final class CompiledRoute<TServices> {
   const CompiledRoute({
     required this.routeId,
     required this.route,
+    required this.guards,
     required this.contract,
     required this.path,
     required this.openApiPath,
@@ -16,6 +13,7 @@ final class CompiledRoute<TServices> {
 
   final String routeId;
   final JsonRouteDefinition<TServices, dynamic> route;
+  final List<Guard<TServices>> guards;
   final RouteContract contract;
   final String path;
   final String openApiPath;
@@ -40,6 +38,7 @@ final class CompiledRoute<TServices> {
     return CompiledRoute<TServices>(
       routeId: routeId,
       route: route,
+      guards: registration.guards,
       contract: _effectiveContract(registration, contract, path),
       path: path,
       openApiPath: _openApiPath(patternSegments),

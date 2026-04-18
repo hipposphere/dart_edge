@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'dart:isolate';
 import 'dart:typed_data';
 
-import 'package:dart_edge_runtime/dart_edge_runtime.dart';
+import 'package:dart_edge_core/dart_edge_core.dart';
 
 import 'dart_edge_auth_config.dart';
 import 'native/dart_edge_auth_native.dart';

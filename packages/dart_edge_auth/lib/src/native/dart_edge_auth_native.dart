@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'dart:ffi';
 import 'dart:typed_data';
 
-import 'package:dart_edge_runtime/dart_edge_runtime.dart';
+import 'package:dart_edge_core/dart_edge_core.dart';
 import 'package:dart_edge_sql/dart_edge_sql.dart';
 import 'package:dart_edge_sql/src/native/generated_bindings.dart' as sql_gen;
 import 'package:ffi/ffi.dart';

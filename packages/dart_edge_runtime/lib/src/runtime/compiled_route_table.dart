@@ -1,8 +1,8 @@
 import 'dart:convert';
 
-import '../contracts/http/json_schema_registry.dart';
+import 'package:dart_edge_core/dart_edge_core.dart';
+
 import 'compiled_route.dart';
-import 'route_registry.dart';
 
 final class CompiledRouteTable<TServices> {
   CompiledRouteTable._(this.routes)

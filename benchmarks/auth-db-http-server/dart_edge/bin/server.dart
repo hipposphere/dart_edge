@@ -22,11 +22,15 @@ Future<void> main(List<String> args) async {
   final app = DartEdge<BenchmarkServices>(
     services: () => BenchmarkServices(auth: auth, database: database),
   );
+  final protected = app.router(
+    '',
+    guards: [DartEdgeAuthGuard<BenchmarkServices>(auth: auth)],
+  );
 
   auth.mount(app);
   app.register(HealthRoute());
-  app.register(RawBenchmarkRoute());
-  app.register(DatabaseBenchmarkRoute());
+  protected.register(RawBenchmarkRoute());
+  protected.register(DatabaseBenchmarkRoute());
 
   await app.listen(port: port);
 }
@@ -151,7 +155,7 @@ final class RawBenchmarkRoute
 
   @override
   Future<Object?> handle(RequestContext<BenchmarkServices> ctx) async {
-    final email = await _authenticate(ctx);
+    final email = ctx.requireAuthIdentity.email;
     if (email == null) {
       return RawResponse.json(
         status: HttpStatus.unauthorized,
@@ -182,7 +186,7 @@ final class DatabaseBenchmarkRoute
 
   @override
   Future<Object?> handle(RequestContext<BenchmarkServices> ctx) async {
-    final email = await _authenticate(ctx);
+    final email = ctx.requireAuthIdentity.email;
     if (email == null) {
       return RawResponse.json(
         status: HttpStatus.unauthorized,
@@ -209,31 +213,4 @@ final class DatabaseBenchmarkRoute
       body: benchmarkDatabaseResponseJson(email),
     );
   }
-}
-
-String? _authenticate(RequestContext<BenchmarkServices> ctx) {
-  final headers = ctx.input.headers<Map<String, String>>();
-  final authorization = headers['authorization'];
-  final cookie = headers['cookie'];
-  if ((authorization == null || !authorization.startsWith('Bearer ')) &&
-      cookie == null) {
-    return null;
-  }
-
-  final response = ctx.services.auth.api.callOperationSync(
-    operationId: 'get_session',
-    headers: headers,
-  );
-  final jsonBody = response.jsonBody;
-  if (jsonBody is! Map<String, Object?>) {
-    return null;
-  }
-
-  final user = jsonBody['user'];
-  if (user is! Map<String, Object?>) {
-    return null;
-  }
-
-  final email = user['email'];
-  return email is String ? email : null;
 }

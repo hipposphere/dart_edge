@@ -1,9 +1,9 @@
 import 'dart:convert';
 import 'dart:ffi';
 
+import 'package:dart_edge_core/dart_edge_core.dart';
 import 'package:ffi/ffi.dart';
 
-import '../contracts/http/raw_response.dart';
 import '../runtime/transport_request.dart';
 import 'generated_bindings.dart' as gen;
 import 'native_transport_request.dart';
