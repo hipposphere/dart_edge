@@ -1,0 +1,26 @@
+name: DartEdgeAudioNativeBindings
+description: Generated C ABI bindings for dart_edge_audio.
+output: ../lib/src/native/generated_bindings.dart
+headers:
+  entry-points:
+    - ../rust/include/dart_edge_audio.h
+functions:
+  include:
+    - dart_edge_audio_.*
+  leaf:
+    include:
+      - dart_edge_audio_free_bytes_result
+      - dart_edge_audio_free_string
+      - dart_edge_audio_native_abi_version
+structs:
+  include:
+    - NativeAudioBytesResult
+    - NativeOwnedBytes
+exclude-all-by-default: true
+sort: true
+use-supported-typedefs: true
+comments: false
+preamble: |
+  // ignore_for_file: camel_case_types, non_constant_identifier_names
+ffi-native:
+  asset-id: package:dart_edge_audio/dart_edge_audio.dart

@@ -1,0 +1,5 @@
+# Ferrous Forge project rustfmt configuration
+max_width = 100
+# imports_granularity = "Crate"       # Nightly only — uncomment when using nightly rustfmt
+# group_imports = "StdExternalCrate"  # Nightly only — uncomment when using nightly rustfmt
+edition = "2024"

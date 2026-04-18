@@ -1,0 +1,9 @@
+{
+  "name": "dart-edge-auth-db-benchmark-fastify",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "better-auth": "^1.6.5",
+    "fastify": "^5.6.1"
+  }
+}

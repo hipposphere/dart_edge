@@ -1,0 +1,14 @@
+name: dart_edge_sql_codegen
+description: Schema introspection and Dart descriptor generation for dart_edge_sql.
+version: 0.1.0
+
+environment:
+  sdk: ">=3.11.0 <4.0.0"
+
+resolution: workspace
+
+dependencies:
+  dart_edge_sql: 0.1.0
+
+dev_dependencies:
+  test: ^1.30.0

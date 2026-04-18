@@ -1,0 +1,97 @@
+[package]
+name = "better-auth-diesel-sqlite"
+version = "0.1.2"
+edition = "2024"
+rust-version = "1.88"
+description = "SQLite database adapter for better-auth-rs using Diesel ORM — compile-time verified queries, 65 methods across 10 traits"
+authors = ["kryptobaseddev"]
+license = "MIT"
+repository = "https://github.com/kryptobaseddev/better-auth-diesel-sqlite"
+homepage = "https://github.com/kryptobaseddev/better-auth-diesel-sqlite"
+documentation = "https://docs.rs/better-auth-diesel-sqlite"
+keywords = ["authentication", "sqlite", "diesel", "better-auth", "adapter"]
+categories = ["authentication", "database"]
+readme = "README.md"
+exclude = [
+    "target/",
+    "tests/",
+    ".git/",
+    ".github/",
+    ".vscode/",
+    ".ferrous-forge/",
+    "docs/",
+    "ARCHITECTURE.md",
+    "PLAN.md",
+    "VISION.md",
+    "*.tmp",
+    "*.log",
+]
+
+[dependencies]
+# better-auth-rs core traits and entity types
+better-auth-core = { version = "0.9", default-features = false }
+
+# Diesel ORM with SQLite backend
+diesel = { version = "2", features = ["sqlite", "chrono", "uuid", "serde_json"] }
+diesel-async = { version = "0.8", features = ["sqlite", "deadpool"] }
+diesel_migrations = "2"
+
+# Async runtime
+tokio = { version = "1", features = ["rt", "sync"] }
+async-trait = "0.1"
+
+# Data types
+uuid = { version = "1", features = ["v4"] }
+chrono = { version = "0.4", features = ["serde"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Error handling and logging
+thiserror = "2"
+tracing = "0.1"
+
+# Optional: bundle SQLite (no system libsqlite3 needed)
+libsqlite3-sys = { version = "0.36", optional = true }
+
+[dev-dependencies]
+# Rust development standards enforcement
+ferrous-forge = "1.9"
+
+# Test runtime
+tokio = { version = "1", features = ["full"] }
+
+# Full better-auth for integration tests
+better-auth = { version = "0.9", features = ["axum"] }
+
+# Test utilities
+tempfile = "3"
+
+[features]
+default = ["migrations"]
+migrations = []
+bundled-sqlite = ["libsqlite3-sys/bundled"]
+
+[lints.rust]
+missing_docs = "warn"
+unsafe_code = "forbid"
+
+[lints.rustdoc]
+broken_intra_doc_links = "deny"
+private_intra_doc_links = "warn"
+invalid_html_tags = "deny"
+missing_crate_level_docs = "warn"
+bare_urls = "warn"
+redundant_explicit_links = "warn"
+unescaped_backticks = "warn"
+
+[lints.clippy]
+missing_safety_doc = "deny"
+missing_errors_doc = "warn"
+missing_panics_doc = "warn"
+empty_docs = "warn"
+doc_markdown = "warn"
+needless_doctest_main = "warn"
+suspicious_doc_comments = "warn"
+too_long_first_doc_paragraph = "warn"
+unwrap_used = "deny"
+expect_used = "deny"

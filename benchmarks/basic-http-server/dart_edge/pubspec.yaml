@@ -1,0 +1,13 @@
+name: dart_edge_benchmark_dart_edge
+description: Dart Edge benchmark target.
+publish_to: none
+version: 0.1.0
+
+environment:
+  sdk: ">=3.11.0 <4.0.0"
+
+resolution: workspace
+
+dependencies:
+  dart_edge: 0.1.0
+  dart_edge_benchmark_shared: 0.1.0

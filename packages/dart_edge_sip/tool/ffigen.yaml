@@ -1,0 +1,24 @@
+name: DartEdgeSipNativeBindings
+description: Generated C ABI bindings for dart_edge_sip.
+output: ../lib/src/native/generated_bindings.dart
+headers:
+  entry-points:
+    - ../rust/include/dart_edge_sip.h
+functions:
+  include:
+    - dart_edge_sip_.*
+  leaf:
+    include:
+      - dart_edge_sip_dispose
+      - dart_edge_sip_free_string
+      - dart_edge_sip_native_abi_version
+structs:
+  include: []
+exclude-all-by-default: true
+sort: true
+use-supported-typedefs: true
+comments: false
+preamble: |
+  // ignore_for_file: camel_case_types, non_constant_identifier_names
+ffi-native:
+  asset-id: package:dart_edge_sip/dart_edge_sip.dart

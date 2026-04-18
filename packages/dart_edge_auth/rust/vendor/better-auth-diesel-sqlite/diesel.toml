@@ -1,0 +1,17 @@
+[print_schema]
+file = "src/schema.rs"
+filter = { only_tables = [
+    "user",
+    "session",
+    "account",
+    "verification",
+    "organization",
+    "member",
+    "invitation",
+    "two_factor",
+    "api_key",
+    "passkey",
+] }
+
+[migrations_directory]
+dir = "migrations"

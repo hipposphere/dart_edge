@@ -1,0 +1,25 @@
+name: DartEdgeBluetoothServerNativeBindings
+description: Generated C ABI bindings for dart_edge_bluetooth_server.
+output: ../lib/src/native/generated_bindings.dart
+headers:
+  entry-points:
+    - ../rust/include/dart_edge_bluetooth_server.h
+functions:
+  include:
+    - dart_edge_bluetooth_server_.*
+  leaf:
+    include:
+      - dart_edge_bluetooth_server_dispose
+      - dart_edge_bluetooth_server_free_string
+      - dart_edge_bluetooth_server_is_supported_platform
+      - dart_edge_bluetooth_server_native_abi_version
+structs:
+  include: []
+exclude-all-by-default: true
+sort: true
+use-supported-typedefs: true
+comments: false
+preamble: |
+  // ignore_for_file: camel_case_types, non_constant_identifier_names
+ffi-native:
+  asset-id: package:dart_edge_bluetooth_server/dart_edge_bluetooth_server.dart

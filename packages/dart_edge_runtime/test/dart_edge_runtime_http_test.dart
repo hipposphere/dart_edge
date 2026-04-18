@@ -1,0 +1,65 @@
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:dart_edge_runtime/dart_edge_runtime.dart';
+import 'package:test/test.dart';
+
+void main() {
+  test(
+    'serves requests without a services factory when TServices is void',
+    () async {
+      final app = DartEdge<void>();
+      app.get('/hello', handler: (_) => 'Hello, World!');
+
+      final server = await app.listen(port: 0);
+      final client = HttpClient();
+
+      addTearDown(() async {
+        client.close(force: true);
+        await server.close();
+      });
+
+      final response = await (await client.getUrl(
+        Uri.http('127.0.0.1:${server.port}', '/hello'),
+      )).close();
+      expect(response.statusCode, HttpStatus.ok);
+      expect(response.headers.contentType?.mimeType, 'application/json');
+      expect(await utf8.decoder.bind(response).join(), '"Hello, World!"');
+    },
+  );
+
+  test('binds to an explicit deploy host and serves requests', () async {
+    final app = DartEdge<void>(services: () {});
+    app.get('/health', handler: (_) => const {'status': 'ok'});
+
+    final server = await app.listen(host: '0.0.0.0', port: 0);
+    final client = HttpClient();
+
+    addTearDown(() async {
+      client.close(force: true);
+      await server.close();
+    });
+
+    expect(server.host, '0.0.0.0');
+
+    final response = await (await client.getUrl(
+      Uri.http('127.0.0.1:${server.port}', '/health'),
+    )).close();
+    expect(response.statusCode, HttpStatus.ok);
+    expect(response.headers.contentType?.mimeType, 'application/json');
+
+    final body =
+        jsonDecode(await utf8.decoder.bind(response).join())
+            as Map<String, Object?>;
+    expect(body, containsPair('status', 'ok'));
+  });
+
+  test('fails to start when the configured host is invalid', () async {
+    final app = DartEdge<void>(services: () {});
+
+    await expectLater(
+      () => app.listen(host: '256.256.256.256', port: 0),
+      throwsA(isA<StateError>()),
+    );
+  });
+}

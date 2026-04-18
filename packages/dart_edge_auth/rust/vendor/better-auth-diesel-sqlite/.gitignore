@@ -1,0 +1,12 @@
+/target
+Cargo.lock
+.cleo/
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+.env

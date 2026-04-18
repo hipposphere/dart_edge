@@ -1,0 +1,13 @@
+.dart_tool/
+node_modules/
+build/
+coverage/
+.venv/
+
+.DS_Store
+
+packages/**/pubspec.lock
+packages/**/.dart_tool/
+packages/**/rust/target/
+benchmarks/**/pubspec.lock
+benchmarks/**/.dart_tool/

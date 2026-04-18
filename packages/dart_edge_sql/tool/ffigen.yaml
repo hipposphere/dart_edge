@@ -1,0 +1,25 @@
+name: DartEdgeSqlNativeBindings
+description: Generated C ABI bindings for dart_edge_sql.
+output: ../lib/src/native/generated_bindings.dart
+headers:
+  entry-points:
+    - ../rust/include/dart_edge_sql.h
+functions:
+  include:
+    - dart_edge_sql_.*
+  leaf:
+    include:
+      - dart_edge_sql_close_pool
+      - dart_edge_sql_free_string
+      - dart_edge_sql_native_abi_version
+      - dart_edge_sql_rollback_transaction
+structs:
+  include: []
+exclude-all-by-default: true
+sort: true
+use-supported-typedefs: true
+comments: false
+preamble: |
+  // ignore_for_file: camel_case_types, non_constant_identifier_names
+ffi-native:
+  asset-id: package:dart_edge_sql/dart_edge_sql.dart

@@ -1,0 +1,28 @@
+name: DartEdgeAuthNativeBindings
+description: Generated C ABI bindings for dart_edge_auth.
+output: ../lib/src/native/generated_bindings.dart
+headers:
+  entry-points:
+    - ../rust/include/dart_edge_auth.h
+functions:
+  include:
+    - dart_edge_auth_.*
+  leaf:
+    include:
+      - dart_edge_auth_native_abi_version
+      - dart_edge_auth_dispose
+      - dart_edge_auth_free_response
+      - dart_edge_auth_free_string
+structs:
+  include:
+    - NativeBytes
+    - NativePair
+    - NativeAuthResponse
+exclude-all-by-default: true
+sort: true
+use-supported-typedefs: true
+comments: false
+preamble: |
+  // ignore_for_file: camel_case_types, non_constant_identifier_names
+ffi-native:
+  asset-id: package:dart_edge_auth/dart_edge_auth.dart

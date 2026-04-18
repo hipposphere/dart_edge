@@ -1,0 +1,56 @@
+{
+  "generatedAt": "2026-04-18T15:16:31.018060Z",
+  "options": {
+    "targets": [
+      "dart_edge",
+      "fastify"
+    ],
+    "scenarios": [
+      "flow"
+    ],
+    "warmupSeconds": 0,
+    "durationSeconds": 1,
+    "concurrency": 2,
+    "basePort": 9180,
+    "jsonOut": "smoke-flow.json",
+    "markdownOut": "../results/smoke-flow.md"
+  },
+  "results": [
+    {
+      "targetId": "dart_edge",
+      "targetLabel": "Dart Edge",
+      "scenarioId": "flow",
+      "operations": 48,
+      "errors": 8,
+      "operationsPerSecond": 47.522823330934095,
+      "averageLatencyMs": 36.26199999999999,
+      "p50LatencyMs": 35.948,
+      "p90LatencyMs": 37.269,
+      "p99LatencyMs": 41.007,
+      "maxLatencyMs": 41.007,
+      "averageCpuPercent": 68.10000000000001,
+      "peakCpuPercent": 91.4,
+      "averageMemoryMb": 44.8046875,
+      "peakMemoryMb": 44.84375,
+      "firstError": "Bad state: Flow GET http://127.0.0.1:9180/bench/db returned 401."
+    },
+    {
+      "targetId": "fastify",
+      "targetLabel": "Fastify",
+      "scenarioId": "flow",
+      "operations": 28,
+      "errors": 0,
+      "operationsPerSecond": 27.29015575856399,
+      "averageLatencyMs": 73.25407142857144,
+      "p50LatencyMs": 73.028,
+      "p90LatencyMs": 75.097,
+      "p99LatencyMs": 79.543,
+      "maxLatencyMs": 79.543,
+      "averageCpuPercent": 146.35,
+      "peakCpuPercent": 183.2,
+      "averageMemoryMb": 202.89322916666666,
+      "peakMemoryMb": 210.25,
+      "firstError": null
+    }
+  ]
+}

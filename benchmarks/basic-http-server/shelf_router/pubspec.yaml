@@ -1,0 +1,14 @@
+name: dart_edge_benchmark_shelf_router
+description: Shelf router benchmark target for Dart Edge comparisons.
+publish_to: none
+version: 0.1.0
+
+environment:
+  sdk: ">=3.11.0 <4.0.0"
+
+resolution: workspace
+
+dependencies:
+  dart_edge_benchmark_shared: 0.1.0
+  shelf: ^1.4.2
+  shelf_router: ^1.1.4

@@ -1,0 +1,8 @@
+{
+  "name": "dart-edge-benchmark-fastify",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "fastify": "^5.8.5"
+  }
+}

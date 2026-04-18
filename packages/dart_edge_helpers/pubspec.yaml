@@ -1,0 +1,11 @@
+name: dart_edge_helpers
+description: Optional helper APIs for Dart Edge.
+version: 0.1.0
+
+environment:
+  sdk: ">=3.11.0 <4.0.0"
+
+resolution: workspace
+
+dependencies:
+  dart_edge_runtime: 0.1.0

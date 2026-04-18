@@ -1,0 +1,240 @@
+import 'dart:io';
+
+import 'package:dart_edge_auth/dart_edge_auth.dart';
+import 'package:dart_edge_sql/dart_edge_sql.dart';
+import 'package:test/test.dart';
+
+void main() {
+  test('supports direct sign-up and session calls without HTTP', () async {
+    final auth = DartEdgeAuth(
+      const DartEdgeAuthConfig(
+        secret: 'test-secret-key-that-is-at-least-32-characters-long',
+        baseUrl: 'http://localhost:3000',
+      ),
+    );
+    addTearDown(auth.dispose);
+
+    final signup = await auth.api.signUpEmail(
+      email: 'ada@example.com',
+      password: 'password123',
+      name: 'Ada Lovelace',
+    );
+    final signupJson = signup.jsonObject;
+    final token = signupJson['token'] as String;
+
+    expect(signup.status, 200);
+    expect(signup.header('set-cookie'), contains('better-auth.session-token='));
+
+    final session = await auth.api.withBearerToken(token).getSession();
+    final user = session.jsonObject['user'] as Map<String, Object?>;
+    expect(user['email'], 'ada@example.com');
+
+    final signOut = await auth.api.withBearerToken(token).signOut();
+    expect(signOut.status, 200);
+    expect(signOut.header('set-cookie'), contains('Expires=Thu, 01 Jan 1970'));
+  });
+
+  test('shares one sqlite in-memory database with dart_edge_sql', () async {
+    final database = SqliteDatabase.inMemory();
+    final auth = DartEdgeAuth(
+      DartEdgeAuthConfig(
+        secret: 'test-secret-key-that-is-at-least-32-characters-long',
+        baseUrl: 'http://localhost:3000',
+        database: DartEdgeAuthDatabase.fromDatabase(database),
+      ),
+    );
+
+    addTearDown(() async {
+      auth.dispose();
+      await database.close();
+    });
+
+    final signup = await auth.api.signUpEmail(
+      email: 'sqlite@example.com',
+      password: 'password123',
+      name: 'SQLite User',
+    );
+    final token = signup.jsonObject['token'] as String;
+
+    expect(signup.status, 200);
+
+    final session = await auth.api.withBearerToken(token).getSession();
+    final user = session.jsonObject['user'] as Map<String, Object?>;
+    expect(user['email'], 'sqlite@example.com');
+
+    final users = await database.execute(
+      sql(
+        'SELECT email FROM users WHERE email = ?',
+        parameters: ['sqlite@example.com'],
+      ),
+    );
+    expect(users.rows.single['email'], 'sqlite@example.com');
+  });
+
+  test('can disable shared sqlite migration management', () async {
+    final database = SqliteDatabase.inMemory();
+    await _runSqliteAuthMigrations(database);
+
+    final auth = DartEdgeAuth(
+      DartEdgeAuthConfig(
+        secret: 'test-secret-key-that-is-at-least-32-characters-long',
+        baseUrl: 'http://localhost:3000',
+        database: DartEdgeAuthDatabase.fromDatabase(
+          database,
+          manageMigrations: false,
+        ),
+      ),
+    );
+
+    addTearDown(() async {
+      auth.dispose();
+      await database.close();
+    });
+
+    final signup = await auth.api.signUpEmail(
+      email: 'manual-migration@example.com',
+      password: 'password123',
+      name: 'Manual Migration User',
+    );
+
+    expect(signup.status, 200);
+
+    final users = await database.execute(
+      sql(
+        'SELECT email FROM users WHERE email = ?',
+        parameters: ['manual-migration@example.com'],
+      ),
+    );
+    expect(users.rows.single['email'], 'manual-migration@example.com');
+  });
+
+  test('throws a typed exception for failed direct auth calls', () async {
+    final auth = DartEdgeAuth(
+      const DartEdgeAuthConfig(
+        secret: 'test-secret-key-that-is-at-least-32-characters-long',
+        baseUrl: 'http://localhost:3000',
+      ),
+    );
+    addTearDown(auth.dispose);
+
+    await auth.api.signUpEmail(
+      email: 'duplicate@example.com',
+      password: 'password123',
+      name: 'Duplicate User',
+    );
+
+    await expectLater(
+      auth.api.signUpEmail(
+        email: 'duplicate@example.com',
+        password: 'password123',
+        name: 'Duplicate User',
+      ),
+      throwsA(
+        isA<DartEdgeAuthApiException>()
+            .having((error) => error.status, 'status', 409)
+            .having(
+              (error) => error.message,
+              'message',
+              contains('already exists'),
+            ),
+      ),
+    );
+  });
+
+  test(
+    'explains when an admin operation is called without admin enabled',
+    () async {
+      final auth = DartEdgeAuth(
+        const DartEdgeAuthConfig(
+          secret: 'test-secret-key-that-is-at-least-32-characters-long',
+          baseUrl: 'http://localhost:3000',
+        ),
+      );
+      addTearDown(auth.dispose);
+
+      await expectLater(
+        auth.api.admin.createUser(
+          email: 'grace@example.com',
+          password: 'password123',
+          name: 'Grace Hopper',
+        ),
+        throwsA(
+          isA<StateError>().having(
+            (error) => error.message,
+            'message',
+            contains(
+              'Enable the admin plugin with `admin: DartEdgeAuthAdminConfig()`',
+            ),
+          ),
+        ),
+      );
+    },
+  );
+
+  test('enables direct admin api calls when configured', () async {
+    final auth = DartEdgeAuth(
+      const DartEdgeAuthConfig(
+        secret: 'test-secret-key-that-is-at-least-32-characters-long',
+        baseUrl: 'http://localhost:3000',
+        admin: DartEdgeAuthAdminConfig(),
+      ),
+    );
+    addTearDown(auth.dispose);
+
+    expect(
+      auth.routes<void>().any(
+        (route) => route.toString().contains('admin_create_user'),
+      ),
+      isTrue,
+    );
+
+    final signup = await auth.api.signUpEmail(
+      email: 'admin@example.com',
+      password: 'password123',
+      name: 'Admin User',
+    );
+    final adminToken = signup.jsonObject['token'] as String;
+
+    final promote = await auth.api
+        .withBearerToken(adminToken)
+        .updateUser(role: 'admin');
+    expect(promote.jsonObject['status'], isTrue);
+
+    final admin = auth.api.withBearerToken(adminToken).admin;
+    final created = await admin.createUser(
+      email: 'grace@example.com',
+      password: 'password123',
+      name: 'Grace Hopper',
+      role: 'member',
+    );
+    final createdUser = created.jsonObject['user'] as Map<String, Object?>;
+    expect(createdUser['email'], 'grace@example.com');
+    expect(createdUser['role'], 'member');
+
+    final listed = await admin.listUsers(limit: 10);
+    final listedUsers = listed.jsonObject['users'] as List<Object?>;
+    final emails = listedUsers
+        .cast<Map<String, Object?>>()
+        .map((user) => user['email'])
+        .toList(growable: false);
+    expect(
+      emails,
+      containsAll(<Object?>['admin@example.com', 'grace@example.com']),
+    );
+  });
+}
+
+Future<void> _runSqliteAuthMigrations(SqliteDatabase database) async {
+  final migrationSql = File(
+    'rust/vendor/better-auth-diesel-sqlite/migrations/'
+    '00000000000000_create_auth_tables/up.sql',
+  ).readAsStringSync();
+
+  for (final statement
+      in migrationSql
+          .split(';')
+          .map((statement) => statement.trim())
+          .where((statement) => statement.isNotEmpty)) {
+    await database.execute(sql(statement));
+  }
+}
