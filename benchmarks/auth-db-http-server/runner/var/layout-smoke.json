@@ -1,0 +1,56 @@
+{
+  "generatedAt": "2026-04-18T16:42:56.203584Z",
+  "options": {
+    "targets": [
+      "dart_edge",
+      "fastify"
+    ],
+    "scenarios": [
+      "flow"
+    ],
+    "warmupSeconds": 1,
+    "durationSeconds": 1,
+    "concurrency": 1,
+    "basePort": 9180,
+    "jsonOut": "var/layout-smoke.json",
+    "markdownOut": "var/layout-smoke.md"
+  },
+  "results": [
+    {
+      "targetId": "dart_edge",
+      "targetLabel": "Dart Edge",
+      "scenarioId": "flow",
+      "operations": 0,
+      "errors": 93,
+      "operationsPerSecond": 0.0,
+      "averageLatencyMs": 0.0,
+      "p50LatencyMs": 0.0,
+      "p90LatencyMs": 0.0,
+      "p99LatencyMs": 0.0,
+      "maxLatencyMs": 0.0,
+      "averageCpuPercent": 84.86000000000001,
+      "peakCpuPercent": 87.6,
+      "averageMemoryMb": 45.365625,
+      "peakMemoryMb": 45.375,
+      "firstError": "Bad state: GET http://127.0.0.1:9180/bench/raw returned 401."
+    },
+    {
+      "targetId": "fastify",
+      "targetLabel": "Fastify",
+      "scenarioId": "flow",
+      "operations": 14,
+      "errors": 0,
+      "operationsPerSecond": 13.925055352095024,
+      "averageLatencyMs": 71.79935714285715,
+      "p50LatencyMs": 71.509,
+      "p90LatencyMs": 74.075,
+      "p99LatencyMs": 75.975,
+      "maxLatencyMs": 75.975,
+      "averageCpuPercent": 98.51666666666667,
+      "peakCpuPercent": 103.5,
+      "averageMemoryMb": 168.00260416666666,
+      "peakMemoryMb": 168.078125,
+      "firstError": null
+    }
+  ]
+}

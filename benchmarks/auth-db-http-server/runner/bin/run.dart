@@ -24,12 +24,14 @@ Future<void> main(List<String> args) async {
 
   if (options.jsonOut case final jsonOut?) {
     final file = File(jsonOut).absolute;
+    await file.parent.create(recursive: true);
     await file.writeAsString(report.toPrettyJson());
     stdout.writeln('\nWrote JSON report to ${file.path}');
   }
 
   if (options.markdownOut case final markdownOut?) {
     final file = File(markdownOut).absolute;
+    await file.parent.create(recursive: true);
     await file.writeAsString(buildMarkdownReport(report));
     stdout.writeln('Wrote markdown report to ${file.path}');
   }
