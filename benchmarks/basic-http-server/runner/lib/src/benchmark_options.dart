@@ -27,7 +27,7 @@ final class BenchmarkOptions {
 Usage: dart run benchmarks/basic-http-server/runner/bin/run.dart [options]
 
 Options:
-  --targets=dart_edge,shelf_router,express,fastapi
+  --targets=dart_edge_http_server,shelf_router,express,fastapi
                                         Comma-separated target ids, or all default non-JIT targets.
   --scenarios=plaintext,json,echo       Comma-separated scenarios, or all.
   --warmup=2                            Warmup seconds per scenario.

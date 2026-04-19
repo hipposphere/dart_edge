@@ -22,7 +22,7 @@ generated code.
 
 ```dart
 import 'package:dart_edge_codegen/dart_edge_codegen.dart';
-import 'package:dart_edge_runtime/dart_edge_runtime.dart';
+import 'package:dart_edge_http_server_runtime/dart_edge_http_server_runtime.dart';
 
 @TypedJsonRoute(
   method: HttpMethod.post,

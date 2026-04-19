@@ -1,7 +1,7 @@
 import 'dart:async';
 
-import 'package:dart_edge/dart_edge.dart';
 import 'package:dart_edge_auth/dart_edge_auth.dart';
+import 'package:dart_edge_http_server/dart_edge_http_server.dart';
 
 Future<void> main() async {
   final app = DartEdge<NoServices>(services: NoServices.new);

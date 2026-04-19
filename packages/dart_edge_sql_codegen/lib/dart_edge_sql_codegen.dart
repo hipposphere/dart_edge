@@ -1,7 +1,8 @@
 /// Schema introspection and code-generation helpers for `dart_edge_sql`.
 ///
-/// Import this library to introspect a database schema and emit Dart source for
-/// table descriptors, typed row models, and JSON Schema metadata.
+/// Import this library to introspect a database schema and emit a structured
+/// Dart source tree for schema descriptors, typed row models, and JSON Schema
+/// metadata.
 library dart_edge_sql_codegen;
 
 export 'src/codegen/dart_schema_emitter.dart';

@@ -8,7 +8,7 @@ Command:
 
 ```sh
 dart run benchmarks/basic-http-server/runner/bin/run.dart \
-  --targets=dart_edge,shelf_router,express,fastify,fastapi,axum \
+  --targets=dart_edge_http_server,shelf_router,express,fastify,fastapi,axum \
   --scenarios=all \
   --warmup=1 \
   --duration=2 \
@@ -21,7 +21,7 @@ dart run benchmarks/basic-http-server/runner/bin/run.dart \
 
 | Target | Language / runtime | Based on |
 | --- | --- | --- |
-| `dart_edge` | Dart AOT | `DartEdge.listen()` integrated server path |
+| `dart_edge_http_server` | Dart AOT | `DartEdge.listen()` integrated server path |
 | `shelf_router` | Dart AOT | `package:shelf_router` |
 | `express` | Node.js | `express` |
 | `fastify` | Node.js | `fastify` |
@@ -31,9 +31,9 @@ dart run benchmarks/basic-http-server/runner/bin/run.dart \
 ## Headline Comparison
 
 - `axum` leads every scenario at `42.7k-43.9k rps`, with the lowest p50 latency (`0.72-0.74 ms`) and the smallest memory footprint (`4.2-4.5 MB` peak RSS).
-- `fastify` is slightly ahead of `dart_edge` on average throughput in this run (`34.3k` vs `33.8k` avg RPS, `+1.3%`), driven by wins on `json` and `path_param`.
-- `dart_edge` still wins the write-heavy `echo` case over `fastify` by `14.6%` while staying at `18.3-20.4 MB` peak RSS instead of Fastify's `76.1-224.1 MB`.
-- `express` remains the middle-of-the-pack baseline: clearly ahead of `shelf_router` and `fastapi`, but still behind `dart_edge`, `fastify`, and `axum` in every scenario.
+- `fastify` is slightly ahead of `dart_edge_http_server` on average throughput in this run (`34.3k` vs `33.8k` avg RPS, `+1.3%`), driven by wins on `json` and `path_param`.
+- `dart_edge_http_server` still wins the write-heavy `echo` case over `fastify` by `14.6%` while staying at `18.3-20.4 MB` peak RSS instead of Fastify's `76.1-224.1 MB`.
+- `express` remains the middle-of-the-pack baseline: clearly ahead of `shelf_router` and `fastapi`, but still behind `dart_edge_http_server`, `fastify`, and `axum` in every scenario.
 - `shelf_router` narrowly edges `fastapi` on average throughput in this rerun (`+1.4%`) and does it with materially lower memory use.
 
 ## Average Across Scenarios

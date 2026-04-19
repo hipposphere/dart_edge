@@ -32,7 +32,7 @@ final class BenchmarkOptions {
 Usage: dart run benchmarks/auth-db-http-server/runner/bin/run.dart [options]
 
 Options:
-  --targets=dart_edge,fastify          Comma-separated target ids, or all.
+  --targets=dart_edge_http_server,fastify          Comma-separated target ids, or all.
   --scenarios=sign_in,raw_authed       Comma-separated scenarios, or all.
   --warmup=2                           Warmup seconds per scenario.
   --duration=5                         Measurement seconds per scenario.

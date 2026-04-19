@@ -10,7 +10,10 @@ It currently ships native PostgreSQL and SQLite pool implementations.
 
 - `SqlPool` and `SqlSession` represent the execution surface
 - `SqlTable`, `SqlColumn`, and model classes describe your schema in Dart
-- `selectFrom`, `insertInto`, and `updateTable` start typed query builders
+- `database.builder` keeps typed query building separate from raw `execute(...)`
+- `selectFrom`, `insertInto`, `deleteFrom`, and `updateTable` live on that
+  builder facade
+- `executeExists()` checks whether a query yields any rows without loading them
 - `SqlStatement` and `sql()` cover raw SQL when you want full control
 
 ## Example
@@ -26,13 +29,15 @@ Future<void> main() async {
   );
 
   await pool
+      .builder
       .insertInto(UsersTable.table)
       .values(const UsersInsert(email: 'ada@example.com'))
       .execute();
 
   final users = await pool
+      .builder
       .selectFrom(UsersTable.table)
-      .selectTable(UsersTable.table)
+      .selectAll()
       .execute();
 
   print(users.single.email);

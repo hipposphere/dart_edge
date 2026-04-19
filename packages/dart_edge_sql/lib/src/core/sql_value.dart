@@ -12,4 +12,7 @@ final class SqlValue<T> {
 
   /// Whether a value was provided at all.
   final bool isPresent;
+
+  @override
+  String toString() => isPresent ? 'SqlValue($value)' : 'SqlValue.absent()';
 }

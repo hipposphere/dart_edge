@@ -19,7 +19,7 @@ dart run benchmarks/auth-db-http-server/runner/bin/run.dart \
 
 | Target | Language / runtime | Based on |
 | --- | --- | --- |
-| `dart_edge` | Dart AOT | `DartEdge.listen()` with `dart_edge_auth` |
+| `dart_edge_http_server` | Dart AOT | `DartEdge.listen()` with `dart_edge_auth` |
 | `fastify` | Node.js | `fastify` with Better Auth |
 
 ## Workload
@@ -31,9 +31,9 @@ dart run benchmarks/auth-db-http-server/runner/bin/run.dart \
 
 ## Headline Comparison
 
-- `dart_edge` wins every scenario in this rerun.
+- `dart_edge_http_server` wins every scenario in this rerun.
 - Throughput deltas vs `fastify`: `+141.0%` on `sign_in`, `+274.3%` on `raw_authed`, `+195.6%` on `db_authed`, and `+149.8%` on `flow`.
-- `dart_edge` stays in a narrow `43.4-45.7 MB` peak RSS band across the full suite, while `fastify` ranges from `329.6 MB` to `478.9 MB`.
+- `dart_edge_http_server` stays in a narrow `43.4-45.7 MB` peak RSS band across the full suite, while `fastify` ranges from `329.6 MB` to `478.9 MB`.
 - The single-core cap makes the CPU numbers comparable across targets and keeps the auth workload focused on per-core efficiency instead of unconstrained parallelism.
 
 ## Average Across Scenarios

@@ -4,7 +4,7 @@ Native-backed audio probing and conversion utilities for Dart Edge.
 
 This package provides coarse-grained audio helpers for reading metadata and
 normalizing supported inputs into PCM WAV output. It is a standalone utility
-package and does not depend on `dart_edge_runtime`.
+package and does not depend on `dart_edge_http_server_runtime`.
 
 ## Quick Start
 

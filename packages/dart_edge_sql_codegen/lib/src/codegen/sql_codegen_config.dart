@@ -5,20 +5,20 @@ enum SqlCodegenDialect { postgres, sqlite }
 final class SqlCodegenConfig {
   const SqlCodegenConfig({
     required this.dialect,
-    required this.outputFile,
+    required this.outputDirectory,
     this.connectionString,
     this.sqlitePath,
     this.schema,
     this.includeTables = const <String>{},
     this.excludeTables = const <String>{},
-    this.libraryName = 'database_schema',
+    this.databaseClassName = 'GeneratedDatabaseSchema',
   });
 
   /// Source database dialect.
   final SqlCodegenDialect dialect;
 
-  /// Output file path for generated Dart source.
-  final String outputFile;
+  /// Output directory for the generated structured Dart source tree.
+  final String outputDirectory;
 
   /// PostgreSQL connection string when [dialect] is `postgres`.
   final String? connectionString;
@@ -35,6 +35,6 @@ final class SqlCodegenConfig {
   /// Optional block-list of tables to exclude.
   final Set<String> excludeTables;
 
-  /// Library name written into the generated Dart source.
-  final String libraryName;
+  /// Root database class emitted into the generated entrypoint file.
+  final String databaseClassName;
 }

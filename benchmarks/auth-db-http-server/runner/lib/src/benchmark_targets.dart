@@ -18,10 +18,10 @@ final class BenchmarkTargetDefinition {
 
 /// All benchmark targets keyed by their stable identifier.
 const benchmarkTargets = <String, BenchmarkTargetDefinition>{
-  'dart_edge': BenchmarkTargetDefinition(
-    id: 'dart_edge',
+  'dart_edge_http_server': BenchmarkTargetDefinition(
+    id: 'dart_edge_http_server',
     label: 'Dart Edge',
-    directoryName: 'dart_edge',
+    directoryName: 'dart_edge_http_server',
     runtime: BenchmarkTargetRuntime.dartAot,
   ),
   'fastify': BenchmarkTargetDefinition(

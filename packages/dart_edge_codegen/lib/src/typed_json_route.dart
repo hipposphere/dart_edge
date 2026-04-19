@@ -1,4 +1,4 @@
-import 'package:dart_edge_runtime/dart_edge_runtime.dart';
+import 'package:dart_edge_http_server_runtime/dart_edge_http_server_runtime.dart';
 
 /// Declares the top-level HTTP metadata for a generated JSON route.
 ///

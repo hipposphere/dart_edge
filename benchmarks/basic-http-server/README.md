@@ -5,7 +5,7 @@ small set of equivalent HTTP servers that implement the same scenarios.
 
 ## Current Targets
 
-- `dart_edge`: the integrated `DartEdge.listen()` server path, built with
+- `dart_edge_http_server`: the integrated `DartEdge.listen()` server path, built with
   `dart build cli`
 - `shelf_router`: `package:shelf_router` route matching, built with
   `dart build cli`
@@ -59,7 +59,7 @@ Run a narrower slice:
 
 ```sh
 dart run benchmarks/basic-http-server/runner/bin/run.dart \
-  --targets=dart_edge,shelf_router,express,fastapi,axum \
+  --targets=dart_edge_http_server,shelf_router,express,fastapi,axum \
   --scenarios=plaintext,json \
   --warmup=2 \
   --duration=5 \

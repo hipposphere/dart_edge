@@ -6,11 +6,11 @@ repository root and composed from `packages/*`.
 ## Repo Shape
 
 - `CONCEPT.md`: evolving product and architecture concept
-- `packages/dart_edge`: umbrella package that application authors should import
-- `packages/dart_edge_runtime`: concrete runtime package and shared contract
+- `packages/dart_edge_http_server`: umbrella package that application authors should import
+- `packages/dart_edge_http_server_runtime`: concrete runtime package and shared contract
   surface
-- `packages/dart_edge_runtime/hook`: SDK-discovered build hooks for the runtime
-- `packages/dart_edge_runtime/rust`: Rust crate compiled into the runtime's
+- `packages/dart_edge_http_server_runtime/hook`: SDK-discovered build hooks for the runtime
+- `packages/dart_edge_http_server_runtime/rust`: Rust crate compiled into the runtime's
   native asset
 - `benchmarks`: reproducible benchmark apps and the benchmark runner
 - `packages/dart_edge_helpers`: optional helper APIs such as OpenAPI/Swagger
@@ -41,7 +41,7 @@ repository root and composed from `packages/*`.
 - Format the whole repo: `dart format .`
 - Test one package: `cd packages/<package> && dart test`
 - Work on one package with pub commands: `dart pub -C packages/<package> <cmd>`
-- Exercise the runtime native asset: `cd packages/dart_edge_runtime && dart run example/native_probe.dart`
+- Exercise the runtime native asset: `cd packages/dart_edge_http_server_runtime && dart run example/native_probe.dart`
 - Run the benchmark suite: `dart pub -C benchmarks/basic-http-server/runner run bin/run.dart`
 
 ## Package Rules
@@ -50,14 +50,14 @@ repository root and composed from `packages/*`.
 - Exception: benchmark packages belong under `benchmarks/`, not `packages/`.
 - Do not add stray `pubspec.yaml` files between the repo root and a workspace
   package.
-- Keep helper-only APIs out of `dart_edge_runtime`.
+- Keep helper-only APIs out of `dart_edge_http_server_runtime`.
 - Keep native compilation hooks and Rust crate sources inside
-  `dart_edge_runtime`; helpers and codegen packages must stay pure Dart unless a
+  `dart_edge_http_server_runtime`; helpers and codegen packages must stay pure Dart unless a
   later design explicitly changes that.
 - Keep build-time annotations and generated API surface in
   `dart_edge_codegen`.
 - Keep app-facing imports simple by re-exporting the normal runtime and helper
-  surface from `dart_edge`.
+  surface from `dart_edge_http_server`.
 - Keep benchmark targets small and symmetrical. If one target adds a route or
   payload shape for comparison, update the other benchmark targets to match.
 
@@ -66,7 +66,7 @@ repository root and composed from `packages/*`.
 - Public package examples belong in `packages/<package>/example/`.
 - Keep examples small, runnable, and end-to-end enough to show the intended
   package usage.
-- Use `package:dart_edge/dart_edge.dart` for app-level examples unless the task
+- Use `package:dart_edge_http_server/dart_edge_http_server.dart` for app-level examples unless the task
   is specifically demonstrating a lower-level package in isolation.
 - When helper APIs such as OpenAPI/Swagger mounting are part of the happy path,
   show them in examples instead of only describing them in docs.
@@ -101,7 +101,7 @@ repository root and composed from `packages/*`.
 
 ## Architecture Guardrails
 
-- Runtime and shared contract types live together in `dart_edge_runtime`.
+- Runtime and shared contract types live together in `dart_edge_http_server_runtime`.
 - `dart_edge_helpers` can wrap or mount runtime capabilities, but it should not
   redefine core contracts.
 - Generated code should compile down to normalized route contracts and JSON
@@ -120,7 +120,7 @@ repository root and composed from `packages/*`.
   scripts or platform-specific build glue when the hook can own the build.
 - Keep the generated native asset ID aligned with the Dart library URI that
   declares the generated bindings.
-- For `dart_edge_runtime`, the asset name should stay `dart_edge_runtime.dart`.
+- For `dart_edge_http_server_runtime`, the asset name should stay `dart_edge_http_server_runtime.dart`.
 - For `dart_edge_auth`, the asset name should stay `dart_edge_auth.dart`.
 - For `dart_edge_sip`, the asset name should stay `dart_edge_sip.dart`.
 - Keep the exported C ABI intentionally small and stable.
@@ -128,7 +128,7 @@ repository root and composed from `packages/*`.
 - Generate Dart FFI bindings with `ffigen`; do not hand-edit
   `lib/src/native/generated_bindings.dart`.
 - Current commands:
-  `dart pub -C packages/dart_edge_runtime run ffigen --config tool/ffigen.yaml`
+  `dart pub -C packages/dart_edge_http_server_runtime run ffigen --config tool/ffigen.yaml`
   and
   `dart pub -C packages/dart_edge_auth run ffigen --config tool/ffigen.yaml`
   and
@@ -151,7 +151,7 @@ repository root and composed from `packages/*`.
 - Keep the benchmark methodology explicit in `benchmarks/README.md`.
 - Compare equivalent endpoints only: same method, path shape, payload size, and
   status code across all targets.
-- Use the real `benchmarks/basic-http-server/dart_edge` target for Dart Edge
+- Use the real `benchmarks/basic-http-server/dart_edge_http_server` target for Dart Edge
   comparisons. Do not add fake adapters or benchmark-only shims that bypass the
   normal runtime API.
 - Cross-language benchmark targets belong in `benchmarks/<suite>/<target>/` and

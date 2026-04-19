@@ -5,7 +5,7 @@
 `dart_edge_sip` should be a standalone telephony runtime package for Dart
 applications that need backend-controlled SIP/VoIP call handling.
 
-It should stay outside `dart_edge_runtime` and follow the focused native
+It should stay outside `dart_edge_http_server_runtime` and follow the focused native
 service-package pattern already used by `dart_edge_auth` and `dart_edge_sql`.
 
 The concrete production runtime choice should be **PJSIP wrapped behind Rust**.

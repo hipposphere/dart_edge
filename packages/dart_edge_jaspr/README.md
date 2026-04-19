@@ -19,7 +19,7 @@ This package keeps the runtime boundary clean:
 ## Example
 
 ```dart
-import 'package:dart_edge/dart_edge.dart';
+import 'package:dart_edge_http_server/dart_edge_http_server.dart';
 import 'package:jaspr/dom.dart';
 import 'package:jaspr/jaspr.dart';
 

@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:dart_edge_auth/dart_edge_auth.dart';
-import 'package:dart_edge_runtime/dart_edge_runtime.dart';
+import 'package:dart_edge_http_server_runtime/dart_edge_http_server_runtime.dart';
 import 'package:test/test.dart';
 
 void main() {
@@ -146,10 +146,7 @@ void main() {
 
     auth.mount(app);
     app
-        .router(
-          '',
-          guards: [DartEdgeAuthGuard<TestServices>(auth: auth)],
-        )
+        .router('', guards: [DartEdgeAuthGuard<TestServices>(auth: auth)])
         .get<Map<String, Object?>>(
           '/me',
           handler: (ctx) => {

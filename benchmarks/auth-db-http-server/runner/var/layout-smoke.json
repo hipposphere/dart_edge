@@ -2,7 +2,7 @@
   "generatedAt": "2026-04-18T16:42:56.203584Z",
   "options": {
     "targets": [
-      "dart_edge",
+      "dart_edge_http_server",
       "fastify"
     ],
     "scenarios": [
@@ -17,7 +17,7 @@
   },
   "results": [
     {
-      "targetId": "dart_edge",
+      "targetId": "dart_edge_http_server",
       "targetLabel": "Dart Edge",
       "scenarioId": "flow",
       "operations": 0,

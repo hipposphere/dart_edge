@@ -1,7 +1,7 @@
 # Auth DB HTTP Benchmark
 
 - Generated: `2026-04-18T17:07:53.083364Z`
-- Targets: `dart_edge`, `fastify`
+- Targets: `dart_edge_http_server`, `fastify`
 - Scenarios: `sign_in`, `raw_authed`, `db_authed`, `flow`
 - CPU cap: `single-core (~100% total CPU)`
 - Workload: Better Auth email/password sign-in, an authenticated raw endpoint, an authenticated SQLite read, and a full sequential flow.
@@ -17,11 +17,11 @@
 
 Scenario | Target | Ops | Errors | Ops/s | P50 ms | P99 ms | CPU avg % | CPU max % | RSS avg MB | RSS max MB
 --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---:
-sign_in | dart_edge | 92 | 0 | 58.5 | 524.51 | 586.59 | 97.5 | 100.1 | 45.8 | 45.8
+sign_in | dart_edge_http_server | 92 | 0 | 58.5 | 524.51 | 586.59 | 97.5 | 100.1 | 45.8 | 45.8
 sign_in | fastify | 32 | 0 | 29.2 | 1087.83 | 1094.24 | 200.7 | 213.6 | 270.0 | 270.3
-raw_authed | dart_edge | 536 | 0 | 532.4 | 7.62 | 745.57 | 73.4 | 88.2 | 46.0 | 46.0
+raw_authed | dart_edge_http_server | 536 | 0 | 532.4 | 7.62 | 745.57 | 73.4 | 88.2 | 46.0 | 46.0
 raw_authed | fastify | 0 | 0 | 0.0 | 0.00 | 0.00 | 183.1 | 209.3 | 261.5 | 268.0
-db_authed | dart_edge | 1553 | 0 | 1536.9 | 9.85 | 251.74 | 98.1 | 99.4 | 46.5 | 46.5
+db_authed | dart_edge_http_server | 1553 | 0 | 1536.9 | 9.85 | 251.74 | 98.1 | 99.4 | 46.5 | 46.5
 db_authed | fastify | 0 | 0 | 0.0 | 0.00 | 0.00 | 193.0 | 203.2 | 257.9 | 258.2
-flow | dart_edge | 64 | 0 | 58.5 | 551.82 | 555.05 | 98.7 | 101.0 | 45.9 | 45.9
+flow | dart_edge_http_server | 64 | 0 | 58.5 | 551.82 | 555.05 | 98.7 | 101.0 | 45.9 | 45.9
 flow | fastify | 32 | 0 | 26.6 | 1187.97 | 1200.66 | 184.3 | 211.5 | 263.4 | 264.9

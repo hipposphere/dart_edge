@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-import 'package:dart_edge_runtime/dart_edge_runtime.dart';
+import 'package:dart_edge_http_server_runtime/dart_edge_http_server_runtime.dart';
 
 /// Convenience helpers for mounting OpenAPI-related routes on a [DartEdge] app.
 ///

@@ -2,7 +2,7 @@
   "generatedAt": "2026-04-19T09:43:31.572399Z",
   "options": {
     "targets": [
-      "dart_edge",
+      "dart_edge_http_server",
       "fastify"
     ],
     "scenarios": [
@@ -21,7 +21,7 @@
   },
   "results": [
     {
-      "targetId": "dart_edge",
+      "targetId": "dart_edge_http_server",
       "targetLabel": "Dart Edge",
       "scenarioId": "sign_in",
       "operations": 337,
@@ -39,7 +39,7 @@
       "firstError": null
     },
     {
-      "targetId": "dart_edge",
+      "targetId": "dart_edge_http_server",
       "targetLabel": "Dart Edge",
       "scenarioId": "raw_authed",
       "operations": 26248,
@@ -57,7 +57,7 @@
       "firstError": null
     },
     {
-      "targetId": "dart_edge",
+      "targetId": "dart_edge_http_server",
       "targetLabel": "Dart Edge",
       "scenarioId": "db_authed",
       "operations": 20080,
@@ -75,7 +75,7 @@
       "firstError": null
     },
     {
-      "targetId": "dart_edge",
+      "targetId": "dart_edge_http_server",
       "targetLabel": "Dart Edge",
       "scenarioId": "flow",
       "operations": 320,

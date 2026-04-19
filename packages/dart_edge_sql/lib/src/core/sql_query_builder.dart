@@ -5,27 +5,44 @@ import 'sql_row.dart';
 import 'sql_schema.dart';
 import 'sql_statement.dart';
 
-/// Adds fluent query-builder entry points to any [SqlExecutor].
-extension SqlQueryBuilderExecutorExtension on SqlExecutor {
+/// Dedicated query-builder entrypoint bound to one [SqlExecutor].
+final class SqlBuilder {
+  const SqlBuilder(this._executor);
+
+  final SqlExecutor _executor;
+
   /// Starts building a `SELECT` query from [table].
   SelectQueryBuilder<TRow, TInsert, TUpdate> selectFrom<TRow, TInsert, TUpdate>(
     SqlTable<TRow, TInsert, TUpdate> table,
   ) {
-    return SelectQueryBuilder._(executor: this, from: table);
+    return SelectQueryBuilder._(executor: _executor, from: table);
   }
 
   /// Starts building an `INSERT` query into [table].
   InsertQueryBuilder<TRow, TInsert, TUpdate> insertInto<TRow, TInsert, TUpdate>(
     SqlTable<TRow, TInsert, TUpdate> table,
   ) {
-    return InsertQueryBuilder._(executor: this, table: table);
+    return InsertQueryBuilder._(executor: _executor, table: table);
+  }
+
+  /// Starts building a `DELETE` query for [table].
+  DeleteQueryBuilder<TRow, TInsert, TUpdate> deleteFrom<TRow, TInsert, TUpdate>(
+    SqlTable<TRow, TInsert, TUpdate> table,
+  ) {
+    return DeleteQueryBuilder._(executor: _executor, table: table);
   }
 
   /// Starts building an `UPDATE` query for [table].
   UpdateQueryBuilder<TRow, TInsert, TUpdate>
   updateTable<TRow, TInsert, TUpdate>(SqlTable<TRow, TInsert, TUpdate> table) {
-    return UpdateQueryBuilder._(executor: this, table: table);
+    return UpdateQueryBuilder._(executor: _executor, table: table);
   }
+}
+
+/// Exposes a dedicated query-builder root on any [SqlExecutor].
+extension SqlExecutorBuilderExtension on SqlExecutor {
+  /// Query-builder entrypoint kept separate from raw `execute(...)` calls.
+  SqlBuilder get builder => SqlBuilder(this);
 }
 
 /// Predicate used in `WHERE` and join conditions.
@@ -227,8 +244,16 @@ final class SelectQueryBuilder<TRow, TInsert, TUpdate> {
   SelectQueryBuilder<TRow, TInsert, TUpdate> distinct() =>
       _copyWith(distinct: true);
 
+  /// Selects the full `from` table and maps it back into typed rows.
+  SelectedSelectQueryBuilder<TRow> selectAll() {
+    return SelectedSelectQueryBuilder._(
+      query: this,
+      selection: _TableSelection<TRow, TInsert, TUpdate>(_from),
+    );
+  }
+
   /// Selects every column from every joined table into raw [SqlRow] objects.
-  SelectedSelectQueryBuilder<SqlRow> selectAll() {
+  SelectedSelectQueryBuilder<SqlRow> selectAllRaw() {
     final columns = _allTables
         .expand(
           (table) => table.columns.map(
@@ -295,6 +320,13 @@ final class SelectQueryBuilder<TRow, TInsert, TUpdate> {
             TJoinedUpdate
           >(left, right),
     );
+  }
+
+  /// Executes an existence check for the current query shape.
+  Future<bool> executeExists() async {
+    final statement = _compileExists(this);
+    final result = await _executor.execute(statement);
+    return result.rows.isNotEmpty;
   }
 
   SelectQueryBuilder<TRow, TInsert, TUpdate> _copyWith({
@@ -404,6 +436,9 @@ final class SelectedSelectQueryBuilder<TSelection> {
     final results = await execute();
     return results.single;
   }
+
+  /// Executes an existence check for the underlying query.
+  Future<bool> executeExists() => _query.executeExists();
 }
 
 /// Builder for an `INSERT` query.
@@ -449,6 +484,58 @@ final class InsertQueryBuilder<TRow, TInsert, TUpdate> {
   }
 
   /// Executes the insert and returns the first inserted row, if any.
+  Future<TRow?> executeReturningFirstTable() async {
+    final rows = await executeReturningTable();
+    return rows.isEmpty ? null : rows.first;
+  }
+}
+
+/// Builder for a `DELETE` query.
+final class DeleteQueryBuilder<TRow, TInsert, TUpdate> {
+  DeleteQueryBuilder._({
+    required SqlExecutor executor,
+    required SqlTable<TRow, TInsert, TUpdate> table,
+    SqlPredicate? where,
+  }) : _executor = executor,
+       _table = table,
+       _where = where;
+
+  final SqlExecutor _executor;
+  final SqlTable<TRow, TInsert, TUpdate> _table;
+  final SqlPredicate? _where;
+
+  /// Replaces the current `WHERE` clause with [predicate].
+  DeleteQueryBuilder<TRow, TInsert, TUpdate> where(SqlPredicate predicate) =>
+      DeleteQueryBuilder._(
+        executor: _executor,
+        table: _table,
+        where: predicate,
+      );
+
+  /// Adds [predicate] to the current `WHERE` clause with `AND`.
+  DeleteQueryBuilder<TRow, TInsert, TUpdate> andWhere(SqlPredicate predicate) =>
+      DeleteQueryBuilder._(
+        executor: _executor,
+        table: _table,
+        where: _where == null ? predicate : _where.and(predicate),
+      );
+
+  /// Executes the delete.
+  Future<SqlResult> execute() => _executor.execute(_compileDelete(this));
+
+  /// Executes the delete and maps the returned rows back into table rows.
+  Future<List<TRow>> executeReturningTable() async {
+    final statement = _compileDelete(
+      this,
+      returning: _TableSelection<TRow, TInsert, TUpdate>(_table),
+    );
+    final result = await _executor.execute(statement);
+    return result.rows
+        .map((row) => _table.mapRow(row, prefix: _table.selectionPrefix))
+        .toList(growable: false);
+  }
+
+  /// Executes the delete and returns the first deleted row, if any.
   Future<TRow?> executeReturningFirstTable() async {
     final rows = await executeReturningTable();
     return rows.isEmpty ? null : rows.first;
@@ -576,6 +663,47 @@ SqlStatement _compileSelect(
   return compiler.toStatement();
 }
 
+SqlStatement _compileExists(
+  SelectQueryBuilder<dynamic, dynamic, dynamic> query,
+) {
+  final compiler = _SqlCompiler(query._executor.dialect);
+  compiler.write('SELECT 1 FROM ');
+  compiler.writeTable(query._from);
+  for (final join in query._joins) {
+    compiler.write(' ');
+    compiler.write(join.type.keyword);
+    compiler.write(' ');
+    compiler.writeTable(join.table);
+    compiler.write(' ON ');
+    compiler.writePredicate(join.on);
+  }
+  final where = query._where;
+  if (where != null) {
+    compiler.write(' WHERE ');
+    compiler.writePredicate(where);
+  }
+  if (query._orderBy.isNotEmpty) {
+    compiler.write(' ORDER BY ');
+    compiler.writeJoined(
+      query._orderBy,
+      separator: ', ',
+      writeElement: (order) {
+        compiler.writeColumn(order.column);
+        compiler.write(order.descending ? ' DESC' : ' ASC');
+      },
+    );
+  }
+  if (query._limit case final int limit) {
+    compiler.write(' LIMIT $limit');
+  } else {
+    compiler.write(' LIMIT 1');
+  }
+  if (query._offset case final int offset) {
+    compiler.write(' OFFSET $offset');
+  }
+  return compiler.toStatement();
+}
+
 SqlStatement _compileInsert(
   InsertQueryBuilder<dynamic, dynamic, dynamic> query, {
   _SqlSelection<dynamic>? returning,
@@ -666,6 +794,32 @@ SqlStatement _compileUpdate(
       compiler.writeValue(assignment.value);
     },
   );
+  if (query._where case final SqlPredicate where) {
+    compiler.write(' WHERE ');
+    compiler.writePredicate(where);
+  }
+  if (returning != null) {
+    compiler.write(' RETURNING ');
+    compiler.writeJoined(
+      returning.projections,
+      separator: ', ',
+      writeElement: (projection) {
+        compiler.writeColumn(projection.column);
+        compiler.write(' AS ');
+        compiler.writeIdentifier(projection.alias);
+      },
+    );
+  }
+  return compiler.toStatement();
+}
+
+SqlStatement _compileDelete(
+  DeleteQueryBuilder<dynamic, dynamic, dynamic> query, {
+  _SqlSelection<dynamic>? returning,
+}) {
+  final compiler = _SqlCompiler(query._executor.dialect);
+  compiler.write('DELETE FROM ');
+  compiler.writeTable(query._table);
   if (query._where case final SqlPredicate where) {
     compiler.write(' WHERE ');
     compiler.writePredicate(where);

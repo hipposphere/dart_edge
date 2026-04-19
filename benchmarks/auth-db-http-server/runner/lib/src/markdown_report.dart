@@ -39,7 +39,7 @@ String buildMarkdownReport(BenchmarkReport report) {
     }
 
     final dartEdge = results.firstWhere(
-      (result) => result.targetId == 'dart_edge',
+      (result) => result.targetId == 'dart_edge_http_server',
     );
     final fastify = results.firstWhere(
       (result) => result.targetId == 'fastify',

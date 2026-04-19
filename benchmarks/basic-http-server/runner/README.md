@@ -16,7 +16,7 @@ Run a narrower slice:
 
 ```sh
 dart run benchmarks/basic-http-server/runner/bin/run.dart \
-  --targets=dart_edge,shelf_router,express,fastapi \
+  --targets=dart_edge_http_server,shelf_router,express,fastapi \
   --scenarios=plaintext,json \
   --warmup=2 \
   --duration=5 \

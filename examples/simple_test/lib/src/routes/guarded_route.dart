@@ -1,8 +1,8 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:dart_edge/dart_edge.dart';
 import 'package:dart_edge_auth/dart_edge_auth.dart';
+import 'package:dart_edge_http_server/dart_edge_http_server.dart';
 
 class GuardedRoute extends JsonRouteDefinition<dynamic, dynamic> {
   @override

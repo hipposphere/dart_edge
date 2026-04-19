@@ -1,7 +1,7 @@
 export 'http/error_response.dart';
 export 'http/http_method.dart';
 export 'http/json_encodable.dart';
-export 'http/json_schema_definition.dart';
+export 'http/json_schema.dart';
 export 'http/json_schema_ref.dart';
 export 'http/json_schema_registry.dart';
 export 'http/raw_response.dart';

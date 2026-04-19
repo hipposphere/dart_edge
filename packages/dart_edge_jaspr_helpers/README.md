@@ -18,7 +18,7 @@ template.
 ## Example
 
 ```dart
-import 'package:dart_edge/dart_edge.dart';
+import 'package:dart_edge_http_server/dart_edge_http_server.dart';
 import 'package:dart_edge_jaspr_helpers/dart_edge_jaspr_helpers.dart';
 
 Future<void> main() async {

@@ -9,7 +9,7 @@ Dart Edge is a Dart-first backend platform built around:
   audio, and SIP/telephony
 
 This repository is a Pub workspace. The app-facing default package is
-[`package:dart_edge`](packages/dart_edge), while the workspace also contains the
+[`package:dart_edge_http_server`](packages/dart_edge_http_server), while the workspace also contains the
 lower-level runtime, helper, codegen, auth, SQL, audio, and benchmark
 packages.
 
@@ -24,7 +24,7 @@ Requirements:
 
 - Dart `>=3.11.0 <4.0.0`
 - Rust toolchain when working on native-backed packages such as
-  `dart_edge_runtime`, `dart_edge_auth`, `dart_edge_sql`,
+  `dart_edge_http_server_runtime`, `dart_edge_auth`, `dart_edge_sql`,
   `dart_edge_audio`, or `dart_edge_sip`
 - `pjproject` plus `pkg-config` when building `dart_edge_sip`
 
@@ -37,7 +37,7 @@ dart pub get
 Run the main application example:
 
 ```sh
-cd packages/dart_edge
+cd packages/dart_edge_http_server
 dart run example/simple_http_server.dart
 ```
 
@@ -47,7 +47,7 @@ UI helpers, and shows manual schema and codec registration.
 ## Default App Shape
 
 ```dart
-import 'package:dart_edge/dart_edge.dart';
+import 'package:dart_edge_http_server/dart_edge_http_server.dart';
 
 Future<void> main() async {
   final app = DartEdge<AppServices>(services: AppServices.new);
@@ -66,15 +66,15 @@ final class AppServices {
 For local-only development, `listen(port: 8080)` still binds loopback. For
 deployment, pass a real bind address such as `0.0.0.0` or `::`.
 
-Import `package:dart_edge/dart_edge.dart` when you want the normal developer
-experience: the runtime surface from `dart_edge_runtime` plus the helper APIs
+Import `package:dart_edge_http_server/dart_edge_http_server.dart` when you want the normal developer
+experience: the runtime surface from `dart_edge_http_server_runtime` plus the helper APIs
 from `dart_edge_helpers`.
 
 ## Workspace Layout
 
-- [`packages/dart_edge`](packages/dart_edge): umbrella package for application
+- [`packages/dart_edge_http_server`](packages/dart_edge_http_server): app-facing HTTP server package for application
   authors
-- [`packages/dart_edge_runtime`](packages/dart_edge_runtime): Rust-backed HTTP
+- [`packages/dart_edge_http_server_runtime`](packages/dart_edge_http_server_runtime): Rust-backed HTTP
   runtime plus shared route, schema, and context contracts
 - [`packages/dart_edge_helpers`](packages/dart_edge_helpers): helper-layer APIs
   such as OpenAPI JSON and Swagger UI mounting
@@ -131,7 +131,7 @@ dart test
 Run the runtime native probe:
 
 ```sh
-cd packages/dart_edge_runtime
+cd packages/dart_edge_http_server_runtime
 dart run example/native_probe.dart
 ```
 
@@ -166,8 +166,8 @@ for targets, scenarios, external dependencies, and methodology.
 - The repo uses a Pub workspace rooted at the repository root.
 - First-party packages live under `packages/`.
 - Benchmark packages live under `benchmarks/`.
-- Keep `dart_edge` as the default app-facing package.
-- Keep helper-only APIs out of `dart_edge_runtime`.
+- Keep `dart_edge_http_server` as the default app-facing package.
+- Keep helper-only APIs out of `dart_edge_http_server_runtime`.
 - Keep build-time annotations and generator-facing APIs in
   `dart_edge_codegen`.
 

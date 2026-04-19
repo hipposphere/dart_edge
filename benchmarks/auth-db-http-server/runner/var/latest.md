@@ -1,7 +1,7 @@
 # Auth DB HTTP Benchmark
 
 - Generated: `2026-04-18T17:20:37.940114Z`
-- Targets: `dart_edge`, `fastify`
+- Targets: `dart_edge_http_server`, `fastify`
 - Scenarios: `sign_in`, `raw_authed`, `db_authed`, `flow`
 - CPU cap: `single-core (~100% total CPU)`
 - Workload: Better Auth email/password sign-in, an authenticated raw endpoint, an authenticated SQLite read, and a full sequential flow.
@@ -15,18 +15,18 @@
 
 ## Reliability
 
-- `dart_edge` / `raw_authed`: `320` errors during measurement. First error: `Bad state: GET http://127.0.0.1:9180/bench/raw returned 401.`.
-- `dart_edge` / `db_authed`: `320` errors during measurement. First error: `Bad state: GET http://127.0.0.1:9180/bench/db returned 401.`.
+- `dart_edge_http_server` / `raw_authed`: `320` errors during measurement. First error: `Bad state: GET http://127.0.0.1:9180/bench/raw returned 401.`.
+- `dart_edge_http_server` / `db_authed`: `320` errors during measurement. First error: `Bad state: GET http://127.0.0.1:9180/bench/db returned 401.`.
 
 ## Results
 
 Scenario | Target | Ops | Errors | Ops/s | P50 ms | P99 ms | CPU avg % | CPU max % | RSS avg MB | RSS max MB
 --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---:
-sign_in | dart_edge | 334 | 0 | 60.5 | 521.95 | 554.60 | 98.8 | 100.4 | 45.8 | 45.9
+sign_in | dart_edge_http_server | 334 | 0 | 60.5 | 521.95 | 554.60 | 98.8 | 100.4 | 45.8 | 45.9
 sign_in | fastify | 160 | 0 | 29.6 | 1089.74 | 1093.57 | 197.5 | 223.6 | 276.5 | 278.9
-raw_authed | dart_edge | 0 | 320 | 0.0 | 0.00 | 0.00 | 98.4 | 101.4 | 46.2 | 46.3
+raw_authed | dart_edge_http_server | 0 | 320 | 0.0 | 0.00 | 0.00 | 98.4 | 101.4 | 46.2 | 46.3
 raw_authed | fastify | 4652 | 0 | 927.0 | 23.02 | 75.55 | 131.4 | 203.4 | 344.2 | 347.2
-db_authed | dart_edge | 0 | 320 | 0.0 | 0.00 | 0.00 | 98.4 | 100.7 | 46.6 | 46.7
+db_authed | dart_edge_http_server | 0 | 320 | 0.0 | 0.00 | 0.00 | 98.4 | 100.7 | 46.6 | 46.7
 db_authed | fastify | 4272 | 0 | 851.1 | 24.55 | 70.63 | 130.4 | 209.0 | 344.5 | 348.8
-flow | dart_edge | 320 | 0 | 59.3 | 534.12 | 567.98 | 99.1 | 101.4 | 46.6 | 46.7
+flow | dart_edge_http_server | 320 | 0 | 59.3 | 534.12 | 567.98 | 99.1 | 101.4 | 46.6 | 46.7
 flow | fastify | 160 | 0 | 26.9 | 1181.24 | 1241.46 | 186.7 | 210.9 | 272.9 | 297.2

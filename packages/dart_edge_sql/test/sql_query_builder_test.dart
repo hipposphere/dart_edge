@@ -14,16 +14,30 @@ void main() {
     await _createSchema(pool);
     await _seedData(pool);
 
-    final users = await pool
+    final users = await pool.builder
         .selectFrom(UsersTable.table)
-        .selectTable(UsersTable.table)
+        .selectAll()
         .orderBy(UsersTable.id)
         .execute();
 
     expect(users, hasLength(2));
     expect(users.first.email, 'ada@example.com');
 
-    final rawRows = await pool
+    final rawAllRows = await pool.builder
+        .selectFrom(UsersTable.table)
+        .innerJoin(
+          PostsTable.table,
+          on: UsersTable.id.equalsColumn(PostsTable.userId),
+        )
+        .selectAllRaw()
+        .orderBy(PostsTable.id)
+        .execute();
+
+    expect(rawAllRows, hasLength(3));
+    expect(rawAllRows.first.read<String>('users__email'), 'ada@example.com');
+    expect(rawAllRows.first.read<String>('posts__title'), 'Analytical Engine');
+
+    final rawRows = await pool.builder
         .selectFrom(UsersTable.table)
         .innerJoin(
           PostsTable.table,
@@ -37,7 +51,7 @@ void main() {
     expect(rawRows.first.read<String>('users__email'), 'ada@example.com');
     expect(rawRows.first.read<String>('posts__title'), 'Analytical Engine');
 
-    final joinedRows = await pool
+    final joinedRows = await pool.builder
         .selectFrom(UsersTable.table)
         .innerJoin(
           PostsTable.table,
@@ -57,7 +71,7 @@ void main() {
     () async {
       await _createSchema(pool);
 
-      final inserted = await pool
+      final inserted = await pool.builder
           .insertInto(UsersTable.table)
           .values(
             const UsersInsert(
@@ -71,21 +85,62 @@ void main() {
       expect(inserted!.id, greaterThan(0));
       expect(inserted.displayName, 'Grace Hopper');
 
-      await pool
+      await pool.builder
           .updateTable(UsersTable.table)
           .set(const UsersUpdate(displayName: SqlValue<String?>(null)))
           .where(UsersTable.id.equals(inserted.id))
           .execute();
 
-      final updated = await pool
+      final updated = await pool.builder
           .selectFrom(UsersTable.table)
-          .selectTable(UsersTable.table)
+          .selectAll()
           .where(UsersTable.id.equals(inserted.id))
           .executeTakeSingle();
 
       expect(updated.displayName, isNull);
     },
   );
+
+  test('deletes rows through builder.deleteFrom', () async {
+    await _createSchema(pool);
+    await _seedData(pool);
+
+    await pool.builder
+        .deleteFrom(UsersTable.table)
+        .where(UsersTable.email.equals('alan@example.com'))
+        .execute();
+
+    final remaining = await pool.builder
+        .selectFrom(UsersTable.table)
+        .selectAll()
+        .orderBy(UsersTable.id)
+        .execute();
+
+    expect(remaining, hasLength(1));
+    expect(remaining.single.email, 'ada@example.com');
+  });
+
+  test('checks existence through executeExists', () async {
+    await _createSchema(pool);
+    await _seedData(pool);
+
+    final hasAda = await pool.builder
+        .selectFrom(UsersTable.table)
+        .where(UsersTable.email.equals('ada@example.com'))
+        .executeExists();
+    final hasGrace = await pool.builder
+        .selectFrom(UsersTable.table)
+        .where(UsersTable.email.equals('grace@example.com'))
+        .executeExists();
+
+    expect(hasAda, isTrue);
+    expect(hasGrace, isFalse);
+  });
+
+  test('formats SqlValue for debugging', () {
+    expect(const SqlValue<int>.absent().toString(), 'SqlValue.absent()');
+    expect(const SqlValue<int>(42).toString(), 'SqlValue(42)');
+  });
 }
 
 Future<void> _createSchema(SqlExecutor db) async {
@@ -111,7 +166,7 @@ Future<void> _createSchema(SqlExecutor db) async {
 }
 
 Future<void> _seedData(SqlExecutor db) async {
-  final ada = await db
+  final ada = await db.builder
       .insertInto(UsersTable.table)
       .values(
         const UsersInsert(
@@ -120,7 +175,7 @@ Future<void> _seedData(SqlExecutor db) async {
         ),
       )
       .executeReturningFirstTable();
-  final alan = await db
+  final alan = await db.builder
       .insertInto(UsersTable.table)
       .values(
         const UsersInsert(
@@ -130,7 +185,7 @@ Future<void> _seedData(SqlExecutor db) async {
       )
       .executeReturningFirstTable();
 
-  await db.insertInto(PostsTable.table).valuesAll([
+  await db.builder.insertInto(PostsTable.table).valuesAll([
     PostsInsert(userId: ada!.id, title: 'Analytical Engine'),
     PostsInsert(userId: ada.id, title: 'Notes'),
     PostsInsert(userId: alan!.id, title: 'Computing Machinery'),

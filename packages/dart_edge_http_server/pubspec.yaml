@@ -1,0 +1,17 @@
+name: dart_edge_http_server
+description: App-facing HTTP server package for the Dart Edge monorepo.
+version: 0.1.0
+
+environment:
+  sdk: ">=3.11.0 <4.0.0"
+
+resolution: workspace
+
+dependencies:
+  dart_edge_helpers: 0.1.0
+  dart_edge_jaspr: 0.1.0
+  dart_edge_jaspr_helpers: 0.1.0
+  dart_edge_http_server_runtime: 0.1.0
+
+dev_dependencies:
+  test: ^1.30.0

@@ -1,4 +1,4 @@
-import 'package:dart_edge_runtime/dart_edge_runtime.dart';
+import 'package:dart_edge_http_server_runtime/dart_edge_http_server_runtime.dart';
 
 /// One outbound request emitted by a generated client.
 final class DartEdgeClientRequest {

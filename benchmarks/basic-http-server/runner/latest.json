@@ -2,7 +2,7 @@
   "generatedAt": "2026-04-19T09:39:34.808380Z",
   "options": {
     "targets": [
-      "dart_edge",
+      "dart_edge_http_server",
       "shelf_router",
       "express",
       "fastify",
@@ -23,7 +23,7 @@
   },
   "results": [
     {
-      "targetId": "dart_edge",
+      "targetId": "dart_edge_http_server",
       "targetLabel": "Dart Edge",
       "scenarioId": "plaintext",
       "requests": 72115,
@@ -41,7 +41,7 @@
       "firstError": null
     },
     {
-      "targetId": "dart_edge",
+      "targetId": "dart_edge_http_server",
       "targetLabel": "Dart Edge",
       "scenarioId": "json",
       "requests": 66831,
@@ -59,7 +59,7 @@
       "firstError": null
     },
     {
-      "targetId": "dart_edge",
+      "targetId": "dart_edge_http_server",
       "targetLabel": "Dart Edge",
       "scenarioId": "path_param",
       "requests": 66000,
@@ -77,7 +77,7 @@
       "firstError": null
     },
     {
-      "targetId": "dart_edge",
+      "targetId": "dart_edge_http_server",
       "targetLabel": "Dart Edge",
       "scenarioId": "echo",
       "requests": 66209,

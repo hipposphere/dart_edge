@@ -36,8 +36,8 @@ That is the current shape of the project.
 
 The workspace already contains:
 
-- `dart_edge`: the app-facing umbrella package
-- `dart_edge_runtime`: the shared contract surface plus the Rust-backed HTTP
+- `dart_edge_http_server`: the app-facing umbrella package
+- `dart_edge_http_server_runtime`: the shared contract surface plus the Rust-backed HTTP
   runtime
 - `dart_edge_helpers`: optional helper routes, currently centered on OpenAPI
   mounting
@@ -104,8 +104,8 @@ they can all be versioned in isolation from day one.
 
 This is the core HTTP application path:
 
-- `dart_edge`
-- `dart_edge_runtime`
+- `dart_edge_http_server`
+- `dart_edge_http_server_runtime`
 - `dart_edge_helpers`
 
 This axis is responsible for:
@@ -151,17 +151,17 @@ This is the newer and more important repo concept:
 
 The platform is not only a server runtime. It is also a home for focused
 native-backed service packages that integrate with the runtime model without
-forcing every concern into `dart_edge_runtime`.
+forcing every concern into `dart_edge_http_server_runtime`.
 
 This is a stronger concept than one giant runtime package.
 
 ## Package Responsibilities
 
-- `dart_edge`
+- `dart_edge_http_server`
   Default app-facing entrypoint. It should stay the package most application
   authors import.
 
-- `dart_edge_runtime`
+- `dart_edge_http_server_runtime`
   Owns the concrete HTTP runtime plus the shared contract surface. This is where
   route contracts, request context, schema references, middleware descriptors,
   and the native server bridge live.
@@ -193,12 +193,12 @@ This is a stronger concept than one giant runtime package.
 - `dart_edge_audio`
   Owns coarse-grained audio metadata extraction and conversion helpers backed
   by native codecs and DSP utilities. It should stay a focused utility package
-  rather than pushing media-processing concerns into `dart_edge_runtime`.
+  rather than pushing media-processing concerns into `dart_edge_http_server_runtime`.
 
 - `dart_edge_sip`
   Owns SIP-specific contracts, configs, events, and native telephony bindings.
   It should stay a focused service package beside the HTTP runtime rather than
-  growing telephony abstractions into `dart_edge_runtime`.
+  growing telephony abstractions into `dart_edge_http_server_runtime`.
   The current package now has a real PJSIP-backed native runtime foundation for
   transports, trunks, call control, prompt playback, recording, and voicemail
   recording, while full registrar-style endpoint handling is still future work.
@@ -239,7 +239,7 @@ walking types at runtime.
 
 ### Focused packages beat a monolith
 
-The right model is not "put every native feature into `dart_edge_runtime`".
+The right model is not "put every native feature into `dart_edge_http_server_runtime`".
 
 The better model is:
 
@@ -563,7 +563,7 @@ package keeps that boundary clean.
 That is important because auth is not just another middleware. It often wants
 native libraries, protocol flows, cookies, sessions, and dedicated routes.
 Treating it as a focused route-bundle package is a stronger model than stuffing
-auth behavior into `dart_edge_runtime`.
+auth behavior into `dart_edge_http_server_runtime`.
 
 ### `dart_edge_audio`
 
@@ -586,7 +586,7 @@ native-heavy concerns, but they do not belong in the HTTP runtime package.
 - a real PJSIP-backed native runtime foundation underneath a stable Dart API
 
 This is exactly the kind of package that should exist beside the HTTP runtime
-instead of distorting `dart_edge_runtime` into a single monolith for every
+instead of distorting `dart_edge_http_server_runtime` into a single monolith for every
 backend protocol.
 
 ### The long-term rule
@@ -685,7 +685,7 @@ The repo should keep saying no to a few things for now:
 - Cloudflare-style edge workers
 - generic "run anywhere" serverless positioning
 - reflection-driven startup magic
-- pushing every helper or service concern into `dart_edge_runtime`
+- pushing every helper or service concern into `dart_edge_http_server_runtime`
 - benchmark-only adapters that bypass the real runtime path
 - promising every transport protocol at once
 - user-authored arbitrary Rust plugins before the core contracts settle
@@ -694,7 +694,7 @@ The repo should keep saying no to a few things for now:
 
 The platform is on the right path if these remain true:
 
-- `package:dart_edge/dart_edge.dart` stays the simple default import
+- `package:dart_edge_http_server/dart_edge_http_server.dart` stays the simple default import
 - explicit contracts remain the shared language across runtime, docs, and
   generators
 - native work is used where it makes the product better, not just because it is

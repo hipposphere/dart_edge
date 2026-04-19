@@ -1,57 +1,258 @@
+import 'dart:io';
+
 import '../introspection/introspected_database.dart';
 
-/// Emits Dart source for the introspected [database].
+/// One generated Dart file in a structured schema emission.
+final class DartSchemaEmissionFile {
+  const DartSchemaEmissionFile({
+    required this.relativePath,
+    required this.contents,
+  });
+
+  final String relativePath;
+  final String contents;
+}
+
+/// Structured output tree generated from an introspected database schema.
+final class DartSchemaEmission {
+  DartSchemaEmission({
+    required this.entrypointFileName,
+    required Iterable<DartSchemaEmissionFile> files,
+    required Iterable<String> directories,
+  }) : files = List<DartSchemaEmissionFile>.unmodifiable(files),
+       directories = List<String>.unmodifiable(
+         directories.toSet().toList(growable: false)..sort(),
+       );
+
+  final String entrypointFileName;
+  final List<DartSchemaEmissionFile> files;
+  final List<String> directories;
+
+  DartSchemaEmissionFile fileAt(String relativePath) {
+    for (final file in files) {
+      if (file.relativePath == relativePath) {
+        return file;
+      }
+    }
+    throw StateError('Generated file "$relativePath" was not found.');
+  }
+
+  void writeToDirectory(String outputDirectory) {
+    final root = Directory(outputDirectory);
+    if (root.existsSync()) {
+      root.deleteSync(recursive: true);
+    }
+    root.createSync(recursive: true);
+
+    for (final directory in directories) {
+      Directory('${root.path}/$directory').createSync(recursive: true);
+    }
+
+    for (final file in files) {
+      final outputFile = File('${root.path}/${file.relativePath}');
+      outputFile.parent.createSync(recursive: true);
+      outputFile.writeAsStringSync(file.contents);
+    }
+  }
+}
+
+/// Emits a structured Dart source tree for the introspected [database].
 ///
-/// The generated source includes typed row, insert, and update model classes,
-/// `SqlTable` descriptors, and JSON Schema metadata for each table.
-String emitDartSchema(
+/// The generated output includes:
+/// - one root entrypoint file
+/// - one schema file per SQL schema / namespace
+/// - one table file per table
+/// - typed JSON Schema metadata for every row, insert, and update model
+DartSchemaEmission emitDartSchema(
   IntrospectedDatabase database, {
-  String libraryName = 'database_schema',
   String databaseClassName = 'GeneratedDatabaseSchema',
 }) {
+  final schemaGroups = _groupTablesBySchema(database.tables);
+  final entrypointFileName = '${_fileStem(databaseClassName)}.dart';
+  final files = <DartSchemaEmissionFile>[
+    DartSchemaEmissionFile(
+      relativePath: entrypointFileName,
+      contents: _emitEntrypoint(
+        databaseClassName: databaseClassName,
+        schemaGroups: schemaGroups,
+      ),
+    ),
+  ];
+  final directories = <String>{};
+
+  for (final group in schemaGroups) {
+    final schemaFolder = 'schemas/${group.folderName}';
+    directories
+      ..add(schemaFolder)
+      ..add('$schemaFolder/tables')
+      ..add('$schemaFolder/enums');
+
+    files.add(
+      DartSchemaEmissionFile(
+        relativePath: '$schemaFolder/schema.dart',
+        contents: _emitSchemaLibrary(group),
+      ),
+    );
+
+    for (final table in group.tables) {
+      files.add(
+        DartSchemaEmissionFile(
+          relativePath: '$schemaFolder/tables/${_tableFileName(table)}',
+          contents: _emitTableLibrary(table),
+        ),
+      );
+    }
+  }
+
+  return DartSchemaEmission(
+    entrypointFileName: entrypointFileName,
+    files: files,
+    directories: directories,
+  );
+}
+
+String _emitEntrypoint({
+  required String databaseClassName,
+  required List<_SchemaGroup> schemaGroups,
+}) {
   final buffer = StringBuffer()
-    ..writeln('library $libraryName;')
-    ..writeln()
-    ..writeln("import 'package:dart_edge_sql/dart_edge_sql.dart';")
-    ..writeln("import 'package:dart_edge_runtime/dart_edge_runtime.dart';")
+    ..writeln(
+      "import 'package:dart_edge_http_server_runtime/dart_edge_http_server_runtime.dart';",
+    );
+
+  for (final group in schemaGroups) {
+    buffer.writeln("import 'schemas/${group.folderName}/schema.dart';");
+  }
+
+  buffer
     ..writeln()
     ..writeln('final class $databaseClassName {')
     ..writeln('  const $databaseClassName._();')
     ..writeln();
 
-  for (final table in database.tables) {
-    final tableClassName = '${_upperCamel(table.name)}Table';
+  for (final group in schemaGroups) {
     buffer.writeln(
-      '  static const $tableClassName ${_lowerCamel(table.name)} = '
-      '$tableClassName.table;',
+      '  static const ${group.memberName} = ${group.className}.instance;',
     );
   }
 
   buffer
     ..writeln()
-    ..writeln('  static const jsonSchemas = JsonSchemaRegistry(')
-    ..writeln('    definitions: <JsonSchemaDefinition>[');
-  for (final table in database.tables) {
-    final baseName = _upperCamel(table.name);
-    buffer.writeln('      ${baseName}Row.jsonSchema,');
-    buffer.writeln('      ${baseName}Insert.jsonSchema,');
-    buffer.writeln('      ${baseName}Update.jsonSchema,');
+    ..writeln('  static const schemas = <JsonSchema>[');
+  for (final group in schemaGroups) {
+    buffer.writeln('    ...${group.className}.schemas,');
   }
   buffer
-    ..writeln('    ],')
+    ..writeln('  ];')
+    ..writeln()
+    ..writeln('  static const jsonSchemas = JsonSchemaRegistry(')
+    ..writeln('    schemas: schemas,')
     ..writeln('  );')
-    ..writeln('}')
-    ..writeln();
-
-  for (final table in database.tables) {
-    _emitRowClass(buffer, table);
-    _emitInsertClass(buffer, table);
-    _emitUpdateClass(buffer, table);
-    _emitTableClass(buffer, table);
-  }
+    ..writeln('}');
 
   return buffer.toString();
 }
+
+String _emitSchemaLibrary(_SchemaGroup group) {
+  final buffer = StringBuffer()
+    ..writeln(
+      "import 'package:dart_edge_http_server_runtime/dart_edge_http_server_runtime.dart';",
+    );
+
+  for (final table in group.tables) {
+    buffer.writeln("import 'tables/${_tableFileName(table)}';");
+  }
+
+  buffer
+    ..writeln()
+    ..writeln('final class ${group.className} {')
+    ..writeln('  const ${group.className}._();')
+    ..writeln()
+    ..writeln('  static const instance = ${group.className}._();')
+    ..writeln(
+      "  static const schemaName = '${_escapeLiteral(group.schemaName)}';",
+    )
+    ..writeln();
+
+  for (final table in group.tables) {
+    buffer.writeln(
+      '  static const ${_schemaTableMemberName(table.name)} = '
+      '${_upperCamel(table.name)}Table.table;',
+    );
+  }
+
+  buffer
+    ..writeln()
+    ..writeln('  static const schemas = <JsonSchema>[');
+  for (final table in group.tables) {
+    final baseName = _upperCamel(table.name);
+    buffer.writeln('    ${baseName}Row.jsonSchema,');
+    buffer.writeln('    ${baseName}Insert.jsonSchema,');
+    buffer.writeln('    ${baseName}Update.jsonSchema,');
+  }
+  buffer
+    ..writeln('  ];')
+    ..writeln()
+    ..writeln('  static const jsonSchemas = JsonSchemaRegistry(')
+    ..writeln('    schemas: schemas,')
+    ..writeln('  );')
+    ..writeln('}');
+
+  return buffer.toString();
+}
+
+String _emitTableLibrary(IntrospectedTable table) {
+  final buffer = StringBuffer()
+    ..writeln(
+      "import 'package:dart_edge_http_server_runtime/dart_edge_http_server_runtime.dart';",
+    )
+    ..writeln("import 'package:dart_edge_sql/dart_edge_sql.dart';")
+    ..writeln();
+
+  _emitRowClass(buffer, table);
+  _emitInsertClass(buffer, table);
+  _emitUpdateClass(buffer, table);
+  _emitTableClass(buffer, table);
+
+  return buffer.toString();
+}
+
+List<_SchemaGroup> _groupTablesBySchema(Iterable<IntrospectedTable> tables) {
+  final grouped = <String, List<IntrospectedTable>>{};
+  for (final table in tables) {
+    final schemaName = _schemaName(table.schema);
+    grouped.putIfAbsent(schemaName, () => <IntrospectedTable>[]).add(table);
+  }
+
+  final schemaNames = grouped.keys.toList(growable: false)..sort();
+  return <_SchemaGroup>[
+    for (final schemaName in schemaNames)
+      _SchemaGroup(
+        schemaName: schemaName,
+        folderName: _schemaFolderName(schemaName),
+        className: _schemaClassName(schemaName),
+        tables: List<IntrospectedTable>.unmodifiable(
+          grouped[schemaName]!
+            ..sort((left, right) => left.name.compareTo(right.name)),
+        ),
+      ),
+  ];
+}
+
+String _schemaName(String? schema) {
+  final normalized = schema?.trim();
+  if (normalized == null || normalized.isEmpty) {
+    return 'default';
+  }
+  return normalized;
+}
+
+String _schemaFolderName(String schemaName) {
+  return _fileStem(schemaName);
+}
+
+String _tableFileName(IntrospectedTable table) =>
+    '${_fileStem(table.name)}.dart';
 
 void _emitRowClass(StringBuffer buffer, IntrospectedTable table) {
   final rowType = '${_upperCamel(table.name)}Row';
@@ -127,6 +328,15 @@ void _emitRowClass(StringBuffer buffer, IntrospectedTable table) {
   }
   buffer
     ..writeln('      };')
+    ..writeln();
+
+  _writeToStringOverride(
+    buffer,
+    className: rowType,
+    fieldNames: [for (final column in table.columns) _lowerCamel(column.name)],
+  );
+
+  buffer
     ..writeln('}')
     ..writeln();
 }
@@ -203,6 +413,15 @@ void _emitInsertClass(StringBuffer buffer, IntrospectedTable table) {
   }
   buffer
     ..writeln('      };')
+    ..writeln();
+
+  _writeToStringOverride(
+    buffer,
+    className: insertType,
+    fieldNames: [for (final column in table.columns) _lowerCamel(column.name)],
+  );
+
+  buffer
     ..writeln('}')
     ..writeln();
 }
@@ -271,6 +490,15 @@ void _emitUpdateClass(StringBuffer buffer, IntrospectedTable table) {
   }
   buffer
     ..writeln('      };')
+    ..writeln();
+
+  _writeToStringOverride(
+    buffer,
+    className: updateType,
+    fieldNames: [for (final column in table.columns) _lowerCamel(column.name)],
+  );
+
+  buffer
     ..writeln('}')
     ..writeln();
 }
@@ -292,8 +520,9 @@ void _emitTableClass(StringBuffer buffer, IntrospectedTable table) {
     ..writeln();
 
   for (final column in table.columns) {
+    final columnFieldName = _columnFieldName(column.name);
     buffer.writeln(
-      "  static final ${_lowerCamel(column.name)} = SqlColumn<${_normalizedValueType(column)}>("
+      "  static final $columnFieldName = SqlColumn<${_normalizedValueType(column)}>("
       "table: table, name: '${_escapeLiteral(column.name)}', nullable: ${column.nullable});",
     );
   }
@@ -310,7 +539,7 @@ void _emitTableClass(StringBuffer buffer, IntrospectedTable table) {
       '  List<SqlColumn<Object?>> get columns => <SqlColumn<Object?>>[',
     );
   for (final column in table.columns) {
-    buffer.writeln('        ${_lowerCamel(column.name)}.asObjectColumn,');
+    buffer.writeln('        ${_columnFieldName(column.name)}.asObjectColumn,');
   }
   buffer
     ..writeln('      ];')
@@ -345,31 +574,43 @@ void _writeSchemaConstants(
     ..writeln(
       "  static const schemaRef = JsonSchemaRef<$className>('$className');",
     )
-    ..writeln('  static const jsonSchema = JsonSchemaDefinition(')
+    ..writeln('  static const jsonSchema = JsonSchema.object(')
     ..writeln('    ref: schemaRef,')
-    ..writeln('    schema: <String, Object?>{')
-    ..writeln("      r'\$id': '$className',")
-    ..writeln("      'type': 'object',")
-    ..writeln("      'properties': <String, Object?>{");
+    ..writeln('    properties: <String, JsonSchema>{');
 
   for (final column in table.columns) {
     buffer.writeln(
-      "        '${_escapeLiteral(column.name)}': ${_jsonSchemaForColumn(column)},",
+      "      '${_escapeLiteral(column.name)}': ${_jsonSchemaForColumn(column)},",
     );
   }
 
-  buffer.writeln('      },');
+  buffer.writeln('    },');
   if (requiredColumns.isNotEmpty) {
-    buffer.writeln("      'required': <String>[");
+    buffer.writeln('    required: <String>[');
     for (final columnName in requiredColumns) {
-      buffer.writeln("        '$columnName',");
+      buffer.writeln("      '$columnName',");
     }
-    buffer.writeln('      ],');
+    buffer.writeln('    ],');
   }
   buffer
-    ..writeln("      'additionalProperties': false,")
-    ..writeln('    },')
+    ..writeln('    additionalProperties: false,')
     ..writeln('  );')
+    ..writeln();
+}
+
+void _writeToStringOverride(
+  StringBuffer buffer, {
+  required String className,
+  required Iterable<String> fieldNames,
+}) {
+  final members = fieldNames.toList(growable: false);
+  final description = members
+      .map((fieldName) => '$fieldName: \$$fieldName')
+      .join(', ');
+
+  buffer
+    ..writeln('  @override')
+    ..writeln("  String toString() => '$className($description)';")
     ..writeln();
 }
 
@@ -455,65 +696,48 @@ String _jsonSchemaForColumn(IntrospectedColumn column) {
   final type = _normalizedValueType(column);
 
   if (type == 'Object?') {
-    return '<String, Object?>{}';
+    return 'JsonSchema.any()';
   }
 
-  final schemaEntries = <String>[];
-  switch (type) {
-    case 'int':
-      schemaEntries.add(
-        "'type': ${_jsonTypeLiteral('integer', column.nullable)}",
-      );
-      break;
-    case 'double':
-    case 'num':
-      schemaEntries.add(
-        "'type': ${_jsonTypeLiteral('number', column.nullable)}",
-      );
-      break;
-    case 'bool':
-      schemaEntries.add(
-        "'type': ${_jsonTypeLiteral('boolean', column.nullable)}",
-      );
-      break;
-    case 'String':
-      schemaEntries.add(
-        "'type': ${_jsonTypeLiteral('string', column.nullable)}",
-      );
-      break;
-    case 'DateTime':
-      schemaEntries.add(
-        "'type': ${_jsonTypeLiteral('string', column.nullable)}",
-      );
-      schemaEntries.add("'format': 'date-time'");
-      break;
-    case 'List<int>':
-      schemaEntries.add(
-        "'type': ${_jsonTypeLiteral('array', column.nullable)}",
-      );
-      schemaEntries.add("'items': <String, Object?>{'type': 'integer'}");
-      break;
-    case 'List<Object?>':
-      schemaEntries.add(
-        "'type': ${_jsonTypeLiteral('array', column.nullable)}",
-      );
-      schemaEntries.add("'items': <String, Object?>{}");
-      break;
-    default:
-      schemaEntries.add(
-        "'type': ${_jsonTypeLiteral('string', column.nullable)}",
-      );
-      break;
-  }
-
-  return '<String, Object?>{${schemaEntries.join(', ')}}';
+  return switch (type) {
+    'int' => _jsonSchemaFactory('integer', nullable: column.nullable),
+    'double' ||
+    'num' => _jsonSchemaFactory('number', nullable: column.nullable),
+    'bool' => _jsonSchemaFactory('boolean', nullable: column.nullable),
+    'String' => _jsonSchemaFactory('string', nullable: column.nullable),
+    'DateTime' => _jsonSchemaFactory(
+      'string',
+      nullable: column.nullable,
+      format: 'date-time',
+    ),
+    'List<int>' => _jsonSchemaFactory(
+      'array',
+      nullable: column.nullable,
+      items: 'JsonSchema.integer()',
+    ),
+    'List<Object?>' => _jsonSchemaFactory(
+      'array',
+      nullable: column.nullable,
+      items: 'JsonSchema.any()',
+    ),
+    _ => _jsonSchemaFactory('string', nullable: column.nullable),
+  };
 }
 
-String _jsonTypeLiteral(String type, bool nullable) {
-  if (!nullable) {
-    return "'$type'";
-  }
-  return '<String>[\'$type\', \'null\']';
+String _jsonSchemaFactory(
+  String kind, {
+  required bool nullable,
+  String? format,
+  String? items,
+}) {
+  final arguments = <String>[
+    if (nullable) 'nullable: true',
+    if (format case final format?) "format: '$format'",
+    if (items case final items?) 'items: $items',
+  ];
+
+  final suffix = arguments.isEmpty ? '' : arguments.join(', ');
+  return suffix.isEmpty ? 'JsonSchema.$kind()' : 'JsonSchema.$kind($suffix)';
 }
 
 String _fieldType(IntrospectedColumn column) =>
@@ -582,6 +806,27 @@ String _lowerCamel(String value) {
   return '${upperCamel[0].toLowerCase()}${upperCamel.substring(1)}';
 }
 
+String _schemaTableMemberName(String tableName) {
+  final memberName = _lowerCamel(tableName);
+  return _reservedSchemaMemberNames.contains(memberName)
+      ? '${memberName}Table'
+      : memberName;
+}
+
+String _schemaClassName(String schemaName) {
+  final className = '${_upperCamel(_schemaFolderName(schemaName))}Schema';
+  return className.endsWith('SchemaSchema')
+      ? className.substring(0, className.length - 'Schema'.length)
+      : className;
+}
+
+String _columnFieldName(String columnName) {
+  final fieldName = _lowerCamel(columnName);
+  return _reservedTableMemberNames.contains(fieldName)
+      ? '${fieldName}Column'
+      : fieldName;
+}
+
 String _sanitizeIdentifierPart(String value) {
   final alphanumericOnly = value.replaceAll(RegExp(r'[^A-Za-z0-9_]'), '');
   final normalized = alphanumericOnly.isEmpty ? 'field' : alphanumericOnly;
@@ -591,6 +836,57 @@ String _sanitizeIdentifierPart(String value) {
   return normalized;
 }
 
+String _fileStem(String value) {
+  final normalized = value
+      .trim()
+      .replaceAllMapped(
+        RegExp(r'([A-Z]+)([A-Z][a-z])'),
+        (match) => '${match[1]}_${match[2]}',
+      )
+      .replaceAllMapped(
+        RegExp(r'([a-z0-9])([A-Z])'),
+        (match) => '${match[1]}_${match[2]}',
+      )
+      .replaceAll(RegExp(r'[^A-Za-z0-9_]+'), '_')
+      .replaceAll(RegExp(r'_+'), '_')
+      .replaceAll(RegExp(r'^_|_$'), '')
+      .toLowerCase();
+  return normalized.isEmpty ? 'generated' : normalized;
+}
+
 String _escapeLiteral(String value) => value.replaceAll("'", r"\'");
 
+final class _SchemaGroup {
+  const _SchemaGroup({
+    required this.schemaName,
+    required this.folderName,
+    required this.className,
+    required this.tables,
+  });
+
+  final String schemaName;
+  final String folderName;
+  final String className;
+  final List<IntrospectedTable> tables;
+
+  String get memberName => _lowerCamel(className);
+}
+
 enum _GeneratedShape { row, insert, update }
+
+const _reservedSchemaMemberNames = <String>{
+  'instance',
+  'schemas',
+  'jsonSchemas',
+  'schemaName',
+};
+
+const _reservedTableMemberNames = <String>{
+  'columns',
+  'encodeInsert',
+  'encodeUpdate',
+  'mapRow',
+  'name',
+  'schema',
+  'table',
+};

@@ -1,6 +1,10 @@
-import 'package:dart_edge/dart_edge.dart';
 import 'package:dart_edge_auth/dart_edge_auth.dart';
+import 'package:dart_edge_http_server/dart_edge_http_server.dart';
+import 'package:dart_edge_sql/dart_edge_sql.dart';
+import 'package:dart_edge_sql_migrator/dart_edge_sql_migrator.dart';
 import 'package:http/http.dart' as http;
+import 'package:simple_test/generated/schemas/default/tables/notes.dart';
+import 'package:simple_test/generated/schemas/default/tables/people.dart';
 import 'package:simple_test/src/auth.dart';
 import 'package:simple_test/src/database.dart';
 import 'package:simple_test/src/routes/guarded_route.dart';
@@ -9,6 +13,42 @@ Future<DartEdge<void>> buildServer() async {
   final server = DartEdge<void>();
 
   final database = buildDatabase();
+
+  final migrator = await DartEdgeSqlMigrator.fromFolder(
+    pool: database,
+    folder: 'migrations',
+  );
+  await migrator.migrateToLatest();
+
+  final owner = await database.builder
+      .insertInto(PeopleTable.table)
+      .values(
+        const PeopleInsert(name: 'Ada Lovelace', email: 'ada@example.com'),
+      )
+      .executeReturningFirstTable();
+
+  final result = await database.builder
+      .insertInto(NotesTable.table)
+      .values(
+        NotesInsert(
+          title: 'First note',
+          body: 'This is the body of the first note.',
+          ownerId: owner!.id!,
+        ),
+      )
+      .executeReturningFirstTable();
+
+  print('Inserted note with ID: ${result?.id}');
+
+  final results = await database.builder
+      .selectFrom(NotesTable.table)
+      .innerJoin(
+        PeopleTable.table,
+        on: NotesTable.ownerId.equalsColumn(PeopleTable.id),
+      )
+      .select([NotesTable.title, PeopleTable.id])
+      .execute();
+  print('Notes in database: $results');
 
   server.openApiDocument
     ..title = 'Simple Test API'
@@ -42,6 +82,9 @@ Future<DartEdge<void>> buildServer() async {
             .signInEmail(email: email, password: password)
             .catchError((dynamic error) {
               print('Error signing up user: $error');
+              throw error is Object
+                  ? error
+                  : StateError('Sign-in failed: $error');
             });
 
         final session = signedIn.jsonBody as Map<String, dynamic>;

@@ -1,7 +1,7 @@
 import 'dart:convert';
 
 import 'package:dart_edge_codegen/dart_edge_codegen.dart';
-import 'package:dart_edge_runtime/dart_edge_runtime.dart';
+import 'package:dart_edge_http_server_runtime/dart_edge_http_server_runtime.dart';
 import 'package:test/test.dart';
 
 void main() {

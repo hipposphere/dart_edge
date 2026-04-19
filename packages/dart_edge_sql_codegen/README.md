@@ -3,7 +3,7 @@
 Schema introspection and Dart descriptor generation for `dart_edge_sql`.
 
 Use this package when you want to inspect a live PostgreSQL or SQLite database
-and emit Dart code containing:
+and emit a structured Dart source tree containing:
 
 - row, insert, and update model classes
 - `SqlTable` and `SqlColumn` descriptors
@@ -12,23 +12,33 @@ and emit Dart code containing:
 ## Typical Flow
 
 ```dart
-import 'dart:io';
-
 import 'package:dart_edge_sql/dart_edge_sql.dart';
 import 'package:dart_edge_sql_codegen/dart_edge_sql_codegen.dart';
 
 Future<void> main() async {
   final database = SqliteDatabase.open('app.db');
   final schema = await SqliteIntrospector.fromDatabase(database).introspect();
-  final source = emitDartSchema(
+  final emission = emitDartSchema(
     schema,
-    libraryName: 'app_schema',
     databaseClassName: 'AppSchema',
   );
+  emission.writeToDirectory('lib/generated');
 
-  await File('lib/app_schema.dart').writeAsString(source);
   await database.close();
 }
+```
+
+That writes a layout like:
+
+```text
+lib/generated/
+  app_schema.dart
+  schemas/
+    default/
+      schema.dart
+      tables/
+        users.dart
+      enums/
 ```
 
 ## Main Types
@@ -37,7 +47,9 @@ Future<void> main() async {
   `dart_edge_sql`
 - `IntrospectedDatabase`, `IntrospectedTable`, and `IntrospectedColumn`
   describe the discovered schema
-- `emitDartSchema` turns that description into Dart source
+- `emitDartSchema` turns that description into a `DartSchemaEmission`
+- `DartSchemaEmission.writeToDirectory(...)` replaces stale generated files and
+  writes the structured output tree
 - `SqlCodegenConfig` is a configuration object you can reuse from your own
   tooling
 

@@ -15,7 +15,7 @@ be attached to a `DartEdge` app.
 ## Example
 
 ```dart
-import 'package:dart_edge/dart_edge.dart';
+import 'package:dart_edge_http_server/dart_edge_http_server.dart';
 
 final app = DartEdge<AppServices>(services: AppServices.new);
 
@@ -28,4 +28,4 @@ OpenApiHelpers.mountSwaggerUi(
 ```
 
 This package is intentionally small. Core request/response contracts still live
-in `dart_edge_runtime`, while helpers like these stay here.
+in `dart_edge_http_server_runtime`, while helpers like these stay here.

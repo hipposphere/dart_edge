@@ -9,7 +9,7 @@ and account-management endpoints without hand-writing each route.
 ## Quick Start
 
 ```dart
-import 'package:dart_edge/dart_edge.dart';
+import 'package:dart_edge_http_server/dart_edge_http_server.dart';
 import 'package:dart_edge_auth/dart_edge_auth.dart';
 
 Future<void> main() async {
@@ -92,7 +92,7 @@ with Better Auth:
 import 'package:dart_edge_sql/dart_edge_sql.dart';
 
 final database = PostgresPool.withUrl(
-  'postgresql://postgres:postgres@localhost:5432/dart_edge',
+  'postgresql://postgres:postgres@localhost:5432/dart_edge_http_server',
 );
 
 final auth = DartEdgeAuth(

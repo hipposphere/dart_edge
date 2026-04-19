@@ -1,7 +1,7 @@
 import 'dart:io';
 
+import 'package:dart_edge_http_server_runtime/dart_edge_http_server_runtime.dart';
 import 'package:dart_edge_jaspr/dart_edge_jaspr.dart';
-import 'package:dart_edge_runtime/dart_edge_runtime.dart';
 import 'package:jaspr/dom.dart';
 import 'package:jaspr/jaspr.dart' show Component;
 import 'package:jaspr/server.dart' as jaspr_server show Document;

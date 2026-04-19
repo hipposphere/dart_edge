@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-import 'package:dart_edge_runtime/dart_edge_runtime.dart';
+import 'package:dart_edge_http_server_runtime/dart_edge_http_server_runtime.dart';
 
 /// Build-time description of one generated client library.
 final class DartEdgeClientLibrarySpec {
@@ -48,7 +48,9 @@ final class DartEdgeClientGenerator {
       ..writeln('// GENERATED CODE - DO NOT MODIFY BY HAND.')
       ..writeln()
       ..writeln("import 'package:dart_edge_codegen/dart_edge_codegen.dart';")
-      ..writeln("import 'package:dart_edge_runtime/dart_edge_runtime.dart';");
+      ..writeln(
+        "import 'package:dart_edge_http_server_runtime/dart_edge_http_server_runtime.dart';",
+      );
 
     for (final import in spec.additionalImports) {
       buffer.writeln('import ${jsonEncode(import)};');
