@@ -4,6 +4,9 @@ output: ../lib/src/native/generated_bindings.dart
 headers:
   entry-points:
     - ../rust/include/dart_edge_http_server_runtime.h
+import:
+  symbol-files:
+    - package:dart_edge_core/src/ffi/generated_symbols.yaml
 functions:
   include:
     - dart_edge_http_server_runtime_.*
@@ -13,8 +16,6 @@ functions:
       - dart_edge_http_server_runtime_native_abi_version
 structs:
   include:
-    - NativeBytes
-    - NativePair
     - NativeTransportRequest
 typedefs:
   include:

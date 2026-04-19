@@ -1,0 +1,21 @@
+name: DartEdgeCoreFfiBindings
+description: Shared FFI value types for dart_edge_core.
+output:
+  bindings: ../lib/src/ffi/generated_bindings.dart
+  symbol-file:
+    output: package:dart_edge_core/src/ffi/generated_symbols.yaml
+    import-path: package:dart_edge_core/ffi.dart
+headers:
+  entry-points:
+    - ../rust/include/dart_edge_core_ffi.h
+structs:
+  include:
+    - NativeBytes
+    - NativeOwnedBytes
+    - NativePair
+exclude-all-by-default: true
+sort: true
+use-supported-typedefs: true
+comments: false
+preamble: |
+  // ignore_for_file: camel_case_types, non_constant_identifier_names

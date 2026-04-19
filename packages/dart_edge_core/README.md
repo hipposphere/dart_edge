@@ -1,0 +1,65 @@
+# dart_edge_core
+
+Transport-agnostic core contracts for Dart Edge.
+
+Use this package when you need the shared request, response, routing, HTTP, and
+WebSocket contract surface without depending on a concrete server runtime.
+Most app code should import an app-facing package such as
+`dart_edge_http_server` instead. `dart_edge_core` is the lower-level package
+for adapters, tooling, code generation, and packages that need to share the
+same contract model.
+
+## What You Get
+
+- `RequestContext`, `RequestInput`, `RequestTelemetry`, and `ResponseBuilder`
+  for handler-facing request state
+- `Router`, `RouteDefinition`, `RouteRegistry`, `RouteOptions`, and `Guard`
+  for transport-agnostic route registration
+- `RouteContract`, `ResponseSpec`, `RequestBody`, `ErrorResponse`, and
+  `HttpMethod` for explicit HTTP contracts
+- `JsonEncodable`, `JsonSchema`, `JsonSchemaRef`, and `JsonSchemaRegistry` for
+  schema-driven request and response metadata
+- `WebSocketContract`, `WebSocketContext`, and related route definitions for
+  the planned WebSocket surface
+
+## Quick Start
+
+```dart
+import 'package:dart_edge_core/dart_edge_core.dart';
+
+Future<void> main() async {
+  final router = Router<AppServices>(tags: const ['system']);
+
+  router.get<Map<String, String>>(
+    '/health',
+    options: const RouteOptions(
+      summary: 'Health check',
+      success: ResponseSpec.json<Map<String, String>>(),
+    ),
+    handler: (ctx) => {'status': 'ok'},
+  );
+
+  final registration = router.routeRegistry.registrations.single;
+  print(registration);
+}
+
+final class AppServices {
+  const AppServices();
+}
+```
+
+This package only models the shared contracts. It does not open sockets, accept
+connections, or execute a concrete HTTP runtime by itself.
+
+## Shared FFI Types
+
+`dart_edge_core` also exposes the shared Dart-side FFI value structs used by
+multiple native packages, but through a dedicated sublibrary so the main
+contract API stays transport-agnostic.
+
+```dart
+import 'package:dart_edge_core/ffi.dart';
+```
+
+That sublibrary exports `NativeBytes`, `NativeOwnedBytes`, `NativePair`, and a
+small set of byte and UTF-8 decoding helpers for native wrappers.

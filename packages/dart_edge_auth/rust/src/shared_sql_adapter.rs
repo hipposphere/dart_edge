@@ -2,6 +2,11 @@ use std::collections::HashMap;
 use std::ffi::{CStr, CString, c_char};
 
 use async_trait::async_trait;
+use better_auth::types_mod::types_org::{Member, Organization};
+use better_auth::types_mod::{
+    ApiKey, ApiKeyOps, CreateApiKey, CreateTwoFactor, ListUsersParams, TwoFactorOps, UpdateAccount,
+    UpdateApiKey,
+};
 use better_auth::{
     Account, AccountOps, AuthError, AuthResult, CreateAccount, CreateInvitation, CreateMember,
     CreateOrganization, CreatePasskey, CreateSession, CreateUser, CreateVerification,
@@ -9,11 +14,6 @@ use better_auth::{
     Passkey, PasskeyOps, Session, SessionOps, TwoFactor, UpdateOrganization, UpdateUser, User,
     UserOps, Verification, VerificationOps,
 };
-use better_auth::types_mod::{
-    ApiKey, ApiKeyOps, CreateApiKey, CreateTwoFactor, ListUsersParams, TwoFactorOps,
-    UpdateAccount, UpdateApiKey,
-};
-use better_auth::types_mod::types_org::{Member, Organization};
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -286,10 +286,10 @@ impl SharedSqlDatabaseAdapter {
             "sql": sql,
             "parameters": params.into_iter().map(SqlParam::to_json).collect::<Vec<_>>(),
         });
-        let statement_json =
-            serde_json::to_string(&payload).map_err(|error| AuthError::internal(error.to_string()))?;
-        let statement_json = CString::new(statement_json)
+        let statement_json = serde_json::to_string(&payload)
             .map_err(|error| AuthError::internal(error.to_string()))?;
+        let statement_json =
+            CString::new(statement_json).map_err(|error| AuthError::internal(error.to_string()))?;
 
         let result_ptr = unsafe {
             (self.callbacks.execute_pool)(self.callbacks.database_handle, statement_json.as_ptr())
@@ -331,7 +331,8 @@ impl SharedSqlDatabaseAdapter {
     }
 
     fn execute_affected(&self, sql: String, params: Vec<SqlParam>) -> AuthResult<usize> {
-        self.execute_statement(sql, params).map(|result| result.affected_rows)
+        self.execute_statement(sql, params)
+            .map(|result| result.affected_rows)
     }
 
     fn fetch_optional_row(&self, sql: String, params: Vec<SqlParam>) -> AuthResult<Option<RowMap>> {
@@ -439,7 +440,9 @@ impl<'a> RowReader<'a> {
             NativeSqlValuePayload::Integer { value } => Ok(*value),
             NativeSqlValuePayload::Boolean { value } => Ok(if *value { 1 } else { 0 }),
             NativeSqlValuePayload::String { value } | NativeSqlValuePayload::DateTime { value } => {
-                value.parse::<i64>().map_err(|error| AuthError::internal(error.to_string()))
+                value
+                    .parse::<i64>()
+                    .map_err(|error| AuthError::internal(error.to_string()))
             }
             _ => Err(AuthError::internal(format!(
                 "Column \"{name}\" could not be read as an integer"
@@ -515,7 +518,8 @@ fn now_text() -> String {
 }
 
 fn escape_like(value: &str) -> String {
-    value.replace('\\', "\\\\")
+    value
+        .replace('\\', "\\\\")
         .replace('%', "\\%")
         .replace('_', "\\_")
 }
@@ -686,7 +690,11 @@ impl UserOps for SharedSqlDatabaseAdapter {
     }
 
     async fn update_user(&self, id: &str, update: UpdateUser) -> AuthResult<User> {
-        let mut sets = vec![format!("{} = {}", quoted("updated_at"), self.placeholder(1))];
+        let mut sets = vec![format!(
+            "{} = {}",
+            quoted("updated_at"),
+            self.placeholder(1)
+        )];
         let mut params = vec![SqlParam::String(now_text())];
 
         let mut push_update = |column: &str, value: SqlParam| {
@@ -1147,7 +1155,11 @@ impl AccountOps for SharedSqlDatabaseAdapter {
     }
 
     async fn update_account(&self, id: &str, update: UpdateAccount) -> AuthResult<Account> {
-        let mut sets = vec![format!("{} = {}", quoted("updated_at"), self.placeholder(1))];
+        let mut sets = vec![format!(
+            "{} = {}",
+            quoted("updated_at"),
+            self.placeholder(1)
+        )];
         let mut params = vec![SqlParam::String(now_text())];
 
         let mut push_update = |column: &str, value: SqlParam| {
@@ -1169,10 +1181,16 @@ impl AccountOps for SharedSqlDatabaseAdapter {
             push_update("id_token", SqlParam::String(value));
         }
         if let Some(value) = update.access_token_expires_at {
-            push_update("access_token_expires_at", SqlParam::String(value.to_rfc3339()));
+            push_update(
+                "access_token_expires_at",
+                SqlParam::String(value.to_rfc3339()),
+            );
         }
         if let Some(value) = update.refresh_token_expires_at {
-            push_update("refresh_token_expires_at", SqlParam::String(value.to_rfc3339()));
+            push_update(
+                "refresh_token_expires_at",
+                SqlParam::String(value.to_rfc3339()),
+            );
         }
         if let Some(value) = update.scope {
             push_update("scope", SqlParam::String(value));
@@ -1368,10 +1386,7 @@ impl VerificationOps for SharedSqlDatabaseAdapter {
 impl OrganizationOps for SharedSqlDatabaseAdapter {
     type Organization = Organization;
 
-    async fn create_organization(
-        &self,
-        _org: CreateOrganization,
-    ) -> AuthResult<Organization> {
+    async fn create_organization(&self, _org: CreateOrganization) -> AuthResult<Organization> {
         Err(AuthError::not_implemented(
             "Shared dart_edge_sql auth databases do not support organizations yet.",
         ))
@@ -1422,7 +1437,11 @@ impl MemberOps for SharedSqlDatabaseAdapter {
         ))
     }
 
-    async fn get_member(&self, _organization_id: &str, _user_id: &str) -> AuthResult<Option<Member>> {
+    async fn get_member(
+        &self,
+        _organization_id: &str,
+        _user_id: &str,
+    ) -> AuthResult<Option<Member>> {
         Err(AuthError::not_implemented(
             "Shared dart_edge_sql auth databases do not support organizations yet.",
         ))

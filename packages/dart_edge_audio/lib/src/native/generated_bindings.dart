@@ -8,6 +8,7 @@
 library;
 
 import 'dart:ffi' as ffi;
+import 'package:dart_edge_core/ffi.dart' as imp$1;
 
 @ffi.Native<
   ffi.Pointer<NativeAudioBytesResult> Function(
@@ -62,14 +63,7 @@ external ffi.Pointer<ffi.Char> dart_edge_audio_probe_file(
 external ffi.Pointer<ffi.Char> dart_edge_audio_take_last_error();
 
 final class NativeAudioBytesResult extends ffi.Struct {
-  external NativeOwnedBytes bytes;
+  external imp$1.NativeOwnedBytes bytes;
 
   external ffi.Pointer<ffi.Char> result_json;
-}
-
-final class NativeOwnedBytes extends ffi.Struct {
-  external ffi.Pointer<ffi.Uint8> ptr;
-
-  @ffi.IntPtr()
-  external int len;
 }

@@ -4,6 +4,9 @@ output: ../lib/src/native/generated_bindings.dart
 headers:
   entry-points:
     - ../rust/include/dart_edge_auth.h
+import:
+  symbol-files:
+    - package:dart_edge_core/src/ffi/generated_symbols.yaml
 functions:
   include:
     - dart_edge_auth_.*
@@ -15,8 +18,6 @@ functions:
       - dart_edge_auth_free_string
 structs:
   include:
-    - NativeBytes
-    - NativePair
     - NativeAuthResponse
 exclude-all-by-default: true
 sort: true

@@ -10,6 +10,7 @@
 library;
 
 import 'dart:ffi' as ffi;
+import 'package:dart_edge_core/ffi.dart' as imp$1;
 
 @ffi.Native<ffi.Void Function(ffi.Pointer<NativeTransportRequest>)>(
   isLeaf: true,
@@ -28,7 +29,7 @@ external int dart_edge_http_server_runtime_native_abi_version();
     ffi.Pointer<ffi.Char>,
     ffi.Pointer<ffi.Char>,
     ffi.IntPtr,
-    ffi.Pointer<NativePair>,
+    ffi.Pointer<imp$1.NativePair>,
   )
 >()
 external bool dart_edge_http_server_runtime_send_response(
@@ -37,7 +38,7 @@ external bool dart_edge_http_server_runtime_send_response(
   ffi.Pointer<ffi.Char> content_type,
   ffi.Pointer<ffi.Char> body,
   int header_count,
-  ffi.Pointer<NativePair> headers,
+  ffi.Pointer<imp$1.NativePair> headers,
 );
 
 @ffi.Native<
@@ -64,38 +65,25 @@ external void dart_edge_http_server_runtime_stop_server();
 external ffi.Pointer<NativeTransportRequest>
 dart_edge_http_server_runtime_take_request(int request_id);
 
-final class NativeBytes extends ffi.Struct {
-  external ffi.Pointer<ffi.Uint8> ptr;
-
-  @ffi.IntPtr()
-  external int len;
-}
-
-final class NativePair extends ffi.Struct {
-  external NativeBytes key;
-
-  external NativeBytes value;
-}
-
 final class NativeTransportRequest extends ffi.Struct {
-  external NativeBytes route_id;
+  external imp$1.NativeBytes route_id;
 
   @ffi.IntPtr()
   external int path_param_count;
 
-  external ffi.Pointer<NativePair> path_params;
+  external ffi.Pointer<imp$1.NativePair> path_params;
 
   @ffi.IntPtr()
   external int query_count;
 
-  external ffi.Pointer<NativePair> query;
+  external ffi.Pointer<imp$1.NativePair> query;
 
   @ffi.IntPtr()
   external int header_count;
 
-  external ffi.Pointer<NativePair> headers;
+  external ffi.Pointer<imp$1.NativePair> headers;
 
-  external NativeBytes body;
+  external imp$1.NativeBytes body;
 
   @ffi.Uint8()
   external int body_kind;

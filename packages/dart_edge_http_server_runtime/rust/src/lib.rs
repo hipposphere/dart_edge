@@ -9,6 +9,10 @@ use axum::body::{Body, Bytes};
 use axum::extract::Request;
 use axum::http::{HeaderMap, Response, StatusCode, header};
 use axum::routing::any;
+use dart_edge_core::{
+    NativeBytes, NativePair, OwnedBytes, OwnedPair, boxed_pairs_ptr, native_pairs_from_owned,
+    owned_pairs_from_map, read_pairs_vec,
+};
 use once_cell::sync::Lazy;
 use serde::Deserialize;
 use tokio::net::TcpListener;
@@ -39,18 +43,6 @@ struct ServerState {
 }
 
 #[repr(C)]
-pub struct NativeBytes {
-    ptr: *const u8,
-    len: isize,
-}
-
-#[repr(C)]
-pub struct NativePair {
-    key: NativeBytes,
-    value: NativeBytes,
-}
-
-#[repr(C)]
 pub struct NativeTransportRequest {
     route_id: NativeBytes,
     path_param_count: isize,
@@ -61,15 +53,6 @@ pub struct NativeTransportRequest {
     headers: *const NativePair,
     body: NativeBytes,
     body_kind: u8,
-}
-
-struct OwnedBytes {
-    bytes: Box<[u8]>,
-}
-
-struct OwnedPair {
-    key: OwnedBytes,
-    value: OwnedBytes,
 }
 
 #[repr(C)]
@@ -332,7 +315,9 @@ pub extern "C" fn dart_edge_http_server_runtime_stop_server() {
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn dart_edge_http_server_runtime_take_request(request_id: i64) -> *mut NativeTransportRequest {
+pub extern "C" fn dart_edge_http_server_runtime_take_request(
+    request_id: i64,
+) -> *mut NativeTransportRequest {
     let mut pending = PENDING_REQUESTS.lock().unwrap();
     let Some(request) = pending.get_mut(&request_id) else {
         return std::ptr::null_mut();
@@ -341,7 +326,9 @@ pub extern "C" fn dart_edge_http_server_runtime_take_request(request_id: i64) ->
         return std::ptr::null_mut();
     };
 
-    let handle = Box::new(NativeTransportRequestHandle::from_transport_request(request));
+    let handle = Box::new(NativeTransportRequestHandle::from_transport_request(
+        request,
+    ));
     Box::into_raw(handle).cast::<NativeTransportRequest>()
 }
 
@@ -373,7 +360,7 @@ pub extern "C" fn dart_edge_http_server_runtime_send_response(
     let Some(body) = body else {
         return false;
     };
-    let headers = unsafe { read_pairs(headers, header_count) };
+    let headers = unsafe { read_pairs_vec(headers, header_count) };
 
     let mut pending = PENDING_REQUESTS.lock().unwrap();
     let Some(mut request) = pending.remove(&request_id) else {
@@ -436,14 +423,18 @@ async fn handle_request(request: Request<Body>) -> Response<Body> {
     ) {
         return error_response;
     }
-    if let Err(error_response) =
-        validate_string_map(&query, route_match.query_schema_id.as_deref(), "Query parameters")
-    {
+    if let Err(error_response) = validate_string_map(
+        &query,
+        route_match.query_schema_id.as_deref(),
+        "Query parameters",
+    ) {
         return error_response;
     }
-    if let Err(error_response) =
-        validate_string_map(&headers, route_match.headers_schema_id.as_deref(), "Headers")
-    {
+    if let Err(error_response) = validate_string_map(
+        &headers,
+        route_match.headers_schema_id.as_deref(),
+        "Headers",
+    ) {
         return error_response;
     }
     if let Some(request_body) = route_match.request_body.as_ref() {
@@ -562,11 +553,13 @@ fn compile_route(
         params_schema_id: route.params_schema_id,
         query_schema_id: route.query_schema_id,
         headers_schema_id: route.headers_schema_id,
-        request_body: route.request_body.map(|request_body| RequestBodyValidation {
-            kind: body_kind(&request_body.content_type),
-            content_type: request_body.content_type,
-            schema_id: request_body.schema_id,
-        }),
+        request_body: route
+            .request_body
+            .map(|request_body| RequestBodyValidation {
+                kind: body_kind(&request_body.content_type),
+                content_type: request_body.content_type,
+                schema_id: request_body.schema_id,
+            }),
     })
 }
 
@@ -637,69 +630,6 @@ impl NativeTransportRequestHandle {
             header_pairs,
             body,
         }
-    }
-}
-
-impl OwnedBytes {
-    fn from_vec(bytes: Vec<u8>) -> Self {
-        Self {
-            bytes: bytes.into_boxed_slice(),
-        }
-    }
-
-    fn as_native(&self) -> NativeBytes {
-        NativeBytes {
-            ptr: self.bytes.as_ptr(),
-            len: self.bytes.len() as isize,
-        }
-    }
-}
-
-impl OwnedPair {
-    fn new(key: String, value: String) -> Self {
-        Self {
-            key: OwnedBytes::from_vec(key.into_bytes()),
-            value: OwnedBytes::from_vec(value.into_bytes()),
-        }
-    }
-
-    fn as_native(&self) -> NativePair {
-        NativePair {
-            key: self.key.as_native(),
-            value: self.value.as_native(),
-        }
-    }
-}
-
-impl NativeBytes {
-    fn empty() -> Self {
-        Self {
-            ptr: std::ptr::null(),
-            len: 0,
-        }
-    }
-}
-
-fn owned_pairs_from_map(values: HashMap<String, String>) -> Vec<OwnedPair> {
-    values
-        .into_iter()
-        .map(|(key, value)| OwnedPair::new(key, value))
-        .collect()
-}
-
-fn native_pairs_from_owned(values: &[OwnedPair]) -> Box<[NativePair]> {
-    values
-        .iter()
-        .map(OwnedPair::as_native)
-        .collect::<Vec<_>>()
-        .into_boxed_slice()
-}
-
-fn boxed_pairs_ptr(values: &[NativePair]) -> *const NativePair {
-    if values.is_empty() {
-        std::ptr::null()
-    } else {
-        values.as_ptr()
     }
 }
 
@@ -853,9 +783,9 @@ fn validate_request_body(
             .cloned()
             .unwrap_or(serde_json::Value::Null),
         NativeBodyKind::Text => match body.bytes.as_ref() {
-            Some(bytes) => serde_json::Value::String(
-                String::from_utf8_lossy(bytes.as_slice()).into_owned(),
-            ),
+            Some(bytes) => {
+                serde_json::Value::String(String::from_utf8_lossy(bytes.as_slice()).into_owned())
+            }
             None => serde_json::Value::Null,
         },
         NativeBodyKind::None => serde_json::Value::Null,
@@ -977,32 +907,4 @@ unsafe fn read_c_string(value: *const c_char) -> Option<String> {
         .to_str()
         .ok()
         .map(ToOwned::to_owned)
-}
-
-unsafe fn read_pairs(values: *const NativePair, count: isize) -> Vec<(String, String)> {
-    if count <= 0 || values.is_null() {
-        return Vec::new();
-    }
-
-    let mut result = Vec::with_capacity(count as usize);
-    for index in 0..count {
-        let pair = unsafe { values.offset(index).read() };
-        let Some(key) = (unsafe { read_native_string(pair.key) }) else {
-            continue;
-        };
-        let Some(value) = (unsafe { read_native_string(pair.value) }) else {
-            continue;
-        };
-        result.push((key, value));
-    }
-    result
-}
-
-unsafe fn read_native_string(value: NativeBytes) -> Option<String> {
-    if value.ptr.is_null() || value.len <= 0 {
-        return Some(String::new());
-    }
-
-    let slice = unsafe { std::slice::from_raw_parts(value.ptr, value.len as usize) };
-    std::str::from_utf8(slice).ok().map(ToOwned::to_owned)
 }

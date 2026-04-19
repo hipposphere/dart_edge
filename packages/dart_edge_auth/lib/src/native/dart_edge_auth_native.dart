@@ -3,6 +3,7 @@ import 'dart:ffi';
 import 'dart:typed_data';
 
 import 'package:dart_edge_core/dart_edge_core.dart';
+import 'package:dart_edge_core/ffi.dart' as core_ffi;
 import 'package:dart_edge_sql/dart_edge_sql.dart';
 import 'package:dart_edge_sql/src/native/generated_bindings.dart' as sql_gen;
 import 'package:ffi/ffi.dart';
@@ -158,8 +159,8 @@ abstract final class DartEdgeAuthNative {
     final pathPtr = path.toNativeUtf8();
     final queryEntries = _encodePairs(query);
     final headerEntries = _encodePairs(headers);
-    final queryStorage = calloc<gen.NativePair>(queryEntries.length);
-    final headerStorage = calloc<gen.NativePair>(headerEntries.length);
+    final queryStorage = calloc<core_ffi.NativePair>(queryEntries.length);
+    final headerStorage = calloc<core_ffi.NativePair>(headerEntries.length);
     final bodyStorage = body == null ? nullptr : calloc<Uint8>(body.length);
 
     try {
@@ -221,9 +222,9 @@ NativeAuthResponseData _decodeResponse(
 
   return NativeAuthResponseData(
     status: response.status,
-    contentType: _decodeUtf8(response.content_type),
+    contentType: core_ffi.decodeNativeUtf8(response.content_type),
     headers: _decodePairs(response.headers, response.header_count),
-    body: _decodeUtf8(response.body),
+    body: core_ffi.decodeNativeUtf8(response.body),
   );
 }
 
@@ -241,7 +242,7 @@ _encodePairs(Map<String, String> values) {
 }
 
 void _writePairs(
-  Pointer<gen.NativePair> storage,
+  Pointer<core_ffi.NativePair> storage,
   List<
     ({int keyLength, Pointer<Utf8> key, int valueLength, Pointer<Utf8> value})
   >
@@ -268,29 +269,11 @@ void _freePairs(
   }
 }
 
-List<HttpHeader> _decodePairs(Pointer<gen.NativePair> pairs, int count) {
-  if (count == 0 || pairs == nullptr) {
-    return const <HttpHeader>[];
-  }
-
+List<HttpHeader> _decodePairs(Pointer<core_ffi.NativePair> pairs, int count) {
   return [
-    for (var index = 0; index < count; index += 1)
-      HttpHeader(
-        _decodeUtf8((pairs + index).ref.key),
-        _decodeUtf8((pairs + index).ref.value),
-      ),
+    for (final pair in core_ffi.copyNativePairs(pairs, count))
+      HttpHeader(pair.key, pair.value),
   ];
-}
-
-String _decodeUtf8(gen.NativeBytes value) {
-  if (value.len == 0 || value.ptr == nullptr) {
-    return '';
-  }
-
-  return utf8.decode(
-    Uint8List.fromList(value.ptr.asTypedList(value.len)),
-    allowMalformed: true,
-  );
 }
 
 String _takeLastError() {

@@ -1,13 +1,9 @@
 #ifndef DART_EDGE_AUDIO_H_
 #define DART_EDGE_AUDIO_H_
 
+#include "../../../dart_edge_core/rust/include/dart_edge_core_ffi.h"
 #include <stddef.h>
 #include <stdint.h>
-
-typedef struct NativeOwnedBytes {
-  uint8_t* ptr;
-  intptr_t len;
-} NativeOwnedBytes;
 
 typedef struct NativeAudioBytesResult {
   NativeOwnedBytes bytes;

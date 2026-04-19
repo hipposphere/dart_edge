@@ -5,17 +5,9 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "../../../dart_edge_core/rust/include/dart_edge_core_ffi.h"
+
 typedef void (*dart_edge_http_server_runtime_request_ready_callback_t)(int64_t request_id);
-
-typedef struct NativeBytes {
-  const uint8_t* ptr;
-  intptr_t len;
-} NativeBytes;
-
-typedef struct NativePair {
-  NativeBytes key;
-  NativeBytes value;
-} NativePair;
 
 typedef struct NativeTransportRequest {
   NativeBytes route_id;

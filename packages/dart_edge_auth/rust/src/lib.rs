@@ -10,10 +10,13 @@ use better_auth::plugins::{
     PasswordManagementPlugin, SessionManagementPlugin,
 };
 use better_auth::{
-    AuthBuilder, AuthConfig, AuthRequest, BetterAuth, HttpMethod, RateLimitConfig,
-    TypedAuthBuilder,
+    AuthBuilder, AuthConfig, AuthRequest, BetterAuth, HttpMethod, RateLimitConfig, TypedAuthBuilder,
 };
 use better_auth_diesel_sqlite::DieselSqliteAdapter;
+use dart_edge_core::{
+    NativeBytes, NativePair, OwnedBytes, OwnedPair, boxed_pairs_ptr, native_pairs_from_owned,
+    read_pairs_map,
+};
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -48,33 +51,12 @@ type SharedTakeLastErrorFn = unsafe extern "C" fn() -> *mut c_char;
 type SharedFreeStringFn = unsafe extern "C" fn(value: *mut c_char);
 
 #[repr(C)]
-pub struct NativeBytes {
-    ptr: *const u8,
-    len: isize,
-}
-
-#[repr(C)]
-pub struct NativePair {
-    key: NativeBytes,
-    value: NativeBytes,
-}
-
-#[repr(C)]
 pub struct NativeAuthResponse {
     status: u16,
     content_type: NativeBytes,
     header_count: isize,
     headers: *const NativePair,
     body: NativeBytes,
-}
-
-struct OwnedBytes {
-    bytes: Box<[u8]>,
-}
-
-struct OwnedPair {
-    key: OwnedBytes,
-    value: OwnedBytes,
 }
 
 #[repr(C)]
@@ -121,7 +103,9 @@ struct NativeAdminConfig {
 #[serde(tag = "kind", rename_all = "camelCase")]
 enum NativeDatabaseConfig {
     Memory,
-    Postgres { connection_string: String },
+    Postgres {
+        connection_string: String,
+    },
     Sqlite {
         path: String,
         #[serde(rename = "inMemory")]
@@ -197,7 +181,9 @@ pub extern "C" fn dart_edge_auth_create_with_shared_database(
     let dialect = match decode_shared_dialect(dialect) {
         Some(dialect) => dialect,
         None => {
-            set_last_error(format!("Unsupported shared database dialect code: {dialect}"));
+            set_last_error(format!(
+                "Unsupported shared database dialect code: {dialect}"
+            ));
             return 0;
         }
     };
@@ -209,7 +195,6 @@ fn create_instance(
     config_json: &str,
     shared_database: Option<(SharedSqlDialect, SharedSqlCallbacks)>,
 ) -> i64 {
-
     let config: NativeAuthConfig = match serde_json::from_str(config_json) {
         Ok(config) => config,
         Err(error) => {
@@ -307,8 +292,8 @@ pub extern "C" fn dart_edge_auth_handle_request(
         }
     };
 
-    let query = unsafe { read_pairs(query, query_count) };
-    let headers = unsafe { read_pairs(headers, header_count) };
+    let query = unsafe { read_pairs_map(query, query_count) };
+    let headers = unsafe { read_pairs_map(headers, header_count) };
     let body = unsafe { read_bytes(body_ptr, body_len) };
 
     let mut instances = INSTANCES.lock().unwrap();
@@ -469,13 +454,16 @@ async fn build_auth(
                 return Err("Missing shared dart_edge_sql callbacks.".to_string());
             };
             if *dialect != native_shared_dialect(shared_dialect) {
-                return Err("Shared database dialect did not match the requested callbacks."
-                    .to_string());
+                return Err(
+                    "Shared database dialect did not match the requested callbacks.".to_string(),
+                );
             }
 
             let adapter = SharedSqlDatabaseAdapter::new(shared_dialect, callbacks);
             if *manage_migrations {
-                adapter.run_migrations().map_err(|error| error.to_string())?;
+                adapter
+                    .run_migrations()
+                    .map_err(|error| error.to_string())?;
             }
 
             let builder = configure_builder(
@@ -713,53 +701,6 @@ impl NativeAuthResponseHandle {
     }
 }
 
-impl OwnedBytes {
-    fn from_vec(bytes: Vec<u8>) -> Self {
-        Self {
-            bytes: bytes.into_boxed_slice(),
-        }
-    }
-
-    fn as_native(&self) -> NativeBytes {
-        NativeBytes {
-            ptr: self.bytes.as_ptr(),
-            len: self.bytes.len() as isize,
-        }
-    }
-}
-
-impl OwnedPair {
-    fn new(key: String, value: String) -> Self {
-        Self {
-            key: OwnedBytes::from_vec(key.into_bytes()),
-            value: OwnedBytes::from_vec(value.into_bytes()),
-        }
-    }
-
-    fn as_native(&self) -> NativePair {
-        NativePair {
-            key: self.key.as_native(),
-            value: self.value.as_native(),
-        }
-    }
-}
-
-fn native_pairs_from_owned(values: &[OwnedPair]) -> Box<[NativePair]> {
-    values
-        .iter()
-        .map(OwnedPair::as_native)
-        .collect::<Vec<_>>()
-        .into_boxed_slice()
-}
-
-fn boxed_pairs_ptr(values: &[NativePair]) -> *const NativePair {
-    if values.is_empty() {
-        std::ptr::null()
-    } else {
-        values.as_ptr()
-    }
-}
-
 fn response_content_type(headers: &HashMap<String, String>) -> String {
     headers
         .iter()
@@ -860,38 +801,10 @@ unsafe fn read_c_string(value: *const c_char) -> Option<String> {
         .map(ToOwned::to_owned)
 }
 
-unsafe fn read_pairs(values: *const NativePair, count: isize) -> HashMap<String, String> {
-    if count <= 0 || values.is_null() {
-        return HashMap::new();
-    }
-
-    let mut result = HashMap::with_capacity(count as usize);
-    for index in 0..count {
-        let pair = unsafe { values.offset(index).read() };
-        let Some(key) = (unsafe { read_native_string(pair.key) }) else {
-            continue;
-        };
-        let Some(value) = (unsafe { read_native_string(pair.value) }) else {
-            continue;
-        };
-        result.insert(key, value);
-    }
-    result
-}
-
 unsafe fn read_bytes(ptr: *const u8, len: isize) -> Option<Vec<u8>> {
     if ptr.is_null() || len <= 0 {
         return None;
     }
 
     Some(unsafe { std::slice::from_raw_parts(ptr, len as usize) }.to_vec())
-}
-
-unsafe fn read_native_string(value: NativeBytes) -> Option<String> {
-    if value.ptr.is_null() || value.len <= 0 {
-        return Some(String::new());
-    }
-
-    let slice = unsafe { std::slice::from_raw_parts(value.ptr, value.len as usize) };
-    std::str::from_utf8(slice).ok().map(ToOwned::to_owned)
 }

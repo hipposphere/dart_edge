@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:ffi';
 import 'dart:typed_data';
 
+import 'package:dart_edge_core/ffi.dart' as core_ffi;
 import 'package:ffi/ffi.dart';
 
 import 'generated_bindings.dart' as gen;
@@ -116,11 +117,7 @@ abstract final class DartEdgeAudioNative {
 
       try {
         final response = resultPtr.ref;
-        final outputBytes = response.bytes.ptr == nullptr
-            ? Uint8List(0)
-            : Uint8List.fromList(
-                response.bytes.ptr.asTypedList(response.bytes.len),
-              );
+        final outputBytes = core_ffi.copyNativeOwnedBytes(response.bytes);
 
         final resultJson = response.result_json == nullptr
             ? '{}'

@@ -25,7 +25,7 @@ Requirements:
 - Dart `>=3.11.0 <4.0.0`
 - Rust toolchain when working on native-backed packages such as
   `dart_edge_http_server_runtime`, `dart_edge_auth`, `dart_edge_sql`,
-  `dart_edge_audio`, or `dart_edge_sip`
+  `dart_edge_audio`, `dart_edge_s3_client`, or `dart_edge_sip`
 - `pjproject` plus `pkg-config` when building `dart_edge_sip`
 
 Resolve the workspace:
@@ -90,6 +90,9 @@ from `dart_edge_helpers`.
   migration management on top of `dart_edge_sql`
 - [`packages/dart_edge_audio`](packages/dart_edge_audio): native-backed audio
   probing and WAV conversion utilities
+- [`packages/dart_edge_s3_client`](packages/dart_edge_s3_client): native-backed
+  S3 client for AWS S3 and compatible object stores with owned-bytes transfer
+  support
 - [`packages/dart_edge_sip`](packages/dart_edge_sip): standalone PJSIP-backed
   SIP/telephony runtime foundation for backend-controlled VoIP call handling
 - [`benchmarks`](benchmarks): reproducible benchmark workspace comparing Dart

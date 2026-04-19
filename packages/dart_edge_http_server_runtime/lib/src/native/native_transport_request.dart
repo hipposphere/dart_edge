@@ -1,6 +1,7 @@
-import 'dart:convert';
 import 'dart:ffi';
 import 'dart:typed_data';
+
+import 'package:dart_edge_core/ffi.dart' as core_ffi;
 
 import '../runtime/transport_request.dart';
 import 'generated_bindings.dart';
@@ -24,31 +25,18 @@ TransportRequest decodeNativeTransportRequest(
   );
 }
 
-Map<String, String> _decodePairs(Pointer<NativePair> pairs, int count) {
-  if (count == 0 || pairs == nullptr) {
-    return const <String, String>{};
-  }
-
+Map<String, String> _decodePairs(
+  Pointer<core_ffi.NativePair> pairs,
+  int count,
+) {
   return {
-    for (var index = 0; index < count; index += 1)
-      _decodeUtf8((pairs + index).ref.key): _decodeUtf8(
-        (pairs + index).ref.value,
-      ),
+    for (final pair in core_ffi.copyNativePairs(pairs, count))
+      pair.key: pair.value,
   };
 }
 
-String _decodeUtf8(NativeBytes value) {
-  final bytes = _readBytes(value);
-  if (bytes == null || bytes.isEmpty) {
-    return '';
-  }
-  return utf8.decode(bytes);
-}
+String _decodeUtf8(core_ffi.NativeBytes value) =>
+    core_ffi.decodeNativeUtf8(value);
 
-Uint8List? _readBytes(NativeBytes value) {
-  if (value.len == 0 || value.ptr == nullptr) {
-    return null;
-  }
-
-  return Uint8List.fromList(value.ptr.asTypedList(value.len));
-}
+Uint8List? _readBytes(core_ffi.NativeBytes value) =>
+    core_ffi.maybeCopyNativeBytes(value);

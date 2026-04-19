@@ -1,0 +1,12 @@
+format_version: 1.0.0
+files:
+  package:dart_edge_core/ffi.dart:
+    used-config:
+      ffi-native: false
+    symbols:
+      c:@S@NativeBytes:
+        name: NativeBytes
+      c:@S@NativeOwnedBytes:
+        name: NativeOwnedBytes
+      c:@S@NativePair:
+        name: NativePair

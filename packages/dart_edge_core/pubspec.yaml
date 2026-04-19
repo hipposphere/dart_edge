@@ -7,3 +7,5 @@ environment:
 
 resolution: workspace
 
+dev_dependencies:
+  ffigen: ^20.1.1

@@ -8,6 +8,7 @@
 library;
 
 import 'dart:ffi' as ffi;
+import 'package:dart_edge_core/ffi.dart' as imp$1;
 
 @ffi.Native<ffi.Int64 Function(ffi.Pointer<ffi.Char>)>()
 external int dart_edge_auth_create(ffi.Pointer<ffi.Char> config_json);
@@ -69,9 +70,9 @@ external void dart_edge_auth_free_string(ffi.Pointer<ffi.Char> value);
     ffi.Int32,
     ffi.Pointer<ffi.Char>,
     ffi.IntPtr,
-    ffi.Pointer<NativePair>,
+    ffi.Pointer<imp$1.NativePair>,
     ffi.IntPtr,
-    ffi.Pointer<NativePair>,
+    ffi.Pointer<imp$1.NativePair>,
     ffi.Pointer<ffi.Uint8>,
     ffi.IntPtr,
   )
@@ -81,9 +82,9 @@ external ffi.Pointer<NativeAuthResponse> dart_edge_auth_handle_request(
   int method,
   ffi.Pointer<ffi.Char> path,
   int query_count,
-  ffi.Pointer<NativePair> query,
+  ffi.Pointer<imp$1.NativePair> query,
   int header_count,
-  ffi.Pointer<NativePair> headers,
+  ffi.Pointer<imp$1.NativePair> headers,
   ffi.Pointer<ffi.Uint8> body_ptr,
   int body_len,
 );
@@ -101,25 +102,12 @@ final class NativeAuthResponse extends ffi.Struct {
   @ffi.Uint16()
   external int status;
 
-  external NativeBytes content_type;
+  external imp$1.NativeBytes content_type;
 
   @ffi.IntPtr()
   external int header_count;
 
-  external ffi.Pointer<NativePair> headers;
+  external ffi.Pointer<imp$1.NativePair> headers;
 
-  external NativeBytes body;
-}
-
-final class NativeBytes extends ffi.Struct {
-  external ffi.Pointer<ffi.Uint8> ptr;
-
-  @ffi.IntPtr()
-  external int len;
-}
-
-final class NativePair extends ffi.Struct {
-  external NativeBytes key;
-
-  external NativeBytes value;
+  external imp$1.NativeBytes body;
 }

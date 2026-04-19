@@ -1,0 +1,29 @@
+name: DartEdgeS3ClientNativeBindings
+description: Generated C ABI bindings for dart_edge_s3_client.
+output: ../lib/src/native/generated_bindings.dart
+headers:
+  entry-points:
+    - ../rust/include/dart_edge_s3_client.h
+import:
+  symbol-files:
+    - package:dart_edge_core/src/ffi/generated_symbols.yaml
+functions:
+  include:
+    - dart_edge_s3_client_.*
+  leaf:
+    include:
+      - dart_edge_s3_client_dispose
+      - dart_edge_s3_client_free_bytes_result
+      - dart_edge_s3_client_free_string
+      - dart_edge_s3_client_native_abi_version
+structs:
+  include:
+    - NativeS3BytesResult
+exclude-all-by-default: true
+sort: true
+use-supported-typedefs: true
+comments: false
+preamble: |
+  // ignore_for_file: camel_case_types, non_constant_identifier_names
+ffi-native:
+  asset-id: package:dart_edge_s3_client/dart_edge_s3_client.dart

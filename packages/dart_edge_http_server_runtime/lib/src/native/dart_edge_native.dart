@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:ffi';
 
 import 'package:dart_edge_core/dart_edge_core.dart';
+import 'package:dart_edge_core/ffi.dart' as core_ffi;
 import 'package:ffi/ffi.dart';
 
 import '../runtime/transport_request.dart';
@@ -83,7 +84,7 @@ abstract final class DartEdgeNative {
           value: header.value.toNativeUtf8(),
         ),
     ];
-    final headerStorage = calloc<gen.NativePair>(nativeHeaders.length);
+    final headerStorage = calloc<core_ffi.NativePair>(nativeHeaders.length);
 
     try {
       for (var index = 0; index < nativeHeaders.length; index += 1) {

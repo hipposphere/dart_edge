@@ -1,20 +1,20 @@
 use std::collections::BTreeMap;
-use std::ffi::{c_char, CStr, CString};
+use std::ffi::{CStr, CString, c_char};
 use std::fs;
 use std::io::Cursor;
 use std::path::Path;
 use std::sync::Mutex;
 
+use dart_edge_core::{NativeOwnedBytes, free_owned_bytes, into_native_owned_bytes};
 use hound::{SampleFormat, WavSpec, WavWriter};
 use once_cell::sync::Lazy;
 use rubato::{FastFixedIn, PolynomialDegree, Resampler};
 use serde::{Deserialize, Serialize};
 use symphonia::core::audio::SampleBuffer;
 use symphonia::core::codecs::{
-    CodecType, DecoderOptions, CODEC_TYPE_FLAC, CODEC_TYPE_MP3, CODEC_TYPE_NULL,
-    CODEC_TYPE_PCM_F32LE, CODEC_TYPE_PCM_F64LE, CODEC_TYPE_PCM_S16LE, CODEC_TYPE_PCM_S24LE,
-    CODEC_TYPE_PCM_S32LE, CODEC_TYPE_PCM_U16LE, CODEC_TYPE_PCM_U24LE, CODEC_TYPE_PCM_U32LE,
-    CODEC_TYPE_VORBIS,
+    CODEC_TYPE_FLAC, CODEC_TYPE_MP3, CODEC_TYPE_NULL, CODEC_TYPE_PCM_F32LE, CODEC_TYPE_PCM_F64LE,
+    CODEC_TYPE_PCM_S16LE, CODEC_TYPE_PCM_S24LE, CODEC_TYPE_PCM_S32LE, CODEC_TYPE_PCM_U16LE,
+    CODEC_TYPE_PCM_U24LE, CODEC_TYPE_PCM_U32LE, CODEC_TYPE_VORBIS, CodecType, DecoderOptions,
 };
 use symphonia::core::errors::Error as SymphoniaError;
 use symphonia::core::formats::{FormatOptions, FormatReader};
@@ -26,13 +26,6 @@ use symphonia::default::{get_codecs, get_probe};
 const DART_EDGE_AUDIO_NATIVE_ABI_VERSION: i32 = 1;
 
 static LAST_ERROR: Lazy<Mutex<Option<CString>>> = Lazy::new(|| Mutex::new(None));
-
-#[repr(C)]
-#[derive(Clone, Copy)]
-pub struct NativeOwnedBytes {
-    ptr: *mut u8,
-    len: isize,
-}
 
 #[repr(C)]
 pub struct NativeAudioBytesResult {
@@ -791,28 +784,12 @@ fn encode_bytes_result<T: Serialize>(
     let result_json =
         CString::new(result_json).map_err(|error| format!("Failed to encode C string: {error}"))?;
 
-    let mut boxed_bytes = bytes.into_boxed_slice();
-    let native_bytes = NativeOwnedBytes {
-        ptr: boxed_bytes.as_mut_ptr(),
-        len: boxed_bytes.len() as isize,
-    };
-    std::mem::forget(boxed_bytes);
+    let native_bytes = into_native_owned_bytes(bytes);
 
     Ok(Box::into_raw(Box::new(NativeAudioBytesResult {
         bytes: native_bytes,
         result_json: result_json.into_raw(),
     })))
-}
-
-fn free_owned_bytes(value: NativeOwnedBytes) {
-    if value.ptr.is_null() {
-        return;
-    }
-
-    unsafe {
-        let slice = std::ptr::slice_from_raw_parts_mut(value.ptr, value.len as usize);
-        let _ = Box::<[u8]>::from_raw(slice);
-    }
 }
 
 impl DecodedAudio {

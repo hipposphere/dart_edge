@@ -16,6 +16,8 @@ repository root and composed from `packages/*`.
 - `packages/dart_edge_helpers`: optional helper APIs such as OpenAPI/Swagger
   serving and ergonomic extensions
 - `packages/dart_edge_codegen`: build-time annotations and generator-facing API
+- `packages/dart_edge_s3_client`: standalone native S3 client package for AWS
+  S3 and compatible object stores
 - `packages/dart_edge_sip`: standalone native SIP runtime concept package for
   backend-controlled VoIP and PBX-style call handling
 - `.agents/skills`: repo-local skills for recurring monorepo, runtime, and
@@ -128,9 +130,13 @@ repository root and composed from `packages/*`.
 - Generate Dart FFI bindings with `ffigen`; do not hand-edit
   `lib/src/native/generated_bindings.dart`.
 - Current commands:
+  `dart pub -C packages/dart_edge_core run ffigen --config tool/ffigen.yaml`
+  and
   `dart pub -C packages/dart_edge_http_server_runtime run ffigen --config tool/ffigen.yaml`
   and
   `dart pub -C packages/dart_edge_auth run ffigen --config tool/ffigen.yaml`
+  and
+  `dart pub -C packages/dart_edge_s3_client run ffigen --config tool/ffigen.yaml`
   and
   `dart pub -C packages/dart_edge_sip run ffigen --config tool/ffigen.yaml`.
 - If a Rust-exported symbol or native struct layout changes, update the header,

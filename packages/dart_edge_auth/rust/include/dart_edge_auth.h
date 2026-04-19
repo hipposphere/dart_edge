@@ -5,15 +5,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-typedef struct NativeBytes {
-  const uint8_t* ptr;
-  intptr_t len;
-} NativeBytes;
-
-typedef struct NativePair {
-  NativeBytes key;
-  NativeBytes value;
-} NativePair;
+#include "../../../dart_edge_core/rust/include/dart_edge_core_ffi.h"
 
 typedef struct NativeAuthResponse {
   uint16_t status;
