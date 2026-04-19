@@ -19,23 +19,45 @@ final class EncodedResponse {
 EncodedResponse encodeResponse({
   required ResponseSpec spec,
   required Object? body,
+  ResponseBuilder? response,
 }) {
   if (body case final RawResponse rawResponse) {
     return _encodeRawResponse(rawResponse);
   }
 
-  if (spec.contentType.startsWith('application/json')) {
+  final responseBuilder = response;
+  final effectiveBody =
+      responseBuilder != null && responseBuilder.hasBodyOverride
+      ? responseBuilder.bodyOverride
+      : body;
+  final effectiveStatus = responseBuilder?.statusOverride ?? spec.status;
+  final effectiveContentType =
+      responseBuilder?.contentTypeOverride ?? spec.contentType;
+  final headers = responseBuilder?.headers ?? const <HttpHeader>[];
+
+  if (responseBuilder?.isEncodedBody ?? false) {
     return EncodedResponse(
-      status: spec.status,
-      contentType: spec.contentType,
-      body: jsonEncode(_normalizeJson(body)),
+      status: effectiveStatus,
+      contentType: effectiveContentType,
+      body: effectiveBody?.toString() ?? '',
+      headers: headers,
+    );
+  }
+
+  if (_isJsonContentType(effectiveContentType)) {
+    return EncodedResponse(
+      status: effectiveStatus,
+      contentType: effectiveContentType,
+      body: jsonEncode(_normalizeJson(effectiveBody)),
+      headers: headers,
     );
   }
 
   return EncodedResponse(
-    status: spec.status,
-    contentType: spec.contentType,
-    body: body?.toString() ?? '',
+    status: effectiveStatus,
+    contentType: effectiveContentType,
+    body: effectiveBody?.toString() ?? '',
+    headers: headers,
   );
 }
 
@@ -49,7 +71,7 @@ EncodedResponse _encodeRawResponse(RawResponse response) {
     );
   }
 
-  if (response.contentType.startsWith('application/json')) {
+  if (_isJsonContentType(response.contentType)) {
     return EncodedResponse(
       status: response.status,
       contentType: response.contentType,
@@ -95,4 +117,9 @@ Object? _normalizeJson(Object? value) {
         'Response body of type ${value.runtimeType} is not JSON encodable.',
       );
   }
+}
+
+bool _isJsonContentType(String contentType) {
+  final mimeType = contentType.split(';').first.trim().toLowerCase();
+  return mimeType == 'application/json' || mimeType.endsWith('+json');
 }

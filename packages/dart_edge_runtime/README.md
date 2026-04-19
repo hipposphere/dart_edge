@@ -37,7 +37,7 @@ For local-only development, omit `host:` and the runtime stays bound to
 - `JsonRouteDefinition` is the main HTTP route base class
 - `RouteContract`, `RequestBody`, `ResponseSpec`, and `ResponseSet` describe the
   request and response shape
-- `RequestContext` gives handlers access to services, decoded input, and
+- `RequestContext` gives handlers access to services, decoded request values, and
   request-scoped extensions
 - `JsonSchemaRef`, `JsonSchemaDefinition`, and `JsonSchemaRegistry` connect the
   runtime to generated JSON Schema metadata

@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 /// Plain-text response returned by the health probe route.
 const benchmarkHealthBody = 'ok';
 
@@ -36,17 +38,20 @@ String benchmarkOriginForPort(int port) => 'http://127.0.0.1:$port';
 
 /// Builds the canonical request body for `POST /auth/sign-in/email`.
 String benchmarkSignInRequestJson() {
-  return '{"email":"$benchmarkUserEmail","password":"$benchmarkUserPassword"}';
+  return jsonEncode({
+    'email': benchmarkUserEmail,
+    'password': benchmarkUserPassword,
+  });
 }
 
 /// Builds the canonical authed raw response body.
 String benchmarkRawResponseJson(String email) {
-  return '{"email":"$email","value":"$benchmarkRawValue"}';
+  return jsonEncode({'email': email, 'value': benchmarkRawValue});
 }
 
 /// Builds the canonical authed database response body.
 String benchmarkDatabaseResponseJson(String email) {
-  return '{"email":"$email","value":"$benchmarkDatabaseValue"}';
+  return jsonEncode({'email': email, 'value': benchmarkDatabaseValue});
 }
 
 /// Builds the canonical flow-user name for [index].

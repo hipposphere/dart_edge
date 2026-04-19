@@ -36,7 +36,7 @@ final class DartEdgeClientOperation {
   final String? bodyType;
 
   String get resolvedMethodName =>
-      methodName ?? _lowerCamel(contract.operationId);
+      methodName ?? _lowerCamel(contract.options.operationId!);
 }
 
 /// Emits Dart source for an HTTP client backed by normalized route contracts.
@@ -110,22 +110,22 @@ final class DartEdgeClientGenerator {
     if (operation.contract.responses.success.ref case final ref?) {
       buffer.writeln('      successSchemaId: ${_literal(ref.id)},');
     }
-    if (operation.contract.params case final ref?) {
+    if (operation.contract.options.params case final ref?) {
       buffer
         ..writeln('      paramsSchemaId: ${_literal(ref.id)},')
         ..writeln('      params: params,');
     }
-    if (operation.contract.query case final ref?) {
+    if (operation.contract.options.query case final ref?) {
       buffer
         ..writeln('      querySchemaId: ${_literal(ref.id)},')
         ..writeln('      query: query,');
     }
-    if (operation.contract.headers case final ref?) {
+    if (operation.contract.options.headers case final ref?) {
       buffer
         ..writeln('      headersSchemaId: ${_literal(ref.id)},')
         ..writeln('      headers: headers,');
     }
-    if (operation.contract.body case final body?) {
+    if (operation.contract.options.body case final body?) {
       buffer
         ..writeln('      requestContentType: ${_literal(body.contentType)},');
       if (body.ref case final ref?) {

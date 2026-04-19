@@ -1,9 +1,9 @@
 import 'package:dart_edge/dart_edge.dart';
 import 'package:dart_edge_auth/dart_edge_auth.dart';
+import 'package:http/http.dart' as http;
 import 'package:simple_test/src/auth.dart';
 import 'package:simple_test/src/database.dart';
 import 'package:simple_test/src/routes/guarded_route.dart';
-import 'package:http/http.dart' as http;
 
 Future<DartEdge<void>> buildServer() async {
   final server = DartEdge<void>();
@@ -29,9 +29,7 @@ Future<DartEdge<void>> buildServer() async {
   );
   final auth = buildAuth(database);
 
-  server
-      .router('', guards: [DartEdgeAuthGuard(auth: auth)])
-      .register(GuardedRoute());
+  server.register(GuardedRoute(), guards: [DartEdgeAuthGuard(auth: auth)]);
 
   final email = 'test@dicto.org';
   final password = 'password';

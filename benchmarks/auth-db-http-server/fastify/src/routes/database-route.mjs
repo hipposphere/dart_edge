@@ -1,8 +1,4 @@
-import {
-  databasePath,
-  databaseResponseJson,
-  databaseValue,
-} from '../config.mjs';
+import { databaseValue } from '../config.mjs';
 
 export function registerDatabaseRoute({
   fastify,
@@ -11,26 +7,26 @@ export function registerDatabaseRoute({
   database,
   authenticate,
 }) {
-  fastify.get(databasePath, async (request, reply) => {
+  fastify.get('/bench/db', async (request, reply) => {
     const email = await authenticate({
       auth,
       baseUrl,
       nodeHeaders: request.headers,
     });
     if (email === null) {
-      reply.code(401).header('content-type', 'application/json; charset=utf-8');
-      return '{"error":"unauthorized"}';
+      reply.code(401).type('application/json; charset=utf-8');
+      return JSON.stringify({ error: 'unauthorized' });
     }
 
     const row = database
       .prepare('SELECT value FROM benchmark_values WHERE email = ?')
       .get(email);
     if (row?.value !== databaseValue) {
-      reply.code(500).header('content-type', 'application/json; charset=utf-8');
-      return '{"error":"benchmark_row_missing"}';
+      reply.code(500).type('application/json; charset=utf-8');
+      return JSON.stringify({ error: 'benchmark_row_missing' });
     }
 
-    reply.header('content-type', 'application/json; charset=utf-8');
-    return databaseResponseJson(email);
+    reply.type('application/json; charset=utf-8');
+    return JSON.stringify({ email, value: row.value });
   });
 }

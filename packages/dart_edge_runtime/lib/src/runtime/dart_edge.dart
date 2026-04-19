@@ -147,14 +147,14 @@ class DartEdge<TServices> extends Router<TServices> {
       final input = await decodeRequestInput(
         request,
         codecs: _codecRegistry,
-        paramsSchemaId: compiledRoute.contract.params?.id,
-        querySchemaId: compiledRoute.contract.query?.id,
-        headersSchemaId: compiledRoute.contract.headers?.id,
-        body: compiledRoute.contract.body,
+        paramsSchemaId: compiledRoute.contract.options.params?.id,
+        querySchemaId: compiledRoute.contract.options.query?.id,
+        headersSchemaId: compiledRoute.contract.options.headers?.id,
+        body: compiledRoute.contract.options.body,
       );
       final ctx = RequestContext<TServices>(
         services: _createServices(),
-        input: input,
+        req: input,
       );
       for (final guard in compiledRoute.guards) {
         final decision = await Future.sync(() => guard.authorize(ctx));
@@ -162,6 +162,7 @@ class DartEdge<TServices> extends Router<TServices> {
           final response = encodeResponse(
             spec: compiledRoute.contract.responses.success,
             body: decision.response,
+            response: ctx.res,
           );
           DartEdgeNative.tryRespond(
             requestId,
@@ -177,6 +178,7 @@ class DartEdge<TServices> extends Router<TServices> {
       final response = encodeResponse(
         spec: compiledRoute.contract.responses.success,
         body: body,
+        response: ctx.res,
       );
 
       DartEdgeNative.tryRespond(
@@ -189,7 +191,7 @@ class DartEdge<TServices> extends Router<TServices> {
     } catch (error, stackTrace) {
       stderr.writeln(
         'dart_edge_runtime request handling failed for '
-        '${compiledRoute.contract.operationId}: $error',
+        '${compiledRoute.contract.options.operationId!}: $error',
       );
       stderr.writeln(stackTrace);
       final response = encodeServerError();

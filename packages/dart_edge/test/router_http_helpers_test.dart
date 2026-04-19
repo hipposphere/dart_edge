@@ -24,8 +24,8 @@ void main() {
         success: ResponseSpec.json<Object?>(status: HttpStatus.accepted),
       ),
       handler: (ctx) {
-        final params = ctx.input.params<Map<String, String>>();
-        final body = ctx.input.body<Map<String, Object?>>();
+        final params = ctx.req.params<Map<String, String>>();
+        final body = ctx.req.body<Map<String, Object?>>();
         return {'id': params['id'], 'body': body};
       },
     );
@@ -33,7 +33,7 @@ void main() {
       '/users/<id>',
       options: RouteOptions(success: ResponseSpec.text()),
       handler: (ctx) {
-        final params = ctx.input.params<Map<String, String>>();
+        final params = ctx.req.params<Map<String, String>>();
         return 'deleted:${params['id']}';
       },
     );
@@ -58,20 +58,23 @@ void main() {
     expect(deleteRegistration.prefix, '/api');
 
     expect(healthContract.method, HttpMethod.get);
-    expect(healthContract.operationId, 'getHealth');
-    expect(healthContract.guards, [same(healthGuard)]);
+    expect(healthContract.options.operationId, 'getHealth');
+    expect(healthRegistration.guards, [same(healthGuard)]);
     expect(
       healthContract.responses.success.contentType,
       'application/json; charset=utf-8',
     );
 
     expect(updateContract.method, HttpMethod.put);
-    expect(updateContract.operationId, 'putApiUsersById');
-    expect(updateContract.body?.contentType, 'application/json; charset=utf-8');
+    expect(updateContract.options.operationId, 'putApiUsersById');
+    expect(
+      updateContract.options.body?.contentType,
+      'application/json; charset=utf-8',
+    );
     expect(updateContract.responses.success.status, HttpStatus.accepted);
 
     expect(deleteContract.method, HttpMethod.delete);
-    expect(deleteContract.operationId, 'deleteApiUsersById');
+    expect(deleteContract.options.operationId, 'deleteApiUsersById');
     expect(
       deleteContract.responses.success.contentType,
       'text/plain; charset=utf-8',
@@ -87,7 +90,7 @@ void main() {
       await updateRoute.handle(
         RequestContext<TestServices>(
           services: const TestServices(),
-          input: const RequestInput(
+          req: const RequestInput(
             paramsValue: {'id': '42'},
             bodyValue: {'name': 'Ada'},
           ),
@@ -102,7 +105,7 @@ void main() {
       deleteRoute.handle(
         RequestContext<TestServices>(
           services: const TestServices(),
-          input: const RequestInput(paramsValue: {'id': '42'}),
+          req: const RequestInput(paramsValue: {'id': '42'}),
         ),
       ),
       'deleted:42',
@@ -110,7 +113,7 @@ void main() {
 
     expect(
       healthContract.toString(),
-      'RouteContract(GET /health, operationId: getHealth, success: 200 application/json; charset=utf-8, guards: [requireAuth])',
+      'RouteContract(GET /health, operationId: getHealth, success: 200 application/json; charset=utf-8)',
     );
     expect(
       healthRoute.toString(),
@@ -122,6 +125,7 @@ void main() {
         'RouteRegistration(PUT /api/users/<id>, operationId: putApiUsersById, ',
       ),
     );
+    expect(healthRegistration.toString(), contains('guards: [requireAuth]'));
     expect(
       updateRegistration.toString(),
       contains(

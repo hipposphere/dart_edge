@@ -46,7 +46,7 @@ Future<void> main() async {
       success: ResponseSpec.json(ref: JsonSchemaRef.of<ListUsersResponse>()),
     ),
     handler: (ctx) async {
-      final query = ctx.input.query<ListUsersQuery>();
+      final query = ctx.req.query<ListUsersQuery>();
       final users = await ctx.services.users.list(search: query.search);
       return ListUsersResponse(items: users);
     },
@@ -61,7 +61,7 @@ Future<void> main() async {
       errors: [ErrorResponse.conflict(code: 'duplicate_email')],
     ),
     handler: (ctx) async {
-      final input = ctx.input.body<CreateUserInput>();
+      final input = ctx.req.body<CreateUserInput>();
       return ctx.services.users.create(input);
     },
   );

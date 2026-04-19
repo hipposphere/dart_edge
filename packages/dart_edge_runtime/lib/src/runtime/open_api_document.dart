@@ -86,13 +86,13 @@ Map<String, Object?> _buildOperation(
   final parameters = <Map<String, Object?>>[
     ..._buildPathParameters(route, schemaRegistry),
     ..._buildObjectParameters(
-      contract.query?.id,
+      contract.options.query?.id,
       'query',
       schemaRegistry,
       requiredByDefault: false,
     ),
     ..._buildObjectParameters(
-      contract.headers?.id,
+      contract.options.headers?.id,
       'header',
       schemaRegistry,
       requiredByDefault: false,
@@ -100,12 +100,13 @@ Map<String, Object?> _buildOperation(
   ];
 
   return {
-    'operationId': contract.operationId,
-    if (contract.summary case final summary?) 'summary': summary,
-    if (contract.tags.isNotEmpty) 'tags': contract.tags,
-    if (contract.deprecated) 'deprecated': true,
+    'operationId': contract.options.operationId!,
+    if (contract.options.summary case final summary?) 'summary': summary,
+    if (contract.options.tags.isNotEmpty) 'tags': contract.options.tags,
+    if (contract.options.deprecated) 'deprecated': true,
     if (parameters.isNotEmpty) 'parameters': parameters,
-    if (contract.body case final body?) 'requestBody': _buildRequestBody(body),
+    if (contract.options.body case final body?)
+      'requestBody': _buildRequestBody(body),
     'responses': _buildResponses(contract.responses),
   };
 }
@@ -123,7 +124,7 @@ List<Map<String, Object?>> _buildPathParameters(
   }
 
   final properties = _schemaProperties(
-    route.contract.params?.id,
+    route.contract.options.params?.id,
     schemaRegistry,
   );
   return [

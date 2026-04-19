@@ -12,4 +12,3 @@ dependencies:
   dart_edge: 0.1.0
   dart_edge_auth: 0.1.0
   dart_edge_sql: 0.1.0
-  dart_edge_auth_db_benchmark_shared: 0.1.0

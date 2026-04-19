@@ -23,8 +23,10 @@ final class PlaintextRoute
   RouteContract get contract => RouteContract(
     method: HttpMethod.get,
     path: '/plaintext',
-    operationId: 'plaintext',
-    responses: ResponseSet(success: ResponseSpec.text()),
+    options: RouteOptions(
+      operationId: 'plaintext',
+      success: ResponseSpec.text(),
+    ),
   );
 
   @override
@@ -38,8 +40,10 @@ final class JsonRoute
   RouteContract get contract => RouteContract(
     method: HttpMethod.get,
     path: '/json',
-    operationId: 'json',
-    responses: ResponseSet(success: ResponseSpec.json<Object?>()),
+    options: RouteOptions(
+      operationId: 'json',
+      success: ResponseSpec.json<Object?>(),
+    ),
   );
 
   @override
@@ -54,13 +58,15 @@ final class UserRoute
   RouteContract get contract => RouteContract(
     method: HttpMethod.get,
     path: '/users/<id>',
-    operationId: 'userById',
-    responses: ResponseSet(success: ResponseSpec.json<Object?>()),
+    options: RouteOptions(
+      operationId: 'userById',
+      success: ResponseSpec.json<Object?>(),
+    ),
   );
 
   @override
   Map<String, Object?> handle(RequestContext<BenchmarkServices> ctx) {
-    final params = ctx.input.params<Map<String, String>>();
+    final params = ctx.req.params<Map<String, String>>();
     return {'id': params['id'], 'name': 'Benchmark User'};
   }
 }
@@ -71,13 +77,15 @@ final class EchoRoute
   RouteContract get contract => RouteContract(
     method: HttpMethod.post,
     path: '/echo',
-    operationId: 'echo',
-    body: RequestBody.jsonValue(),
-    responses: ResponseSet(success: ResponseSpec.json<Object?>()),
+    options: RouteOptions(
+      operationId: 'echo',
+      body: RequestBody.jsonValue(),
+      success: ResponseSpec.json<Object?>(),
+    ),
   );
 
   @override
   Map<String, Object?> handle(RequestContext<BenchmarkServices> ctx) {
-    return ctx.input.body<Map<String, Object?>>();
+    return ctx.req.body<Map<String, Object?>>();
   }
 }

@@ -1,14 +1,15 @@
 import 'request_input.dart';
 import 'request_telemetry.dart';
+import 'response_builder.dart';
 
 /// Per-request context passed to a route handler.
 ///
-/// It gives handlers access to app services, decoded input values, telemetry,
+/// It gives handlers access to app services, decoded request values, telemetry,
 /// and request-scoped extensions populated by guards or surrounding code.
 final class RequestContext<TServices> {
   RequestContext({
     required this.services,
-    this.input = const RequestInput(),
+    this.req = const RequestInput(),
     this.telemetry = const RequestTelemetry(),
   });
 
@@ -16,7 +17,10 @@ final class RequestContext<TServices> {
   final TServices services;
 
   /// Decoded request params, query, headers, and body.
-  final RequestInput input;
+  final RequestInput req;
+
+  /// Mutable response builder used to shape the outgoing response.
+  final ResponseBuilder res = ResponseBuilder();
 
   /// Telemetry hook associated with this request.
   final RequestTelemetry telemetry;

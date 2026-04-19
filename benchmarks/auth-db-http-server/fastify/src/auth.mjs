@@ -3,7 +3,6 @@ import { fromNodeHeaders } from 'better-auth/node';
 import { bearer } from 'better-auth/plugins/bearer';
 
 import {
-  authPath,
   authSecret,
   flowUserCount,
   flowUserEmail,
@@ -17,7 +16,7 @@ export function createAuth({ baseUrl, database }) {
   return betterAuth({
     secret: authSecret,
     baseURL: baseUrl,
-    basePath: authPath,
+    basePath: '/auth',
     database,
     emailAndPassword: { enabled: true },
     rateLimit: { enabled: false },

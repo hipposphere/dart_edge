@@ -4,14 +4,14 @@ import 'dart:io';
 import 'package:dart_edge/dart_edge.dart';
 import 'package:dart_edge_auth/dart_edge_auth.dart';
 
-class GuardedRoute extends JsonRouteDefinition {
+class GuardedRoute extends JsonRouteDefinition<dynamic, dynamic> {
   @override
   Object get contract => RouteContract(
     method: .get,
     path: '/guarded',
-    operationId: 'getGuarded',
-    responses: ResponseSet(
-      success: .json(),
+    options: RouteOptions(
+      operationId: 'getGuarded',
+      success: ResponseSpec.json<Object?>(),
       errors: [ErrorResponse.unauthorized(code: 'unauthorized')],
     ),
   );

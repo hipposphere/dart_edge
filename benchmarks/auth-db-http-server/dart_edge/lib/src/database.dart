@@ -1,7 +1,8 @@
 import 'dart:io';
 
-import 'package:dart_edge_auth_db_benchmark_shared/dart_edge_auth_db_benchmark_shared.dart';
 import 'package:dart_edge_sql/dart_edge_sql.dart';
+
+import 'benchmark_config.dart';
 
 Future<SqliteDatabase> openDatabase() async {
   final directory = Directory('var').absolute;

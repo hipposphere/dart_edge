@@ -1,8 +1,8 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:dart_edge/dart_edge.dart';
 import 'package:dart_edge_auth/dart_edge_auth.dart';
-import 'package:dart_edge_auth_db_benchmark_shared/dart_edge_auth_db_benchmark_shared.dart';
 
 import '../services.dart';
 
@@ -10,9 +10,9 @@ final class RawRoute extends JsonRouteDefinition<Services, Object?> {
   @override
   RouteContract get contract => RouteContract(
     method: HttpMethod.get,
-    path: benchmarkRawPath,
-    operationId: 'benchmarkRaw',
-    responses: ResponseSet(
+    path: '/bench/raw',
+    options: RouteOptions(
+      operationId: 'benchmarkRaw',
       success: ResponseSpec.json<Object?>(),
       errors: [ErrorResponse.unauthorized(code: 'unauthorized')],
     ),
@@ -22,16 +22,13 @@ final class RawRoute extends JsonRouteDefinition<Services, Object?> {
   Future<Object?> handle(RequestContext<Services> ctx) async {
     final email = ctx.requireAuthIdentity.email;
     if (email == null) {
-      return RawResponse.json(
-        status: HttpStatus.unauthorized,
-        body: {'error': 'unauthorized'},
-      );
+      return ctx.res.code(HttpStatus.unauthorized).json({
+        'error': 'unauthorized',
+      });
     }
 
-    return RawResponse.encoded(
-      status: HttpStatus.ok,
-      contentType: 'application/json; charset=utf-8',
-      body: benchmarkRawResponseJson(email),
-    );
+    return ctx.res
+        .type('application/json; charset=utf-8')
+        .send(jsonEncode({'email': email, 'value': 'raw benchmark value'}));
   }
 }

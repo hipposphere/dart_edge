@@ -45,13 +45,12 @@ final class RouteRegistration<TServices> {
     final contract = route.contract;
     if (contract case final RouteContract contract) {
       final fullPath = joinRoutePath(prefix, contract.path);
-      final routeTags = _mergeTags(tags, contract.tags);
-      final routeGuards = _mergeGuards(guards, contract.guards);
+      final routeTags = _mergeTags(tags, contract.options.tags);
       final parts = <String>[
         '${contract.method.name.toUpperCase()} $fullPath',
-        'operationId: ${contract.operationId}',
+        'operationId: ${contract.options.operationId!}',
         if (routeTags.isNotEmpty) 'tags: $routeTags',
-        if (routeGuards.isNotEmpty) 'guards: $routeGuards',
+        if (guards.isNotEmpty) 'guards: $guards',
         'route: $route',
       ];
       return 'RouteRegistration(${parts.join(', ')})';
@@ -70,8 +69,4 @@ List<String> _mergeTags(Iterable<String> first, Iterable<String> second) {
     }
   }
   return merged;
-}
-
-List<Object> _mergeGuards(Iterable<Object> first, Iterable<Object> second) {
-  return [...first, ...second];
 }

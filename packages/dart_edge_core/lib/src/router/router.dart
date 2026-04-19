@@ -45,19 +45,25 @@ class Router<TServices> {
   }
 
   /// Registers one route definition.
-  void register(RouteDefinition<TServices> route) {
+  void register(
+    RouteDefinition<TServices> route, {
+    List<Guard<TServices>>? guards,
+  }) {
     routeRegistry.register(
       prefix: prefix,
       tags: tags,
-      guards: guards,
+      guards: [...this.guards, ...?guards],
       route: route,
     );
   }
 
   /// Registers many route definitions.
-  void registerAll(Iterable<RouteDefinition<TServices>> definitions) {
+  void registerAll(
+    Iterable<RouteDefinition<TServices>> definitions, {
+    List<Guard<TServices>>? guards,
+  }) {
     for (final definition in definitions) {
-      register(definition);
+      register(definition, guards: guards);
     }
   }
 
@@ -189,10 +195,10 @@ class Router<TServices> {
             options,
             _defaultOperationId(method: method, path: path),
           ),
-          guards: _eraseGuards(guards ?? <Guard<TServices>>[]),
         ),
         handler: handler,
       ),
+      guards: guards,
     );
   }
 
@@ -211,12 +217,6 @@ class Router<TServices> {
       body: options.body,
       success: options.success,
       errors: options.errors,
-    );
-  }
-
-  List<Guard<Object?>> _eraseGuards(Iterable<Guard<TServices>> guards) {
-    return List<Guard<Object?>>.unmodifiable(
-      guards.map((guard) => guard as Guard<Object?>),
     );
   }
 

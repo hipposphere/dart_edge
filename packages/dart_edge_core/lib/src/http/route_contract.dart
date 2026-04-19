@@ -1,9 +1,6 @@
-import '../router/guard.dart';
 import '../router/route_options.dart';
 import 'error_response.dart';
 import 'http_method.dart';
-import 'json_schema_ref.dart';
-import 'request_body.dart';
 import 'response_set.dart';
 import 'response_spec.dart';
 
@@ -13,19 +10,12 @@ final class RouteContract {
     required HttpMethod method,
     required String path,
     required RouteOptions options,
-    List<Guard<Object?>> guards = const <Guard<Object?>>[],
-  }) : this._(
-         method: method,
-         path: path,
-         options: _normalizeOptions(options),
-         guards: List<Guard<Object?>>.unmodifiable(guards),
-       );
+  }) : this._(method: method, path: path, options: _normalizeOptions(options));
 
   RouteContract._({
     required this.method,
     required this.path,
     required this.options,
-    required this.guards,
   }) : responses = ResponseSet(
          success: options.success!,
          errors: options.errors,
@@ -43,35 +33,12 @@ final class RouteContract {
   /// Documented success and error responses.
   final ResponseSet responses;
 
-  /// Route-local guards evaluated before the handler runs.
-  final List<Guard<Object?>> guards;
-
-  /// Stable identifier used in generated output and manifests.
-  String get operationId => options.operationId!;
-
-  /// Optional short summary for documentation.
-  String? get summary => options.summary;
-
-  /// Tags attached to the route in generated documentation.
-  List<String> get tags => options.tags;
-
-  /// Whether the route should be marked as deprecated.
-  bool get deprecated => options.deprecated;
-
-  /// Schema reference for decoded path parameters.
-  JsonSchemaRef<Object?>? get params => options.params;
-
-  /// Schema reference for decoded query parameters.
-  JsonSchemaRef<Object?>? get query => options.query;
-
-  /// Schema reference for decoded request headers.
-  JsonSchemaRef<Object?>? get headers => options.headers;
-
-  /// Request body contract, if the route accepts a body.
-  RequestBody? get body => options.body;
-
   @override
   String toString() {
+    final operationId = options.operationId!;
+    final body = options.body;
+    final tags = options.tags;
+    final deprecated = options.deprecated;
     final parts = <String>[
       '${_httpMethodLabel(method)} $path',
       'operationId: $operationId',
@@ -80,9 +47,8 @@ final class RouteContract {
       'success: ${responses.success.status} ${_contentLabel(responses.success.contentType, schemaId: responses.success.ref?.id)}',
       if (responses.errors.isNotEmpty)
         'errors: [${responses.errors.map<String>(_errorLabel).join(', ')}]',
-      if (guards.isNotEmpty) 'guards: $guards',
       if (tags.isNotEmpty) 'tags: $tags',
-      if (this.deprecated) 'deprecated: true',
+      if (deprecated) 'deprecated: true',
     ];
     return 'RouteContract(${parts.join(', ')})';
   }

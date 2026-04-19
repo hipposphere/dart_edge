@@ -30,6 +30,6 @@ final class HandlerJsonRouteDefinition<TServices, TSuccess>
   String toString() {
     return 'HandlerJsonRouteDefinition<$TServices, $TSuccess>('
         '${_contract.method.name.toUpperCase()} ${_contract.path}, '
-        'operationId: ${_contract.operationId})';
+        'operationId: ${_contract.options.operationId!})';
   }
 }

@@ -35,12 +35,11 @@ final class CompiledRoute<TServices> {
 
     final path = joinRoutePath(registration.prefix, contract.path);
     final patternSegments = _parsePattern(path);
-    final guards = _mergeGuards(registration.guards, contract.guards);
     return CompiledRoute<TServices>(
       routeId: routeId,
       route: route,
-      guards: guards,
-      contract: _effectiveContract(registration, contract, path, guards),
+      guards: registration.guards,
+      contract: _effectiveContract(registration, contract, path),
       path: path,
       openApiPath: _openApiPath(patternSegments),
       patternSegments: patternSegments,
@@ -51,12 +50,12 @@ final class CompiledRoute<TServices> {
     'routeId': routeId,
     'method': _httpMethodName(contract.method),
     'path': path,
-    'operationId': contract.operationId,
+    'operationId': contract.options.operationId!,
     'pathSegments': patternSegments.map((segment) => segment.toJson()).toList(),
-    'paramsSchemaId': contract.params?.id,
-    'querySchemaId': contract.query?.id,
-    'headersSchemaId': contract.headers?.id,
-    'requestBody': switch (contract.body) {
+    'paramsSchemaId': contract.options.params?.id,
+    'querySchemaId': contract.options.query?.id,
+    'headersSchemaId': contract.options.headers?.id,
+    'requestBody': switch (contract.options.body) {
       null => null,
       final body => {'contentType': body.contentType, 'schemaId': body.ref?.id},
     },
@@ -67,24 +66,22 @@ RouteContract _effectiveContract<TServices>(
   RouteRegistration<TServices> registration,
   RouteContract contract,
   String path,
-  List<Guard<TServices>> guards,
 ) {
   return RouteContract(
     method: contract.method,
     path: path,
     options: RouteOptions(
-      operationId: contract.operationId,
-      summary: contract.summary,
-      tags: _mergeTags(registration.tags, contract.tags),
-      deprecated: contract.deprecated,
-      params: contract.params,
-      query: contract.query,
-      headers: contract.headers,
-      body: contract.body,
+      operationId: contract.options.operationId!,
+      summary: contract.options.summary,
+      tags: _mergeTags(registration.tags, contract.options.tags),
+      deprecated: contract.options.deprecated,
+      params: contract.options.params,
+      query: contract.options.query,
+      headers: contract.options.headers,
+      body: contract.options.body,
       success: contract.responses.success,
       errors: contract.responses.errors,
     ),
-    guards: _eraseGuards(guards),
   );
 }
 
@@ -165,22 +162,4 @@ List<String> _mergeTags(Iterable<String> first, Iterable<String> second) {
     }
   }
   return List<String>.unmodifiable(merged);
-}
-
-List<Guard<TServices>> _mergeGuards<TServices>(
-  Iterable<Guard<TServices>> first,
-  Iterable<Guard<Object?>> second,
-) {
-  return List<Guard<TServices>>.unmodifiable([
-    ...first,
-    ...second.cast<Guard<TServices>>(),
-  ]);
-}
-
-List<Guard<Object?>> _eraseGuards<TServices>(
-  Iterable<Guard<TServices>> guards,
-) {
-  return List<Guard<Object?>>.unmodifiable(
-    guards.map((guard) => guard as Guard<Object?>),
-  );
 }

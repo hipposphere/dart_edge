@@ -69,13 +69,13 @@ final class DartEdgeAuth {
     NativeRouteDefinition route,
     RequestContext<TServices> ctx,
   ) {
-    final params = _readMap(ctx.input.paramsValue);
+    final params = _readMap(ctx.req.paramsValue);
     final response = _send(
       method: route.method,
       path: _resolvePath(route.path, params),
-      query: _readMap(ctx.input.queryValue),
-      headers: _readMap(ctx.input.headerValue),
-      body: ctx.input.bodyValue,
+      query: _readMap(ctx.req.queryValue),
+      headers: _readMap(ctx.req.headerValue),
+      body: ctx.req.bodyValue,
     );
 
     return RawResponse.encoded(
