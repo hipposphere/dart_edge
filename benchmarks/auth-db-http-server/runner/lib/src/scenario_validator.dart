@@ -45,7 +45,7 @@ Future<void> validatePreparedScenario(PreparedRequestScenario prepared) async {
           statusCode: response.statusCode,
           contentType: contentType,
           responseBody: responseBody,
-          expectedBody: benchmarkRawResponseJson(benchmarkUserEmail),
+          expectedBody: benchmarkRawResponseJson(benchmarkUserEmail(0)),
         );
         return;
       case BenchmarkScenario.dbAuthed:
@@ -55,7 +55,7 @@ Future<void> validatePreparedScenario(PreparedRequestScenario prepared) async {
           statusCode: response.statusCode,
           contentType: contentType,
           responseBody: responseBody,
-          expectedBody: benchmarkDatabaseResponseJson(benchmarkUserEmail),
+          expectedBody: benchmarkDatabaseResponseJson(benchmarkUserEmail(0)),
         );
         return;
       case BenchmarkScenario.flow:
@@ -68,7 +68,7 @@ Future<void> validatePreparedScenario(PreparedRequestScenario prepared) async {
 
 /// Validates the full sign-in -> raw -> db flow once before measurement.
 Future<void> validateFlowScenario({required Uri baseUri}) async {
-  final email = benchmarkFlowUserEmail(0);
+  final email = benchmarkUserEmail(0);
   final session = await createSessionWithCredentials(
     baseUri,
     email: email,
@@ -143,7 +143,7 @@ void _validateSignInResponse({
   if (token is! String || token.isEmpty) {
     throw StateError('sign_in did not return a token for $uri.');
   }
-  if (user is! Map || user['email'] != benchmarkUserEmail) {
+  if (user is! Map || user['email'] != benchmarkUserEmail(0)) {
     throw StateError(
       'sign_in did not return the expected benchmark user for $uri.',
     );

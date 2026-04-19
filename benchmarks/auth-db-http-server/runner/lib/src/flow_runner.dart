@@ -23,7 +23,7 @@ final class FlowRunner {
     String? firstError;
 
     int allocateUserIndex() {
-      final userIndex = nextUserIndex % benchmarkFlowUserCount;
+      final userIndex = nextUserIndex % benchmarkUserCount;
       nextUserIndex += 1;
       return userIndex;
     }
@@ -98,7 +98,7 @@ final class FlowRunner {
       final started = Stopwatch()..start();
 
       try {
-        final email = benchmarkFlowUserEmail(allocateUserIndex());
+        final email = benchmarkUserEmail(allocateUserIndex());
         final bearerToken = await _signIn(baseUri: baseUri, email: email);
         await _authorizedGet(
           uri: baseUri.resolve(benchmarkRawPath),

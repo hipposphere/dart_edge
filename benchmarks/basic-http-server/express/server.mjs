@@ -1,8 +1,12 @@
 import express from 'express';
 
 const benchmarkPlaintextBody = 'Hello, World!';
-const benchmarkJsonBody = '{"message":"Hello, World!"}';
-const benchmarkEchoBody = '{"message":"Echo payload","count":1,"enabled":true}';
+const benchmarkJsonPayload = {message: 'Hello, World!'};
+const benchmarkEchoPayload = {
+  message: 'Echo payload',
+  count: 1,
+  enabled: true,
+};
 
 const app = express();
 app.disable('x-powered-by');
@@ -14,21 +18,15 @@ app.get('/plaintext', (_, response) => {
 });
 
 app.get('/json', (_, response) => {
-  response
-    .set('content-type', 'application/json; charset=utf-8')
-    .send(benchmarkJsonBody);
+  response.json(benchmarkJsonPayload);
 });
 
 app.get('/users/:id', (request, response) => {
-  response
-    .set('content-type', 'application/json; charset=utf-8')
-    .send(`{"id":"${request.params.id}","name":"Benchmark User"}`);
+  response.json({id: request.params.id, name: 'Benchmark User'});
 });
 
-app.post('/echo', express.text({type: '*/*'}), (request, response) => {
-  response
-    .set('content-type', 'application/json; charset=utf-8')
-    .send(request.body || benchmarkEchoBody);
+app.post('/echo', express.json(), (request, response) => {
+  response.json(request.body ?? benchmarkEchoPayload);
 });
 
 const port = parsePort(process.argv.slice(2));

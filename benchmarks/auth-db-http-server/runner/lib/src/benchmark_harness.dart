@@ -18,7 +18,7 @@ final class BenchmarkHarness {
   final IOSink output;
 
   Future<BenchmarkReport> run() async {
-    final repoRoot = Directory.current.parent.parent.parent.absolute;
+    final repoRoot = _resolveRepoRoot();
     final results = <ScenarioBenchmarkResult>[];
     const virtualUserRunner = VirtualUserRunner();
 
@@ -124,6 +124,14 @@ final class BenchmarkHarness {
       results: results,
     );
   }
+}
+
+Directory _resolveRepoRoot() {
+  if (Platform.script.scheme == 'file') {
+    return File.fromUri(Platform.script).parent.parent.parent.parent.absolute;
+  }
+
+  return Directory.current.parent.parent.parent.absolute;
 }
 
 void _printResultsTable(List<ScenarioBenchmarkResult> results) {

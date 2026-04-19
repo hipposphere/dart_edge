@@ -9,5 +9,6 @@ parsing.
 ## What It Provides
 
 - `BenchmarkScenario` and its derived request/response metadata
-- shared payload constants for the plaintext, JSON, and echo scenarios
-- utility helpers such as `parseBenchmarkPort()` and `benchmarkUserJson()`
+- shared plaintext and JSON payload fixtures for the benchmark scenarios
+- utility helpers such as `parseBenchmarkPort()`,
+  `encodeBenchmarkJson()`, and `benchmarkUserPayload()`

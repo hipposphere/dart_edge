@@ -23,18 +23,11 @@ Future<SqliteDatabase> openDatabase() async {
     )
     '''),
   );
-  await database.execute(
-    SqlStatement.positional(
-      'INSERT INTO benchmark_values (email, value) VALUES (?, ?)',
-      [benchmarkUserEmail, benchmarkDatabaseValue],
-    ),
-  );
-
-  for (var index = 0; index < benchmarkFlowUserCount; index += 1) {
+  for (var index = 0; index < benchmarkUserCount; index += 1) {
     await database.execute(
       SqlStatement.positional(
         'INSERT INTO benchmark_values (email, value) VALUES (?, ?)',
-        [benchmarkFlowUserEmail(index), benchmarkDatabaseValue],
+        [benchmarkUserEmail(index), benchmarkDatabaseValue],
       ),
     );
   }

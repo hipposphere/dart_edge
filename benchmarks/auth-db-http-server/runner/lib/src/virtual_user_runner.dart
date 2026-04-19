@@ -13,62 +13,75 @@ final class VirtualUserRunner {
     required BenchmarkScenario scenario,
     required Uri baseUri,
   }) async {
-    final email = benchmarkFlowUserEmail(0);
+    final email = benchmarkUserEmail(0);
     final forwardedFor = _workerForwardedFor(0);
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 2);
 
-    switch (scenario) {
-      case BenchmarkScenario.signIn:
-        await _signIn(
-          baseUri: baseUri,
-          email: email,
-          forwardedFor: forwardedFor,
-        );
-        return;
-      case BenchmarkScenario.rawAuthed:
-        final bearerToken = await _signIn(
-          baseUri: baseUri,
-          email: email,
-          forwardedFor: forwardedFor,
-        );
-        await _authorizedGet(
-          uri: baseUri.resolve(benchmarkRawPath),
-          bearerToken: bearerToken,
-          expectedBody: benchmarkRawResponseJson(email),
-          forwardedFor: forwardedFor,
-        );
-        return;
-      case BenchmarkScenario.dbAuthed:
-        final bearerToken = await _signIn(
-          baseUri: baseUri,
-          email: email,
-          forwardedFor: forwardedFor,
-        );
-        await _authorizedGet(
-          uri: baseUri.resolve(benchmarkDatabasePath),
-          bearerToken: bearerToken,
-          expectedBody: benchmarkDatabaseResponseJson(email),
-          forwardedFor: forwardedFor,
-        );
-        return;
-      case BenchmarkScenario.flow:
-        final bearerToken = await _signIn(
-          baseUri: baseUri,
-          email: email,
-          forwardedFor: forwardedFor,
-        );
-        await _authorizedGet(
-          uri: baseUri.resolve(benchmarkRawPath),
-          bearerToken: bearerToken,
-          expectedBody: benchmarkRawResponseJson(email),
-          forwardedFor: forwardedFor,
-        );
-        await _authorizedGet(
-          uri: baseUri.resolve(benchmarkDatabasePath),
-          bearerToken: bearerToken,
-          expectedBody: benchmarkDatabaseResponseJson(email),
-          forwardedFor: forwardedFor,
-        );
-        return;
+    try {
+      switch (scenario) {
+        case BenchmarkScenario.signIn:
+          await _signIn(
+            client: client,
+            baseUri: baseUri,
+            email: email,
+            forwardedFor: forwardedFor,
+          );
+          return;
+        case BenchmarkScenario.rawAuthed:
+          final bearerToken = await _signIn(
+            client: client,
+            baseUri: baseUri,
+            email: email,
+            forwardedFor: forwardedFor,
+          );
+          await _authorizedGet(
+            client: client,
+            uri: baseUri.resolve(benchmarkRawPath),
+            bearerToken: bearerToken,
+            expectedBody: benchmarkRawResponseJson(email),
+            forwardedFor: forwardedFor,
+          );
+          return;
+        case BenchmarkScenario.dbAuthed:
+          final bearerToken = await _signIn(
+            client: client,
+            baseUri: baseUri,
+            email: email,
+            forwardedFor: forwardedFor,
+          );
+          await _authorizedGet(
+            client: client,
+            uri: baseUri.resolve(benchmarkDatabasePath),
+            bearerToken: bearerToken,
+            expectedBody: benchmarkDatabaseResponseJson(email),
+            forwardedFor: forwardedFor,
+          );
+          return;
+        case BenchmarkScenario.flow:
+          final bearerToken = await _signIn(
+            client: client,
+            baseUri: baseUri,
+            email: email,
+            forwardedFor: forwardedFor,
+          );
+          await _authorizedGet(
+            client: client,
+            uri: baseUri.resolve(benchmarkRawPath),
+            bearerToken: bearerToken,
+            expectedBody: benchmarkRawResponseJson(email),
+            forwardedFor: forwardedFor,
+          );
+          await _authorizedGet(
+            client: client,
+            uri: baseUri.resolve(benchmarkDatabasePath),
+            bearerToken: bearerToken,
+            expectedBody: benchmarkDatabaseResponseJson(email),
+            forwardedFor: forwardedFor,
+          );
+          return;
+      }
+    } finally {
+      client.close(force: true);
     }
   }
 
@@ -151,142 +164,152 @@ final class VirtualUserRunner {
     required void Function() onSuccess,
     required void Function(String error) onError,
   }) async {
-    final userIndex = workerIndex % benchmarkFlowUserCount;
-    final email = benchmarkFlowUserEmail(userIndex);
+    final userIndex = workerIndex % benchmarkUserCount;
+    final email = benchmarkUserEmail(userIndex);
     final forwardedFor = _workerForwardedFor(workerIndex);
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 2);
     String? bearerToken;
 
-    if (scenario
-        case BenchmarkScenario.rawAuthed || BenchmarkScenario.dbAuthed) {
-      try {
-        bearerToken = await _signIn(
-          baseUri: baseUri,
-          email: email,
-          forwardedFor: forwardedFor,
-        );
-      } catch (error) {
-        onError(error.toString());
-      }
-    }
-
-    while (DateTime.now().isBefore(deadline)) {
-      final started = Stopwatch()..start();
-
-      try {
-        switch (scenario) {
-          case BenchmarkScenario.signIn:
-            await _signIn(
-              baseUri: baseUri,
-              email: email,
-              forwardedFor: forwardedFor,
-            );
-            break;
-          case BenchmarkScenario.rawAuthed:
-            bearerToken ??= await _signIn(
-              baseUri: baseUri,
-              email: email,
-              forwardedFor: forwardedFor,
-            );
-            await _authorizedGet(
-              uri: baseUri.resolve(benchmarkRawPath),
-              bearerToken: bearerToken,
-              expectedBody: benchmarkRawResponseJson(email),
-              forwardedFor: forwardedFor,
-            );
-            break;
-          case BenchmarkScenario.dbAuthed:
-            bearerToken ??= await _signIn(
-              baseUri: baseUri,
-              email: email,
-              forwardedFor: forwardedFor,
-            );
-            await _authorizedGet(
-              uri: baseUri.resolve(benchmarkDatabasePath),
-              bearerToken: bearerToken,
-              expectedBody: benchmarkDatabaseResponseJson(email),
-              forwardedFor: forwardedFor,
-            );
-            break;
-          case BenchmarkScenario.flow:
-            final flowToken = await _signIn(
-              baseUri: baseUri,
-              email: email,
-              forwardedFor: forwardedFor,
-            );
-            await _authorizedGet(
-              uri: baseUri.resolve(benchmarkRawPath),
-              bearerToken: flowToken,
-              expectedBody: benchmarkRawResponseJson(email),
-              forwardedFor: forwardedFor,
-            );
-            await _authorizedGet(
-              uri: baseUri.resolve(benchmarkDatabasePath),
-              bearerToken: flowToken,
-              expectedBody: benchmarkDatabaseResponseJson(email),
-              forwardedFor: forwardedFor,
-            );
-            break;
-        }
-
-        started.stop();
-        latenciesMs.add(started.elapsedMicroseconds / 1000);
-        onSuccess();
-      } catch (error) {
-        started.stop();
-        if (scenario
-            case BenchmarkScenario.rawAuthed || BenchmarkScenario.dbAuthed) {
-          bearerToken = null;
-        }
-        onError(error.toString());
-      }
-    }
-  }
-
-  Future<String> _signIn({
-    required Uri baseUri,
-    required String email,
-    required String forwardedFor,
-  }) async {
-    final client = HttpClient()..connectionTimeout = const Duration(seconds: 2);
-
     try {
-      final request = await client.postUrl(
-        baseUri.resolve('/auth/sign-in/email'),
-      );
-      request.headers.contentType = ContentType.json;
-      request.headers.set('origin', baseUri.origin);
-      request.headers.set('x-forwarded-for', forwardedFor);
-      request.write('{"email":"$email","password":"$benchmarkUserPassword"}');
-
-      final response = await request.close();
-      final responseBody = await utf8.decoder.bind(response).join();
-
-      if (response.statusCode != HttpStatus.ok) {
-        throw StateError('sign_in returned ${response.statusCode}.');
+      if (scenario
+          case BenchmarkScenario.rawAuthed || BenchmarkScenario.dbAuthed) {
+        try {
+          bearerToken = await _signIn(
+            client: client,
+            baseUri: baseUri,
+            email: email,
+            forwardedFor: forwardedFor,
+          );
+        } catch (error) {
+          onError(error.toString());
+        }
       }
 
-      final decoded = jsonDecode(responseBody);
-      if (decoded is! Map<String, Object?>) {
-        throw StateError('sign_in returned a non-object response.');
-      }
+      while (DateTime.now().isBefore(deadline)) {
+        final started = Stopwatch()..start();
 
-      final user = decoded['user'];
-      if (user is! Map || user['email'] != email) {
-        throw StateError('sign_in returned the wrong user payload.');
-      }
+        try {
+          switch (scenario) {
+            case BenchmarkScenario.signIn:
+              await _signIn(
+                client: client,
+                baseUri: baseUri,
+                email: email,
+                forwardedFor: forwardedFor,
+              );
+              break;
+            case BenchmarkScenario.rawAuthed:
+              bearerToken ??= await _signIn(
+                client: client,
+                baseUri: baseUri,
+                email: email,
+                forwardedFor: forwardedFor,
+              );
+              await _authorizedGet(
+                client: client,
+                uri: baseUri.resolve(benchmarkRawPath),
+                bearerToken: bearerToken,
+                expectedBody: benchmarkRawResponseJson(email),
+                forwardedFor: forwardedFor,
+              );
+              break;
+            case BenchmarkScenario.dbAuthed:
+              bearerToken ??= await _signIn(
+                client: client,
+                baseUri: baseUri,
+                email: email,
+                forwardedFor: forwardedFor,
+              );
+              await _authorizedGet(
+                client: client,
+                uri: baseUri.resolve(benchmarkDatabasePath),
+                bearerToken: bearerToken,
+                expectedBody: benchmarkDatabaseResponseJson(email),
+                forwardedFor: forwardedFor,
+              );
+              break;
+            case BenchmarkScenario.flow:
+              final flowToken = await _signIn(
+                client: client,
+                baseUri: baseUri,
+                email: email,
+                forwardedFor: forwardedFor,
+              );
+              await _authorizedGet(
+                client: client,
+                uri: baseUri.resolve(benchmarkRawPath),
+                bearerToken: flowToken,
+                expectedBody: benchmarkRawResponseJson(email),
+                forwardedFor: forwardedFor,
+              );
+              await _authorizedGet(
+                client: client,
+                uri: baseUri.resolve(benchmarkDatabasePath),
+                bearerToken: flowToken,
+                expectedBody: benchmarkDatabaseResponseJson(email),
+                forwardedFor: forwardedFor,
+              );
+              break;
+          }
 
-      final token = decoded['token'];
-      if (token is! String || token.isEmpty) {
-        throw StateError('sign_in did not return a token.');
+          started.stop();
+          latenciesMs.add(started.elapsedMicroseconds / 1000);
+          onSuccess();
+        } catch (error) {
+          started.stop();
+          if (scenario
+              case BenchmarkScenario.rawAuthed || BenchmarkScenario.dbAuthed) {
+            bearerToken = null;
+          }
+          onError(error.toString());
+        }
       }
-
-      return token;
     } finally {
       client.close(force: true);
     }
   }
 
+  Future<String> _signIn({
+    required HttpClient client,
+    required Uri baseUri,
+    required String email,
+    required String forwardedFor,
+  }) async {
+    final request = await client.postUrl(
+      baseUri.resolve('/auth/sign-in/email'),
+    );
+    request.headers.contentType = ContentType.json;
+    request.headers.set('origin', baseUri.origin);
+    request.headers.set('x-forwarded-for', forwardedFor);
+    request.write('{"email":"$email","password":"$benchmarkUserPassword"}');
+
+    final response = await request.close();
+    final responseBody = await utf8.decoder.bind(response).join();
+
+    if (response.statusCode != HttpStatus.ok) {
+      throw StateError('sign_in returned ${response.statusCode}.');
+    }
+
+    final decoded = jsonDecode(responseBody);
+    if (decoded is! Map<String, Object?>) {
+      throw StateError('sign_in returned a non-object response.');
+    }
+
+    final user = decoded['user'];
+    if (user is! Map || user['email'] != email) {
+      throw StateError('sign_in returned the wrong user payload.');
+    }
+
+    final token = decoded['token'];
+    if (token is! String || token.isEmpty) {
+      throw StateError('sign_in did not return a token.');
+    }
+
+    return token;
+  }
+
   Future<void> _authorizedGet({
+    required HttpClient client,
     required Uri uri,
     required String? bearerToken,
     required String expectedBody,
@@ -296,32 +319,26 @@ final class VirtualUserRunner {
       throw StateError('Missing bearer token for $uri.');
     }
 
-    final client = HttpClient()..connectionTimeout = const Duration(seconds: 2);
+    final request = await client.getUrl(uri);
+    request.headers.set('authorization', 'Bearer $bearerToken');
+    request.headers.set('x-forwarded-for', forwardedFor);
 
-    try {
-      final request = await client.getUrl(uri);
-      request.headers.set('authorization', 'Bearer $bearerToken');
-      request.headers.set('x-forwarded-for', forwardedFor);
+    final response = await request.close();
+    final contentType = response.headers.contentType?.toString() ?? '';
+    final responseBody = await utf8.decoder.bind(response).join();
 
-      final response = await request.close();
-      final contentType = response.headers.contentType?.toString() ?? '';
-      final responseBody = await utf8.decoder.bind(response).join();
-
-      if (response.statusCode != HttpStatus.ok) {
-        throw StateError('GET $uri returned ${response.statusCode}.');
-      }
-      if (!contentType.contains('application/json')) {
-        throw StateError('GET $uri returned "$contentType".');
-      }
-      if (responseBody != expectedBody) {
-        throw StateError(
-          'GET $uri returned an unexpected body.\n'
-          'Expected: $expectedBody\n'
-          'Actual:   $responseBody',
-        );
-      }
-    } finally {
-      client.close(force: true);
+    if (response.statusCode != HttpStatus.ok) {
+      throw StateError('GET $uri returned ${response.statusCode}.');
+    }
+    if (!contentType.contains('application/json')) {
+      throw StateError('GET $uri returned "$contentType".');
+    }
+    if (responseBody != expectedBody) {
+      throw StateError(
+        'GET $uri returned an unexpected body.\n'
+        'Expected: $expectedBody\n'
+        'Actual:   $responseBody',
+      );
     }
   }
 }

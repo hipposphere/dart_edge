@@ -53,7 +53,7 @@ Future<PreparedRequestScenario> prepareRequestScenario({
 Future<BenchmarkAuthSession> createSession(Uri baseUri) async {
   return createSessionWithCredentials(
     baseUri,
-    email: benchmarkUserEmail,
+    email: benchmarkUserEmail(0),
     password: benchmarkUserPassword,
   );
 }

@@ -4,9 +4,7 @@ import { bearer } from 'better-auth/plugins/bearer';
 
 import {
   authSecret,
-  flowUserCount,
-  flowUserEmail,
-  flowUserName,
+  userCount,
   userEmail,
   userName,
   userPassword,
@@ -28,23 +26,13 @@ export async function seedUsers({ auth, baseUrl }) {
   const authContext = await auth.$context;
   await authContext.runMigrations();
 
-  await callAuthJson(auth, baseUrl, '/auth/sign-up/email', {
-    method: 'POST',
-    body: {
-      email: userEmail,
-      password: userPassword,
-      name: userName,
-    },
-    headers: { origin: baseUrl },
-  });
-
-  for (let index = 0; index < flowUserCount; index += 1) {
+  for (let index = 0; index < userCount; index += 1) {
     await callAuthJson(auth, baseUrl, '/auth/sign-up/email', {
       method: 'POST',
       body: {
-        email: flowUserEmail(index),
+        email: userEmail(index),
         password: userPassword,
-        name: flowUserName(index),
+        name: userName(index),
       },
       headers: { origin: baseUrl },
     });

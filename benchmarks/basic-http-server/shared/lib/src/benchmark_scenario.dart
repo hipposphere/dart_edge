@@ -29,16 +29,22 @@ extension BenchmarkScenarioDetails on BenchmarkScenario {
 
   /// Optional request body sent for the scenario.
   String? get requestBody => switch (this) {
-    BenchmarkScenario.echo => benchmarkEchoBody,
+    BenchmarkScenario.echo => encodeBenchmarkJson(benchmarkEchoPayload),
     _ => null,
   };
 
-  /// Exact response body every target must return.
-  String get expectedBody => switch (this) {
+  /// Canonical response value every target must return.
+  Object? get expectedResponse => switch (this) {
     BenchmarkScenario.plaintext => benchmarkPlaintextBody,
-    BenchmarkScenario.json => benchmarkJsonBody,
-    BenchmarkScenario.pathParam => benchmarkUserJson('42'),
-    BenchmarkScenario.echo => benchmarkEchoBody,
+    BenchmarkScenario.json => benchmarkJsonPayload,
+    BenchmarkScenario.pathParam => benchmarkUserPayload('42'),
+    BenchmarkScenario.echo => benchmarkEchoPayload,
+  };
+
+  /// Whether the scenario response should be compared as JSON.
+  bool get expectsJson => switch (this) {
+    BenchmarkScenario.plaintext => false,
+    _ => true,
   };
 
   /// Fragment that must appear in the response content type.

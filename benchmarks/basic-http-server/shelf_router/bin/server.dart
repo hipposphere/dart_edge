@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:dart_edge_benchmark_shared/dart_edge_benchmark_shared.dart';
@@ -20,7 +21,7 @@ Future<void> main(List<String> args) async {
     ..get(
       '/json',
       (_) => Response.ok(
-        benchmarkJsonBody,
+        jsonEncode(benchmarkJsonPayload),
         headers: const {
           HttpHeaders.contentTypeHeader: 'application/json; charset=utf-8',
         },
@@ -29,7 +30,7 @@ Future<void> main(List<String> args) async {
     ..get(
       '/users/<id>',
       (_, String id) => Response.ok(
-        benchmarkUserJson(id),
+        jsonEncode(benchmarkUserPayload(id)),
         headers: const {
           HttpHeaders.contentTypeHeader: 'application/json; charset=utf-8',
         },
@@ -37,8 +38,9 @@ Future<void> main(List<String> args) async {
     )
     ..post('/echo', (Request request) async {
       final body = await request.readAsString();
+      final payload = body.isEmpty ? benchmarkEchoPayload : jsonDecode(body);
       return Response.ok(
-        body,
+        jsonEncode(payload),
         headers: const {
           HttpHeaders.contentTypeHeader: 'application/json; charset=utf-8',
         },

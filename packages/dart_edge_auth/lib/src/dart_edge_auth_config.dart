@@ -16,6 +16,7 @@ final class DartEdgeAuthConfig {
     this.enablePasswordManagement = true,
     this.enableAccountManagement = true,
     this.enableEmailVerification = false,
+    this.enableRateLimit = true,
     this.admin,
   });
 
@@ -58,6 +59,9 @@ final class DartEdgeAuthConfig {
   /// Enables email-verification flows.
   final bool enableEmailVerification;
 
+  /// Enables Better Auth's in-memory rate limiting middleware.
+  final bool enableRateLimit;
+
   /// Enables Better Auth's admin plugin when configured.
   final DartEdgeAuthAdminConfig? admin;
 
@@ -76,6 +80,7 @@ final class DartEdgeAuthConfig {
     'enablePasswordManagement': enablePasswordManagement,
     'enableAccountManagement': enableAccountManagement,
     'enableEmailVerification': enableEmailVerification,
+    'enableRateLimit': enableRateLimit,
     if (admin case final admin?) 'admin': admin.toJson(),
   };
 }

@@ -29,7 +29,7 @@ final class BenchmarkOptions {
   final bool showHelp;
 
   static String get usage => '''
-Usage: dart pub -C benchmarks/auth-db-http-server/runner run bin/run.dart [options]
+Usage: dart run benchmarks/auth-db-http-server/runner/bin/run.dart [options]
 
 Options:
   --targets=dart_edge,fastify          Comma-separated target ids, or all.

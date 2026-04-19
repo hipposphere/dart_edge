@@ -4,8 +4,7 @@ import { fileURLToPath } from 'node:url';
 
 import {
   databaseValue,
-  flowUserCount,
-  flowUserEmail,
+  userCount,
   userEmail,
 } from './config.mjs';
 
@@ -25,14 +24,10 @@ export function createDatabase() {
       value TEXT NOT NULL
     );
   `);
-  database
-    .prepare('INSERT INTO benchmark_values (email, value) VALUES (?, ?)')
-    .run(userEmail, databaseValue);
-
-  for (let index = 0; index < flowUserCount; index += 1) {
+  for (let index = 0; index < userCount; index += 1) {
     database
       .prepare('INSERT INTO benchmark_values (email, value) VALUES (?, ?)')
-      .run(flowUserEmail(index), databaseValue);
+      .run(userEmail(index), databaseValue);
   }
 
   return database;

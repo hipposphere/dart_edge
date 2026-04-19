@@ -27,7 +27,7 @@ Optional JIT-only targets remain available for diagnostics:
 - `echo`: `POST /echo`
 
 Each target must serve the same paths, return the same status codes, and return
-the same response bodies for those scenarios.
+the same plaintext bodies and equivalent JSON payloads for those scenarios.
 
 ## Running
 

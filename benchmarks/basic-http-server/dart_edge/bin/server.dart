@@ -48,7 +48,7 @@ final class JsonRoute
 
   @override
   Map<String, Object?> handle(RequestContext<BenchmarkServices> ctx) {
-    return {'message': 'Hello, World!'};
+    return benchmarkJsonPayload;
   }
 }
 
@@ -67,7 +67,7 @@ final class UserRoute
   @override
   Map<String, Object?> handle(RequestContext<BenchmarkServices> ctx) {
     final params = ctx.req.params<Map<String, String>>();
-    return {'id': params['id'], 'name': 'Benchmark User'};
+    return benchmarkUserPayload(params['id']!);
   }
 }
 

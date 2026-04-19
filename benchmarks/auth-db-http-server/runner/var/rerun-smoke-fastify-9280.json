@@ -1,0 +1,95 @@
+{
+  "generatedAt": "2026-04-19T09:13:31.188835Z",
+  "options": {
+    "targets": [
+      "fastify"
+    ],
+    "scenarios": [
+      "sign_in",
+      "raw_authed",
+      "db_authed",
+      "flow"
+    ],
+    "warmupSeconds": 0,
+    "durationSeconds": 1,
+    "concurrency": 2,
+    "singleCore": true,
+    "basePort": 9280,
+    "jsonOut": "var/rerun-smoke-fastify-9280.json",
+    "markdownOut": "var/rerun-smoke-fastify-9280.md"
+  },
+  "results": [
+    {
+      "targetId": "fastify",
+      "targetLabel": "Fastify",
+      "scenarioId": "sign_in",
+      "operations": 24,
+      "errors": 0,
+      "operationsPerSecond": 22.875116162699264,
+      "averageLatencyMs": 87.26779166666667,
+      "p50LatencyMs": 94.648,
+      "p90LatencyMs": 98.766,
+      "p99LatencyMs": 103.799,
+      "maxLatencyMs": 103.799,
+      "averageCpuPercent": 125.96666666666665,
+      "peakCpuPercent": 140.5,
+      "averageMemoryMb": 204.85416666666666,
+      "peakMemoryMb": 210.328125,
+      "firstError": null
+    },
+    {
+      "targetId": "fastify",
+      "targetLabel": "Fastify",
+      "scenarioId": "raw_authed",
+      "operations": 605,
+      "errors": 0,
+      "operationsPerSecond": 601.0725916859242,
+      "averageLatencyMs": 3.091856198347113,
+      "p50LatencyMs": 2.42,
+      "p90LatencyMs": 4.183,
+      "p99LatencyMs": 16.314,
+      "maxLatencyMs": 22.848,
+      "averageCpuPercent": 104.58333333333331,
+      "peakCpuPercent": 119.7,
+      "averageMemoryMb": 218.4453125,
+      "peakMemoryMb": 254.46875,
+      "firstError": null
+    },
+    {
+      "targetId": "fastify",
+      "targetLabel": "Fastify",
+      "scenarioId": "db_authed",
+      "operations": 612,
+      "errors": 0,
+      "operationsPerSecond": 607.8109668166994,
+      "averageLatencyMs": 3.0609787581699366,
+      "p50LatencyMs": 2.438,
+      "p90LatencyMs": 3.883,
+      "p99LatencyMs": 18.4,
+      "maxLatencyMs": 28.025,
+      "averageCpuPercent": 106.93333333333332,
+      "peakCpuPercent": 118.4,
+      "averageMemoryMb": 217.75520833333334,
+      "peakMemoryMb": 262.65625,
+      "firstError": null
+    },
+    {
+      "targetId": "fastify",
+      "targetLabel": "Fastify",
+      "scenarioId": "flow",
+      "operations": 22,
+      "errors": 0,
+      "operationsPerSecond": 21.046227081137033,
+      "averageLatencyMs": 94.98163636363634,
+      "p50LatencyMs": 99.36,
+      "p90LatencyMs": 105.495,
+      "p99LatencyMs": 105.873,
+      "maxLatencyMs": 105.873,
+      "averageCpuPercent": 127.01666666666665,
+      "peakCpuPercent": 142.7,
+      "averageMemoryMb": 200.69010416666666,
+      "peakMemoryMb": 206.59375,
+      "firstError": null
+    }
+  ]
+}

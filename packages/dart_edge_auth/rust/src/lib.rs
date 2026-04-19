@@ -9,7 +9,10 @@ use better_auth::plugins::{
     AccountManagementPlugin, AdminPlugin, EmailPasswordPlugin, EmailVerificationPlugin,
     PasswordManagementPlugin, SessionManagementPlugin,
 };
-use better_auth::{AuthBuilder, AuthConfig, AuthRequest, BetterAuth, HttpMethod, TypedAuthBuilder};
+use better_auth::{
+    AuthBuilder, AuthConfig, AuthRequest, BetterAuth, HttpMethod, RateLimitConfig,
+    TypedAuthBuilder,
+};
 use better_auth_diesel_sqlite::DieselSqliteAdapter;
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
@@ -100,6 +103,7 @@ struct NativeAuthConfig {
     enable_password_management: bool,
     enable_account_management: bool,
     enable_email_verification: bool,
+    enable_rate_limit: bool,
     admin: Option<NativeAdminConfig>,
 }
 
@@ -390,10 +394,14 @@ async fn build_auth(
         auth_config = auth_config.trusted_origins(config.trusted_origins.clone());
     }
 
+    let rate_limit = RateLimitConfig::new().enabled(config.enable_rate_limit);
+
     match &config.database {
         NativeDatabaseConfig::Memory => {
             let builder = configure_builder(
-                AuthBuilder::new(auth_config).database(MemoryDatabaseAdapter::new()),
+                AuthBuilder::new(auth_config)
+                    .database(MemoryDatabaseAdapter::new())
+                    .rate_limit(rate_limit.clone()),
                 config,
             );
             builder
@@ -406,8 +414,12 @@ async fn build_auth(
             let adapter = SqlxAdapter::new(connection_string)
                 .await
                 .map_err(|error| error.to_string())?;
-            let builder =
-                configure_builder(AuthBuilder::new(auth_config).database(adapter), config);
+            let builder = configure_builder(
+                AuthBuilder::new(auth_config)
+                    .database(adapter)
+                    .rate_limit(rate_limit.clone()),
+                config,
+            );
             builder
                 .build()
                 .await
@@ -437,8 +449,12 @@ async fn build_auth(
                     .map_err(|error| error.to_string())?;
             }
 
-            let builder =
-                configure_builder(AuthBuilder::new(auth_config).database(adapter), config);
+            let builder = configure_builder(
+                AuthBuilder::new(auth_config)
+                    .database(adapter)
+                    .rate_limit(rate_limit.clone()),
+                config,
+            );
             builder
                 .build()
                 .await
@@ -462,8 +478,12 @@ async fn build_auth(
                 adapter.run_migrations().map_err(|error| error.to_string())?;
             }
 
-            let builder =
-                configure_builder(AuthBuilder::new(auth_config).database(adapter), config);
+            let builder = configure_builder(
+                AuthBuilder::new(auth_config)
+                    .database(adapter)
+                    .rate_limit(rate_limit),
+                config,
+            );
             builder
                 .build()
                 .await

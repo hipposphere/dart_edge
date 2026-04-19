@@ -6,11 +6,10 @@ const benchmarkHealthBody = 'ok';
 /// Shared Better Auth secret used by both benchmark targets.
 const benchmarkAuthSecret = 'benchmark-secret-key-that-is-at-least-32-chars';
 
-/// Canonical benchmark user seeded into both targets.
-const benchmarkUserName = 'Benchmark User';
-const benchmarkUserEmail = 'benchmark.user@example.com';
+/// Number of benchmark users seeded into both targets.
+const benchmarkUserCount = 256;
+
 const benchmarkUserPassword = 'password123456';
-const benchmarkFlowUserCount = 256;
 
 /// Stable benchmark route layout.
 const benchmarkAuthPath = '/auth';
@@ -36,10 +35,16 @@ int parseBenchmarkPort(List<String> args, {int defaultPort = 8080}) {
 /// Builds the canonical origin value used by auth requests.
 String benchmarkOriginForPort(int port) => 'http://127.0.0.1:$port';
 
-/// Builds the canonical request body for `POST /auth/sign-in/email`.
-String benchmarkSignInRequestJson() {
+/// Builds the canonical benchmark user name for [index].
+String benchmarkUserName(int index) => 'Benchmark User $index';
+
+/// Builds the canonical benchmark user email for [index].
+String benchmarkUserEmail(int index) => 'benchmark.user-$index@example.com';
+
+/// Builds the canonical sign-in request body for benchmark user [index].
+String benchmarkSignInRequestJson([int index = 0]) {
   return jsonEncode({
-    'email': benchmarkUserEmail,
+    'email': benchmarkUserEmail(index),
     'password': benchmarkUserPassword,
   });
 }
@@ -53,9 +58,3 @@ String benchmarkRawResponseJson(String email) {
 String benchmarkDatabaseResponseJson(String email) {
   return jsonEncode({'email': email, 'value': benchmarkDatabaseValue});
 }
-
-/// Builds the canonical flow-user name for [index].
-String benchmarkFlowUserName(int index) => 'Benchmark Flow User $index';
-
-/// Builds the canonical flow-user email for [index].
-String benchmarkFlowUserEmail(int index) => 'benchmark.flow.$index@example.com';

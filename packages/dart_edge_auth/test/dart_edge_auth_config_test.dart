@@ -58,6 +58,16 @@ void main() {
     });
   });
 
+  test('serializes rate-limit config', () {
+    const config = DartEdgeAuthConfig(
+      secret: 'test-secret-key-that-is-at-least-32-characters-long',
+      baseUrl: 'http://localhost:3000',
+      enableRateLimit: false,
+    );
+
+    expect(config.toJson()['enableRateLimit'], false);
+  });
+
   test('derives native sqlite auth database config from a sqlite database', () {
     final database = SqliteDatabase.inMemory();
     addTearDown(database.close);

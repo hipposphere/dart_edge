@@ -9,15 +9,18 @@ DartEdgeAuth createAuth({required int port, required SqliteDatabase database}) {
       secret: benchmarkAuthSecret,
       baseUrl: benchmarkOriginForPort(port),
       basePath: '/auth',
+      enableRateLimit: false,
       database: DartEdgeAuthDatabase.fromDatabase(database),
     ),
   );
 }
 
 Future<void> seedUsers(DartEdgeAuth auth) async {
-  await auth.api.signUpEmail(
-    email: benchmarkUserEmail,
-    password: benchmarkUserPassword,
-    name: benchmarkUserName,
-  );
+  for (var index = 0; index < benchmarkUserCount; index += 1) {
+    await auth.api.signUpEmail(
+      email: benchmarkUserEmail(index),
+      password: benchmarkUserPassword,
+      name: benchmarkUserName(index),
+    );
+  }
 }
