@@ -1,9 +1,8 @@
 import 'dart:io';
 
-import 'package:dart_edge_benchmark_shared/dart_edge_benchmark_shared.dart';
-
 import 'benchmark_options.dart';
 import 'benchmark_report.dart';
+import 'benchmark_scenarios.dart';
 import 'benchmark_target_process.dart';
 import 'benchmark_targets.dart';
 import 'oha_runner.dart';

@@ -1,8 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:dart_edge_benchmark_runner/src/benchmark_scenarios.dart';
 import 'package:dart_edge_benchmark_runner/src/scenario_validator.dart';
-import 'package:dart_edge_benchmark_shared/dart_edge_benchmark_shared.dart';
 import 'package:test/test.dart';
 
 void main() {
@@ -36,7 +36,10 @@ void main() {
         expect(request.uri.path, BenchmarkScenario.echo.path);
 
         final requestBody = await utf8.decoder.bind(request).join();
-        expect(jsonDecode(requestBody), equals(benchmarkEchoPayload));
+        expect(
+          jsonDecode(requestBody),
+          equals({'message': 'Echo payload', 'count': 1, 'enabled': true}),
+        );
 
         request.response.headers.contentType = ContentType.json;
         request.response.write(

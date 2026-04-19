@@ -9,6 +9,5 @@ environment:
 resolution: workspace
 
 dependencies:
-  dart_edge_benchmark_shared: 0.1.0
   shelf: ^1.4.2
   shelf_router: ^1.1.4

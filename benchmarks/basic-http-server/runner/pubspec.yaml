@@ -9,7 +9,5 @@ environment:
 resolution: workspace
 
 dependencies:
-  dart_edge_benchmark_shared: 0.1.0
-
 dev_dependencies:
   test: ^1.30.0

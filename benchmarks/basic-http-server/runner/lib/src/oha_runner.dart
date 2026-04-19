@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:dart_edge_benchmark_shared/dart_edge_benchmark_shared.dart';
+import 'benchmark_scenarios.dart';
 
 /// Parsed result of one `oha` benchmark scenario run.
 final class OhaScenarioResult {

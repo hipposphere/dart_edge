@@ -1,5 +1,4 @@
-import 'package:dart_edge_benchmark_shared/dart_edge_benchmark_shared.dart';
-
+import 'benchmark_scenarios.dart';
 import 'benchmark_targets.dart';
 
 /// Parsed CLI options for the benchmark runner.

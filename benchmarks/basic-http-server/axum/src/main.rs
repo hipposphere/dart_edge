@@ -11,7 +11,6 @@ use axum::routing::{get, post};
 use serde_json::{Value, json};
 use tokio::net::TcpListener;
 
-const PLAINTEXT_BODY: &str = "Hello, World!";
 const TEXT_CONTENT_TYPE: &str = "text/plain; charset=utf-8";
 
 #[tokio::main(flavor = "multi_thread")]
@@ -44,7 +43,7 @@ fn parse_port(arguments: impl Iterator<Item = String>) -> Option<u16> {
 }
 
 async fn plaintext() -> impl IntoResponse {
-    ([(header::CONTENT_TYPE, TEXT_CONTENT_TYPE)], PLAINTEXT_BODY)
+    ([(header::CONTENT_TYPE, TEXT_CONTENT_TYPE)], "Hello, World!")
 }
 
 async fn json() -> Json<Value> {

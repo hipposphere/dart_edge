@@ -10,4 +10,3 @@ resolution: workspace
 
 dependencies:
   dart_edge: 0.1.0
-  dart_edge_benchmark_shared: 0.1.0

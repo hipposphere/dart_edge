@@ -1,8 +1,7 @@
 import 'dart:convert';
 
-import 'package:dart_edge_benchmark_shared/dart_edge_benchmark_shared.dart';
-
 import 'benchmark_options.dart';
+import 'benchmark_scenarios.dart';
 
 /// Benchmark result for one target/scenario pair.
 final class ScenarioBenchmarkResult {

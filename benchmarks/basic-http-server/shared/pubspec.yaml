@@ -1,9 +1,0 @@
-name: dart_edge_benchmark_shared
-description: Shared scenarios and payloads for Dart Edge benchmarks.
-publish_to: none
-version: 0.1.0
-
-environment:
-  sdk: ">=3.11.0 <4.0.0"
-
-resolution: workspace

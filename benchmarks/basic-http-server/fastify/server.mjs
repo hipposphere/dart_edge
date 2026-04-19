@@ -1,13 +1,5 @@
 import Fastify from 'fastify';
 
-const benchmarkPlaintextBody = 'Hello, World!';
-const benchmarkJsonPayload = {message: 'Hello, World!'};
-const benchmarkEchoPayload = {
-  message: 'Echo payload',
-  count: 1,
-  enabled: true,
-};
-
 const fastify = Fastify({
   logger: false,
   disableRequestLogging: true,
@@ -15,17 +7,23 @@ const fastify = Fastify({
 
 fastify.get('/plaintext', async (_, reply) => {
   reply.header('content-type', 'text/plain; charset=utf-8');
-  return benchmarkPlaintextBody;
+  return 'Hello, World!';
 });
 
-fastify.get('/json', async () => benchmarkJsonPayload);
+fastify.get('/json', async () => ({message: 'Hello, World!'}));
 
 fastify.get('/users/:id', async (request) => {
   return {id: request.params.id, name: 'Benchmark User'};
 });
 
 fastify.post('/echo', async (request) => {
-  return request.body ?? benchmarkEchoPayload;
+  return (
+    request.body ?? {
+      message: 'Echo payload',
+      count: 1,
+      enabled: true,
+    }
+  );
 });
 
 const port = parsePort(process.argv.slice(2));

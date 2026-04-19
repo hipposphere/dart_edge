@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:dart_edge_benchmark_shared/dart_edge_benchmark_shared.dart';
+import 'benchmark_scenarios.dart';
 
 /// Sends one request to [uri] and verifies that the response matches
 /// [scenario].
@@ -49,7 +49,7 @@ Future<void> validateScenario({
       if (!_jsonDeepEquals(actualJson, scenario.expectedResponse)) {
         throw StateError(
           '${scenario.id} returned unexpected JSON body for $uri.\n'
-          'Expected: ${encodeBenchmarkJson(scenario.expectedResponse)}\n'
+          'Expected: ${jsonEncode(scenario.expectedResponse)}\n'
           'Actual:   $responseBody',
         );
       }

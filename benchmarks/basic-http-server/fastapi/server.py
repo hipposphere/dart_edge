@@ -1,26 +1,17 @@
 from fastapi import Body, FastAPI
 from fastapi.responses import PlainTextResponse
 
-
-BENCHMARK_PLAINTEXT_BODY = "Hello, World!"
-BENCHMARK_JSON_PAYLOAD = {"message": "Hello, World!"}
-BENCHMARK_ECHO_PAYLOAD = {
-    "message": "Echo payload",
-    "count": 1,
-    "enabled": True,
-}
-
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 
 
 @app.get("/plaintext")
 async def plaintext() -> PlainTextResponse:
-    return PlainTextResponse(BENCHMARK_PLAINTEXT_BODY)
+    return PlainTextResponse("Hello, World!")
 
 
 @app.get("/json")
 async def json() -> dict[str, object]:
-    return BENCHMARK_JSON_PAYLOAD
+    return {"message": "Hello, World!"}
 
 
 @app.get("/users/{user_id}")
@@ -30,4 +21,4 @@ async def user(user_id: str) -> dict[str, object]:
 
 @app.post("/echo")
 async def echo(payload: dict[str, object] | None = Body(default=None)) -> dict[str, object]:
-    return payload or BENCHMARK_ECHO_PAYLOAD
+    return payload or {"message": "Echo payload", "count": 1, "enabled": True}

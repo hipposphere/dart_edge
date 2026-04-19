@@ -1,8 +1,7 @@
 import 'package:dart_edge/dart_edge.dart';
-import 'package:dart_edge_benchmark_shared/dart_edge_benchmark_shared.dart';
 
 Future<void> main(List<String> args) async {
-  final port = parseBenchmarkPort(args);
+  final port = _parsePort(args);
   final app = DartEdge<BenchmarkServices>(services: BenchmarkServices.new);
 
   app.register(PlaintextRoute());
@@ -30,8 +29,7 @@ final class PlaintextRoute
   );
 
   @override
-  String handle(RequestContext<BenchmarkServices> ctx) =>
-      benchmarkPlaintextBody;
+  String handle(RequestContext<BenchmarkServices> ctx) => 'Hello, World!';
 }
 
 final class JsonRoute
@@ -48,7 +46,7 @@ final class JsonRoute
 
   @override
   Map<String, Object?> handle(RequestContext<BenchmarkServices> ctx) {
-    return benchmarkJsonPayload;
+    return {'message': 'Hello, World!'};
   }
 }
 
@@ -67,7 +65,7 @@ final class UserRoute
   @override
   Map<String, Object?> handle(RequestContext<BenchmarkServices> ctx) {
     final params = ctx.req.params<Map<String, String>>();
-    return benchmarkUserPayload(params['id']!);
+    return {'id': params['id']!, 'name': 'Benchmark User'};
   }
 }
 
@@ -88,4 +86,14 @@ final class EchoRoute
   Map<String, Object?> handle(RequestContext<BenchmarkServices> ctx) {
     return ctx.req.body<Map<String, Object?>>();
   }
+}
+
+int _parsePort(List<String> args, {int defaultPort = 8080}) {
+  for (final argument in args) {
+    if (argument.startsWith('--port=')) {
+      return int.parse(argument.substring('--port='.length));
+    }
+  }
+
+  return defaultPort;
 }

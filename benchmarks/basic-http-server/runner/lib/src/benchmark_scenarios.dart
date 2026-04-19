@@ -1,6 +1,6 @@
-import 'server_config.dart';
+import 'dart:convert';
 
-/// Canonical benchmark scenarios served by every target.
+/// Canonical benchmark scenarios exercised by the runner.
 enum BenchmarkScenario { plaintext, json, pathParam, echo }
 
 /// Derived metadata for a [BenchmarkScenario].
@@ -29,16 +29,16 @@ extension BenchmarkScenarioDetails on BenchmarkScenario {
 
   /// Optional request body sent for the scenario.
   String? get requestBody => switch (this) {
-    BenchmarkScenario.echo => encodeBenchmarkJson(benchmarkEchoPayload),
+    BenchmarkScenario.echo => jsonEncode(_defaultEchoPayload),
     _ => null,
   };
 
   /// Canonical response value every target must return.
   Object? get expectedResponse => switch (this) {
-    BenchmarkScenario.plaintext => benchmarkPlaintextBody,
-    BenchmarkScenario.json => benchmarkJsonPayload,
-    BenchmarkScenario.pathParam => benchmarkUserPayload('42'),
-    BenchmarkScenario.echo => benchmarkEchoPayload,
+    BenchmarkScenario.plaintext => 'Hello, World!',
+    BenchmarkScenario.json => _helloWorldPayload,
+    BenchmarkScenario.pathParam => {'id': '42', 'name': 'Benchmark User'},
+    BenchmarkScenario.echo => _defaultEchoPayload,
   };
 
   /// Whether the scenario response should be compared as JSON.
@@ -53,6 +53,13 @@ extension BenchmarkScenarioDetails on BenchmarkScenario {
     _ => 'application/json',
   };
 }
+
+const _helloWorldPayload = <String, Object?>{'message': 'Hello, World!'};
+const _defaultEchoPayload = <String, Object?>{
+  'message': 'Echo payload',
+  'count': 1,
+  'enabled': true,
+};
 
 /// Parses a comma-separated scenario list or the special value `all`.
 List<BenchmarkScenario> parseBenchmarkScenarios(String value) {
