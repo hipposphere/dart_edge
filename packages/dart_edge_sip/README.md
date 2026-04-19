@@ -11,7 +11,8 @@ bindings.
 The package now includes a real **PJSIP-backed native runtime foundation**:
 runtime lifecycle, transport/trunk setup, outbound/inbound call state events,
 call control, bridge/hold/resume/transfer commands, prompt playback, call
-recording, and voicemail recording hooks.
+recording, voicemail recording hooks, and first-pass media-app attachment with
+assistant-oriented PCM audio access.
 
 It is still not a finished PBX. Full registrar/auth endpoint handling,
 distributed telephony concerns, and browser/WebRTC edges remain outside the
@@ -58,7 +59,8 @@ with:
 - trunks and dialplan-driven call routing
 - call/session control for answer, reject, hold, resume, bridge, transfer, and
   hangup
-- media-app concepts for IVR, recording, and voicemail
+- media-app concepts for IVR, recording, voicemail, and assistant-style audio
+  loops
 - embedded Dart control APIs plus async event streams
 
 ## Non-Goals For V1
@@ -82,6 +84,8 @@ The top-level package exports these main concepts:
 - `SipDialplan`: inbound/outbound routing policy interface
 - `SipCallSession`: one call/session control handle
 - `SipMediaApp`: engine-neutral media app interface
+- `SipRealtimeMediaSession` and `SipAudioFormat`: attached media session and
+  normalized audio format
 - `SipCallEvent`, `SipRegistrationEvent`, `SipTrunkEvent`,
   `SipRecordingEvent`, `SipVoicemailEvent`: event categories
 
@@ -155,6 +159,30 @@ Future<void> main() async {
 The package keeps the Dart API intentionally engine-neutral even though the
 current native layer is PJSIP-backed. That keeps application code stable while
 the underlying telephony backend grows.
+
+## Realtime Media Apps
+
+The current media-app attachment path is designed as a first pass for phone
+assistant and IVR style features:
+
+- attach a registered `SipMediaApp` to a call with `call.attachMediaApp(...)`
+- read normalized PCM16 mono frames from `session.media.pollIncomingFrame()`
+  or `session.media.incomingFrames()`
+- play synthesized PCM16 clips back into the call with
+  `session.media.playAudioBytes(...)`
+
+The normalized assistant format is currently `16 kHz`, mono, `20 ms` PCM16LE
+frames exposed through `SipAudioFormat.voiceAssistant()`.
+
+Media apps now use long-lived conference ports for both directions:
+
+- inbound call audio is captured into a native PCM ring buffer and exposed to
+  Dart as normalized frames
+- outbound PCM bytes are queued directly into a native playback ring buffer and
+  streamed into the call without staging temporary media files
+
+The realtime media path currently assumes normalized `16 kHz` mono PCM16 for
+assistant playback.
 
 See [CONCEPT.md](CONCEPT.md) for the fuller package concept and phased
 implementation direction.

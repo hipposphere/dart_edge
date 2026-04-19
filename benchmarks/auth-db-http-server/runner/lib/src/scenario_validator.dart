@@ -20,9 +20,8 @@ Future<void> validatePreparedScenario(PreparedRequestScenario prepared) async {
       request.headers.set(entry.key, entry.value);
     }
 
-    if (prepared.body case final body?) {
-      request.headers.contentType = ContentType.json;
-      request.write(body);
+    if (prepared.bodyBytes case final bodyBytes?) {
+      request.add(bodyBytes);
     }
 
     final response = await request.close();
@@ -56,6 +55,18 @@ Future<void> validatePreparedScenario(PreparedRequestScenario prepared) async {
           contentType: contentType,
           responseBody: responseBody,
           expectedBody: benchmarkDatabaseResponseJson(benchmarkUserEmail(0)),
+        );
+        return;
+      case BenchmarkScenario.uploadMultipart:
+        _validateExactJsonResponse(
+          scenario: prepared.scenario,
+          uri: prepared.uri,
+          statusCode: response.statusCode,
+          contentType: contentType,
+          responseBody: responseBody,
+          expectedBody: benchmarkUploadMultipartResponseJson(
+            benchmarkUserEmail(0),
+          ),
         );
         return;
       case BenchmarkScenario.flow:

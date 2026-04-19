@@ -69,13 +69,13 @@ final class DartEdgeAuth {
     NativeRouteDefinition route,
     RequestContext<TServices> ctx,
   ) {
-    final params = _readMap(ctx.req.paramsValue);
+    final params = ctx.req.paramsMap;
     final response = _send(
       method: route.method,
       path: _resolvePath(route.path, params),
-      query: _readMap(ctx.req.queryValue),
-      headers: _readMap(ctx.req.headerValue),
-      body: ctx.req.bodyValue,
+      query: ctx.req.queryMap,
+      headers: ctx.req.headersMap,
+      body: ctx.req.bodyOrNull,
     );
 
     return RawResponse.encoded(
@@ -183,11 +183,6 @@ final class _DartEdgeAuthRoute<TServices>
         'operationId: ${route.operationId}, jsonBody: ${route.acceptsJsonBody})';
   }
 }
-
-Map<String, String> _readMap(Object? value) => switch (value) {
-  final Map<String, String> map => map,
-  _ => const <String, String>{},
-};
 
 Uint8List? _encodeBody(Object? value) => switch (value) {
   null => null,

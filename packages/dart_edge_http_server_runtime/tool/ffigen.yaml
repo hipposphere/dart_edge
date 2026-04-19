@@ -12,14 +12,23 @@ functions:
     - dart_edge_http_server_runtime_.*
   leaf:
     include:
+      - dart_edge_http_server_runtime_free_multipart_form
       - dart_edge_http_server_runtime_free_request
+      - dart_edge_http_server_runtime_free_string
+      - dart_edge_http_server_runtime_free_web_socket_connection
+      - dart_edge_http_server_runtime_free_web_socket_message
       - dart_edge_http_server_runtime_native_abi_version
 structs:
   include:
+    - NativeMultipartField
+    - NativeMultipartFile
+    - NativeMultipartForm
     - NativeTransportRequest
+    - NativeWebSocketConnection
+    - NativeWebSocketMessage
 typedefs:
   include:
-    - dart_edge_http_server_runtime_request_ready_callback_t
+    - dart_edge_http_server_runtime_transport_event_callback_t
 exclude-all-by-default: true
 sort: true
 use-supported-typedefs: true

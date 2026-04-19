@@ -9,7 +9,7 @@ import 'response_builder.dart';
 final class RequestContext<TServices> {
   RequestContext({
     required this.services,
-    this.req = const RequestInput(),
+    this.req = RequestInput.empty,
     this.telemetry = const RequestTelemetry(),
   });
 

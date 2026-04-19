@@ -1,4 +1,6 @@
 import '../http/raw_response.dart';
+import '../http/sse_event.dart';
+import '../http/sse_response.dart';
 
 /// Mutable per-request response builder exposed as `ctx.res`.
 ///
@@ -134,6 +136,23 @@ final class ResponseBuilder {
       body: body,
       isEncodedBody: true,
     );
+  }
+
+  /// Sends a server-sent events response.
+  SseResponse sse(
+    Stream<SseEvent> events, {
+    List<HttpHeader> headers = const <HttpHeader>[],
+  }) {
+    final response = SseResponse(
+      events: events,
+      status: _status ?? 200,
+      headers: [..._headers, ...headers],
+    );
+    _contentType = 'text/event-stream; charset=utf-8';
+    _hasExplicitContentType = true;
+    _isEncodedBody = false;
+    _setBody(response);
+    return response;
   }
 
   void _setBody(Object? body) {

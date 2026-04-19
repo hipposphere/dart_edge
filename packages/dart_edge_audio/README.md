@@ -33,10 +33,32 @@ Future<void> main() async {
 ## Main Types
 
 - `DartEdgeAudio` exposes stateless async probe and conversion helpers
+- `DartEdgeAudio.probeNativeBytes` and `DartEdgeAudio.convertNativeBytes`
+  accept borrowed `dart_edge_core` `NativeBytes` for zero-copy input handoff
 - `AudioMetadata` describes the decoded source or output asset
 - `AudioFileConversionRequest` and `AudioBytesConversionRequest` configure WAV
   conversion
 - `AudioTargetFormat` currently supports `wavPcm16` and `wavPcm24`
+
+## Native Bytes Fast Path
+
+When audio input already lives in native memory, for example as a borrowed
+request body from another Dart Edge runtime package, prefer the `NativeBytes`
+entrypoints from `dart_edge_core/ffi.dart` to avoid an extra Dart-side copy
+before the Rust audio worker runs.
+
+```dart
+import 'package:dart_edge_audio/dart_edge_audio.dart';
+import 'package:dart_edge_core/ffi.dart' as core_ffi;
+
+Future<AudioMetadata> inspectBorrowedAudio(core_ffi.NativeBytes bytes) {
+  return DartEdgeAudio.probeNativeBytes(
+    bytes,
+    fileNameHint: 'upload.mp3',
+    mimeTypeHint: 'audio/mpeg',
+  );
+}
+```
 
 ## Native Bindings
 

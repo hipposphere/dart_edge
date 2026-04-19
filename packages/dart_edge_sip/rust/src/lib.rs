@@ -8,7 +8,7 @@ use once_cell::sync::Lazy;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-const DART_EDGE_SIP_NATIVE_ABI_VERSION: i32 = 1;
+const DART_EDGE_SIP_NATIVE_ABI_VERSION: i32 = 3;
 const ERROR_BUFFER_LEN: usize = 1024;
 const SESSION_BUFFER_LEN: usize = 128;
 const STORAGE_BUFFER_LEN: usize = 1024;
@@ -104,6 +104,12 @@ struct NativeRecordingPayload {
 #[serde(rename_all = "camelCase")]
 struct NativeVoicemailPayload {
     mailbox: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct NativeMediaAppPayload {
+    media_app_id: String,
 }
 
 #[derive(Deserialize)]
@@ -266,13 +272,10 @@ impl PjsipRuntime {
         };
 
         let raw = unsafe {
-            dart_edge_sip_bridge_runtime_create(
-                &bridge_config,
-                error.as_mut_ptr(),
-                error.len(),
-            )
+            dart_edge_sip_bridge_runtime_create(&bridge_config, error.as_mut_ptr(), error.len())
         };
-        let raw = NonNull::new(raw).ok_or_else(|| error.message("Failed to create PJSIP runtime."))?;
+        let raw =
+            NonNull::new(raw).ok_or_else(|| error.message("Failed to create PJSIP runtime."))?;
         let mut runtime = Self { raw };
 
         for transport in &config.transports {
@@ -343,7 +346,9 @@ impl PjsipRuntime {
             password: password
                 .as_ref()
                 .map_or(std::ptr::null(), |value| value.as_ptr()),
-            realm: realm.as_ref().map_or(std::ptr::null(), |value| value.as_ptr()),
+            realm: realm
+                .as_ref()
+                .map_or(std::ptr::null(), |value| value.as_ptr()),
             direction: match trunk.direction.as_str() {
                 "inbound" => 0,
                 "outbound" => 1,
@@ -417,7 +422,11 @@ impl PjsipRuntime {
             .ok_or_else(|| "SIP bridge returned no call session ID.".to_string())
     }
 
-    fn answer_call(&mut self, session_id: &str, payload: &NativeStatusPayload) -> Result<(), String> {
+    fn answer_call(
+        &mut self,
+        session_id: &str,
+        payload: &NativeStatusPayload,
+    ) -> Result<(), String> {
         self.with_status_command(
             session_id,
             payload,
@@ -426,7 +435,11 @@ impl PjsipRuntime {
         )
     }
 
-    fn reject_call(&mut self, session_id: &str, payload: &NativeStatusPayload) -> Result<(), String> {
+    fn reject_call(
+        &mut self,
+        session_id: &str,
+        payload: &NativeStatusPayload,
+    ) -> Result<(), String> {
         self.with_status_command(
             session_id,
             payload,
@@ -435,7 +448,11 @@ impl PjsipRuntime {
         )
     }
 
-    fn hangup_call(&mut self, session_id: &str, payload: &NativeStatusPayload) -> Result<(), String> {
+    fn hangup_call(
+        &mut self,
+        session_id: &str,
+        payload: &NativeStatusPayload,
+    ) -> Result<(), String> {
         self.with_status_command(
             session_id,
             payload,
@@ -444,7 +461,11 @@ impl PjsipRuntime {
         )
     }
 
-    fn bridge_calls(&mut self, session_id: &str, payload: &NativeBridgePayload) -> Result<(), String> {
+    fn bridge_calls(
+        &mut self,
+        session_id: &str,
+        payload: &NativeBridgePayload,
+    ) -> Result<(), String> {
         let session_id = c_string(session_id)?;
         let other_call_id = c_string(&payload.other_call_id)?;
         let mut error = ErrorBuffer::new();
@@ -508,7 +529,11 @@ impl PjsipRuntime {
         }
     }
 
-    fn play_prompt(&mut self, session_id: &str, payload: &NativePromptPayload) -> Result<(), String> {
+    fn play_prompt(
+        &mut self,
+        session_id: &str,
+        payload: &NativePromptPayload,
+    ) -> Result<(), String> {
         let session_id = c_string(session_id)?;
         let prompt_id = c_string(&payload.prompt_id)?;
         let media_uri = optional_c_string(payload.media_uri.as_deref())?;
@@ -588,10 +613,124 @@ impl PjsipRuntime {
         Ok(read_fixed_c_string(&storage_uri).unwrap_or_default())
     }
 
+    fn attach_media_app(
+        &mut self,
+        session_id: &str,
+        payload: &NativeMediaAppPayload,
+    ) -> Result<(), String> {
+        let session_id = c_string(session_id)?;
+        let media_app_id = c_string(&payload.media_app_id)?;
+        let mut error = ErrorBuffer::new();
+        let ok = unsafe {
+            dart_edge_sip_bridge_attach_media_app(
+                self.raw.as_ptr(),
+                session_id.as_ptr(),
+                media_app_id.as_ptr(),
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if ok {
+            Ok(())
+        } else {
+            Err(error.message("Failed to attach SIP media app."))
+        }
+    }
+
+    fn detach_media_app(&mut self, session_id: &str) -> Result<(), String> {
+        self.with_session_command(
+            session_id,
+            dart_edge_sip_bridge_detach_media_app,
+            "Failed to detach SIP media app.",
+        )
+    }
+
+    fn poll_media_frame(
+        &mut self,
+        session_id: &str,
+    ) -> Result<Option<dart_edge_sip_audio_frame>, String> {
+        let session_id = c_string(session_id)?;
+        let mut bytes = vec![0_u8; 4096];
+        let mut bytes_written = 0_usize;
+        let mut sample_rate_hz = 0_u32;
+        let mut channels = 0_u32;
+        let mut frame_duration_ms = 0_u32;
+        let mut sequence = 0_u64;
+        let mut error = ErrorBuffer::new();
+        let ok = unsafe {
+            dart_edge_sip_bridge_read_media_frame(
+                self.raw.as_ptr(),
+                session_id.as_ptr(),
+                bytes.as_mut_ptr(),
+                bytes.len(),
+                &mut bytes_written,
+                &mut sample_rate_hz,
+                &mut channels,
+                &mut frame_duration_ms,
+                &mut sequence,
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if !ok {
+            return Err(error.message("Failed to read SIP media frame."));
+        }
+        if bytes_written == 0 {
+            return Ok(None);
+        }
+
+        bytes.truncate(bytes_written);
+        Ok(Some(dart_edge_sip_audio_frame {
+            bytes: into_native_owned_bytes(bytes),
+            encoding: 0,
+            sample_rate_hz,
+            channels,
+            frame_duration_ms,
+            sequence,
+        }))
+    }
+
+    fn play_media_copy(
+        &mut self,
+        session_id: &str,
+        bytes: &[u8],
+        sample_rate_hz: u32,
+        channels: u32,
+        frame_duration_ms: u32,
+    ) -> Result<(), String> {
+        let session_id = c_string(session_id)?;
+        let mut error = ErrorBuffer::new();
+        let ok = unsafe {
+            dart_edge_sip_bridge_play_raw_audio(
+                self.raw.as_ptr(),
+                session_id.as_ptr(),
+                bytes.as_ptr(),
+                bytes.len(),
+                sample_rate_hz,
+                channels,
+                frame_duration_ms,
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if ok {
+            Ok(())
+        } else {
+            Err(error.message("Failed to play SIP media audio."))
+        }
+    }
+
+    fn clear_media_playback(&mut self, session_id: &str) -> Result<(), String> {
+        self.with_session_command(
+            session_id,
+            dart_edge_sip_bridge_clear_raw_audio,
+            "Failed to clear SIP media playback.",
+        )
+    }
+
     fn poll_event(&mut self) -> Option<Value> {
         let mut event = dart_edge_sip_bridge_event::default();
-        let has_event =
-            unsafe { dart_edge_sip_bridge_poll_event(self.raw.as_ptr(), &mut event) };
+        let has_event = unsafe { dart_edge_sip_bridge_poll_event(self.raw.as_ptr(), &mut event) };
         if !has_event {
             return None;
         }
@@ -619,7 +758,11 @@ impl PjsipRuntime {
                 error.len(),
             )
         };
-        if ok { Ok(()) } else { Err(error.message(context)) }
+        if ok {
+            Ok(())
+        } else {
+            Err(error.message(context))
+        }
     }
 
     fn with_status_command(
@@ -644,12 +787,18 @@ impl PjsipRuntime {
                 self.raw.as_ptr(),
                 session_id.as_ptr(),
                 payload.status.unwrap_or(200),
-                reason.as_ref().map_or(std::ptr::null(), |value| value.as_ptr()),
+                reason
+                    .as_ref()
+                    .map_or(std::ptr::null(), |value| value.as_ptr()),
                 error.as_mut_ptr(),
                 error.len(),
             )
         };
-        if ok { Ok(()) } else { Err(error.message(context)) }
+        if ok {
+            Ok(())
+        } else {
+            Err(error.message(context))
+        }
     }
 }
 
@@ -834,8 +983,18 @@ pub extern "C" fn dart_edge_sip_issue_command(
             .and_then(|payload| runtime.start_recording(required_session_id(session_id)?, &payload))
             .map(|storage_uri| json!({ "ok": true, "storageUri": storage_uri })),
         "sendToVoicemail" => parse_payload::<NativeVoicemailPayload>(payload)
-            .and_then(|payload| runtime.send_to_voicemail(required_session_id(session_id)?, &payload))
+            .and_then(|payload| {
+                runtime.send_to_voicemail(required_session_id(session_id)?, &payload)
+            })
             .map(|storage_uri| json!({ "ok": true, "storageUri": storage_uri })),
+        "attachMediaApp" => parse_payload::<NativeMediaAppPayload>(payload)
+            .and_then(|payload| {
+                runtime.attach_media_app(required_session_id(session_id)?, &payload)
+            })
+            .map(|()| json!({ "ok": true })),
+        "detachMediaApp" => required_session_id(session_id)
+            .and_then(|session_id| runtime.detach_media_app(session_id))
+            .map(|()| json!({ "ok": true })),
         "hangup" => parse_payload::<NativeStatusPayload>(payload)
             .and_then(|payload| runtime.hangup_call(required_session_id(session_id)?, &payload))
             .map(|()| json!({ "ok": true })),
@@ -893,6 +1052,189 @@ pub extern "C" fn dart_edge_sip_free_string(value: *mut c_char) {
     }
 }
 
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_sip_poll_media_frame(
+    handle: i64,
+    session_id: *const c_char,
+    frame_out: *mut dart_edge_sip_audio_frame,
+) -> bool {
+    if frame_out.is_null() {
+        set_last_error("Missing dart_edge_sip media frame output buffer.");
+        return false;
+    }
+    unsafe {
+        *frame_out = dart_edge_sip_audio_frame::default();
+    }
+
+    let Some(session_id) = (unsafe { read_c_string(session_id) }) else {
+        set_last_error("Missing SIP media session ID.");
+        return false;
+    };
+
+    let mut servers = SERVERS.lock().unwrap();
+    let Some(server) = servers.get_mut(&handle) else {
+        set_last_error("Unknown dart_edge_sip handle.");
+        return false;
+    };
+    let Some(runtime) = server.runtime.as_mut() else {
+        set_last_error("dart_edge_sip is not started.");
+        return false;
+    };
+
+    match runtime.poll_media_frame(&session_id) {
+        Ok(Some(frame)) => {
+            unsafe {
+                *frame_out = frame;
+            }
+            clear_last_error();
+            true
+        }
+        Ok(None) => {
+            clear_last_error();
+            true
+        }
+        Err(error) => {
+            set_last_error(error);
+            false
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_sip_play_media_copy(
+    handle: i64,
+    session_id: *const c_char,
+    bytes: *const u8,
+    len: isize,
+    sample_rate_hz: u32,
+    channels: u32,
+    frame_duration_ms: u32,
+) -> bool {
+    let Some(session_id) = (unsafe { read_c_string(session_id) }) else {
+        set_last_error("Missing SIP media session ID.");
+        return false;
+    };
+    let Some(bytes) = (unsafe { read_byte_slice(bytes, len) }) else {
+        set_last_error("Missing SIP media audio bytes.");
+        return false;
+    };
+
+    let mut servers = SERVERS.lock().unwrap();
+    let Some(server) = servers.get_mut(&handle) else {
+        set_last_error("Unknown dart_edge_sip handle.");
+        return false;
+    };
+    let Some(runtime) = server.runtime.as_mut() else {
+        set_last_error("dart_edge_sip is not started.");
+        return false;
+    };
+
+    match runtime.play_media_copy(
+        &session_id,
+        bytes,
+        sample_rate_hz,
+        channels,
+        frame_duration_ms,
+    ) {
+        Ok(()) => {
+            clear_last_error();
+            true
+        }
+        Err(error) => {
+            set_last_error(error);
+            false
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_sip_play_media_owned(
+    handle: i64,
+    session_id: *const c_char,
+    bytes: NativeOwnedBytes,
+    sample_rate_hz: u32,
+    channels: u32,
+    frame_duration_ms: u32,
+) -> bool {
+    let result = (|| {
+        let Some(session_id) = (unsafe { read_c_string(session_id) }) else {
+            return Err("Missing SIP media session ID.".to_string());
+        };
+        let Some(bytes) = (unsafe { read_byte_slice(bytes.ptr.cast_const(), bytes.len) }) else {
+            return Err("Missing SIP media audio bytes.".to_string());
+        };
+
+        let mut servers = SERVERS.lock().unwrap();
+        let Some(server) = servers.get_mut(&handle) else {
+            return Err("Unknown dart_edge_sip handle.".to_string());
+        };
+        let Some(runtime) = server.runtime.as_mut() else {
+            return Err("dart_edge_sip is not started.".to_string());
+        };
+
+        runtime.play_media_copy(
+            &session_id,
+            bytes,
+            sample_rate_hz,
+            channels,
+            frame_duration_ms,
+        )
+    })();
+    unsafe {
+        free_owned_bytes(bytes);
+    }
+
+    match result {
+        Ok(()) => {
+            clear_last_error();
+            true
+        }
+        Err(error) => {
+            set_last_error(error);
+            false
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_sip_clear_media_playback(
+    handle: i64,
+    session_id: *const c_char,
+) -> bool {
+    let Some(session_id) = (unsafe { read_c_string(session_id) }) else {
+        set_last_error("Missing SIP media session ID.");
+        return false;
+    };
+
+    let mut servers = SERVERS.lock().unwrap();
+    let Some(server) = servers.get_mut(&handle) else {
+        set_last_error("Unknown dart_edge_sip handle.");
+        return false;
+    };
+    let Some(runtime) = server.runtime.as_mut() else {
+        set_last_error("dart_edge_sip is not started.");
+        return false;
+    };
+
+    match runtime.clear_media_playback(&session_id) {
+        Ok(()) => {
+            clear_last_error();
+            true
+        }
+        Err(error) => {
+            set_last_error(error);
+            false
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_sip_free_owned_bytes(value: NativeOwnedBytes) {
+    unsafe {
+        free_owned_bytes(value);
+    }
+}
+
 fn validate_config(config: &NativeSipServerConfig) -> Result<(), String> {
     if config.engine.kind != "pjsip" {
         return Err(format!(
@@ -924,11 +1266,29 @@ fn validate_config(config: &NativeSipServerConfig) -> Result<(), String> {
     if config.media.rtp_start_port > config.media.rtp_end_port {
         return Err("media.rtpStartPort must not be greater than media.rtpEndPort.".to_string());
     }
-    if config.recordings.enabled && config.recordings.directory.as_deref().unwrap_or("").is_empty() {
-        return Err("Recording storage is enabled but no recording directory was configured.".to_string());
+    if config.recordings.enabled
+        && config
+            .recordings
+            .directory
+            .as_deref()
+            .unwrap_or("")
+            .is_empty()
+    {
+        return Err(
+            "Recording storage is enabled but no recording directory was configured.".to_string(),
+        );
     }
-    if config.voicemail.enabled && config.voicemail.directory.as_deref().unwrap_or("").is_empty() {
-        return Err("Voicemail storage is enabled but no voicemail directory was configured.".to_string());
+    if config.voicemail.enabled
+        && config
+            .voicemail
+            .directory
+            .as_deref()
+            .unwrap_or("")
+            .is_empty()
+    {
+        return Err(
+            "Voicemail storage is enabled but no voicemail directory was configured.".to_string(),
+        );
     }
 
     let mut trunk_ids = HashSet::new();
@@ -1008,20 +1368,25 @@ fn bridge_event_to_json(event: &dart_edge_sip_bridge_event) -> Value {
     match event.kind {
         BRIDGE_EVENT_REGISTRATION => {
             let mut json = serde_json::Map::new();
-            json.insert("category".to_string(), Value::String("registration".to_string()));
+            json.insert(
+                "category".to_string(),
+                Value::String("registration".to_string()),
+            );
             json.insert(
                 "endpointId".to_string(),
                 Value::String(string_or_empty(&event.endpoint_id)),
             );
             json.insert(
                 "state".to_string(),
-                Value::String(match event.registration_state {
-                    BRIDGE_REGISTRATION_REGISTERED => "registered",
-                    BRIDGE_REGISTRATION_UNREGISTERED => "unregistered",
-                    BRIDGE_REGISTRATION_AUTHENTICATION_FAILED => "authenticationFailed",
-                    _ => "unregistered",
-                }
-                .to_string()),
+                Value::String(
+                    match event.registration_state {
+                        BRIDGE_REGISTRATION_REGISTERED => "registered",
+                        BRIDGE_REGISTRATION_UNREGISTERED => "unregistered",
+                        BRIDGE_REGISTRATION_AUTHENTICATION_FAILED => "authenticationFailed",
+                        _ => "unregistered",
+                    }
+                    .to_string(),
+                ),
             );
             maybe_insert_string(&mut json, "contactUri", &event.contact_uri);
             Value::Object(json)
@@ -1035,13 +1400,15 @@ fn bridge_event_to_json(event: &dart_edge_sip_bridge_event) -> Value {
             );
             json.insert(
                 "state".to_string(),
-                Value::String(match event.trunk_state {
-                    BRIDGE_TRUNK_CONNECTED => "connected",
-                    BRIDGE_TRUNK_DISCONNECTED => "disconnected",
-                    BRIDGE_TRUNK_FAILED => "failed",
-                    _ => "failed",
-                }
-                .to_string()),
+                Value::String(
+                    match event.trunk_state {
+                        BRIDGE_TRUNK_CONNECTED => "connected",
+                        BRIDGE_TRUNK_DISCONNECTED => "disconnected",
+                        BRIDGE_TRUNK_FAILED => "failed",
+                        _ => "failed",
+                    }
+                    .to_string(),
+                ),
             );
             maybe_insert_string(&mut json, "details", &event.details);
             json.insert(
@@ -1054,7 +1421,10 @@ fn bridge_event_to_json(event: &dart_edge_sip_bridge_event) -> Value {
         }
         BRIDGE_EVENT_RECORDING => {
             let mut json = serde_json::Map::new();
-            json.insert("category".to_string(), Value::String("recording".to_string()));
+            json.insert(
+                "category".to_string(),
+                Value::String("recording".to_string()),
+            );
             json.insert(
                 "callId".to_string(),
                 Value::String(string_or_empty(&event.call_id)),
@@ -1065,20 +1435,25 @@ fn bridge_event_to_json(event: &dart_edge_sip_bridge_event) -> Value {
             );
             json.insert(
                 "state".to_string(),
-                Value::String(match event.recording_state {
-                    BRIDGE_RECORDING_STARTED => "started",
-                    BRIDGE_RECORDING_STOPPED => "stopped",
-                    BRIDGE_RECORDING_COMPLETED => "completed",
-                    _ => "completed",
-                }
-                .to_string()),
+                Value::String(
+                    match event.recording_state {
+                        BRIDGE_RECORDING_STARTED => "started",
+                        BRIDGE_RECORDING_STOPPED => "stopped",
+                        BRIDGE_RECORDING_COMPLETED => "completed",
+                        _ => "completed",
+                    }
+                    .to_string(),
+                ),
             );
             maybe_insert_string(&mut json, "storageUri", &event.storage_uri);
             Value::Object(json)
         }
         BRIDGE_EVENT_VOICEMAIL => {
             let mut json = serde_json::Map::new();
-            json.insert("category".to_string(), Value::String("voicemail".to_string()));
+            json.insert(
+                "category".to_string(),
+                Value::String("voicemail".to_string()),
+            );
             json.insert(
                 "callId".to_string(),
                 Value::String(string_or_empty(&event.call_id)),
@@ -1089,13 +1464,15 @@ fn bridge_event_to_json(event: &dart_edge_sip_bridge_event) -> Value {
             );
             json.insert(
                 "state".to_string(),
-                Value::String(match event.voicemail_state {
-                    BRIDGE_VOICEMAIL_QUEUED => "queued",
-                    BRIDGE_VOICEMAIL_STORED => "stored",
-                    BRIDGE_VOICEMAIL_FAILED => "failed",
-                    _ => "failed",
-                }
-                .to_string()),
+                Value::String(
+                    match event.voicemail_state {
+                        BRIDGE_VOICEMAIL_QUEUED => "queued",
+                        BRIDGE_VOICEMAIL_STORED => "stored",
+                        BRIDGE_VOICEMAIL_FAILED => "failed",
+                        _ => "failed",
+                    }
+                    .to_string(),
+                ),
             );
             maybe_insert_string(&mut json, "messageId", &event.message_id);
             maybe_insert_string(&mut json, "storageUri", &event.storage_uri);
@@ -1118,18 +1495,20 @@ fn bridge_event_to_json(event: &dart_edge_sip_bridge_event) -> Value {
             );
             json.insert(
                 "state".to_string(),
-                Value::String(match event.call_state {
-                    BRIDGE_CALL_INVITING => "inviting",
-                    BRIDGE_CALL_RINGING => "ringing",
-                    BRIDGE_CALL_ESTABLISHED => "established",
-                    BRIDGE_CALL_BRIDGED => "bridged",
-                    BRIDGE_CALL_ON_HOLD => "onHold",
-                    BRIDGE_CALL_TRANSFERRING => "transferring",
-                    BRIDGE_CALL_REJECTED => "rejected",
-                    BRIDGE_CALL_TERMINATED => "terminated",
-                    _ => "terminated",
-                }
-                .to_string()),
+                Value::String(
+                    match event.call_state {
+                        BRIDGE_CALL_INVITING => "inviting",
+                        BRIDGE_CALL_RINGING => "ringing",
+                        BRIDGE_CALL_ESTABLISHED => "established",
+                        BRIDGE_CALL_BRIDGED => "bridged",
+                        BRIDGE_CALL_ON_HOLD => "onHold",
+                        BRIDGE_CALL_TRANSFERRING => "transferring",
+                        BRIDGE_CALL_REJECTED => "rejected",
+                        BRIDGE_CALL_TERMINATED => "terminated",
+                        _ => "terminated",
+                    }
+                    .to_string(),
+                ),
             );
             maybe_insert_string(&mut json, "fromUri", &event.from_uri);
             maybe_insert_string(&mut json, "toUri", &event.to_uri);
@@ -1161,7 +1540,10 @@ fn c_string(value: &str) -> Result<CString, String> {
 }
 
 fn optional_c_string(value: Option<&str>) -> Result<Option<CString>, String> {
-    value.filter(|value| !value.is_empty()).map(c_string).transpose()
+    value
+        .filter(|value| !value.is_empty())
+        .map(c_string)
+        .transpose()
 }
 
 fn read_fixed_c_string<const N: usize>(value: &[c_char; N]) -> Option<String> {
@@ -1188,15 +1570,54 @@ fn clear_last_error() {
 
 fn set_last_error(message: impl Into<String>) {
     let message = message.into();
-    *LAST_ERROR.lock().unwrap() =
-        CString::new(message).ok().or_else(|| CString::new("dart_edge_sip native error").ok());
+    *LAST_ERROR.lock().unwrap() = CString::new(message)
+        .ok()
+        .or_else(|| CString::new("dart_edge_sip native error").ok());
 }
 
 unsafe fn read_c_string(value: *const c_char) -> Option<String> {
     if value.is_null() {
         return None;
     }
-    Some(unsafe { CStr::from_ptr(value) }.to_string_lossy().into_owned())
+    Some(
+        unsafe { CStr::from_ptr(value) }
+            .to_string_lossy()
+            .into_owned(),
+    )
+}
+
+unsafe fn read_byte_slice<'a>(value: *const u8, len: isize) -> Option<&'a [u8]> {
+    if len < 0 {
+        return None;
+    }
+    if len == 0 {
+        return Some(&[]);
+    }
+    if value.is_null() {
+        return None;
+    }
+    Some(unsafe { std::slice::from_raw_parts(value, len as usize) })
+}
+
+fn into_native_owned_bytes(bytes: Vec<u8>) -> NativeOwnedBytes {
+    let mut boxed_bytes = bytes.into_boxed_slice();
+    let native_bytes = NativeOwnedBytes {
+        ptr: boxed_bytes.as_mut_ptr(),
+        len: boxed_bytes.len() as isize,
+    };
+    std::mem::forget(boxed_bytes);
+    native_bytes
+}
+
+unsafe fn free_owned_bytes(value: NativeOwnedBytes) {
+    if value.ptr.is_null() {
+        return;
+    }
+
+    let slice = std::ptr::slice_from_raw_parts_mut(value.ptr, value.len as usize);
+    unsafe {
+        let _ = Box::<[u8]>::from_raw(slice);
+    }
 }
 
 struct ErrorBuffer {
@@ -1220,6 +1641,46 @@ impl ErrorBuffer {
 
     fn message(&self, fallback: &str) -> String {
         read_fixed_c_string(&self.bytes).unwrap_or_else(|| fallback.to_string())
+    }
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct NativeOwnedBytes {
+    pub ptr: *mut u8,
+    pub len: isize,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct dart_edge_sip_audio_frame {
+    pub bytes: NativeOwnedBytes,
+    pub encoding: i32,
+    pub sample_rate_hz: u32,
+    pub channels: u32,
+    pub frame_duration_ms: u32,
+    pub sequence: u64,
+}
+
+impl Default for NativeOwnedBytes {
+    fn default() -> Self {
+        Self {
+            ptr: std::ptr::null_mut(),
+            len: 0,
+        }
+    }
+}
+
+impl Default for dart_edge_sip_audio_frame {
+    fn default() -> Self {
+        Self {
+            bytes: NativeOwnedBytes::default(),
+            encoding: 0,
+            sample_rate_hz: 0,
+            channels: 0,
+            frame_duration_ms: 0,
+            sequence: 0,
+        }
     }
 }
 
@@ -1434,5 +1895,53 @@ unsafe extern "C" {
     fn dart_edge_sip_bridge_poll_event(
         runtime: *mut dart_edge_sip_bridge_runtime,
         event_out: *mut dart_edge_sip_bridge_event,
+    ) -> bool;
+
+    fn dart_edge_sip_bridge_attach_media_app(
+        runtime: *mut dart_edge_sip_bridge_runtime,
+        session_id: *const c_char,
+        media_app_id: *const c_char,
+        error: *mut c_char,
+        error_len: usize,
+    ) -> bool;
+
+    fn dart_edge_sip_bridge_detach_media_app(
+        runtime: *mut dart_edge_sip_bridge_runtime,
+        session_id: *const c_char,
+        error: *mut c_char,
+        error_len: usize,
+    ) -> bool;
+
+    fn dart_edge_sip_bridge_read_media_frame(
+        runtime: *mut dart_edge_sip_bridge_runtime,
+        session_id: *const c_char,
+        buffer: *mut u8,
+        buffer_len: usize,
+        bytes_written: *mut usize,
+        sample_rate_hz: *mut u32,
+        channels: *mut u32,
+        frame_duration_ms: *mut u32,
+        sequence: *mut u64,
+        error: *mut c_char,
+        error_len: usize,
+    ) -> bool;
+
+    fn dart_edge_sip_bridge_play_raw_audio(
+        runtime: *mut dart_edge_sip_bridge_runtime,
+        session_id: *const c_char,
+        bytes: *const u8,
+        bytes_len: usize,
+        sample_rate_hz: u32,
+        channels: u32,
+        frame_duration_ms: u32,
+        error: *mut c_char,
+        error_len: usize,
+    ) -> bool;
+
+    fn dart_edge_sip_bridge_clear_raw_audio(
+        runtime: *mut dart_edge_sip_bridge_runtime,
+        session_id: *const c_char,
+        error: *mut c_char,
+        error_len: usize,
     ) -> bool;
 }

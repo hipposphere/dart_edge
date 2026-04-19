@@ -11,6 +11,12 @@
 #include <pjsua-lib/pjsua.h>
 
 #define DART_EDGE_SIP_BRIDGE_MAX_EVENTS 256
+#define DART_EDGE_SIP_MEDIA_SAMPLE_RATE_HZ 16000
+#define DART_EDGE_SIP_MEDIA_CHANNELS 1
+#define DART_EDGE_SIP_MEDIA_FRAME_DURATION_MS 20
+#define DART_EDGE_SIP_MEDIA_BITS_PER_SAMPLE 16
+#define DART_EDGE_SIP_MEDIA_CAPTURE_BUFFER_BYTES 160000
+#define DART_EDGE_SIP_MEDIA_PLAYBACK_BUFFER_BYTES 960000
 
 typedef struct {
   int32_t protocol;
@@ -40,6 +46,7 @@ typedef struct {
   bool has_player;
   bool has_recorder;
   bool has_voicemail_recorder;
+  bool media_session_active;
   pjsua_player_id player_id;
   pjsua_recorder_id recorder_id;
   pjsua_recorder_id voicemail_recorder_id;
@@ -50,7 +57,35 @@ typedef struct {
   char mailbox[128];
   char voicemail_path[1024];
   char voicemail_message_id[128];
+  char media_app_id[128];
+  uint64_t media_frame_sequence;
 } dart_edge_sip_bridge_call_slot;
+
+typedef struct {
+  bool initialized;
+  pthread_mutex_t mutex;
+  uint8_t* bytes;
+  size_t capacity;
+  size_t start;
+  size_t length;
+} dart_edge_sip_audio_ring;
+
+typedef struct {
+  pjmedia_port base;
+  dart_edge_sip_audio_ring ring;
+  bool* active;
+  bool capture;
+} dart_edge_sip_stream_port;
+
+typedef struct {
+  bool ports_registered;
+  bool ports_connected;
+  pjsua_conf_port_id call_port_id;
+  pjsua_conf_port_id inbound_port_id;
+  pjsua_conf_port_id outbound_port_id;
+  dart_edge_sip_stream_port* inbound_port;
+  dart_edge_sip_stream_port* outbound_port;
+} dart_edge_sip_bridge_media_slot;
 
 struct dart_edge_sip_bridge_runtime {
   dart_edge_sip_bridge_config config;
@@ -59,6 +94,7 @@ struct dart_edge_sip_bridge_runtime {
   dart_edge_sip_bridge_trunk_entry trunks[PJSUA_MAX_ACC];
   size_t trunk_count;
   pjsua_acc_id default_account_id;
+  pj_pool_t* media_pool;
   bool started;
   bool shutting_down;
   pthread_mutex_t event_mutex;
@@ -66,9 +102,19 @@ struct dart_edge_sip_bridge_runtime {
   size_t event_head;
   size_t event_count;
   dart_edge_sip_bridge_call_slot calls[PJSUA_MAX_CALLS];
+  dart_edge_sip_bridge_media_slot media[PJSUA_MAX_CALLS];
 };
 
 static dart_edge_sip_bridge_runtime* g_active_runtime = NULL;
+
+static void clear_media_streams(dart_edge_sip_bridge_media_slot* media_slot);
+static void destroy_media_slots(dart_edge_sip_bridge_runtime* runtime);
+static bool ensure_media_ports_connected(
+    dart_edge_sip_bridge_runtime* runtime,
+    pjsua_call_id call_id,
+    dart_edge_sip_bridge_call_slot* slot,
+    char* error,
+    size_t error_len);
 
 static void clear_event(dart_edge_sip_bridge_event* event) {
   memset(event, 0, sizeof(*event));
@@ -218,6 +264,25 @@ static void reset_slot(dart_edge_sip_bridge_call_slot* slot) {
   slot->voicemail_recorder_id = PJSUA_INVALID_ID;
 }
 
+static void reset_media_slot(dart_edge_sip_bridge_media_slot* slot) {
+  if (slot == NULL) {
+    return;
+  }
+  memset(slot, 0, sizeof(*slot));
+  slot->call_port_id = PJSUA_INVALID_ID;
+  slot->inbound_port_id = PJSUA_INVALID_ID;
+  slot->outbound_port_id = PJSUA_INVALID_ID;
+}
+
+static dart_edge_sip_bridge_media_slot* media_slot_for_call(
+    dart_edge_sip_bridge_runtime* runtime,
+    pjsua_call_id call_id) {
+  if (runtime == NULL || call_id < 0 || call_id >= PJSUA_MAX_CALLS) {
+    return NULL;
+  }
+  return &runtime->media[call_id];
+}
+
 static void push_event(
     dart_edge_sip_bridge_runtime* runtime,
     const dart_edge_sip_bridge_event* event) {
@@ -330,6 +395,10 @@ static void fill_call_event(
   } else {
     copy_pj_str(event->to_uri, sizeof(event->to_uri), info.remote_info);
   }
+
+  if (slot != NULL && slot->media_app_id[0] != '\0') {
+    copy_text(event->media_app_id, sizeof(event->media_app_id), slot->media_app_id);
+  }
 }
 
 static void emit_call_state(dart_edge_sip_bridge_runtime* runtime, pjsua_call_id call_id) {
@@ -438,6 +507,15 @@ static void cleanup_slot_media(
     slot->has_voicemail_recorder = false;
     slot->voicemail_recorder_id = PJSUA_INVALID_ID;
   }
+
+  dart_edge_sip_bridge_media_slot* media_slot = media_slot_for_call(runtime, call_id);
+  if (media_slot != NULL) {
+    clear_media_streams(media_slot);
+  }
+
+  slot->media_frame_sequence = 0;
+  slot->media_session_active = false;
+  slot->media_app_id[0] = '\0';
 }
 
 static void on_call_state(pjsua_call_id call_id, pjsip_event* event) {
@@ -454,8 +532,14 @@ static void on_call_state(pjsua_call_id call_id, pjsip_event* event) {
     return;
   }
 
+  dart_edge_sip_bridge_call_slot* slot = slot_for_call(runtime, call_id);
+  if (slot != NULL && slot->occupied && slot->media_session_active &&
+      info.state == PJSIP_INV_STATE_CONFIRMED) {
+    char ignored_error[256];
+    ensure_media_ports_connected(runtime, call_id, slot, ignored_error, sizeof(ignored_error));
+  }
+
   if (info.state == PJSIP_INV_STATE_DISCONNECTED) {
-    dart_edge_sip_bridge_call_slot* slot = slot_for_call(runtime, call_id);
     if (slot != NULL && slot->occupied) {
       cleanup_slot_media(runtime, call_id, slot);
       reset_slot(slot);
@@ -705,6 +789,420 @@ static bool create_recording_path(
   return true;
 }
 
+static size_t media_bytes_per_frame(uint32_t sample_rate_hz, uint32_t channels) {
+  return (size_t)((sample_rate_hz * DART_EDGE_SIP_MEDIA_FRAME_DURATION_MS) / 1000) *
+      channels * (DART_EDGE_SIP_MEDIA_BITS_PER_SAMPLE / 8);
+}
+
+static size_t media_samples_per_frame(uint32_t sample_rate_hz, uint32_t channels) {
+  return (size_t)((sample_rate_hz * DART_EDGE_SIP_MEDIA_FRAME_DURATION_MS) / 1000) * channels;
+}
+
+static bool audio_ring_init(dart_edge_sip_audio_ring* ring, size_t capacity) {
+  if (ring == NULL || capacity == 0) {
+    return false;
+  }
+  memset(ring, 0, sizeof(*ring));
+  ring->bytes = (uint8_t*)malloc(capacity);
+  if (ring->bytes == NULL) {
+    return false;
+  }
+  if (pthread_mutex_init(&ring->mutex, NULL) != 0) {
+    free(ring->bytes);
+    ring->bytes = NULL;
+    return false;
+  }
+  ring->capacity = capacity;
+  ring->initialized = true;
+  return true;
+}
+
+static void audio_ring_destroy(dart_edge_sip_audio_ring* ring) {
+  if (ring == NULL || !ring->initialized) {
+    return;
+  }
+  pthread_mutex_destroy(&ring->mutex);
+  free(ring->bytes);
+  memset(ring, 0, sizeof(*ring));
+}
+
+static void audio_ring_clear(dart_edge_sip_audio_ring* ring) {
+  if (ring == NULL || !ring->initialized) {
+    return;
+  }
+  pthread_mutex_lock(&ring->mutex);
+  ring->start = 0;
+  ring->length = 0;
+  pthread_mutex_unlock(&ring->mutex);
+}
+
+static void copy_from_ring(
+    const dart_edge_sip_audio_ring* ring,
+    size_t offset,
+    uint8_t* destination,
+    size_t count) {
+  if (count == 0) {
+    return;
+  }
+  size_t first = ring->capacity - offset;
+  if (first > count) {
+    first = count;
+  }
+  memcpy(destination, ring->bytes + offset, first);
+  if (first < count) {
+    memcpy(destination + first, ring->bytes, count - first);
+  }
+}
+
+static void copy_into_ring(
+    dart_edge_sip_audio_ring* ring,
+    size_t offset,
+    const uint8_t* source,
+    size_t count) {
+  if (count == 0) {
+    return;
+  }
+  size_t first = ring->capacity - offset;
+  if (first > count) {
+    first = count;
+  }
+  memcpy(ring->bytes + offset, source, first);
+  if (first < count) {
+    memcpy(ring->bytes, source + first, count - first);
+  }
+}
+
+static size_t audio_ring_write(
+    dart_edge_sip_audio_ring* ring,
+    const uint8_t* bytes,
+    size_t bytes_len) {
+  if (ring == NULL || !ring->initialized || bytes == NULL || bytes_len == 0) {
+    return 0;
+  }
+  pthread_mutex_lock(&ring->mutex);
+
+  if (bytes_len >= ring->capacity) {
+    bytes += bytes_len - ring->capacity;
+    bytes_len = ring->capacity;
+    ring->start = 0;
+    ring->length = 0;
+  }
+
+  size_t available = ring->capacity - ring->length;
+  if (available < bytes_len) {
+    size_t to_drop = bytes_len - available;
+    ring->start = (ring->start + to_drop) % ring->capacity;
+    ring->length -= to_drop;
+  }
+
+  size_t write_offset = (ring->start + ring->length) % ring->capacity;
+  copy_into_ring(ring, write_offset, bytes, bytes_len);
+  ring->length += bytes_len;
+
+  pthread_mutex_unlock(&ring->mutex);
+  return bytes_len;
+}
+
+static bool audio_ring_read_exact(
+    dart_edge_sip_audio_ring* ring,
+    uint8_t* destination,
+    size_t bytes_len) {
+  if (ring == NULL || !ring->initialized || destination == NULL || bytes_len == 0) {
+    return false;
+  }
+
+  pthread_mutex_lock(&ring->mutex);
+  if (ring->length < bytes_len) {
+    pthread_mutex_unlock(&ring->mutex);
+    return false;
+  }
+
+  copy_from_ring(ring, ring->start, destination, bytes_len);
+  ring->start = (ring->start + bytes_len) % ring->capacity;
+  ring->length -= bytes_len;
+  pthread_mutex_unlock(&ring->mutex);
+  return true;
+}
+
+static size_t audio_ring_read_padded(
+    dart_edge_sip_audio_ring* ring,
+    uint8_t* destination,
+    size_t bytes_len) {
+  if (ring == NULL || !ring->initialized || destination == NULL || bytes_len == 0) {
+    return 0;
+  }
+
+  pthread_mutex_lock(&ring->mutex);
+  size_t count = ring->length < bytes_len ? ring->length : bytes_len;
+  if (count > 0) {
+    copy_from_ring(ring, ring->start, destination, count);
+    ring->start = (ring->start + count) % ring->capacity;
+    ring->length -= count;
+  }
+  pthread_mutex_unlock(&ring->mutex);
+
+  if (count < bytes_len) {
+    memset(destination + count, 0, bytes_len - count);
+  }
+  return count;
+}
+
+static pj_status_t media_capture_port_put_frame(
+    pjmedia_port* this_port,
+    pjmedia_frame* frame) {
+  if (this_port == NULL || frame == NULL || frame->buf == NULL || frame->size == 0) {
+    return PJ_SUCCESS;
+  }
+
+  dart_edge_sip_stream_port* port = (dart_edge_sip_stream_port*)this_port;
+  if (!port->capture || port->active == NULL || !*port->active ||
+      frame->type != PJMEDIA_FRAME_TYPE_AUDIO) {
+    return PJ_SUCCESS;
+  }
+
+  audio_ring_write(&port->ring, (const uint8_t*)frame->buf, (size_t)frame->size);
+  return PJ_SUCCESS;
+}
+
+static pj_status_t media_playback_port_get_frame(
+    pjmedia_port* this_port,
+    pjmedia_frame* frame) {
+  if (this_port == NULL || frame == NULL || frame->buf == NULL) {
+    return PJ_EINVAL;
+  }
+
+  dart_edge_sip_stream_port* port = (dart_edge_sip_stream_port*)this_port;
+  if (port->capture) {
+    return PJ_EINVAL;
+  }
+
+  size_t frame_bytes = PJMEDIA_PIA_AVG_FSZ(&this_port->info);
+  if ((size_t)frame->size < frame_bytes) {
+    return PJ_ETOOSMALL;
+  }
+
+  frame->type = PJMEDIA_FRAME_TYPE_AUDIO;
+  frame->size = frame_bytes;
+  if (port->active == NULL || !*port->active) {
+    memset(frame->buf, 0, frame_bytes);
+    return PJ_SUCCESS;
+  }
+
+  audio_ring_read_padded(&port->ring, (uint8_t*)frame->buf, frame_bytes);
+  return PJ_SUCCESS;
+}
+
+static dart_edge_sip_stream_port* create_stream_port(
+    const char* name,
+    unsigned signature,
+    bool capture,
+    bool* active,
+    size_t ring_capacity,
+    char* error,
+    size_t error_len) {
+  dart_edge_sip_stream_port* port =
+      (dart_edge_sip_stream_port*)calloc(1, sizeof(*port));
+  if (port == NULL) {
+    store_error(error, error_len, "Failed to allocate SIP media stream port.");
+    return NULL;
+  }
+  if (!audio_ring_init(&port->ring, ring_capacity)) {
+    free(port);
+    store_error(error, error_len, "Failed to allocate SIP media ring buffer.");
+    return NULL;
+  }
+
+  pj_str_t port_name = pj_str((char*)(name == NULL ? "dartEdgeMedia" : name));
+  pj_status_t status = pjmedia_port_info_init(
+      &port->base.info,
+      &port_name,
+      signature,
+      DART_EDGE_SIP_MEDIA_SAMPLE_RATE_HZ,
+      DART_EDGE_SIP_MEDIA_CHANNELS,
+      DART_EDGE_SIP_MEDIA_BITS_PER_SAMPLE,
+      (unsigned)media_samples_per_frame(
+          DART_EDGE_SIP_MEDIA_SAMPLE_RATE_HZ,
+          DART_EDGE_SIP_MEDIA_CHANNELS));
+  if (status != PJ_SUCCESS) {
+    audio_ring_destroy(&port->ring);
+    free(port);
+    store_status_error(error, error_len, "Failed to initialize SIP media stream port", status);
+    return NULL;
+  }
+
+  port->active = active;
+  port->capture = capture;
+  if (capture) {
+    port->base.put_frame = &media_capture_port_put_frame;
+  } else {
+    port->base.get_frame = &media_playback_port_get_frame;
+  }
+  return port;
+}
+
+static void destroy_stream_port(dart_edge_sip_stream_port* port) {
+  if (port == NULL) {
+    return;
+  }
+  audio_ring_destroy(&port->ring);
+  free(port);
+}
+
+static void clear_media_streams(dart_edge_sip_bridge_media_slot* media_slot) {
+  if (media_slot == NULL) {
+    return;
+  }
+  if (media_slot->inbound_port != NULL) {
+    audio_ring_clear(&media_slot->inbound_port->ring);
+  }
+  if (media_slot->outbound_port != NULL) {
+    audio_ring_clear(&media_slot->outbound_port->ring);
+  }
+  media_slot->ports_connected = false;
+  media_slot->call_port_id = PJSUA_INVALID_ID;
+}
+
+static void destroy_media_slots(dart_edge_sip_bridge_runtime* runtime) {
+  if (runtime == NULL) {
+    return;
+  }
+  for (int index = 0; index < PJSUA_MAX_CALLS; index += 1) {
+    destroy_stream_port(runtime->media[index].inbound_port);
+    destroy_stream_port(runtime->media[index].outbound_port);
+    reset_media_slot(&runtime->media[index]);
+  }
+}
+
+static bool ensure_media_ports_registered(
+    dart_edge_sip_bridge_runtime* runtime,
+    pjsua_call_id call_id,
+    dart_edge_sip_bridge_call_slot* slot,
+    char* error,
+    size_t error_len) {
+  if (runtime == NULL || slot == NULL) {
+    store_error(error, error_len, "Missing SIP media runtime.");
+    return false;
+  }
+
+  dart_edge_sip_bridge_media_slot* media_slot = media_slot_for_call(runtime, call_id);
+  if (media_slot == NULL) {
+    store_error(error, error_len, "Unknown SIP media slot.");
+    return false;
+  }
+  if (media_slot->ports_registered) {
+    return true;
+  }
+  if (runtime->media_pool == NULL) {
+    store_error(error, error_len, "SIP media pool is not initialized.");
+    return false;
+  }
+
+  media_slot->inbound_port = create_stream_port(
+      "dartEdgeSipCapture",
+      PJMEDIA_SIGNATURE('D', 'E', 'C', 'P'),
+      true,
+      &slot->media_session_active,
+      DART_EDGE_SIP_MEDIA_CAPTURE_BUFFER_BYTES,
+      error,
+      error_len);
+  if (media_slot->inbound_port == NULL) {
+    return false;
+  }
+
+  media_slot->outbound_port = create_stream_port(
+      "dartEdgeSipPlayback",
+      PJMEDIA_SIGNATURE('D', 'E', 'P', 'B'),
+      false,
+      &slot->media_session_active,
+      DART_EDGE_SIP_MEDIA_PLAYBACK_BUFFER_BYTES,
+      error,
+      error_len);
+  if (media_slot->outbound_port == NULL) {
+    destroy_stream_port(media_slot->inbound_port);
+    media_slot->inbound_port = NULL;
+    return false;
+  }
+
+  pj_status_t status =
+      pjsua_conf_add_port(runtime->media_pool, &media_slot->inbound_port->base, &media_slot->inbound_port_id);
+  if (status != PJ_SUCCESS) {
+    destroy_stream_port(media_slot->inbound_port);
+    destroy_stream_port(media_slot->outbound_port);
+    media_slot->inbound_port = NULL;
+    media_slot->outbound_port = NULL;
+    store_status_error(error, error_len, "Failed to register SIP media capture port", status);
+    return false;
+  }
+
+  status = pjsua_conf_add_port(
+      runtime->media_pool,
+      &media_slot->outbound_port->base,
+      &media_slot->outbound_port_id);
+  if (status != PJ_SUCCESS) {
+    destroy_stream_port(media_slot->inbound_port);
+    destroy_stream_port(media_slot->outbound_port);
+    media_slot->inbound_port = NULL;
+    media_slot->outbound_port = NULL;
+    media_slot->inbound_port_id = PJSUA_INVALID_ID;
+    store_status_error(error, error_len, "Failed to register SIP media playback port", status);
+    return false;
+  }
+
+  media_slot->ports_registered = true;
+  return true;
+}
+
+static bool ensure_media_ports_connected(
+    dart_edge_sip_bridge_runtime* runtime,
+    pjsua_call_id call_id,
+    dart_edge_sip_bridge_call_slot* slot,
+    char* error,
+    size_t error_len) {
+  if (runtime == NULL || slot == NULL) {
+    store_error(error, error_len, "Missing SIP media runtime.");
+    return false;
+  }
+  if (!ensure_media_ports_registered(runtime, call_id, slot, error, error_len)) {
+    return false;
+  }
+
+  dart_edge_sip_bridge_media_slot* media_slot = media_slot_for_call(runtime, call_id);
+  if (media_slot == NULL) {
+    store_error(error, error_len, "Unknown SIP media slot.");
+    return false;
+  }
+
+  pjsua_conf_port_id call_port = pjsua_call_get_conf_port(call_id);
+  if (call_port == PJSUA_INVALID_ID) {
+    return true;
+  }
+  if (media_slot->ports_connected && media_slot->call_port_id == call_port) {
+    return true;
+  }
+  if (media_slot->ports_connected && media_slot->call_port_id != PJSUA_INVALID_ID) {
+    pjsua_conf_disconnect(media_slot->call_port_id, media_slot->inbound_port_id);
+    pjsua_conf_disconnect(media_slot->outbound_port_id, media_slot->call_port_id);
+    media_slot->ports_connected = false;
+  }
+
+  pj_status_t status = pjsua_conf_connect(call_port, media_slot->inbound_port_id);
+  if (status != PJ_SUCCESS) {
+    store_status_error(error, error_len, "Failed to connect SIP call to media capture port", status);
+    return false;
+  }
+
+  status = pjsua_conf_connect(media_slot->outbound_port_id, call_port);
+  if (status != PJ_SUCCESS) {
+    pjsua_conf_disconnect(call_port, media_slot->inbound_port_id);
+    store_status_error(error, error_len, "Failed to connect SIP media playback port to call", status);
+    return false;
+  }
+
+  media_slot->ports_connected = true;
+  media_slot->call_port_id = call_port;
+  return true;
+}
+
 dart_edge_sip_bridge_runtime* dart_edge_sip_bridge_runtime_create(
     const dart_edge_sip_bridge_config* config,
     char* error,
@@ -728,10 +1226,12 @@ dart_edge_sip_bridge_runtime* dart_edge_sip_bridge_runtime_create(
   runtime->config.voicemail_directory = duplicate_string(config->voicemail_directory);
   runtime->config.default_greeting_uri = duplicate_string(config->default_greeting_uri);
   runtime->default_account_id = PJSUA_INVALID_ID;
+  runtime->media_pool = NULL;
 
   pthread_mutex_init(&runtime->event_mutex, NULL);
   for (int index = 0; index < PJSUA_MAX_CALLS; index += 1) {
     reset_slot(&runtime->calls[index]);
+    reset_media_slot(&runtime->media[index]);
   }
 
   if (config->max_calls == 0 || config->max_calls > PJSUA_MAX_CALLS) {
@@ -783,6 +1283,11 @@ void dart_edge_sip_bridge_runtime_destroy(dart_edge_sip_bridge_runtime* runtime)
     free(runtime->trunks[index].username);
     free(runtime->trunks[index].password);
     free(runtime->trunks[index].realm);
+  }
+  destroy_media_slots(runtime);
+  if (runtime->media_pool != NULL) {
+    pj_pool_release(runtime->media_pool);
+    runtime->media_pool = NULL;
   }
   pthread_mutex_destroy(&runtime->event_mutex);
   free(runtime);
@@ -901,6 +1406,9 @@ bool dart_edge_sip_bridge_start(
   media_config.max_media_ports = runtime->config.max_media_ports;
   media_config.enable_ice = runtime->config.enable_ice ? PJ_TRUE : PJ_FALSE;
   media_config.enable_turn = runtime->config.enable_turn ? PJ_TRUE : PJ_FALSE;
+  media_config.clock_rate = DART_EDGE_SIP_MEDIA_SAMPLE_RATE_HZ;
+  media_config.channel_count = DART_EDGE_SIP_MEDIA_CHANNELS;
+  media_config.audio_frame_ptime = DART_EDGE_SIP_MEDIA_FRAME_DURATION_MS;
   media_config.thread_cnt = 1;
   media_config.has_ioqueue = PJ_TRUE;
   media_config.snd_auto_close_time = 0;
@@ -954,6 +1462,13 @@ bool dart_edge_sip_bridge_start(
     return false;
   }
 
+  runtime->media_pool = pjsua_pool_create("dart_edge_sip_media", 4096, 4096);
+  if (runtime->media_pool == NULL) {
+    store_error(error, error_len, "Failed to allocate the SIP media pool.");
+    pjsua_destroy();
+    return false;
+  }
+
   runtime->started = true;
   runtime->shutting_down = false;
   g_active_runtime = runtime;
@@ -979,6 +1494,11 @@ bool dart_edge_sip_bridge_stop(
     return false;
   }
 
+  destroy_media_slots(runtime);
+  if (runtime->media_pool != NULL) {
+    pj_pool_release(runtime->media_pool);
+    runtime->media_pool = NULL;
+  }
   g_active_runtime = NULL;
   runtime->started = false;
   runtime->default_account_id = PJSUA_INVALID_ID;
@@ -986,6 +1506,7 @@ bool dart_edge_sip_bridge_stop(
   runtime->event_count = 0;
   for (int index = 0; index < PJSUA_MAX_CALLS; index += 1) {
     reset_slot(&runtime->calls[index]);
+    reset_media_slot(&runtime->media[index]);
   }
   for (size_t index = 0; index < runtime->trunk_count; index += 1) {
     runtime->trunks[index].acc_id = PJSUA_INVALID_ID;
@@ -1563,6 +2084,248 @@ bool dart_edge_sip_bridge_send_to_voicemail(
       mailbox,
       message_id,
       path);
+  return true;
+}
+
+bool dart_edge_sip_bridge_attach_media_app(
+    dart_edge_sip_bridge_runtime* runtime,
+    const char* session_id,
+    const char* media_app_id,
+    char* error,
+    size_t error_len) {
+  if (runtime == NULL) {
+    store_error(error, error_len, "Missing PJSIP runtime.");
+    return false;
+  }
+  if (media_app_id == NULL || media_app_id[0] == '\0') {
+    store_error(error, error_len, "attachMediaApp requires a mediaAppId.");
+    return false;
+  }
+
+  pjsua_call_id call_id;
+  if (!session_id_to_call_id(session_id, &call_id)) {
+    store_error(error, error_len, "Invalid SIP call session ID.");
+    return false;
+  }
+
+  dart_edge_sip_bridge_call_slot* slot = slot_for_call(runtime, call_id);
+  if (slot == NULL) {
+    store_error(error, error_len, "Unknown SIP call session.");
+    return false;
+  }
+
+  slot->media_session_active = true;
+  copy_text(slot->media_app_id, sizeof(slot->media_app_id), media_app_id);
+  slot->media_frame_sequence = 0;
+
+  dart_edge_sip_bridge_media_slot* media_slot = media_slot_for_call(runtime, call_id);
+  if (media_slot != NULL) {
+    clear_media_streams(media_slot);
+  }
+  if (!ensure_media_ports_connected(runtime, call_id, slot, error, error_len)) {
+    return false;
+  }
+
+  dart_edge_sip_bridge_event event;
+  fill_call_event(runtime, call_id, &event);
+  push_event(runtime, &event);
+  return true;
+}
+
+bool dart_edge_sip_bridge_detach_media_app(
+    dart_edge_sip_bridge_runtime* runtime,
+    const char* session_id,
+    char* error,
+    size_t error_len) {
+  if (runtime == NULL) {
+    store_error(error, error_len, "Missing PJSIP runtime.");
+    return false;
+  }
+
+  pjsua_call_id call_id;
+  if (!session_id_to_call_id(session_id, &call_id)) {
+    store_error(error, error_len, "Invalid SIP call session ID.");
+    return false;
+  }
+
+  dart_edge_sip_bridge_call_slot* slot = slot_for_call(runtime, call_id);
+  if (slot == NULL) {
+    store_error(error, error_len, "Unknown SIP call session.");
+    return false;
+  }
+
+  dart_edge_sip_bridge_media_slot* media_slot = media_slot_for_call(runtime, call_id);
+  if (media_slot != NULL) {
+    clear_media_streams(media_slot);
+  }
+  slot->media_frame_sequence = 0;
+  slot->media_session_active = false;
+  slot->media_app_id[0] = '\0';
+
+  dart_edge_sip_bridge_event event;
+  fill_call_event(runtime, call_id, &event);
+  push_event(runtime, &event);
+  return true;
+}
+
+bool dart_edge_sip_bridge_read_media_frame(
+    dart_edge_sip_bridge_runtime* runtime,
+    const char* session_id,
+    uint8_t* buffer,
+    size_t buffer_len,
+    size_t* bytes_written,
+    uint32_t* sample_rate_hz,
+    uint32_t* channels,
+    uint32_t* frame_duration_ms,
+    uint64_t* sequence,
+    char* error,
+    size_t error_len) {
+  if (bytes_written != NULL) {
+    *bytes_written = 0;
+  }
+  if (sample_rate_hz != NULL) {
+    *sample_rate_hz = DART_EDGE_SIP_MEDIA_SAMPLE_RATE_HZ;
+  }
+  if (channels != NULL) {
+    *channels = DART_EDGE_SIP_MEDIA_CHANNELS;
+  }
+  if (frame_duration_ms != NULL) {
+    *frame_duration_ms = DART_EDGE_SIP_MEDIA_FRAME_DURATION_MS;
+  }
+  if (sequence != NULL) {
+    *sequence = 0;
+  }
+
+  if (runtime == NULL) {
+    store_error(error, error_len, "Missing PJSIP runtime.");
+    return false;
+  }
+  if (buffer == NULL) {
+    store_error(error, error_len, "Missing SIP media frame buffer.");
+    return false;
+  }
+
+  pjsua_call_id call_id;
+  if (!session_id_to_call_id(session_id, &call_id)) {
+    store_error(error, error_len, "Invalid SIP call session ID.");
+    return false;
+  }
+
+  dart_edge_sip_bridge_call_slot* slot = slot_for_call(runtime, call_id);
+  if (slot == NULL || !slot->media_session_active) {
+    store_error(error, error_len, "No SIP media app is attached to this call.");
+    return false;
+  }
+
+  size_t frame_bytes =
+      media_bytes_per_frame(DART_EDGE_SIP_MEDIA_SAMPLE_RATE_HZ, DART_EDGE_SIP_MEDIA_CHANNELS);
+  if (buffer_len < frame_bytes) {
+    store_error(error, error_len, "SIP media frame buffer is too small.");
+    return false;
+  }
+
+  dart_edge_sip_bridge_media_slot* media_slot = media_slot_for_call(runtime, call_id);
+  if (media_slot == NULL || media_slot->inbound_port == NULL) {
+    store_error(error, error_len, "SIP media capture port is not initialized.");
+    return false;
+  }
+  if (!audio_ring_read_exact(&media_slot->inbound_port->ring, buffer, frame_bytes)) {
+    return true;
+  }
+
+  slot->media_frame_sequence += 1;
+  if (bytes_written != NULL) {
+    *bytes_written = frame_bytes;
+  }
+  if (sequence != NULL) {
+    *sequence = slot->media_frame_sequence;
+  }
+  return true;
+}
+
+bool dart_edge_sip_bridge_play_raw_audio(
+    dart_edge_sip_bridge_runtime* runtime,
+    const char* session_id,
+    const uint8_t* bytes,
+    size_t bytes_len,
+    uint32_t sample_rate_hz,
+    uint32_t channels,
+    uint32_t frame_duration_ms,
+    char* error,
+    size_t error_len) {
+  (void)frame_duration_ms;
+  if (runtime == NULL) {
+    store_error(error, error_len, "Missing PJSIP runtime.");
+    return false;
+  }
+  if (bytes == NULL || bytes_len == 0) {
+    store_error(error, error_len, "SIP media playback requires non-empty audio bytes.");
+    return false;
+  }
+
+  pjsua_call_id call_id;
+  if (!session_id_to_call_id(session_id, &call_id)) {
+    store_error(error, error_len, "Invalid SIP call session ID.");
+    return false;
+  }
+
+  dart_edge_sip_bridge_call_slot* slot = slot_for_call(runtime, call_id);
+  if (slot == NULL || !slot->media_session_active) {
+    store_error(error, error_len, "No SIP media app is attached to this call.");
+    return false;
+  }
+
+  if (sample_rate_hz != DART_EDGE_SIP_MEDIA_SAMPLE_RATE_HZ ||
+      channels != DART_EDGE_SIP_MEDIA_CHANNELS) {
+    store_error(
+        error,
+        error_len,
+        "Realtime SIP media playback currently requires 16 kHz mono PCM16 audio.");
+    return false;
+  }
+
+  dart_edge_sip_bridge_media_slot* media_slot = media_slot_for_call(runtime, call_id);
+  if (media_slot == NULL || media_slot->outbound_port == NULL) {
+    store_error(error, error_len, "SIP media playback port is not initialized.");
+    return false;
+  }
+  if (!ensure_media_ports_connected(runtime, call_id, slot, error, error_len)) {
+    return false;
+  }
+
+  audio_ring_write(&media_slot->outbound_port->ring, bytes, bytes_len);
+  return true;
+}
+
+bool dart_edge_sip_bridge_clear_raw_audio(
+    dart_edge_sip_bridge_runtime* runtime,
+    const char* session_id,
+    char* error,
+    size_t error_len) {
+  if (runtime == NULL) {
+    store_error(error, error_len, "Missing PJSIP runtime.");
+    return false;
+  }
+
+  pjsua_call_id call_id;
+  if (!session_id_to_call_id(session_id, &call_id)) {
+    store_error(error, error_len, "Invalid SIP call session ID.");
+    return false;
+  }
+
+  dart_edge_sip_bridge_call_slot* slot = slot_for_call(runtime, call_id);
+  if (slot == NULL || !slot->media_session_active) {
+    store_error(error, error_len, "No SIP media app is attached to this call.");
+    return false;
+  }
+
+  dart_edge_sip_bridge_media_slot* media_slot = media_slot_for_call(runtime, call_id);
+  if (media_slot == NULL || media_slot->outbound_port == NULL) {
+    store_error(error, error_len, "SIP media playback port is not initialized.");
+    return false;
+  }
+
+  audio_ring_clear(&media_slot->outbound_port->ring);
   return true;
 }
 

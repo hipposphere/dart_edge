@@ -62,6 +62,15 @@ Future<DartEdge<void>> buildServer() async {
   );
 
   server.get(
+    '/upload',
+    handler: (ctx) async {
+      final multipart = await ctx.req.multipart();
+      final file = await multipart.files.first;
+      file.body.nativeBytes;
+    },
+  );
+
+  server.get(
     '/hello',
     handler: (context) async {
       return 'Hello, World!';

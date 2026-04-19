@@ -1,16 +1,45 @@
+import '../context/request_context.dart';
+import '../context/request_input.dart';
 import '../context/request_telemetry.dart';
 import 'incoming_web_socket_messages.dart';
+
+typedef WebSocketJsonSender = Future<void> Function(Object? value);
+typedef WebSocketCloser = Future<void> Function([int? code, String? reason]);
 
 /// Context passed to a WebSocket route when a client connects.
 final class WebSocketContext<TServices> {
   WebSocketContext({
     required this.services,
+    this.req = RequestInput.empty,
     this.messages = const IncomingWebSocketMessages(),
     this.telemetry = const RequestTelemetry(),
-  });
+    WebSocketJsonSender? sendJson,
+    WebSocketCloser? close,
+  }) : _requestContext = RequestContext<TServices>(
+         services: services,
+         req: req,
+         telemetry: telemetry,
+       ),
+       _sendJson = sendJson,
+       _close = close;
+
+  WebSocketContext.fromRequest({
+    required RequestContext<TServices> request,
+    this.messages = const IncomingWebSocketMessages(),
+    WebSocketJsonSender? sendJson,
+    WebSocketCloser? close,
+  }) : services = request.services,
+       req = request.req,
+       telemetry = request.telemetry,
+       _requestContext = request,
+       _sendJson = sendJson,
+       _close = close;
 
   /// Fresh services instance for the socket connection.
   final TServices services;
+
+  /// Decoded request params, query, and headers for the handshake request.
+  final RequestInput req;
 
   /// Incoming messages exposed as typed streams.
   final IncomingWebSocketMessages messages;
@@ -18,6 +47,39 @@ final class WebSocketContext<TServices> {
   /// Telemetry hook associated with the socket lifecycle.
   final RequestTelemetry telemetry;
 
+  final RequestContext<TServices> _requestContext;
+  final WebSocketJsonSender? _sendJson;
+  final WebSocketCloser? _close;
+
+  /// Shared request-scoped context used during guard evaluation.
+  RequestContext<TServices> get request => _requestContext;
+
+  /// Reads a required request-scoped extension of type [T].
+  T require<T>() => _requestContext.require<T>();
+
+  /// Reads an optional request-scoped extension of type [T].
+  T? maybe<T>() => _requestContext.maybe<T>();
+
+  /// Stores a request-scoped extension by its runtime type.
+  void put<T>(T value) {
+    _requestContext.put<T>(value);
+  }
+
   /// Sends a JSON value to the client.
-  Future<void> sendJson<T>(T value) async {}
+  Future<void> sendJson<T>(T value) async {
+    final sendJson = _sendJson;
+    if (sendJson == null) {
+      return;
+    }
+    await sendJson(value);
+  }
+
+  /// Closes the WebSocket connection.
+  Future<void> close([int? code, String? reason]) async {
+    final close = _close;
+    if (close == null) {
+      return;
+    }
+    await close(code, reason);
+  }
 }

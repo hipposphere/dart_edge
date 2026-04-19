@@ -11,7 +11,16 @@ export 'src/native/dart_edge_native.dart';
 export 'src/runtime/dart_edge_codec.dart';
 export 'src/runtime/dart_edge_http_server.dart';
 export 'src/runtime/dart_edge_server.dart';
+export 'src/runtime/native_request.dart'
+    show
+        NativeMultipartField,
+        NativeMultipartFile,
+        NativeMultipartForm,
+        NativeRequest,
+        NativeRequestBody,
+        NativeRequestRequestContext;
 export 'src/runtime/open_api_document.dart';
 export 'src/runtime/open_telemetry_config.dart';
+export 'src/runtime/request_input_multipart.dart' show MultipartRequestInput;
 export 'src/runtime/rust_middleware.dart';
 export 'src/runtime/transport_request.dart';

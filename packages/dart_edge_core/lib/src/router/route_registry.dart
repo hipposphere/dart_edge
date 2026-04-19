@@ -1,4 +1,5 @@
 import '../http/route_contract.dart';
+import '../websocket/web_socket_contract.dart';
 import 'guard.dart';
 import 'route_definition.dart';
 import 'route_path.dart';
@@ -43,20 +44,32 @@ final class RouteRegistration<TServices> {
   @override
   String toString() {
     final contract = route.contract;
-    if (contract case final RouteContract contract) {
-      final fullPath = joinRoutePath(prefix, contract.path);
-      final routeTags = _mergeTags(tags, contract.options.tags);
-      final parts = <String>[
-        '${contract.method.name.toUpperCase()} $fullPath',
-        'operationId: ${contract.options.operationId!}',
-        if (routeTags.isNotEmpty) 'tags: $routeTags',
-        if (guards.isNotEmpty) 'guards: $guards',
-        'route: $route',
-      ];
-      return 'RouteRegistration(${parts.join(', ')})';
+    switch (contract) {
+      case final RouteContract contract:
+        final fullPath = joinRoutePath(prefix, contract.path);
+        final routeTags = _mergeTags(tags, contract.options.tags);
+        final parts = <String>[
+          '${contract.method.name.toUpperCase()} $fullPath',
+          'operationId: ${contract.options.operationId!}',
+          if (routeTags.isNotEmpty) 'tags: $routeTags',
+          if (guards.isNotEmpty) 'guards: $guards',
+          'route: $route',
+        ];
+        return 'RouteRegistration(${parts.join(', ')})';
+      case final WebSocketContract contract:
+        final fullPath = joinRoutePath(prefix, contract.path);
+        final routeTags = _mergeTags(tags, contract.tags);
+        final parts = <String>[
+          'WS $fullPath',
+          'operationId: ${contract.operationId}',
+          if (routeTags.isNotEmpty) 'tags: $routeTags',
+          if (guards.isNotEmpty) 'guards: $guards',
+          'route: $route',
+        ];
+        return 'RouteRegistration(${parts.join(', ')})';
+      default:
+        return 'RouteRegistration(prefix: $prefix, tags: $tags, guards: $guards, route: $route)';
     }
-
-    return 'RouteRegistration(prefix: $prefix, tags: $tags, guards: $guards, route: $route)';
   }
 }
 

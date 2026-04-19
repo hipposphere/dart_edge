@@ -45,7 +45,8 @@ The package is for:
 - trunks and dialplan-driven call routing
 - call/session control such as answer, reject, bridge, hold, resume, transfer,
   recording, voicemail, and hangup
-- backend-controlled media-app flows such as IVR
+- backend-controlled media-app flows such as IVR and assistant-style call
+  automation
 
 The package is not for:
 
@@ -74,6 +75,7 @@ Applications should interact through:
 - async event streams
 - command methods on runtime/session handles
 - optional Dart policy hooks for routing and authorization
+- attached realtime media sessions for assistant-oriented audio exchange
 
 ## Native Architecture
 
@@ -101,6 +103,8 @@ The current implementation now includes:
 - call control for answer, reject, hold, resume, transfer, bridge, and hangup
 - conference-bridge prompt playback
 - WAV recording and voicemail recording via the PJSUA conference bridge
+- media-app attachment plus normalized PCM16 media-session access for assistant
+  flows, backed by native streaming conference ports for bidirectional audio
 
 The package is still not a complete PBX or registrar. The main remaining gap is
 full endpoint/registrar handling above the PJSUA user-agent layer. Production

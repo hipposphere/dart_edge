@@ -5,6 +5,14 @@ import 'package:dart_edge_auth_db_benchmark_shared/dart_edge_auth_db_benchmark_s
 
 import 'load_result.dart';
 
+const _multipartBoundary = 'dart-edge-benchmark-upload-boundary';
+final _multipartRequestBody = buildBenchmarkMultipartRequestBody(
+  _multipartBoundary,
+);
+final _multipartRequestContentType = benchmarkMultipartContentType(
+  _multipartBoundary,
+);
+
 /// Virtual-user benchmark driver for auth-sensitive scenarios.
 final class VirtualUserRunner {
   const VirtualUserRunner();
@@ -54,6 +62,21 @@ final class VirtualUserRunner {
             uri: baseUri.resolve(benchmarkDatabasePath),
             bearerToken: bearerToken,
             expectedBody: benchmarkDatabaseResponseJson(email),
+            forwardedFor: forwardedFor,
+          );
+          return;
+        case BenchmarkScenario.uploadMultipart:
+          final bearerToken = await _signIn(
+            client: client,
+            baseUri: baseUri,
+            email: email,
+            forwardedFor: forwardedFor,
+          );
+          await _authorizedMultipartUpload(
+            client: client,
+            uri: baseUri.resolve(benchmarkUploadMultipartPath),
+            bearerToken: bearerToken,
+            email: email,
             forwardedFor: forwardedFor,
           );
           return;
@@ -172,7 +195,9 @@ final class VirtualUserRunner {
 
     try {
       if (scenario
-          case BenchmarkScenario.rawAuthed || BenchmarkScenario.dbAuthed) {
+          case BenchmarkScenario.rawAuthed ||
+              BenchmarkScenario.dbAuthed ||
+              BenchmarkScenario.uploadMultipart) {
         try {
           bearerToken = await _signIn(
             client: client,
@@ -228,6 +253,21 @@ final class VirtualUserRunner {
                 forwardedFor: forwardedFor,
               );
               break;
+            case BenchmarkScenario.uploadMultipart:
+              bearerToken ??= await _signIn(
+                client: client,
+                baseUri: baseUri,
+                email: email,
+                forwardedFor: forwardedFor,
+              );
+              await _authorizedMultipartUpload(
+                client: client,
+                uri: baseUri.resolve(benchmarkUploadMultipartPath),
+                bearerToken: bearerToken,
+                email: email,
+                forwardedFor: forwardedFor,
+              );
+              break;
             case BenchmarkScenario.flow:
               final flowToken = await _signIn(
                 client: client,
@@ -258,7 +298,9 @@ final class VirtualUserRunner {
         } catch (error) {
           started.stop();
           if (scenario
-              case BenchmarkScenario.rawAuthed || BenchmarkScenario.dbAuthed) {
+              case BenchmarkScenario.rawAuthed ||
+                  BenchmarkScenario.dbAuthed ||
+                  BenchmarkScenario.uploadMultipart) {
             bearerToken = null;
           }
           onError(error.toString());
@@ -336,6 +378,46 @@ final class VirtualUserRunner {
     if (responseBody != expectedBody) {
       throw StateError(
         'GET $uri returned an unexpected body.\n'
+        'Expected: $expectedBody\n'
+        'Actual:   $responseBody',
+      );
+    }
+  }
+
+  Future<void> _authorizedMultipartUpload({
+    required HttpClient client,
+    required Uri uri,
+    required String? bearerToken,
+    required String email,
+    required String forwardedFor,
+  }) async {
+    if (bearerToken == null) {
+      throw StateError('Missing bearer token for $uri.');
+    }
+
+    final request = await client.postUrl(uri);
+    request.headers.set('authorization', 'Bearer $bearerToken');
+    request.headers.set('x-forwarded-for', forwardedFor);
+    request.headers.set(
+      HttpHeaders.contentTypeHeader,
+      _multipartRequestContentType,
+    );
+    request.add(_multipartRequestBody);
+
+    final response = await request.close();
+    final contentType = response.headers.contentType?.toString() ?? '';
+    final responseBody = await utf8.decoder.bind(response).join();
+    final expectedBody = benchmarkUploadMultipartResponseJson(email);
+
+    if (response.statusCode != HttpStatus.ok) {
+      throw StateError('POST $uri returned ${response.statusCode}.');
+    }
+    if (!contentType.contains('application/json')) {
+      throw StateError('POST $uri returned "$contentType".');
+    }
+    if (responseBody != expectedBody) {
+      throw StateError(
+        'POST $uri returned an unexpected body.\n'
         'Expected: $expectedBody\n'
         'Actual:   $responseBody',
       );

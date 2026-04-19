@@ -9,6 +9,8 @@ import 'generated_bindings.dart' as gen;
 abstract final class DartEdgeSipNative {
   static int get abiVersion => gen.dart_edge_sip_native_abi_version();
 
+  static String takeLastError() => _takeLastError();
+
   static int create(SipServerConfig config) {
     final configJsonPtr = jsonEncode(config.toJson()).toNativeUtf8();
     try {

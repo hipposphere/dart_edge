@@ -242,4 +242,47 @@ bool dart_edge_sip_bridge_poll_event(
     dart_edge_sip_bridge_runtime* runtime,
     dart_edge_sip_bridge_event* event_out);
 
+bool dart_edge_sip_bridge_attach_media_app(
+    dart_edge_sip_bridge_runtime* runtime,
+    const char* session_id,
+    const char* media_app_id,
+    char* error,
+    size_t error_len);
+
+bool dart_edge_sip_bridge_detach_media_app(
+    dart_edge_sip_bridge_runtime* runtime,
+    const char* session_id,
+    char* error,
+    size_t error_len);
+
+bool dart_edge_sip_bridge_read_media_frame(
+    dart_edge_sip_bridge_runtime* runtime,
+    const char* session_id,
+    uint8_t* buffer,
+    size_t buffer_len,
+    size_t* bytes_written,
+    uint32_t* sample_rate_hz,
+    uint32_t* channels,
+    uint32_t* frame_duration_ms,
+    uint64_t* sequence,
+    char* error,
+    size_t error_len);
+
+bool dart_edge_sip_bridge_play_raw_audio(
+    dart_edge_sip_bridge_runtime* runtime,
+    const char* session_id,
+    const uint8_t* bytes,
+    size_t bytes_len,
+    uint32_t sample_rate_hz,
+    uint32_t channels,
+    uint32_t frame_duration_ms,
+    char* error,
+    size_t error_len);
+
+bool dart_edge_sip_bridge_clear_raw_audio(
+    dart_edge_sip_bridge_runtime* runtime,
+    const char* session_id,
+    char* error,
+    size_t error_len);
+
 #endif  // DART_EDGE_SIP_PJSIP_BRIDGE_H_

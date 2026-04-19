@@ -1,6 +1,9 @@
 import 'dart:convert';
+import 'dart:ffi';
 import 'dart:io';
 import 'dart:isolate';
+
+import 'package:dart_edge_core/ffi.dart' as core_ffi;
 
 import 'native/dart_edge_s3_client_native.dart';
 import 's3_client_config.dart';
@@ -36,9 +39,16 @@ final class DartEdgeS3Client {
     S3PutObjectBytesRequest request,
   ) async {
     _ensureActive();
-    _validateBucketAndKey(request.bucket, request.key);
-
-    final requestJson = jsonEncode(request.toJson());
+    final requestJson = _encodePutObjectRequestJson(
+      bucket: request.bucket,
+      key: request.key,
+      contentType: request.contentType,
+      cacheControl: request.cacheControl,
+      contentDisposition: request.contentDisposition,
+      contentEncoding: request.contentEncoding,
+      contentLanguage: request.contentLanguage,
+      metadata: request.metadata,
+    );
     final transferable = TransferableTypedData.fromList([request.bytes]);
 
     final resultJson = await Isolate.run(() {
@@ -47,6 +57,52 @@ final class DartEdgeS3Client {
         _nativeHandle,
         requestJson,
         bytes,
+      );
+    });
+
+    return S3PutObjectResult.fromJson(decodeJsonObject(resultJson));
+  }
+
+  /// Uploads borrowed native bytes to S3 without first copying them into
+  /// Dart-managed memory.
+  ///
+  /// The caller must ensure [bytes] remains valid for the full duration of this
+  /// call. This is intended for request-scoped native bodies owned by the HTTP
+  /// runtime.
+  Future<S3PutObjectResult> putObjectNativeBytes({
+    required String bucket,
+    required String key,
+    required core_ffi.NativeBytes bytes,
+    String? contentType,
+    String? cacheControl,
+    String? contentDisposition,
+    String? contentEncoding,
+    String? contentLanguage,
+    Map<String, String> metadata = const <String, String>{},
+  }) async {
+    _ensureActive();
+    final requestJson = _encodePutObjectRequestJson(
+      bucket: bucket,
+      key: key,
+      contentType: contentType,
+      cacheControl: cacheControl,
+      contentDisposition: contentDisposition,
+      contentEncoding: contentEncoding,
+      contentLanguage: contentLanguage,
+      metadata: metadata,
+    );
+    final bytesPtrAddress = bytes.ptr.address;
+    final bytesLength = bytes.len;
+
+    final resultJson = await Isolate.run(() {
+      final bytesPtr = bytesPtrAddress == 0
+          ? nullptr.cast<Uint8>()
+          : Pointer<Uint8>.fromAddress(bytesPtrAddress);
+      return DartEdgeS3ClientNative.putObjectRawBytes(
+        _nativeHandle,
+        requestJson,
+        bytesPtr,
+        bytesLength,
       );
     });
 
@@ -185,6 +241,29 @@ void _validateConfig(S3ClientConfig config) {
 
 void _validateObjectRef(S3ObjectRef object) {
   _validateBucketAndKey(object.bucket, object.key);
+}
+
+String _encodePutObjectRequestJson({
+  required String bucket,
+  required String key,
+  String? contentType,
+  String? cacheControl,
+  String? contentDisposition,
+  String? contentEncoding,
+  String? contentLanguage,
+  Map<String, String> metadata = const <String, String>{},
+}) {
+  _validateBucketAndKey(bucket, key);
+  return jsonEncode({
+    'bucket': bucket,
+    'key': key,
+    'contentType': contentType,
+    'cacheControl': cacheControl,
+    'contentDisposition': contentDisposition,
+    'contentEncoding': contentEncoding,
+    'contentLanguage': contentLanguage,
+    'metadata': metadata,
+  });
 }
 
 void _validateBucketAndKey(String bucket, String key) {

@@ -3,11 +3,13 @@ import 'dart:convert';
 import 'package:dart_edge_core/dart_edge_core.dart';
 
 import 'dart_edge_codec.dart';
+import 'native_request.dart';
 import 'transport_request.dart';
 
 Future<RequestInput> decodeRequestInput(
   TransportRequest request, {
   required DartEdgeCodecRegistry codecs,
+  NativeRequest? nativeRequest,
   required String? paramsSchemaId,
   required String? querySchemaId,
   required String? headersSchemaId,
@@ -31,10 +33,14 @@ Future<RequestInput> decodeRequestInput(
   final bodyValue = _decodeBody(request, body, codecs: codecs);
 
   return RequestInput(
-    paramsValue: paramsValue,
-    queryValue: queryValue,
-    headerValue: headerValue,
-    bodyValue: bodyValue,
+    params: paramsValue,
+    query: queryValue,
+    headers: headerValue,
+    body: bodyValue,
+    paramsMap: request.pathParams,
+    queryMap: request.query,
+    headersMap: request.headers,
+    multipartLoader: nativeRequest?.multipart,
   );
 }
 
@@ -59,6 +65,10 @@ Object? _decodeBody(
   required DartEdgeCodecRegistry codecs,
 }) {
   if (body == null) {
+    return null;
+  }
+
+  if (request.bodyKind == TransportRequestBodyKind.multipart) {
     return null;
   }
 

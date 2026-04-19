@@ -9,6 +9,8 @@ environment:
 resolution: workspace
 
 dependencies:
+  dart_edge_auth_db_benchmark_shared: 0.1.0
   dart_edge_http_server: 0.1.0
   dart_edge_auth: 0.1.0
+  dart_edge_s3_client: 0.1.0
   dart_edge_sql: 0.1.0

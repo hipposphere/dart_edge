@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -139,6 +140,238 @@ void main() {
     expect(response.statusCode, HttpStatus.accepted);
     expect(response.headers.contentType?.mimeType, 'application/json');
     expect(await utf8.decoder.bind(response).join(), '{"status":"ok"}');
+  });
+
+  test(
+    'exposes a native request with a borrowed body for pass-through handlers',
+    () async {
+      final app = DartEdge<void>(services: () {});
+      app.post(
+        '/native-body',
+        handler: (ctx) {
+          final request = ctx.nativeRequest;
+          final body = request?.body;
+          return {
+            'hasNativeRequest': request != null,
+            'length': body?.length ?? 0,
+            'text': body == null ? '' : utf8.decode(body.copyBytes()),
+          };
+        },
+      );
+
+      final server = await app.listen(port: 0);
+      final client = HttpClient();
+
+      addTearDown(() async {
+        client.close(force: true);
+        await server.close();
+      });
+
+      final request = await client.postUrl(
+        Uri.http('127.0.0.1:${server.port}', '/native-body'),
+      );
+      request.headers.contentType = ContentType.text;
+      request.write('hello native body');
+      final response = await request.close();
+
+      expect(response.statusCode, HttpStatus.ok);
+      expect(response.headers.contentType?.mimeType, 'application/json');
+
+      final body =
+          jsonDecode(await utf8.decoder.bind(response).join())
+              as Map<String, Object?>;
+      expect(body, {
+        'hasNativeRequest': true,
+        'length': 17,
+        'text': 'hello native body',
+      });
+    },
+  );
+
+  test('parses multipart form-data with borrowed native file bodies', () async {
+    final app = DartEdge<void>(services: () {});
+    app.post(
+      '/multipart',
+      options: RouteOptions(body: RequestBody.multipartFormData()),
+      handler: (ctx) async {
+        final form = await ctx.req.multipart();
+        final file = form.files.single;
+
+        return {
+          'title': form.fieldValue('title'),
+          'fileFieldName': file.fieldName,
+          'fileName': file.filename,
+          'fileType': file.contentType,
+          'fileLength': file.length,
+          'fileText': utf8.decode(file.copyBytes()),
+        };
+      },
+    );
+
+    final server = await app.listen(port: 0);
+    final client = HttpClient();
+
+    addTearDown(() async {
+      client.close(force: true);
+      await server.close();
+    });
+
+    const boundary = 'dart-edge-boundary';
+    final request = await client.postUrl(
+      Uri.http('127.0.0.1:${server.port}', '/multipart'),
+    );
+    request.headers.set(
+      HttpHeaders.contentTypeHeader,
+      'multipart/form-data; boundary=$boundary',
+    );
+    request.add(
+      utf8.encode(
+        '--$boundary\r\n'
+        'Content-Disposition: form-data; name="title"\r\n'
+        '\r\n'
+        'hello multipart\r\n'
+        '--$boundary\r\n'
+        'Content-Disposition: form-data; name="upload"; filename="hello.txt"\r\n'
+        'Content-Type: text/plain\r\n'
+        '\r\n'
+        'file payload\r\n'
+        '--$boundary--\r\n',
+      ),
+    );
+    final response = await request.close();
+
+    expect(response.statusCode, HttpStatus.ok);
+    expect(response.headers.contentType?.mimeType, 'application/json');
+
+    final body =
+        jsonDecode(await utf8.decoder.bind(response).join())
+            as Map<String, Object?>;
+    expect(body, {
+      'title': 'hello multipart',
+      'fileFieldName': 'upload',
+      'fileName': 'hello.txt',
+      'fileType': 'text/plain',
+      'fileLength': 12,
+      'fileText': 'file payload',
+    });
+  });
+
+  test('streams server-sent events responses', () async {
+    final app = DartEdge<void>(services: () {});
+    app.get(
+      '/events',
+      options: RouteOptions(success: ResponseSpec.sse()),
+      handler: (ctx) {
+        return ctx.res.sse(
+          Stream<SseEvent>.fromIterable(const [
+            SseEvent(event: 'ready', data: 'alpha'),
+            SseEvent(id: 'evt-2', data: 'beta'),
+          ]),
+        );
+      },
+    );
+
+    final server = await app.listen(port: 0);
+    final client = HttpClient();
+
+    addTearDown(() async {
+      client.close(force: true);
+      await server.close();
+    });
+
+    final response = await (await client.getUrl(
+      Uri.http('127.0.0.1:${server.port}', '/events'),
+    )).close();
+    expect(response.statusCode, HttpStatus.ok);
+    expect(response.headers.contentType?.mimeType, 'text/event-stream');
+    expect(response.headers.value(HttpHeaders.cacheControlHeader), 'no-cache');
+    expect(response.headers.value('x-accel-buffering'), 'no');
+    expect(
+      await utf8.decoder.bind(response).join(),
+      'event: ready\n'
+      'data: alpha\n'
+      '\n'
+      'id: evt-2\n'
+      'data: beta\n'
+      '\n',
+    );
+  });
+
+  test('upgrades websocket routes and exchanges JSON messages', () async {
+    final app = DartEdge<void>(services: () {});
+    app.websocket(
+      '/chat/<roomId>',
+      onConnect: (socket) async {
+        await socket.sendJson({
+          'roomId': socket.req.param('roomId'),
+          'token': socket.req.queryParam('token'),
+        });
+
+        await for (final message
+            in socket.messages.json<Map<String, Object?>>()) {
+          await socket.sendJson({
+            'roomId': socket.req.param('roomId'),
+            'echo': message['message'],
+          });
+        }
+      },
+    );
+
+    final server = await app.listen(port: 0);
+    final socket = await WebSocket.connect(
+      'ws://127.0.0.1:${server.port}/chat/alpha?token=secret',
+    );
+    final messages = StreamIterator<dynamic>(socket);
+
+    addTearDown(() async {
+      await messages.cancel();
+      await socket.close();
+      await server.close();
+    });
+
+    expect(await messages.moveNext(), isTrue);
+    expect(jsonDecode(messages.current as String), {
+      'roomId': 'alpha',
+      'token': 'secret',
+    });
+
+    socket.add(jsonEncode({'message': 'hello'}));
+
+    expect(await messages.moveNext(), isTrue);
+    expect(jsonDecode(messages.current as String), {
+      'roomId': 'alpha',
+      'echo': 'hello',
+    });
+  });
+
+  test('websocket guards can reject the upgrade handshake', () async {
+    final app = DartEdge<void>(services: () {});
+    app.websocket(
+      '/guarded-socket',
+      guards: [
+        HandlerGuard<void>(
+          debugName: 'denySocket',
+          handler: (_) => GuardResult.deny(
+            RawResponse.text(
+              status: HttpStatus.forbidden,
+              body: 'socket blocked',
+            ),
+          ),
+        ),
+      ],
+      onConnect: (_) async {},
+    );
+
+    final server = await app.listen(port: 0);
+
+    addTearDown(() async {
+      await server.close();
+    });
+
+    await expectLater(
+      () => WebSocket.connect('ws://127.0.0.1:${server.port}/guarded-socket'),
+      throwsA(isA<WebSocketException>()),
+    );
   });
 
   test('fails to start when the configured host is invalid', () async {

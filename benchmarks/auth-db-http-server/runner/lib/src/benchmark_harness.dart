@@ -7,6 +7,7 @@ import 'benchmark_report.dart';
 import 'benchmark_target_process.dart';
 import 'benchmark_targets.dart';
 import 'load_result.dart';
+import 'mock_s3_server.dart';
 import 'resource_sampler.dart';
 import 'virtual_user_runner.dart';
 
@@ -21,99 +22,111 @@ final class BenchmarkHarness {
     final repoRoot = _resolveRepoRoot();
     final results = <ScenarioBenchmarkResult>[];
     const virtualUserRunner = VirtualUserRunner();
+    final needsMockS3 = options.scenarios.contains(
+      BenchmarkScenario.uploadMultipart,
+    );
+    final mockS3 = needsMockS3 ? await MockS3Server.start() : null;
 
     output.writeln(
       'CPU cap: ${options.singleCore ? 'single-core (~100% total CPU)' : 'disabled'}',
     );
+    if (mockS3 case final server?) {
+      output.writeln('Mock S3: ${server.endpoint}');
+    }
 
-    for (
-      var targetIndex = 0;
-      targetIndex < options.targets.length;
-      targetIndex++
-    ) {
-      final targetId = options.targets[targetIndex];
-      final target = benchmarkTargets[targetId]!;
-      final port = options.basePort + targetIndex;
+    try {
+      for (
+        var targetIndex = 0;
+        targetIndex < options.targets.length;
+        targetIndex++
+      ) {
+        final targetId = options.targets[targetIndex];
+        final target = benchmarkTargets[targetId]!;
+        final port = options.basePort + targetIndex;
 
-      output.writeln('\n== ${target.label} ==');
+        output.writeln('\n== ${target.label} ==');
 
-      for (final scenario in options.scenarios) {
-        output.writeln(
-          '  ${scenario.id}: warmup ${options.warmup.inSeconds}s, '
-          'measure ${options.duration.inSeconds}s at concurrency ${options.concurrency}',
-        );
-
-        final server = await BenchmarkTargetProcess.start(
-          target: target,
-          repoRoot: repoRoot,
-          port: port,
-          singleCore: options.singleCore,
-        );
-
-        try {
-          final baseUri = Uri.http('127.0.0.1:$port');
-          late final ScenarioLoadResult measurement;
-          late final ResourceUsageSummary resources;
-
-          await virtualUserRunner.validateScenario(
-            scenario: scenario,
-            baseUri: baseUri,
+        for (final scenario in options.scenarios) {
+          output.writeln(
+            '  ${scenario.id}: warmup ${options.warmup.inSeconds}s, '
+            'measure ${options.duration.inSeconds}s at concurrency ${options.concurrency}',
           );
 
-          if (options.warmup > Duration.zero) {
-            await virtualUserRunner.runScenario(
-              scenario: scenario,
-              baseUri: baseUri,
-              duration: options.warmup,
-              concurrency: options.concurrency,
-            );
-          }
+          final server = await BenchmarkTargetProcess.start(
+            target: target,
+            repoRoot: repoRoot,
+            port: port,
+            singleCore: options.singleCore,
+            environment: mockS3?.environment ?? const <String, String>{},
+          );
 
-          final resourceSampler = ResourceSampler(pid: server.process.pid);
-          await resourceSampler.start();
           try {
-            measurement = await virtualUserRunner.runScenario(
+            final baseUri = Uri.http('127.0.0.1:$port');
+            late final ScenarioLoadResult measurement;
+            late final ResourceUsageSummary resources;
+
+            await virtualUserRunner.validateScenario(
               scenario: scenario,
               baseUri: baseUri,
-              duration: options.duration,
-              concurrency: options.concurrency,
+            );
+
+            if (options.warmup > Duration.zero) {
+              await virtualUserRunner.runScenario(
+                scenario: scenario,
+                baseUri: baseUri,
+                duration: options.warmup,
+                concurrency: options.concurrency,
+              );
+            }
+
+            final resourceSampler = ResourceSampler(pid: server.process.pid);
+            await resourceSampler.start();
+            try {
+              measurement = await virtualUserRunner.runScenario(
+                scenario: scenario,
+                baseUri: baseUri,
+                duration: options.duration,
+                concurrency: options.concurrency,
+              );
+            } finally {
+              resources = await resourceSampler.stop();
+            }
+
+            final result = ScenarioBenchmarkResult(
+              targetId: target.id,
+              targetLabel: target.label,
+              scenarioId: scenario.id,
+              operations: measurement.operations,
+              errors: measurement.errors,
+              operationsPerSecond: measurement.operationsPerSecond,
+              averageLatencyMs: measurement.averageLatencyMs,
+              p50LatencyMs: measurement.p50LatencyMs,
+              p90LatencyMs: measurement.p90LatencyMs,
+              p99LatencyMs: measurement.p99LatencyMs,
+              maxLatencyMs: measurement.maxLatencyMs,
+              averageCpuPercent: resources.averageCpuPercent,
+              peakCpuPercent: resources.peakCpuPercent,
+              averageMemoryMb: resources.averageMemoryMb,
+              peakMemoryMb: resources.peakMemoryMb,
+              firstError: measurement.firstError,
+            );
+
+            results.add(result);
+            output.writeln(
+              '    ${result.operationsPerSecond.toStringAsFixed(1)} ops/s | '
+              'p50 ${result.p50LatencyMs.toStringAsFixed(2)} ms | '
+              'p99 ${result.p99LatencyMs.toStringAsFixed(2)} ms | '
+              'cpu ${result.averageCpuPercent.toStringAsFixed(1)}% avg | '
+              'rss ${result.peakMemoryMb.toStringAsFixed(1)} MB peak | '
+              'errors ${result.errors}',
             );
           } finally {
-            resources = await resourceSampler.stop();
+            await server.stop();
           }
-
-          final result = ScenarioBenchmarkResult(
-            targetId: target.id,
-            targetLabel: target.label,
-            scenarioId: scenario.id,
-            operations: measurement.operations,
-            errors: measurement.errors,
-            operationsPerSecond: measurement.operationsPerSecond,
-            averageLatencyMs: measurement.averageLatencyMs,
-            p50LatencyMs: measurement.p50LatencyMs,
-            p90LatencyMs: measurement.p90LatencyMs,
-            p99LatencyMs: measurement.p99LatencyMs,
-            maxLatencyMs: measurement.maxLatencyMs,
-            averageCpuPercent: resources.averageCpuPercent,
-            peakCpuPercent: resources.peakCpuPercent,
-            averageMemoryMb: resources.averageMemoryMb,
-            peakMemoryMb: resources.peakMemoryMb,
-            firstError: measurement.firstError,
-          );
-
-          results.add(result);
-          output.writeln(
-            '    ${result.operationsPerSecond.toStringAsFixed(1)} ops/s | '
-            'p50 ${result.p50LatencyMs.toStringAsFixed(2)} ms | '
-            'p99 ${result.p99LatencyMs.toStringAsFixed(2)} ms | '
-            'cpu ${result.averageCpuPercent.toStringAsFixed(1)}% avg | '
-            'rss ${result.peakMemoryMb.toStringAsFixed(1)} MB peak | '
-            'errors ${result.errors}',
-          );
-        } finally {
-          await server.stop();
         }
       }
+    } finally {
+      await mockS3?.close();
     }
 
     _printResultsTable(results);

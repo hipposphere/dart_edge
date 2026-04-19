@@ -40,7 +40,6 @@ abstract final class DartEdgeS3ClientNative {
     String requestJson,
     Uint8List bytes,
   ) {
-    final requestPtr = requestJson.toNativeUtf8();
     final bytesPtr = bytes.isEmpty ? nullptr : calloc<Uint8>(bytes.length);
 
     try {
@@ -48,11 +47,36 @@ abstract final class DartEdgeS3ClientNative {
         bytesPtr.asTypedList(bytes.length).setAll(0, bytes);
       }
 
+      return putObjectRawBytes(handle, requestJson, bytesPtr, bytes.length);
+    } finally {
+      if (bytesPtr != nullptr) {
+        calloc.free(bytesPtr);
+      }
+    }
+  }
+
+  static String putObjectNativeBytes(
+    int handle,
+    String requestJson,
+    core_ffi.NativeBytes bytes,
+  ) {
+    return putObjectRawBytes(handle, requestJson, bytes.ptr, bytes.len);
+  }
+
+  static String putObjectRawBytes(
+    int handle,
+    String requestJson,
+    Pointer<Uint8> bytesPtr,
+    int bytesLength,
+  ) {
+    final requestPtr = requestJson.toNativeUtf8();
+
+    try {
       final resultPtr = gen.dart_edge_s3_client_put_object_bytes(
         handle,
         requestPtr.cast<Char>(),
         bytesPtr,
-        bytes.length,
+        bytesLength,
       );
       if (resultPtr == nullptr) {
         throw StateError(_takeLastError());
@@ -65,9 +89,6 @@ abstract final class DartEdgeS3ClientNative {
       }
     } finally {
       calloc.free(requestPtr);
-      if (bytesPtr != nullptr) {
-        calloc.free(bytesPtr);
-      }
     }
   }
 

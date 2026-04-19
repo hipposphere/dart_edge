@@ -3,19 +3,21 @@ import 'dart:io';
 
 import 'package:dart_edge_auth_db_benchmark_shared/dart_edge_auth_db_benchmark_shared.dart';
 
+const _multipartBoundary = 'dart-edge-benchmark-upload-boundary';
+
 /// Prepared request scenario including dynamic auth headers when needed.
 final class PreparedRequestScenario {
   const PreparedRequestScenario({
     required this.scenario,
     required this.uri,
     required this.headers,
-    this.body,
+    this.bodyBytes,
   });
 
   final BenchmarkScenario scenario;
   final Uri uri;
   final Map<String, String> headers;
-  final String? body;
+  final List<int>? bodyBytes;
 }
 
 /// Auth context created through the benchmark's sign-in route.
@@ -33,15 +35,36 @@ Future<PreparedRequestScenario> prepareRequestScenario({
     BenchmarkScenario.signIn => PreparedRequestScenario(
       scenario: scenario,
       uri: baseUri.resolve(scenario.path),
-      headers: {'origin': baseUri.origin},
-      body: scenario.requestBody,
+      headers: {
+        'origin': baseUri.origin,
+        HttpHeaders.contentTypeHeader: ContentType.json.toString(),
+      },
+      bodyBytes: utf8.encode(scenario.requestBody!),
     ),
-    BenchmarkScenario.rawAuthed || BenchmarkScenario.dbAuthed => () async {
+    BenchmarkScenario.rawAuthed ||
+    BenchmarkScenario.dbAuthed ||
+    BenchmarkScenario.uploadMultipart => () async {
       final session = await createSession(baseUri);
+      final headers = <String, String>{
+        'authorization': 'Bearer ${session.bearerToken}',
+      };
+      final bodyBytes = switch (scenario) {
+        BenchmarkScenario.uploadMultipart => buildBenchmarkMultipartRequestBody(
+          _multipartBoundary,
+        ),
+        _ => null,
+      };
+      if (scenario == BenchmarkScenario.uploadMultipart) {
+        headers[HttpHeaders.contentTypeHeader] = benchmarkMultipartContentType(
+          _multipartBoundary,
+        );
+      }
+
       return PreparedRequestScenario(
         scenario: scenario,
         uri: baseUri.resolve(scenario.path),
-        headers: {'authorization': 'Bearer ${session.bearerToken}'},
+        headers: headers,
+        bodyBytes: bodyBytes,
       );
     }(),
     BenchmarkScenario.flow => throw StateError(

@@ -47,6 +47,7 @@ final class CompiledRoute<TServices> {
   }
 
   Map<String, Object?> toNativeJson() => {
+    'kind': 'http',
     'routeId': routeId,
     'method': _httpMethodName(contract.method),
     'path': path,

@@ -41,4 +41,12 @@ final class ResponseSpec {
       contentType: 'text/html; charset=utf-8',
     );
   }
+
+  /// Creates a server-sent events response specification.
+  static ResponseSpec sse({int status = 200}) {
+    return ResponseSpec._(
+      status: status,
+      contentType: 'text/event-stream; charset=utf-8',
+    );
+  }
 }

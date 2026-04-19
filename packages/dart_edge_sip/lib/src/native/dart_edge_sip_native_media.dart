@@ -1,0 +1,220 @@
+@ffi.DefaultAsset('package:dart_edge_sip/dart_edge_sip.dart')
+library;
+
+import 'dart:ffi' as ffi;
+import 'dart:typed_data';
+
+import 'package:dart_edge_core/ffi.dart' as core_ffi;
+import 'package:ffi/ffi.dart';
+
+import '../media/sip_audio.dart';
+import 'dart_edge_sip_native.dart';
+
+typedef SipNativeAudioFrameData = ({
+  core_ffi.NativeOwnedBytes bytes,
+  SipAudioFormat format,
+  int sequence,
+});
+
+final class DartEdgeSipNativeAudioFrame extends ffi.Struct {
+  external core_ffi.NativeOwnedBytes bytes;
+
+  @ffi.Int32()
+  external int encoding;
+
+  @ffi.Uint32()
+  external int sampleRateHz;
+
+  @ffi.Uint32()
+  external int channels;
+
+  @ffi.Uint32()
+  external int frameDurationMs;
+
+  @ffi.Uint64()
+  external int sequence;
+}
+
+@ffi.Native<ffi.Void Function(core_ffi.NativeOwnedBytes)>(
+  symbol: 'dart_edge_sip_free_owned_bytes',
+)
+external void _dartEdgeSipFreeOwnedBytes(core_ffi.NativeOwnedBytes value);
+
+@ffi.Native<
+  ffi.Bool Function(
+    ffi.Int64,
+    ffi.Pointer<ffi.Char>,
+    ffi.Pointer<DartEdgeSipNativeAudioFrame>,
+  )
+>(symbol: 'dart_edge_sip_poll_media_frame')
+external bool _dartEdgeSipPollMediaFrame(
+  int handle,
+  ffi.Pointer<ffi.Char> sessionId,
+  ffi.Pointer<DartEdgeSipNativeAudioFrame> frameOut,
+);
+
+@ffi.Native<
+  ffi.Bool Function(
+    ffi.Int64,
+    ffi.Pointer<ffi.Char>,
+    ffi.Pointer<ffi.Uint8>,
+    ffi.IntPtr,
+    ffi.Uint32,
+    ffi.Uint32,
+    ffi.Uint32,
+  )
+>(symbol: 'dart_edge_sip_play_media_copy')
+external bool _dartEdgeSipPlayMediaCopy(
+  int handle,
+  ffi.Pointer<ffi.Char> sessionId,
+  ffi.Pointer<ffi.Uint8> bytes,
+  int length,
+  int sampleRateHz,
+  int channels,
+  int frameDurationMs,
+);
+
+@ffi.Native<
+  ffi.Bool Function(
+    ffi.Int64,
+    ffi.Pointer<ffi.Char>,
+    core_ffi.NativeOwnedBytes,
+    ffi.Uint32,
+    ffi.Uint32,
+    ffi.Uint32,
+  )
+>(symbol: 'dart_edge_sip_play_media_owned')
+external bool _dartEdgeSipPlayMediaOwned(
+  int handle,
+  ffi.Pointer<ffi.Char> sessionId,
+  core_ffi.NativeOwnedBytes bytes,
+  int sampleRateHz,
+  int channels,
+  int frameDurationMs,
+);
+
+@ffi.Native<ffi.Bool Function(ffi.Int64, ffi.Pointer<ffi.Char>)>(
+  symbol: 'dart_edge_sip_clear_media_playback',
+)
+external bool _dartEdgeSipClearMediaPlayback(
+  int handle,
+  ffi.Pointer<ffi.Char> sessionId,
+);
+
+abstract final class DartEdgeSipNativeMedia {
+  static SipNativeAudioFrameData? pollIncomingFrame({
+    required int handle,
+    required String sessionId,
+  }) {
+    final sessionIdPtr = sessionId.toNativeUtf8();
+    final framePtr = calloc<DartEdgeSipNativeAudioFrame>();
+    try {
+      final ok = _dartEdgeSipPollMediaFrame(
+        handle,
+        sessionIdPtr.cast<ffi.Char>(),
+        framePtr,
+      );
+      if (!ok) {
+        throw StateError(DartEdgeSipNative.takeLastError());
+      }
+
+      final frame = framePtr.ref;
+      if (frame.bytes.ptr == ffi.nullptr || frame.bytes.len == 0) {
+        return null;
+      }
+
+      return (
+        bytes: frame.bytes,
+        format: SipAudioFormat(
+          encoding: switch (frame.encoding) {
+            0 => SipAudioEncoding.pcm16le,
+            final value => throw StateError(
+              'Unsupported SIP audio encoding: $value',
+            ),
+          },
+          sampleRateHz: frame.sampleRateHz,
+          channels: frame.channels,
+          frameDurationMs: frame.frameDurationMs,
+        ),
+        sequence: frame.sequence,
+      );
+    } finally {
+      calloc.free(framePtr);
+      calloc.free(sessionIdPtr);
+    }
+  }
+
+  static void playAudioBytes({
+    required int handle,
+    required String sessionId,
+    required Uint8List bytes,
+    required SipAudioFormat format,
+  }) {
+    final sessionIdPtr = sessionId.toNativeUtf8();
+    final bytesPtr = calloc<ffi.Uint8>(bytes.length);
+    try {
+      bytesPtr.asTypedList(bytes.length).setAll(0, bytes);
+      final ok = _dartEdgeSipPlayMediaCopy(
+        handle,
+        sessionIdPtr.cast<ffi.Char>(),
+        bytesPtr,
+        bytes.length,
+        format.sampleRateHz,
+        format.channels,
+        format.frameDurationMs,
+      );
+      if (!ok) {
+        throw StateError(DartEdgeSipNative.takeLastError());
+      }
+    } finally {
+      calloc.free(bytesPtr);
+      calloc.free(sessionIdPtr);
+    }
+  }
+
+  static void playOwnedAudioBytes({
+    required int handle,
+    required String sessionId,
+    required core_ffi.NativeOwnedBytes bytes,
+    required SipAudioFormat format,
+  }) {
+    final sessionIdPtr = sessionId.toNativeUtf8();
+    try {
+      final ok = _dartEdgeSipPlayMediaOwned(
+        handle,
+        sessionIdPtr.cast<ffi.Char>(),
+        bytes,
+        format.sampleRateHz,
+        format.channels,
+        format.frameDurationMs,
+      );
+      if (!ok) {
+        throw StateError(DartEdgeSipNative.takeLastError());
+      }
+    } finally {
+      calloc.free(sessionIdPtr);
+    }
+  }
+
+  static void freeOwnedBytes(core_ffi.NativeOwnedBytes value) {
+    _dartEdgeSipFreeOwnedBytes(value);
+  }
+
+  static void clearPlaybackQueue({
+    required int handle,
+    required String sessionId,
+  }) {
+    final sessionIdPtr = sessionId.toNativeUtf8();
+    try {
+      final ok = _dartEdgeSipClearMediaPlayback(
+        handle,
+        sessionIdPtr.cast<ffi.Char>(),
+      );
+      if (!ok) {
+        throw StateError(DartEdgeSipNative.takeLastError());
+      }
+    } finally {
+      calloc.free(sessionIdPtr);
+    }
+  }
+}

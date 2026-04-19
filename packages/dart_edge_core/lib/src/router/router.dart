@@ -1,5 +1,8 @@
 import '../http/http_method.dart';
 import '../http/route_contract.dart';
+import '../websocket/handler_web_socket_route_definition.dart';
+import '../websocket/web_socket_contract.dart';
+import '../websocket/web_socket_options.dart';
 import 'guard.dart';
 import 'handler_json_route_definition.dart';
 import 'route_definition.dart';
@@ -179,6 +182,29 @@ class Router<TServices> {
     );
   }
 
+  /// Registers an inline WebSocket handler.
+  void websocket(
+    String path, {
+    WebSocketOptions options = const WebSocketOptions(),
+    List<Guard<TServices>>? guards,
+    required WebSocketRouteHandler<TServices> onConnect,
+  }) {
+    register(
+      HandlerWebSocketRouteDefinition<TServices>(
+        contract: WebSocketContract(
+          path: path,
+          operationId:
+              options.operationId ?? _defaultWebSocketOperationId(path: path),
+          summary: options.summary,
+          tags: options.tags,
+          deprecated: options.deprecated,
+        ),
+        handler: onConnect,
+      ),
+      guards: guards,
+    );
+  }
+
   void _registerHttpRoute<TSuccess>({
     required HttpMethod method,
     required String path,
@@ -224,9 +250,27 @@ class Router<TServices> {
     required HttpMethod method,
     required String path,
   }) {
+    final words = _defaultPathWords(path);
+    if (words.isEmpty) {
+      return '${method.name}Root';
+    }
+
+    return method.name + words.map(_capitalize).join();
+  }
+
+  String _defaultWebSocketOperationId({required String path}) {
+    final words = _defaultPathWords(path);
+    if (words.isEmpty) {
+      return 'webSocketRoot';
+    }
+
+    return 'webSocket${words.map(_capitalize).join()}';
+  }
+
+  List<String> _defaultPathWords(String path) {
     final fullPath = joinRoutePath(prefix, path);
     if (fullPath == '/') {
-      return '${method.name}Root';
+      return const <String>[];
     }
 
     final words = <String>[];
@@ -250,10 +294,10 @@ class Router<TServices> {
     }
 
     if (words.isEmpty) {
-      return '${method.name}Root';
+      return const <String>[];
     }
 
-    return method.name + words.map(_capitalize).join();
+    return words;
   }
 
   Iterable<String> _segmentWords(String segment) {

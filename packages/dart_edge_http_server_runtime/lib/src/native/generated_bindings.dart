@@ -12,6 +12,23 @@ library;
 import 'dart:ffi' as ffi;
 import 'package:dart_edge_core/ffi.dart' as imp$1;
 
+@ffi.Native<
+  ffi.Bool Function(ffi.Int64, ffi.IntPtr, ffi.Pointer<imp$1.NativePair>)
+>()
+external bool dart_edge_http_server_runtime_accept_web_socket(
+  int request_id,
+  int header_count,
+  ffi.Pointer<imp$1.NativePair> headers,
+);
+
+@ffi.Native<ffi.Bool Function(ffi.Int64)>()
+external bool dart_edge_http_server_runtime_finish_sse_response(int request_id);
+
+@ffi.Native<ffi.Void Function(ffi.Pointer<NativeMultipartForm>)>(isLeaf: true)
+external void dart_edge_http_server_runtime_free_multipart_form(
+  ffi.Pointer<NativeMultipartForm> value,
+);
+
 @ffi.Native<ffi.Void Function(ffi.Pointer<NativeTransportRequest>)>(
   isLeaf: true,
 )
@@ -19,8 +36,39 @@ external void dart_edge_http_server_runtime_free_request(
   ffi.Pointer<NativeTransportRequest> value,
 );
 
+@ffi.Native<ffi.Void Function(ffi.Pointer<ffi.Char>)>(isLeaf: true)
+external void dart_edge_http_server_runtime_free_string(
+  ffi.Pointer<ffi.Char> value,
+);
+
+@ffi.Native<ffi.Void Function(ffi.Pointer<NativeWebSocketConnection>)>(
+  isLeaf: true,
+)
+external void dart_edge_http_server_runtime_free_web_socket_connection(
+  ffi.Pointer<NativeWebSocketConnection> value,
+);
+
+@ffi.Native<ffi.Void Function(ffi.Pointer<NativeWebSocketMessage>)>(
+  isLeaf: true,
+)
+external void dart_edge_http_server_runtime_free_web_socket_message(
+  ffi.Pointer<NativeWebSocketMessage> value,
+);
+
 @ffi.Native<ffi.Int32 Function()>(isLeaf: true)
 external int dart_edge_http_server_runtime_native_abi_version();
+
+@ffi.Native<
+  ffi.Pointer<NativeMultipartForm> Function(
+    ffi.Pointer<NativeTransportRequest>,
+    ffi.Pointer<ffi.Char>,
+  )
+>()
+external ffi.Pointer<NativeMultipartForm>
+dart_edge_http_server_runtime_parse_multipart(
+  ffi.Pointer<NativeTransportRequest> request,
+  ffi.Pointer<ffi.Char> content_type,
+);
 
 @ffi.Native<
   ffi.Bool Function(
@@ -41,13 +89,19 @@ external bool dart_edge_http_server_runtime_send_response(
   ffi.Pointer<imp$1.NativePair> headers,
 );
 
+@ffi.Native<ffi.Bool Function(ffi.Int64, ffi.Pointer<ffi.Char>)>()
+external bool dart_edge_http_server_runtime_send_sse_chunk(
+  int request_id,
+  ffi.Pointer<ffi.Char> chunk,
+);
+
 @ffi.Native<
   ffi.Int64 Function(
     ffi.Pointer<ffi.Char>,
     ffi.Int64,
     ffi.Int64,
     ffi.Pointer<ffi.Char>,
-    dart_edge_http_server_runtime_request_ready_callback_t,
+    dart_edge_http_server_runtime_transport_event_callback_t,
   )
 >()
 external int dart_edge_http_server_runtime_start_server(
@@ -55,15 +109,82 @@ external int dart_edge_http_server_runtime_start_server(
   int port,
   int worker_count,
   ffi.Pointer<ffi.Char> routes_json,
-  dart_edge_http_server_runtime_request_ready_callback_t callback,
+  dart_edge_http_server_runtime_transport_event_callback_t callback,
+);
+
+@ffi.Native<
+  ffi.Bool Function(
+    ffi.Int64,
+    ffi.Int32,
+    ffi.IntPtr,
+    ffi.Pointer<imp$1.NativePair>,
+  )
+>()
+external bool dart_edge_http_server_runtime_start_sse_response(
+  int request_id,
+  int status,
+  int header_count,
+  ffi.Pointer<imp$1.NativePair> headers,
 );
 
 @ffi.Native<ffi.Void Function()>()
 external void dart_edge_http_server_runtime_stop_server();
 
+@ffi.Native<ffi.Pointer<ffi.Char> Function()>()
+external ffi.Pointer<ffi.Char> dart_edge_http_server_runtime_take_last_error();
+
 @ffi.Native<ffi.Pointer<NativeTransportRequest> Function(ffi.Int64)>()
 external ffi.Pointer<NativeTransportRequest>
 dart_edge_http_server_runtime_take_request(int request_id);
+
+@ffi.Native<ffi.Pointer<NativeWebSocketConnection> Function(ffi.Int64)>()
+external ffi.Pointer<NativeWebSocketConnection>
+dart_edge_http_server_runtime_take_web_socket_connection(int session_id);
+
+@ffi.Native<ffi.Pointer<NativeWebSocketMessage> Function(ffi.Int64)>()
+external ffi.Pointer<NativeWebSocketMessage>
+dart_edge_http_server_runtime_take_web_socket_message(int session_id);
+
+@ffi.Native<ffi.Bool Function(ffi.Int64, ffi.Int32, ffi.Pointer<ffi.Char>)>()
+external bool dart_edge_http_server_runtime_web_socket_close(
+  int session_id,
+  int code,
+  ffi.Pointer<ffi.Char> reason,
+);
+
+@ffi.Native<ffi.Bool Function(ffi.Int64, ffi.Pointer<ffi.Char>)>()
+external bool dart_edge_http_server_runtime_web_socket_send_text(
+  int session_id,
+  ffi.Pointer<ffi.Char> text,
+);
+
+final class NativeMultipartField extends ffi.Struct {
+  external imp$1.NativeBytes name;
+
+  external imp$1.NativeBytes value;
+}
+
+final class NativeMultipartFile extends ffi.Struct {
+  external imp$1.NativeBytes field_name;
+
+  external imp$1.NativeBytes filename;
+
+  external imp$1.NativeBytes content_type;
+
+  external imp$1.NativeBytes body;
+}
+
+final class NativeMultipartForm extends ffi.Struct {
+  @ffi.IntPtr()
+  external int field_count;
+
+  external ffi.Pointer<NativeMultipartField> fields;
+
+  @ffi.IntPtr()
+  external int file_count;
+
+  external ffi.Pointer<NativeMultipartFile> files;
+}
 
 final class NativeTransportRequest extends ffi.Struct {
   external imp$1.NativeBytes route_id;
@@ -86,8 +207,47 @@ final class NativeTransportRequest extends ffi.Struct {
   external imp$1.NativeBytes body;
 
   @ffi.Uint8()
+  external int request_kind;
+
+  @ffi.Uint8()
   external int body_kind;
 }
 
-typedef dart_edge_http_server_runtime_request_ready_callback_t =
-    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Int64 request_id)>>;
+final class NativeWebSocketConnection extends ffi.Struct {
+  @ffi.Int64()
+  external int session_id;
+
+  @ffi.Int64()
+  external int request_id;
+
+  external imp$1.NativeBytes route_id;
+
+  @ffi.IntPtr()
+  external int path_param_count;
+
+  external ffi.Pointer<imp$1.NativePair> path_params;
+
+  @ffi.IntPtr()
+  external int query_count;
+
+  external ffi.Pointer<imp$1.NativePair> query;
+
+  @ffi.IntPtr()
+  external int header_count;
+
+  external ffi.Pointer<imp$1.NativePair> headers;
+}
+
+final class NativeWebSocketMessage extends ffi.Struct {
+  @ffi.Int64()
+  external int session_id;
+
+  external imp$1.NativeBytes body;
+}
+
+typedef dart_edge_http_server_runtime_transport_event_callback_t =
+    ffi.Pointer<
+      ffi.NativeFunction<
+        ffi.Void Function(ffi.Int32 event_kind, ffi.Int64 event_id)
+      >
+    >;

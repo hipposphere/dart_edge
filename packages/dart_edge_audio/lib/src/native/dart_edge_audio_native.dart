@@ -46,19 +46,42 @@ abstract final class DartEdgeAudioNative {
     String? fileNameHint,
     String? mimeTypeHint,
   }) {
+    final bytesPtr = bytes.isEmpty ? nullptr : calloc<Uint8>(bytes.length);
+
+    try {
+      if (bytesPtr != nullptr) {
+        bytesPtr.asTypedList(bytes.length).setAll(0, bytes);
+      }
+
+      return probeRawBytes(
+        bytesPtr,
+        bytes.length,
+        fileNameHint: fileNameHint,
+        mimeTypeHint: mimeTypeHint,
+      );
+    } finally {
+      if (bytesPtr != nullptr) {
+        calloc.free(bytesPtr);
+      }
+    }
+  }
+
+  static String probeRawBytes(
+    Pointer<Uint8> bytesPtr,
+    int bytesLength, {
+    String? fileNameHint,
+    String? mimeTypeHint,
+  }) {
     final requestPtr = jsonEncode({
       'fileNameHint': fileNameHint,
       'mimeTypeHint': mimeTypeHint,
     }).toNativeUtf8();
-    final bytesPtr = calloc<Uint8>(bytes.length);
 
     try {
-      bytesPtr.asTypedList(bytes.length).setAll(0, bytes);
-
       final resultPtr = gen.dart_edge_audio_probe_bytes(
         requestPtr.cast<Char>(),
         bytesPtr,
-        bytes.length,
+        bytesLength,
       );
       if (resultPtr == nullptr) {
         throw StateError(_takeLastError());
@@ -71,7 +94,6 @@ abstract final class DartEdgeAudioNative {
       }
     } finally {
       calloc.free(requestPtr);
-      calloc.free(bytesPtr);
     }
   }
 
@@ -100,16 +122,33 @@ abstract final class DartEdgeAudioNative {
     String requestJson,
     Uint8List bytes,
   ) {
-    final requestPtr = requestJson.toNativeUtf8();
-    final bytesPtr = calloc<Uint8>(bytes.length);
+    final bytesPtr = bytes.isEmpty ? nullptr : calloc<Uint8>(bytes.length);
 
     try {
-      bytesPtr.asTypedList(bytes.length).setAll(0, bytes);
+      if (bytesPtr != nullptr) {
+        bytesPtr.asTypedList(bytes.length).setAll(0, bytes);
+      }
 
+      return convertRawBytes(requestJson, bytesPtr, bytes.length);
+    } finally {
+      if (bytesPtr != nullptr) {
+        calloc.free(bytesPtr);
+      }
+    }
+  }
+
+  static _NativeBytesConversionResponse convertRawBytes(
+    String requestJson,
+    Pointer<Uint8> bytesPtr,
+    int bytesLength,
+  ) {
+    final requestPtr = requestJson.toNativeUtf8();
+
+    try {
       final resultPtr = gen.dart_edge_audio_convert_bytes(
         requestPtr.cast<Char>(),
         bytesPtr,
-        bytes.length,
+        bytesLength,
       );
       if (resultPtr == nullptr) {
         throw StateError(_takeLastError());
@@ -132,7 +171,6 @@ abstract final class DartEdgeAudioNative {
       }
     } finally {
       calloc.free(requestPtr);
-      calloc.free(bytesPtr);
     }
   }
 }

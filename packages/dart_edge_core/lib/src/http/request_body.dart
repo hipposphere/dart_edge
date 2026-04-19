@@ -27,4 +27,9 @@ final class RequestBody {
   static RequestBody text() {
     return const RequestBody._(contentType: 'text/plain; charset=utf-8');
   }
+
+  /// Declares a multipart form-data request body.
+  static RequestBody multipartFormData() {
+    return const RequestBody._(contentType: 'multipart/form-data');
+  }
 }

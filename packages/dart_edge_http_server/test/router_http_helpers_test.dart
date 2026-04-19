@@ -90,9 +90,9 @@ void main() {
       await updateRoute.handle(
         RequestContext<TestServices>(
           services: const TestServices(),
-          req: const RequestInput(
-            paramsValue: {'id': '42'},
-            bodyValue: {'name': 'Ada'},
+          req: RequestInput(
+            params: const {'id': '42'},
+            body: const {'name': 'Ada'},
           ),
         ),
       ),
@@ -105,7 +105,7 @@ void main() {
       deleteRoute.handle(
         RequestContext<TestServices>(
           services: const TestServices(),
-          req: const RequestInput(paramsValue: {'id': '42'}),
+          req: RequestInput(params: const {'id': '42'}),
         ),
       ),
       'deleted:42',
@@ -162,6 +162,30 @@ void main() {
       HttpMethod.head,
       HttpMethod.options,
     ]);
+  });
+
+  test('builds inline websocket handlers with stable defaults', () async {
+    final app = DartEdge<TestServices>(services: TestServices.new);
+
+    app.websocket(
+      '/ws/<roomId>',
+      onConnect: (socket) async {
+        await socket.sendJson({'roomId': socket.req.param('roomId')});
+      },
+    );
+
+    final registration = app.routeRegistry.registrations.single;
+    final route = registration.route as WebSocketRouteDefinition<TestServices>;
+    final contract = route.contract;
+
+    expect(contract.path, '/ws/<roomId>');
+    expect(contract.operationId, 'webSocketWsByRoomId');
+    expect(
+      registration.toString(),
+      contains(
+        'RouteRegistration(WS /ws/<roomId>, operationId: webSocketWsByRoomId',
+      ),
+    );
   });
 }
 

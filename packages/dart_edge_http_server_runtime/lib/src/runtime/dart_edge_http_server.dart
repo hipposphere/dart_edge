@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:ffi';
 import 'dart:io';
 
@@ -8,10 +9,17 @@ import '../native/dart_edge_native.dart';
 import 'compiled_route_table.dart';
 import 'dart_edge_codec.dart';
 import 'dart_edge_server.dart';
+import 'native_request.dart';
 import 'open_api_document.dart';
 import 'request_decoder.dart';
 import 'response_writer.dart';
 import 'rust_middleware.dart';
+import 'transport_request.dart';
+
+const _transportEventRequestReady = 1;
+const _transportEventWebSocketOpened = 2;
+const _transportEventWebSocketMessageReady = 3;
+const _transportEventWebSocketClosed = 4;
 
 /// Main application object for a Dart Edge server.
 ///
@@ -37,6 +45,10 @@ class DartEdge<TServices> extends Router<TServices> {
   JsonSchemaRegistry? _schemaRegistry;
   DartEdgeCodecRegistry _codecRegistry;
   _RustTransportSession? _session;
+  final Map<int, RequestContext<TServices>> _pendingWebSocketContexts =
+      <int, RequestContext<TServices>>{};
+  final Map<int, _ActiveWebSocketSession> _activeWebSocketSessions =
+      <int, _ActiveWebSocketSession>{};
 
   /// Installed JSON Schema registry used for validation and manifests.
   JsonSchemaRegistry? get schemaRegistry => _schemaRegistry;
@@ -101,8 +113,8 @@ class DartEdge<TServices> extends Router<TServices> {
       routesJson: compiledRoutes.nativeManifestJson(
         schemaRegistry: _schemaRegistry,
       ),
-      onRequestReady: (requestId) async {
-        await _handleTransportRequest(requestId, compiledRoutes);
+      onTransportEvent: (eventKind, eventId) async {
+        await _handleTransportEvent(eventKind, eventId, compiledRoutes);
       },
     );
     _session = session;
@@ -117,92 +129,353 @@ class DartEdge<TServices> extends Router<TServices> {
         }
         _session = null;
         await currentSession.close();
+        _pendingWebSocketContexts.clear();
+        for (final session in _activeWebSocketSessions.values.toList()) {
+          await session.messages.close();
+        }
+        _activeWebSocketSessions.clear();
       },
     );
+  }
+
+  Future<void> _handleTransportEvent(
+    int eventKind,
+    int eventId,
+    CompiledRouteTable<TServices> compiledRoutes,
+  ) async {
+    switch (eventKind) {
+      case _transportEventRequestReady:
+        await _handleTransportRequest(eventId, compiledRoutes);
+        return;
+      case _transportEventWebSocketOpened:
+        await _handleWebSocketOpened(eventId, compiledRoutes);
+        return;
+      case _transportEventWebSocketMessageReady:
+        _drainWebSocketMessages(eventId);
+        return;
+      case _transportEventWebSocketClosed:
+        await _handleWebSocketClosed(eventId);
+        return;
+    }
   }
 
   Future<void> _handleTransportRequest(
     int requestId,
     CompiledRouteTable<TServices> compiledRoutes,
   ) async {
-    final request = DartEdgeNative.takeRequest(requestId);
-    if (request == null) {
+    final requestLease = DartEdgeNative.takeRequest(requestId);
+    if (requestLease == null) {
+      return;
+    }
+    final request = requestLease.request;
+    final operationId = _transportOperationId(request, compiledRoutes);
+
+    try {
+      switch (request.requestKind) {
+        case TransportRequestKind.http:
+          await _handleHttpRequest(requestId, requestLease, compiledRoutes);
+          return;
+        case TransportRequestKind.webSocket:
+          await _handleWebSocketHandshake(
+            requestId,
+            requestLease,
+            compiledRoutes,
+          );
+          return;
+      }
+    } catch (error, stackTrace) {
+      stderr.writeln(
+        'dart_edge_http_server_runtime request handling failed for '
+        '$operationId: $error',
+      );
+      stderr.writeln(stackTrace);
+      _respondServerError(requestId);
+    } finally {
+      requestLease.dispose();
+    }
+  }
+
+  Future<void> _handleHttpRequest(
+    int requestId,
+    NativeTransportRequestLease requestLease,
+    CompiledRouteTable<TServices> compiledRoutes,
+  ) async {
+    final request = requestLease.request;
+    final compiledRoute = compiledRoutes.routesById[request.routeId];
+    if (compiledRoute == null) {
+      _respondServerError(requestId);
       return;
     }
 
-    final compiledRoute = compiledRoutes.routesById[request.routeId];
+    final input = await decodeRequestInput(
+      request,
+      codecs: _codecRegistry,
+      nativeRequest: requestLease.nativeRequest,
+      paramsSchemaId: compiledRoute.contract.options.params?.id,
+      querySchemaId: compiledRoute.contract.options.query?.id,
+      headersSchemaId: compiledRoute.contract.options.headers?.id,
+      body: compiledRoute.contract.options.body,
+    );
+    final ctx = RequestContext<TServices>(
+      services: _createServices(),
+      req: input,
+    );
+    ctx.put<NativeRequest>(requestLease.nativeRequest);
+    for (final guard in compiledRoute.guards) {
+      final decision = await Future.sync(() => guard.authorize(ctx));
+      if (!decision.isAllowed) {
+        final response = encodeResponse(
+          spec: compiledRoute.contract.responses.success,
+          body: decision.response,
+          response: ctx.res,
+        );
+        DartEdgeNative.tryRespond(
+          requestId,
+          status: response.status,
+          contentType: response.contentType,
+          body: response.body,
+          headers: response.headers,
+        );
+        return;
+      }
+    }
+
+    final body = await Future.sync(() => compiledRoute.route.handle(ctx));
+    final sseResponse = _resolveSseResponse(body, ctx.res);
+    if (sseResponse != null) {
+      await _streamSseResponse(requestId, sseResponse);
+      return;
+    }
+
+    final response = encodeResponse(
+      spec: compiledRoute.contract.responses.success,
+      body: body,
+      response: ctx.res,
+    );
+
+    DartEdgeNative.tryRespond(
+      requestId,
+      status: response.status,
+      contentType: response.contentType,
+      body: response.body,
+      headers: response.headers,
+    );
+  }
+
+  Future<void> _handleWebSocketHandshake(
+    int requestId,
+    NativeTransportRequestLease requestLease,
+    CompiledRouteTable<TServices> compiledRoutes,
+  ) async {
+    final request = requestLease.request;
+    final compiledRoute = compiledRoutes.webSocketRoutesById[request.routeId];
     if (compiledRoute == null) {
-      final response = encodeServerError();
-      DartEdgeNative.tryRespond(
-        requestId,
-        status: response.status,
-        contentType: response.contentType,
-        body: response.body,
-        headers: response.headers,
+      _respondServerError(requestId);
+      return;
+    }
+
+    final input = await decodeRequestInput(
+      request,
+      codecs: _codecRegistry,
+      nativeRequest: null,
+      paramsSchemaId: null,
+      querySchemaId: null,
+      headersSchemaId: null,
+      body: null,
+    );
+    final ctx = RequestContext<TServices>(
+      services: _createServices(),
+      req: input,
+    );
+    for (final guard in compiledRoute.guards) {
+      final decision = await Future.sync(() => guard.authorize(ctx));
+      if (!decision.isAllowed) {
+        final response = encodeResponse(
+          spec: ResponseSpec.text(),
+          body: decision.response,
+          response: ctx.res,
+        );
+        DartEdgeNative.tryRespond(
+          requestId,
+          status: response.status,
+          contentType: response.contentType,
+          body: response.body,
+          headers: response.headers,
+        );
+        return;
+      }
+    }
+
+    _pendingWebSocketContexts[requestId] = ctx;
+    final accepted = DartEdgeNative.acceptWebSocket(
+      requestId,
+      headers: ctx.res.headers,
+    );
+    if (!accepted) {
+      _pendingWebSocketContexts.remove(requestId);
+      _respondServerError(requestId);
+    }
+  }
+
+  Future<void> _handleWebSocketOpened(
+    int sessionId,
+    CompiledRouteTable<TServices> compiledRoutes,
+  ) async {
+    final connection = DartEdgeNative.takeWebSocketConnection(sessionId);
+    if (connection == null) {
+      return;
+    }
+
+    final compiledRoute =
+        compiledRoutes.webSocketRoutesById[connection.routeId];
+    if (compiledRoute == null) {
+      DartEdgeNative.webSocketClose(
+        sessionId,
+        reason: 'No Dart WebSocket route registered for ${connection.routeId}.',
       );
+      return;
+    }
+
+    final requestContext =
+        _pendingWebSocketContexts.remove(connection.requestId) ??
+        RequestContext<TServices>(
+          services: _createServices(),
+          req: RequestInput(
+            params: Map<String, String>.unmodifiable(connection.pathParams),
+            query: Map<String, String>.unmodifiable(connection.query),
+            headers: Map<String, String>.unmodifiable(connection.headers),
+          ),
+        );
+
+    final activeSession = _ActiveWebSocketSession(StreamController<String>());
+    _activeWebSocketSessions[sessionId] = activeSession;
+
+    final socket = WebSocketContext<TServices>.fromRequest(
+      request: requestContext,
+      messages: IncomingWebSocketMessages(activeSession.messages.stream),
+      sendJson: (value) async {
+        final encoded = jsonEncode(_normalizeWebSocketJson(value));
+        if (!DartEdgeNative.webSocketSendText(sessionId, encoded)) {
+          throw StateError('Failed to send WebSocket frame for $sessionId.');
+        }
+      },
+      close: ([code, reason]) async {
+        DartEdgeNative.webSocketClose(sessionId, code: code, reason: reason);
+      },
+    );
+
+    activeSession.task =
+        Future.sync(() => compiledRoute.route.onConnect(socket))
+            .catchError((Object error, StackTrace stackTrace) {
+              stderr.writeln(
+                'dart_edge_http_server_runtime websocket handling failed for '
+                '${compiledRoute.contract.operationId}: $error',
+              );
+              stderr.writeln(stackTrace);
+            })
+            .whenComplete(() async {
+              final session = _activeWebSocketSessions.remove(sessionId);
+              await session?.messages.close();
+              DartEdgeNative.webSocketClose(sessionId);
+            });
+
+    _drainWebSocketMessages(sessionId);
+  }
+
+  void _drainWebSocketMessages(int sessionId) {
+    final session = _activeWebSocketSessions[sessionId];
+    if (session == null || session.messages.isClosed) {
+      return;
+    }
+
+    while (true) {
+      final message = DartEdgeNative.takeWebSocketMessage(sessionId);
+      if (message == null) {
+        return;
+      }
+      session.messages.add(message.text);
+    }
+  }
+
+  Future<void> _handleWebSocketClosed(int sessionId) async {
+    final session = _activeWebSocketSessions.remove(sessionId);
+    await session?.messages.close();
+  }
+
+  SseResponse? _resolveSseResponse(Object? body, ResponseBuilder response) {
+    if (body case final SseResponse response) {
+      return response;
+    }
+
+    final override = response.hasBodyOverride ? response.bodyOverride : null;
+    return override is SseResponse ? override : null;
+  }
+
+  Future<void> _streamSseResponse(int requestId, SseResponse response) async {
+    final started = DartEdgeNative.startSseResponse(
+      requestId,
+      status: response.status,
+      headers: _defaultSseHeaders(response.headers),
+    );
+    if (!started) {
       return;
     }
 
     try {
-      final input = await decodeRequestInput(
-        request,
-        codecs: _codecRegistry,
-        paramsSchemaId: compiledRoute.contract.options.params?.id,
-        querySchemaId: compiledRoute.contract.options.query?.id,
-        headersSchemaId: compiledRoute.contract.options.headers?.id,
-        body: compiledRoute.contract.options.body,
-      );
-      final ctx = RequestContext<TServices>(
-        services: _createServices(),
-        req: input,
-      );
-      for (final guard in compiledRoute.guards) {
-        final decision = await Future.sync(() => guard.authorize(ctx));
-        if (!decision.isAllowed) {
-          final response = encodeResponse(
-            spec: compiledRoute.contract.responses.success,
-            body: decision.response,
-            response: ctx.res,
-          );
-          DartEdgeNative.tryRespond(
-            requestId,
-            status: response.status,
-            contentType: response.contentType,
-            body: response.body,
-            headers: response.headers,
-          );
-          return;
+      await for (final event in response.events) {
+        if (!DartEdgeNative.sendSseChunk(requestId, event.encode())) {
+          break;
         }
       }
-      final body = await Future.sync(() => compiledRoute.route.handle(ctx));
-      final response = encodeResponse(
-        spec: compiledRoute.contract.responses.success,
-        body: body,
-        response: ctx.res,
-      );
-
-      DartEdgeNative.tryRespond(
-        requestId,
-        status: response.status,
-        contentType: response.contentType,
-        body: response.body,
-        headers: response.headers,
-      );
-    } catch (error, stackTrace) {
-      stderr.writeln(
-        'dart_edge_http_server_runtime request handling failed for '
-        '${compiledRoute.contract.options.operationId!}: $error',
-      );
-      stderr.writeln(stackTrace);
-      final response = encodeServerError();
-      DartEdgeNative.tryRespond(
-        requestId,
-        status: response.status,
-        contentType: response.contentType,
-        body: response.body,
-        headers: response.headers,
-      );
+    } finally {
+      DartEdgeNative.finishSseResponse(requestId);
     }
+  }
+
+  List<HttpHeader> _defaultSseHeaders(List<HttpHeader> headers) {
+    final hasCacheControl = headers.any(
+      (header) => header.name.toLowerCase() == 'cache-control',
+    );
+    final hasBufferingHint = headers.any(
+      (header) => header.name.toLowerCase() == 'x-accel-buffering',
+    );
+
+    return [
+      ...headers,
+      if (!hasCacheControl) const HttpHeader('Cache-Control', 'no-cache'),
+      if (!hasBufferingHint) const HttpHeader('X-Accel-Buffering', 'no'),
+    ];
+  }
+
+  String _transportOperationId(
+    TransportRequest request,
+    CompiledRouteTable<TServices> compiledRoutes,
+  ) {
+    return switch (request.requestKind) {
+          TransportRequestKind.http =>
+            compiledRoutes
+                .routesById[request.routeId]
+                ?.contract
+                .options
+                .operationId,
+          TransportRequestKind.webSocket =>
+            compiledRoutes
+                .webSocketRoutesById[request.routeId]
+                ?.contract
+                .operationId,
+        } ??
+        request.routeId;
+  }
+
+  void _respondServerError(int requestId) {
+    final response = encodeServerError();
+    DartEdgeNative.tryRespond(
+      requestId,
+      status: response.status,
+      contentType: response.contentType,
+      body: response.body,
+      headers: response.headers,
+    );
   }
 
   TServices _createServices() {
@@ -225,7 +498,30 @@ class DartEdge<TServices> extends Router<TServices> {
   }
 }
 
-typedef _NativeRequestReady = Void Function(Int64);
+Object? _normalizeWebSocketJson(Object? value) {
+  switch (value) {
+    case null:
+    case bool():
+    case num():
+    case String():
+      return value;
+    case List():
+      return value.map(_normalizeWebSocketJson).toList(growable: false);
+    case Map():
+      return {
+        for (final entry in value.entries)
+          entry.key.toString(): _normalizeWebSocketJson(entry.value),
+      };
+    case JsonEncodable():
+      return _normalizeWebSocketJson(value.toJson());
+    default:
+      throw StateError(
+        'WebSocket payload of type ${value.runtimeType} is not JSON encodable.',
+      );
+  }
+}
+
+typedef _NativeTransportEvent = Void Function(Int32, Int64);
 
 final class _RustTransportSession {
   _RustTransportSession._({
@@ -236,7 +532,7 @@ final class _RustTransportSession {
 
   final String host;
   final int port;
-  final NativeCallable<_NativeRequestReady> callback;
+  final NativeCallable<_NativeTransportEvent> callback;
   var _closed = false;
 
   static Future<_RustTransportSession> start({
@@ -244,15 +540,17 @@ final class _RustTransportSession {
     required int requestedPort,
     required int workers,
     required String routesJson,
-    required Future<void> Function(int requestId) onRequestReady,
+    required Future<void> Function(int eventKind, int eventId) onTransportEvent,
   }) async {
-    late final NativeCallable<_NativeRequestReady> callback;
+    late final NativeCallable<_NativeTransportEvent> callback;
 
-    void handleRequestReady(int requestId) {
-      unawaited(onRequestReady(requestId));
+    void handleTransportEvent(int eventKind, int eventId) {
+      unawaited(onTransportEvent(eventKind, eventId));
     }
 
-    callback = NativeCallable<_NativeRequestReady>.listener(handleRequestReady);
+    callback = NativeCallable<_NativeTransportEvent>.listener(
+      handleTransportEvent,
+    );
     final port = DartEdgeNative.startServer(
       host,
       requestedPort,
@@ -276,4 +574,11 @@ final class _RustTransportSession {
     DartEdgeNative.stopServer();
     callback.close();
   }
+}
+
+final class _ActiveWebSocketSession {
+  _ActiveWebSocketSession(this.messages);
+
+  final StreamController<String> messages;
+  Future<void>? task;
 }

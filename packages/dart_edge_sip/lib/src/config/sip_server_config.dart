@@ -22,15 +22,11 @@ final class SipTransportBinding {
     this.tlsProfile,
   });
 
-  const SipTransportBinding.udp({
-    required String host,
-    required int port,
-  }) : this(protocol: SipTransportProtocol.udp, host: host, port: port);
+  const SipTransportBinding.udp({required String host, required int port})
+    : this(protocol: SipTransportProtocol.udp, host: host, port: port);
 
-  const SipTransportBinding.tcp({
-    required String host,
-    required int port,
-  }) : this(protocol: SipTransportProtocol.tcp, host: host, port: port);
+  const SipTransportBinding.tcp({required String host, required int port})
+    : this(protocol: SipTransportProtocol.tcp, host: host, port: port);
 
   const SipTransportBinding.tls({
     required String host,
@@ -111,11 +107,7 @@ final class SipRecordingStorageConfig {
   const SipRecordingStorageConfig.directory({
     required String directory,
     int? retentionDays,
-  }) : this(
-         enabled: true,
-         directory: directory,
-         retentionDays: retentionDays,
-       );
+  }) : this(enabled: true, directory: directory, retentionDays: retentionDays);
 
   final bool enabled;
   final String? directory;

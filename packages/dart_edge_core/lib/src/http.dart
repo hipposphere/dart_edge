@@ -9,3 +9,5 @@ export 'http/request_body.dart';
 export 'http/response_set.dart';
 export 'http/response_spec.dart';
 export 'http/route_contract.dart';
+export 'http/sse_event.dart';
+export 'http/sse_response.dart';

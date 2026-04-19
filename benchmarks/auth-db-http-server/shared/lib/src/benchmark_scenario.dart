@@ -4,7 +4,7 @@ import 'server_config.dart';
 enum BenchmarkScenarioKind { request, flow }
 
 /// Canonical benchmark scenarios served by every target.
-enum BenchmarkScenario { signIn, rawAuthed, dbAuthed, flow }
+enum BenchmarkScenario { signIn, rawAuthed, dbAuthed, uploadMultipart, flow }
 
 /// Derived metadata for a [BenchmarkScenario].
 extension BenchmarkScenarioDetails on BenchmarkScenario {
@@ -13,6 +13,7 @@ extension BenchmarkScenarioDetails on BenchmarkScenario {
     BenchmarkScenario.signIn => 'sign_in',
     BenchmarkScenario.rawAuthed => 'raw_authed',
     BenchmarkScenario.dbAuthed => 'db_authed',
+    BenchmarkScenario.uploadMultipart => 'upload_multipart',
     BenchmarkScenario.flow => 'flow',
   };
 
@@ -21,6 +22,7 @@ extension BenchmarkScenarioDetails on BenchmarkScenario {
     BenchmarkScenario.signIn => 'Sign In',
     BenchmarkScenario.rawAuthed => 'Authenticated Raw',
     BenchmarkScenario.dbAuthed => 'Authenticated DB',
+    BenchmarkScenario.uploadMultipart => 'Multipart Upload',
     BenchmarkScenario.flow => 'End-to-End Flow',
   };
 
@@ -35,6 +37,7 @@ extension BenchmarkScenarioDetails on BenchmarkScenario {
     BenchmarkScenario.signIn => 'POST',
     BenchmarkScenario.rawAuthed => 'GET',
     BenchmarkScenario.dbAuthed => 'GET',
+    BenchmarkScenario.uploadMultipart => 'POST',
     BenchmarkScenario.flow => 'FLOW',
   };
 
@@ -43,6 +46,7 @@ extension BenchmarkScenarioDetails on BenchmarkScenario {
     BenchmarkScenario.signIn => '$benchmarkAuthPath/sign-in/email',
     BenchmarkScenario.rawAuthed => benchmarkRawPath,
     BenchmarkScenario.dbAuthed => benchmarkDatabasePath,
+    BenchmarkScenario.uploadMultipart => benchmarkUploadMultipartPath,
     BenchmarkScenario.flow => '/flow',
   };
 
@@ -69,8 +73,10 @@ BenchmarkScenario _parseBenchmarkScenario(String value) => switch (value) {
   'sign_in' => BenchmarkScenario.signIn,
   'raw_authed' => BenchmarkScenario.rawAuthed,
   'db_authed' => BenchmarkScenario.dbAuthed,
+  'upload_multipart' => BenchmarkScenario.uploadMultipart,
   'flow' => BenchmarkScenario.flow,
   _ => throw FormatException(
-    'Unknown scenario "$value". Use sign_in, raw_authed, db_authed, flow, or all.',
+    'Unknown scenario "$value". Use sign_in, raw_authed, db_authed, '
+    'upload_multipart, flow, or all.',
   ),
 };

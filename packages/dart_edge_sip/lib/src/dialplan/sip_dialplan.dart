@@ -49,17 +49,15 @@ sealed class SipDialplanDecision {
     required String endpointId,
   }) = SipRouteToEndpointDecision;
 
-  const factory SipDialplanDecision.routeToTrunk({
-    required String trunkId,
-  }) = SipRouteToTrunkDecision;
+  const factory SipDialplanDecision.routeToTrunk({required String trunkId}) =
+      SipRouteToTrunkDecision;
 
   const factory SipDialplanDecision.routeToMediaApp({
     required String mediaAppId,
   }) = SipRouteToMediaAppDecision;
 
-  const factory SipDialplanDecision.sendToVoicemail({
-    required String mailbox,
-  }) = SipSendToVoicemailDecision;
+  const factory SipDialplanDecision.sendToVoicemail({required String mailbox}) =
+      SipSendToVoicemailDecision;
 
   const factory SipDialplanDecision.reject({
     required int status,

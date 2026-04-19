@@ -31,6 +31,7 @@ final class BenchmarkTargetProcess {
     required Directory repoRoot,
     required int port,
     required bool singleCore,
+    Map<String, String> environment = const <String, String>{},
   }) async {
     final workingDirectory =
         '${repoRoot.path}/benchmarks/auth-db-http-server/${target.directoryName}';
@@ -43,6 +44,7 @@ final class BenchmarkTargetProcess {
       target: target,
       workingDirectory: workingDirectory,
       port: port,
+      environment: environment,
     );
 
     final stdoutBuffer = StringBuffer();
@@ -135,17 +137,21 @@ final class BenchmarkTargetProcess {
     required BenchmarkTargetDefinition target,
     required String workingDirectory,
     required int port,
+    required Map<String, String> environment,
   }) {
     return switch (target.runtime) {
       BenchmarkTargetRuntime.dartAot => Process.start(
         '$workingDirectory/build/${target.id}/bundle/bin/server',
         ['--port=$port'],
         workingDirectory: workingDirectory,
+        environment: environment,
       ),
-      BenchmarkTargetRuntime.node => Process.start('node', [
-        'server.mjs',
-        '--port=$port',
-      ], workingDirectory: workingDirectory),
+      BenchmarkTargetRuntime.node => Process.start(
+        'node',
+        ['server.mjs', '--port=$port'],
+        workingDirectory: workingDirectory,
+        environment: environment,
+      ),
     };
   }
 

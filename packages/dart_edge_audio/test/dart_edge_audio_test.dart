@@ -1,7 +1,10 @@
+import 'dart:ffi';
 import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:dart_edge_audio/dart_edge_audio.dart';
+import 'package:dart_edge_core/ffi.dart' as core_ffi;
+import 'package:ffi/ffi.dart';
 import 'package:test/test.dart';
 
 void main() {
@@ -86,6 +89,45 @@ void main() {
     }
   });
 
+  group('probeNativeBytes', () {
+    final cases = <_FixtureCase>[
+      const _FixtureCase(
+        path: 'test/fixtures/tone.wav',
+        container: 'wav',
+        codec: 'pcm_s16le',
+        mimeType: 'audio/wav',
+      ),
+      const _FixtureCase(
+        path: 'test/fixtures/tone.mp3',
+        container: 'mp3',
+        codec: 'mp3',
+        mimeType: 'audio/mpeg',
+      ),
+    ];
+
+    for (final fixture in cases) {
+      test(
+        'reads ${fixture.container} metadata from borrowed native bytes',
+        () async {
+          final bytes = await File(fixture.path).readAsBytes();
+          final nativeBytes = _allocateNativeBytes(bytes);
+          addTearDown(nativeBytes.dispose);
+
+          final metadata = await DartEdgeAudio.probeNativeBytes(
+            nativeBytes.view,
+            fileNameHint: fixture.fileName,
+            mimeTypeHint: fixture.mimeType,
+          );
+          _expectFixtureMetadata(
+            metadata,
+            container: fixture.container,
+            codec: fixture.codec,
+          );
+        },
+      );
+    }
+  });
+
   test('convertFile writes normalized wav output', () async {
     final tempDir = await Directory.systemTemp.createTemp('dart_edge_audio_');
     addTearDown(() => tempDir.delete(recursive: true));
@@ -152,6 +194,29 @@ void main() {
     expect(probed.bitDepth, 24);
   });
 
+  test('convertNativeBytes returns wav bytes and metadata', () async {
+    final input = await File('test/fixtures/tone.flac').readAsBytes();
+    final nativeBytes = _allocateNativeBytes(input);
+    addTearDown(nativeBytes.dispose);
+
+    final result = await DartEdgeAudio.convertNativeBytes(
+      bytes: nativeBytes.view,
+      targetFormat: AudioTargetFormat.wavPcm16,
+      targetSampleRate: 16000,
+      channelLayout: AudioChannelLayout.mono,
+      fileNameHint: 'tone.flac',
+      mimeTypeHint: 'audio/flac',
+    );
+
+    expect(result.bytes, isNotEmpty);
+    expect(result.mimeType, 'audio/wav');
+    expect(result.metadata.container, 'wav');
+    expect(result.metadata.codec, 'pcm_s16le');
+    expect(result.metadata.sampleRate, 16000);
+    expect(result.metadata.channelCount, 1);
+    expect(result.metadata.bitDepth, 16);
+  });
+
   test('probeFile surfaces missing-file errors', () async {
     await expectLater(
       () => DartEdgeAudio.probeFile('test/fixtures/missing.mp3'),
@@ -201,6 +266,35 @@ void main() {
       throwsA(isA<ArgumentError>()),
     );
   });
+
+  test(
+    'probeNativeBytes rejects empty native inputs before native work',
+    () async {
+      final nativeBytes = calloc<core_ffi.NativeBytes>();
+      addTearDown(() => calloc.free(nativeBytes));
+
+      await expectLater(
+        () => DartEdgeAudio.probeNativeBytes(nativeBytes.ref),
+        throwsA(isA<ArgumentError>()),
+      );
+    },
+  );
+
+  test(
+    'convertNativeBytes rejects empty native inputs before native work',
+    () async {
+      final nativeBytes = calloc<core_ffi.NativeBytes>();
+      addTearDown(() => calloc.free(nativeBytes));
+
+      await expectLater(
+        () => DartEdgeAudio.convertNativeBytes(
+          bytes: nativeBytes.ref,
+          targetFormat: AudioTargetFormat.wavPcm16,
+        ),
+        throwsA(isA<ArgumentError>()),
+      );
+    },
+  );
 }
 
 final class _FixtureCase {
@@ -231,4 +325,33 @@ void _expectFixtureMetadata(
   expect(metadata.duration.inMilliseconds, inInclusiveRange(600, 900));
   expect(metadata.tags['title'], 'Dart Edge Fixture');
   expect(metadata.tags['artist'], 'Codex');
+}
+
+final class _AllocatedNativeBytes {
+  _AllocatedNativeBytes._(this._storage, this._bytes);
+
+  final Pointer<core_ffi.NativeBytes> _storage;
+  final Pointer<Uint8> _bytes;
+  var _disposed = false;
+
+  core_ffi.NativeBytes get view => _storage.ref;
+
+  void dispose() {
+    if (_disposed) {
+      return;
+    }
+    _disposed = true;
+    calloc.free(_bytes);
+    calloc.free(_storage);
+  }
+}
+
+_AllocatedNativeBytes _allocateNativeBytes(Uint8List bytes) {
+  final storage = calloc<core_ffi.NativeBytes>();
+  final nativeBytes = calloc<Uint8>(bytes.length);
+  nativeBytes.asTypedList(bytes.length).setAll(0, bytes);
+  storage.ref
+    ..ptr = nativeBytes
+    ..len = bytes.length;
+  return _AllocatedNativeBytes._(storage, nativeBytes);
 }

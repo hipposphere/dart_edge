@@ -124,21 +124,7 @@ final class DartEdgeAuthGuard<TServices> implements Guard<TServices> {
   }
 
   Map<String, String> _headersFor(RequestContext<TServices> ctx) {
-    final value = ctx.req.headerValue;
-    if (value is Map<String, String>) {
-      return value;
-    }
-    if (value is Map) {
-      return {
-        for (final entry in value.entries)
-          '${entry.key}': switch (entry.value) {
-            final String text => text,
-            final Object raw => '$raw',
-            null => '',
-          },
-      };
-    }
-    return const <String, String>{};
+    return ctx.req.headersMap;
   }
 
   @override

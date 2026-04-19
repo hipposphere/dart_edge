@@ -6,3 +6,5 @@ export 'router/route_options.dart';
 export 'router/route_path.dart';
 export 'router/route_registry.dart';
 export 'router/router.dart';
+export 'websocket/handler_web_socket_route_definition.dart';
+export 'websocket/web_socket_options.dart';
