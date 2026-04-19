@@ -16,7 +16,7 @@
     "concurrency": 2,
     "basePort": 9180,
     "jsonOut": "smoke.json",
-    "markdownOut": "../results/smoke.md"
+    "markdownOut": "../RESULTS.md"
   },
   "results": [
     {

@@ -12,7 +12,7 @@
     "concurrency": 2,
     "basePort": 9180,
     "jsonOut": "guard-smoke.json",
-    "markdownOut": "../results/guard-smoke.md"
+    "markdownOut": "../RESULTS.md"
   },
   "results": [
     {

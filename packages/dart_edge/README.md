@@ -13,6 +13,9 @@ surface from `dart_edge_helpers` in one import.
 - `RouteOptions` for inline handlers and `RouteContract` for explicit route
   definitions
 - `OpenApiHelpers` for mounting helper endpoints alongside your app
+- `JasprRenderer` and `getJaspr` / `postJaspr` style helpers for HTML routes
+- `dart_edge_jaspr_helpers` components for reusable Jaspr-backed page and email
+  scaffolds
 
 ## Quick Start
 

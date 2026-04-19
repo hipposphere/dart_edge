@@ -1,6 +1,6 @@
 # Basic HTTP Server Results
 
-Date: 2026-04-18
+Date: 2026-04-19
 
 Source data: [`runner/latest.json`](runner/latest.json)
 
@@ -13,6 +13,7 @@ dart run benchmarks/basic-http-server/runner/bin/run.dart \
   --warmup=1 \
   --duration=2 \
   --concurrency=32 \
+  --base-port=9880 \
   --json-out=benchmarks/basic-http-server/runner/latest.json
 ```
 
@@ -29,76 +30,66 @@ dart run benchmarks/basic-http-server/runner/bin/run.dart \
 
 ## Headline Comparison
 
-- `axum` leads every scenario at `43.5k-46.2k rps`, with the lowest p50 latency (`0.68-0.71 ms`) and the smallest memory footprint (`4.2-4.5 MB` peak RSS).
-- `dart_edge` is still the strongest overall balance after `axum`: `33.9k-37.5k rps`, `0.83-0.91 ms` p50, and `18.4-20.5 MB` peak RSS.
-- `fastify` is close to `dart_edge` on `json` and `path_param`, and it wins `plaintext` by `8.6%`, but it falls to `78%` of `dart_edge` throughput on `echo` and peaks at `238.0 MB` RSS there.
-- `express` now clearly outruns both `fastapi` and `shelf_router` in every scenario in this run, landing at `25.6k-29.3k rps`, but it does that with `80.7-92.9 MB` peak RSS.
-- `fastapi` lands slightly ahead of `shelf_router` overall at `1.08x` average throughput, but it trails `express` in every scenario by `28.9-40.9%` while using about `1.6x-1.8x` less memory.
+- `axum` leads every scenario at `42.7k-43.9k rps`, with the lowest p50 latency (`0.72-0.74 ms`) and the smallest memory footprint (`4.2-4.5 MB` peak RSS).
+- `fastify` is slightly ahead of `dart_edge` on average throughput in this run (`34.3k` vs `33.8k` avg RPS, `+1.3%`), driven by wins on `json` and `path_param`.
+- `dart_edge` still wins the write-heavy `echo` case over `fastify` by `14.6%` while staying at `18.3-20.4 MB` peak RSS instead of Fastify's `76.1-224.1 MB`.
+- `express` remains the middle-of-the-pack baseline: clearly ahead of `shelf_router` and `fastapi`, but still behind `dart_edge`, `fastify`, and `axum` in every scenario.
+- `shelf_router` narrowly edges `fastapi` on average throughput in this rerun (`+1.4%`) and does it with materially lower memory use.
 
 ## Average Across Scenarios
 
-Leader-normalized chart: longer bars mean higher throughput. `100%` is the best average RPS in this run.
-
-| Target | Language/runtime | Avg RPS | vs leader | vs Dart Edge | Avg p50 ms | Peak RSS MB | Chart |
-| --- | --- | ---: | ---: | ---: | ---: | ---: | --- |
-| Axum | Rust | 45,422 | 100% | 126% | 0.69 | 4.5 | `########################` |
-| Dart Edge | Dart AOT | 36,109 | 79% | 100% | 0.86 | 20.5 | `###################` |
-| Fastify | Node.js | 34,538 | 76% | 96% | 0.84 | 238.0 | `##################` |
-| Express | Node.js | 28,146 | 62% | 78% | 1.04 | 92.9 | `###############` |
-| FastAPI | Python | 18,681 | 41% | 52% | 1.84 | 51.9 | `##########` |
-| Shelf Router | Dart AOT | 17,268 | 38% | 48% | 1.84 | 19.3 | `#########` |
+| Target | Language/runtime | Avg RPS | Avg p50 ms | Peak RSS MB |
+| --- | --- | ---: | ---: | ---: |
+| Axum | Rust | 43,228.2 | 0.73 | 4.5 |
+| Fastify | Node.js | 34,279.2 | 0.83 | 224.1 |
+| Dart Edge | Dart AOT | 33,835.3 | 0.91 | 20.4 |
+| Express | Node.js | 27,527.3 | 1.07 | 85.7 |
+| Shelf Router | Dart AOT | 17,077.6 | 1.85 | 20.2 |
+| FastAPI | Python | 16,844.5 | 2.02 | 52.1 |
 
 ## Plaintext
 
-`fastify` takes the read-only lead over `dart_edge` by `8.6%`, while `fastapi` is `10.2%` ahead of `shelf_router` but still `31.5%` behind `express`.
-
-| Target | Language/runtime | RPS | vs winner | vs Dart Edge | p50 ms | Peak RSS MB | Chart |
-| --- | --- | ---: | ---: | ---: | ---: | ---: | --- |
-| Axum | Rust | 45,939 | 100% | 135% | 0.68 | 4.2 | `########################` |
-| Fastify | Node.js | 37,103 | 81% | 109% | 0.78 | 92.8 | `###################` |
-| Dart Edge | Dart AOT | 33,914 | 74% | 100% | 0.91 | 20.5 | `##################` |
-| Express | Node.js | 29,068 | 63% | 86% | 1.01 | 80.7 | `###############` |
-| FastAPI | Python | 19,925 | 43% | 59% | 1.77 | 51.8 | `##########` |
-| Shelf Router | Dart AOT | 18,084 | 39% | 53% | 1.76 | 19.1 | `#########` |
+| Target | RPS | p50 ms | Peak RSS MB |
+| --- | ---: | ---: | ---: |
+| Axum | 42,674.9 | 0.74 | 4.2 |
+| Dart Edge | 36,008.9 | 0.85 | 20.4 |
+| Fastify | 31,388.0 | 0.80 | 86.6 |
+| Express | 29,575.5 | 1.00 | 80.4 |
+| FastAPI | 19,481.4 | 1.75 | 52.1 |
+| Shelf Router | 18,059.2 | 1.75 | 19.4 |
 
 ## JSON
 
-`dart_edge` retakes second place here, edging `fastify` by `1.1%`. `fastapi` stays ahead of `shelf_router` by `11.5%`, but it remains `32.9%` behind `express`.
-
-| Target | Language/runtime | RPS | vs winner | vs Dart Edge | p50 ms | Peak RSS MB | Chart |
-| --- | --- | ---: | ---: | ---: | ---: | ---: | --- |
-| Axum | Rust | 46,247 | 100% | 124% | 0.68 | 4.3 | `########################` |
-| Dart Edge | Dart AOT | 37,197 | 80% | 100% | 0.83 | 18.4 | `###################` |
-| Fastify | Node.js | 36,776 | 80% | 99% | 0.78 | 92.9 | `###################` |
-| Express | Node.js | 29,322 | 63% | 79% | 1.00 | 89.0 | `###############` |
-| FastAPI | Python | 19,672 | 43% | 53% | 1.78 | 51.8 | `##########` |
-| Shelf Router | Dart AOT | 17,639 | 38% | 47% | 1.79 | 19.3 | `#########` |
+| Target | RPS | p50 ms | Peak RSS MB |
+| --- | ---: | ---: | ---: |
+| Axum | 43,581.6 | 0.72 | 4.3 |
+| Fastify | 38,385.7 | 0.77 | 76.1 |
+| Dart Edge | 33,350.3 | 0.93 | 18.3 |
+| Express | 27,846.9 | 1.03 | 83.8 |
+| FastAPI | 17,953.5 | 1.85 | 35.1 |
+| Shelf Router | 17,289.0 | 1.81 | 19.5 |
 
 ## Path Parameter
 
-`dart_edge` stays ahead of `fastify` by `3.5%`. `fastapi` drops just below `shelf_router` here, trailing it by `2.5%`.
-
-| Target | Language/runtime | RPS | vs winner | vs Dart Edge | p50 ms | Peak RSS MB | Chart |
-| --- | --- | ---: | ---: | ---: | ---: | ---: | --- |
-| Axum | Rust | 45,994 | 100% | 123% | 0.69 | 4.4 | `########################` |
-| Dart Edge | Dart AOT | 37,461 | 81% | 100% | 0.83 | 18.4 | `####################` |
-| Fastify | Node.js | 36,177 | 79% | 97% | 0.80 | 92.9 | `###################` |
-| Express | Node.js | 28,556 | 62% | 76% | 1.02 | 90.4 | `###############` |
-| Shelf Router | Dart AOT | 17,317 | 38% | 46% | 1.83 | 17.5 | `#########` |
-| FastAPI | Python | 16,884 | 37% | 45% | 2.00 | 51.9 | `#########` |
+| Target | RPS | p50 ms | Peak RSS MB |
+| --- | ---: | ---: | ---: |
+| Axum | 43,855.6 | 0.72 | 4.4 |
+| Fastify | 38,522.6 | 0.77 | 76.2 |
+| Dart Edge | 32,940.6 | 0.92 | 18.4 |
+| Express | 27,983.9 | 1.05 | 78.6 |
+| Shelf Router | 17,064.3 | 1.86 | 20.1 |
+| FastAPI | 15,834.5 | 2.19 | 35.7 |
 
 ## Echo
 
-Body handling widens the gap again. `dart_edge` is `27.6%` faster than `fastify` here, and `fastify` pays for it with a `238.0 MB` peak RSS spike. `fastapi` is `13.8%` ahead of `shelf_router` but `28.9%` behind `express`.
-
-| Target | Language/runtime | RPS | vs winner | vs Dart Edge | p50 ms | Peak RSS MB | Chart |
-| --- | --- | ---: | ---: | ---: | ---: | ---: | --- |
-| Axum | Rust | 43,510 | 100% | 121% | 0.71 | 4.5 | `########################` |
-| Dart Edge | Dart AOT | 35,863 | 82% | 100% | 0.87 | 18.4 | `####################` |
-| Fastify | Node.js | 28,096 | 65% | 78% | 1.00 | 238.0 | `###############` |
-| Express | Node.js | 25,640 | 59% | 71% | 1.14 | 92.9 | `##############` |
-| FastAPI | Python | 18,243 | 42% | 51% | 1.83 | 51.9 | `##########` |
-| Shelf Router | Dart AOT | 16,033 | 37% | 45% | 1.98 | 17.8 | `#########` |
+| Target | RPS | p50 ms | Peak RSS MB |
+| --- | ---: | ---: | ---: |
+| Axum | 42,800.7 | 0.74 | 4.5 |
+| Dart Edge | 33,041.6 | 0.94 | 18.5 |
+| Fastify | 28,820.5 | 0.97 | 224.1 |
+| Express | 24,702.9 | 1.19 | 85.7 |
+| Shelf Router | 15,898.0 | 2.00 | 20.2 |
+| FastAPI | 14,108.5 | 2.29 | 36.2 |
 
 ## Notes
 

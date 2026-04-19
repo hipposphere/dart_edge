@@ -13,7 +13,7 @@
     "concurrency": 2,
     "basePort": 9180,
     "jsonOut": "smoke-flow.json",
-    "markdownOut": "../results/smoke-flow.md"
+    "markdownOut": "../RESULTS.md"
   },
   "results": [
     {

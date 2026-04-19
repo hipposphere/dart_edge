@@ -131,11 +131,11 @@ final class BenchmarkTargetProcess {
     required int port,
   }) {
     return switch (target.runtime) {
-      BenchmarkTargetRuntime.dartJit => Process.start('dart', [
-        'run',
-        'bin/server.dart',
-        '--port=$port',
-      ], workingDirectory: workingDirectory),
+      BenchmarkTargetRuntime.dartJit => Process.start(
+        Platform.resolvedExecutable,
+        ['run', 'bin/server.dart', '--port=$port'],
+        workingDirectory: workingDirectory,
+      ),
       BenchmarkTargetRuntime.dartAot => Process.start(
         '$workingDirectory/build/${target.id}/bundle/bin/server',
         ['--port=$port'],
@@ -175,7 +175,7 @@ final class BenchmarkTargetProcess {
     final outputDirectory = 'build/${target.id}';
 
     for (var attempt = 0; attempt < 2; attempt += 1) {
-      final result = await Process.run('dart', [
+      final result = await Process.run(Platform.resolvedExecutable, [
         'build',
         'cli',
         '--target=bin/server.dart',

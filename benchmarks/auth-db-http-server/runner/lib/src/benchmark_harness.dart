@@ -127,11 +127,40 @@ final class BenchmarkHarness {
 }
 
 Directory _resolveRepoRoot() {
-  if (Platform.script.scheme == 'file') {
-    return File.fromUri(Platform.script).parent.parent.parent.parent.absolute;
+  final candidates = <Directory>[
+    if (Platform.script.scheme == 'file') File.fromUri(Platform.script).parent,
+    Directory.current.absolute,
+  ];
+
+  for (final candidate in candidates) {
+    final repoRoot = _findRepoRoot(candidate);
+    if (repoRoot != null) {
+      return repoRoot;
+    }
   }
 
-  return Directory.current.parent.parent.parent.absolute;
+  throw StateError(
+    'Could not resolve the repository root for auth-db benchmarks.',
+  );
+}
+
+Directory? _findRepoRoot(Directory start) {
+  var current = start.absolute;
+
+  while (true) {
+    final marker = File(
+      '${current.path}/benchmarks/auth-db-http-server/runner/pubspec.yaml',
+    );
+    if (marker.existsSync()) {
+      return current;
+    }
+
+    final parent = current.parent;
+    if (parent.path == current.path) {
+      return null;
+    }
+    current = parent;
+  }
 }
 
 void _printResultsTable(List<ScenarioBenchmarkResult> results) {

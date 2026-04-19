@@ -40,7 +40,7 @@ Options:
   --no-single-core                     Disable the default ~1-core CPU cap.
   --base-port=9180                     First server port; later targets increment.
   --json-out=latest.json               Optional JSON output file.
-  --markdown-out=../results/latest.md  Optional markdown report output file.
+  --markdown-out=../RESULTS.md         Optional markdown report output file.
   --help                               Show this message.
 ''';
 
