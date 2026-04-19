@@ -22,6 +22,10 @@ final class BenchmarkHarness {
     final results = <ScenarioBenchmarkResult>[];
     const virtualUserRunner = VirtualUserRunner();
 
+    output.writeln(
+      'CPU cap: ${options.singleCore ? 'single-core (~100% total CPU)' : 'disabled'}',
+    );
+
     for (
       var targetIndex = 0;
       targetIndex < options.targets.length;
@@ -43,6 +47,7 @@ final class BenchmarkHarness {
           target: target,
           repoRoot: repoRoot,
           port: port,
+          singleCore: options.singleCore,
         );
 
         try {

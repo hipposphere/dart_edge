@@ -10,6 +10,7 @@ final class BenchmarkOptions {
     required this.warmup,
     required this.duration,
     required this.concurrency,
+    required this.singleCore,
     required this.basePort,
     this.jsonOut,
     this.markdownOut,
@@ -21,6 +22,7 @@ final class BenchmarkOptions {
   final Duration warmup;
   final Duration duration;
   final int concurrency;
+  final bool singleCore;
   final int basePort;
   final String? jsonOut;
   final String? markdownOut;
@@ -35,6 +37,7 @@ Options:
   --warmup=2                           Warmup seconds per scenario.
   --duration=5                         Measurement seconds per scenario.
   --concurrency=32                     Concurrent client workers.
+  --no-single-core                     Disable the default ~1-core CPU cap.
   --base-port=9180                     First server port; later targets increment.
   --json-out=latest.json               Optional JSON output file.
   --markdown-out=../results/latest.md  Optional markdown report output file.
@@ -47,6 +50,7 @@ Options:
     var warmup = const Duration(seconds: 2);
     var duration = const Duration(seconds: 5);
     var concurrency = 32;
+    var singleCore = true;
     var basePort = 9180;
     String? jsonOut;
     String? markdownOut;
@@ -89,6 +93,16 @@ Options:
         continue;
       }
 
+      if (argument == '--single-core') {
+        singleCore = true;
+        continue;
+      }
+
+      if (argument == '--no-single-core') {
+        singleCore = false;
+        continue;
+      }
+
       if (argument.startsWith('--base-port=')) {
         basePort = int.parse(argument.substring('--base-port='.length));
         continue;
@@ -123,6 +137,7 @@ Options:
       warmup: warmup,
       duration: duration,
       concurrency: concurrency,
+      singleCore: singleCore,
       basePort: basePort,
       jsonOut: jsonOut,
       markdownOut: markdownOut,

@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:dart_edge_auth_db_benchmark_shared/dart_edge_auth_db_benchmark_shared.dart';
 
 import 'benchmark_targets.dart';
+import 'cpu_throttler.dart';
 
 /// Running benchmark target process plus captured output buffers.
 final class BenchmarkTargetProcess {
@@ -12,6 +13,7 @@ final class BenchmarkTargetProcess {
     required this.process,
     required this.stdoutBuffer,
     required this.stderrBuffer,
+    required this.cpuThrottler,
   }) {
     process.exitCode.then((code) => _exitCode = code);
   }
@@ -19,6 +21,7 @@ final class BenchmarkTargetProcess {
   final Process process;
   final StringBuffer stdoutBuffer;
   final StringBuffer stderrBuffer;
+  final CpuThrottler? cpuThrottler;
   int? _exitCode;
 
   static final Set<String> _preparedWorkingDirectories = <String>{};
@@ -27,6 +30,7 @@ final class BenchmarkTargetProcess {
     required BenchmarkTargetDefinition target,
     required Directory repoRoot,
     required int port,
+    required bool singleCore,
   }) async {
     final workingDirectory =
         '${repoRoot.path}/benchmarks/auth-db-http-server/${target.directoryName}';
@@ -47,17 +51,27 @@ final class BenchmarkTargetProcess {
     process.stdout.transform(utf8.decoder).listen(stdoutBuffer.write);
     process.stderr.transform(utf8.decoder).listen(stderrBuffer.write);
 
+    final cpuThrottler = singleCore ? CpuThrottler(pid: process.pid) : null;
+    await cpuThrottler?.start();
+
     final targetProcess = BenchmarkTargetProcess._(
       process: process,
       stdoutBuffer: stdoutBuffer,
       stderrBuffer: stderrBuffer,
+      cpuThrottler: cpuThrottler,
     );
 
-    await targetProcess._waitUntilReady(port: port);
-    return targetProcess;
+    try {
+      await targetProcess._waitUntilReady(port: port);
+      return targetProcess;
+    } catch (_) {
+      await cpuThrottler?.dispose();
+      rethrow;
+    }
   }
 
   Future<void> stop() async {
+    await cpuThrottler?.dispose();
     process.kill();
 
     try {

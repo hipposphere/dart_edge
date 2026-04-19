@@ -7,8 +7,16 @@ void main() {
   test('builds inline handler routes with stable defaults', () async {
     final app = DartEdge<TestServices>(services: TestServices.new);
     final api = app.router('/api');
+    final healthGuard = HandlerGuard<TestServices>(
+      debugName: 'requireAuth',
+      handler: (_) => const GuardResult.allow(),
+    );
 
-    app.get('/health', handler: (ctx) => const {'status': 'ok'});
+    app.get(
+      '/health',
+      guards: [healthGuard],
+      handler: (ctx) => const {'status': 'ok'},
+    );
     api.put(
       '/users/<id>',
       options: RouteOptions(
@@ -51,6 +59,7 @@ void main() {
 
     expect(healthContract.method, HttpMethod.get);
     expect(healthContract.operationId, 'getHealth');
+    expect(healthContract.guards, [same(healthGuard)]);
     expect(
       healthContract.responses.success.contentType,
       'application/json; charset=utf-8',
@@ -101,7 +110,7 @@ void main() {
 
     expect(
       healthContract.toString(),
-      'RouteContract(GET /health, operationId: getHealth, success: 200 application/json; charset=utf-8)',
+      'RouteContract(GET /health, operationId: getHealth, success: 200 application/json; charset=utf-8, guards: [requireAuth])',
     );
     expect(
       healthRoute.toString(),

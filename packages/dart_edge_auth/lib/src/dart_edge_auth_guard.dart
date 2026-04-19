@@ -60,7 +60,9 @@ final class DartEdgeAuthGuard<TServices> implements Guard<TServices> {
   Future<GuardResult> authorize(RequestContext<TServices> ctx) async {
     final headers = _headersFor(ctx);
     final authorizationHeader = headers['authorization'];
-    final hasBearer = authorizationHeader != null &&
+    print('AuthGuard: Authorization header: $authorizationHeader');
+    final hasBearer =
+        authorizationHeader != null &&
         authorizationHeader.startsWith('Bearer ');
 
     if (!hasBearer && !headers.containsKey('cookie')) {

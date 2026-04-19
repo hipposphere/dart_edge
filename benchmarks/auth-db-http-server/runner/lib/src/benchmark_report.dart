@@ -82,6 +82,7 @@ final class BenchmarkReport {
       'warmupSeconds': options.warmup.inSeconds,
       'durationSeconds': options.duration.inSeconds,
       'concurrency': options.concurrency,
+      'singleCore': options.singleCore,
       'basePort': options.basePort,
       'jsonOut': options.jsonOut,
       'markdownOut': options.markdownOut,

@@ -1,10 +1,7 @@
 import '../http/error_response.dart';
-import '../http/http_method.dart';
 import '../http/json_schema_ref.dart';
 import '../http/request_body.dart';
-import '../http/response_set.dart';
 import '../http/response_spec.dart';
-import '../http/route_contract.dart';
 
 /// Convenience options for inline `Router.get`/`post`/`put` style handlers.
 final class RouteOptions {
@@ -50,27 +47,4 @@ final class RouteOptions {
 
   /// Documented non-success responses.
   final List<ErrorResponse> errors;
-
-  RouteContract toRouteContract({
-    required HttpMethod method,
-    required String path,
-    required String defaultOperationId,
-  }) {
-    return RouteContract(
-      method: method,
-      path: path,
-      operationId: operationId ?? defaultOperationId,
-      summary: summary,
-      tags: List.unmodifiable(tags),
-      deprecated: deprecated,
-      params: params,
-      query: query,
-      headers: headers,
-      body: body,
-      responses: ResponseSet(
-        success: success ?? ResponseSpec.json<Object?>(),
-        errors: List.unmodifiable(errors),
-      ),
-    );
-  }
 }

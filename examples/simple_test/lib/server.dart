@@ -1,40 +1,14 @@
 import 'package:dart_edge/dart_edge.dart';
+import 'package:dart_edge_auth/dart_edge_auth.dart';
 import 'package:simple_test/src/auth.dart';
 import 'package:simple_test/src/database.dart';
+import 'package:simple_test/src/routes/guarded_route.dart';
+import 'package:http/http.dart' as http;
 
 Future<DartEdge<void>> buildServer() async {
   final server = DartEdge<void>();
 
   final database = buildDatabase();
-
-  // await database.execute(
-  //   .new('''
-  //   CREATE TABLE IF NOT EXISTS users (
-  //     id INTEGER PRIMARY KEY AUTOINCREMENT,
-  //     email TEXT NOT NULL UNIQUE,
-  //     password TEXT NOT NULL,
-  //     name TEXT NOT NULL
-  //   );
-  // '''),
-  // );
-
-  // final result = await database.execute(
-  //   .new('''
-  //   INSERT INTO users (email, password, name)
-  //   VALUES ('test@dicto.org', 'password', 'Max Mustermann')
-  // '''),
-  // );
-  // print('Inserted user with ID: ${result.rows}');
-
-  // await database
-  //     .execute(
-  //       .new('''
-  //   SELECT * FROM users
-  // '''),
-  //     )
-  //     .then((result) {
-  //       print('Users in database: ${result.rows}');
-  //     });
 
   server.openApiDocument
     ..title = 'Simple Test API'
@@ -53,20 +27,33 @@ Future<DartEdge<void>> buildServer() async {
       return 'Hello, World!';
     },
   );
-
   final auth = buildAuth(database);
 
+  server
+      .router('', guards: [DartEdgeAuthGuard(auth: auth)])
+      .register(GuardedRoute());
+
+  final email = 'test@dicto.org';
+  final password = 'password';
   auth.api
-      .signUpEmail(
-        email: 'test@dicto.org',
-        password: 'password',
-        name: 'Max Mustermann',
-      )
-      .then((response) {
+      .signUpEmail(email: email, password: password, name: 'Max Mustermann')
+      .then((response) async {
         print('User signed up: ${response.jsonBody}');
-      })
-      .catchError((dynamic error) {
-        print('Error signing up user: $error');
+
+        final signedIn = await auth.api
+            .signInEmail(email: email, password: password)
+            .catchError((dynamic error) {
+              print('Error signing up user: $error');
+            });
+
+        final session = signedIn.jsonBody as Map<String, dynamic>;
+        final token = session['token'] as String;
+
+        final guardedResponse = await http.get(
+          Uri.parse('http://0.0.0.0:3100/guarded'),
+          headers: {'Authorization': 'Bearer $token'},
+        );
+        print('Response: ${guardedResponse.body}');
       });
 
   OpenApiHelpers.mountJson(server, path: 'openapi.json');

@@ -13,10 +13,13 @@ String buildMarkdownReport(BenchmarkReport report) {
       '- Scenarios: `${report.options.scenarios.map((it) => it.id).join('`, `')}`',
     )
     ..writeln(
+      '- CPU cap: `${report.options.singleCore ? 'single-core (~100% total CPU)' : 'disabled'}`',
+    )
+    ..writeln(
       '- Workload: Better Auth email/password sign-in, an authenticated raw endpoint, an authenticated SQLite read, and a full sequential flow.',
     )
     ..writeln(
-      '- Methodology: one fresh server per target/scenario pair, warmed before measurement, with CPU and RSS sampled from the server process during the measured window. Authenticated follow-up requests use the Better Auth session token as a bearer token, and the flow scenario rotates through a pre-seeded user pool to avoid same-user reuse artifacts.',
+      '- Methodology: one fresh server per target/scenario pair, warmed before measurement, with CPU and RSS sampled from the server process during the measured window.${report.options.singleCore ? ' The runner also CPU-caps each server process to roughly one core.' : ''} Authenticated follow-up requests use the Better Auth session token as a bearer token, and the flow scenario rotates through a pre-seeded user pool to avoid same-user reuse artifacts.',
     )
     ..writeln();
 

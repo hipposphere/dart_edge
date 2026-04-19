@@ -70,9 +70,13 @@ final class _SchemaRoute
   RouteContract get contract => RouteContract(
     method: HttpMethod.post,
     path: '/users',
-    operationId: 'createUser',
-    body: RequestBody.json<Object?>(ref: JsonSchemaRef<Object?>('UsersInsert')),
-    responses: ResponseSet(success: ResponseSpec.json<Object?>()),
+    options: RouteOptions(
+      operationId: 'createUser',
+      body: RequestBody.json<Object?>(
+        ref: JsonSchemaRef<Object?>('UsersInsert'),
+      ),
+      success: ResponseSpec.json<Object?>(),
+    ),
   );
 
   @override

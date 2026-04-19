@@ -99,10 +99,7 @@ final class FlowRunner {
 
       try {
         final email = benchmarkFlowUserEmail(allocateUserIndex());
-        final bearerToken = await _signIn(
-          baseUri: baseUri,
-          email: email,
-        );
+        final bearerToken = await _signIn(baseUri: baseUri, email: email);
         await _authorizedGet(
           uri: baseUri.resolve(benchmarkRawPath),
           bearerToken: bearerToken,
@@ -123,10 +120,7 @@ final class FlowRunner {
     }
   }
 
-  Future<String> _signIn({
-    required Uri baseUri,
-    required String email,
-  }) async {
+  Future<String> _signIn({required Uri baseUri, required String email}) async {
     final client = HttpClient()..connectionTimeout = const Duration(seconds: 2);
 
     try {

@@ -156,7 +156,8 @@ final class VirtualUserRunner {
     final forwardedFor = _workerForwardedFor(workerIndex);
     String? bearerToken;
 
-    if (scenario case BenchmarkScenario.rawAuthed || BenchmarkScenario.dbAuthed) {
+    if (scenario
+        case BenchmarkScenario.rawAuthed || BenchmarkScenario.dbAuthed) {
       try {
         bearerToken = await _signIn(
           baseUri: baseUri,
@@ -232,7 +233,8 @@ final class VirtualUserRunner {
         onSuccess();
       } catch (error) {
         started.stop();
-        if (scenario case BenchmarkScenario.rawAuthed || BenchmarkScenario.dbAuthed) {
+        if (scenario
+            case BenchmarkScenario.rawAuthed || BenchmarkScenario.dbAuthed) {
           bearerToken = null;
         }
         onError(error.toString());

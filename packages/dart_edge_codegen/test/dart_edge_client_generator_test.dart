@@ -16,10 +16,10 @@ void main() {
               contract: RouteContract(
                 method: HttpMethod.get,
                 path: '/users/<id>',
-                operationId: 'getUser',
-                params: const JsonSchemaRef<Object?>('UserPath'),
-                query: const JsonSchemaRef<Object?>('GetUserQuery'),
-                responses: ResponseSet(
+                options: RouteOptions(
+                  operationId: 'getUser',
+                  params: const JsonSchemaRef<Object?>('UserPath'),
+                  query: const JsonSchemaRef<Object?>('GetUserQuery'),
                   success: ResponseSpec.json<Object?>(
                     ref: const JsonSchemaRef<Object?>('UserDto'),
                   ),

@@ -3,9 +3,11 @@ import 'dart:io';
 import 'package:dart_edge_sql/dart_edge_sql.dart';
 
 SqliteDatabase buildDatabase() {
-  if (File('simple_test_new.db').existsSync() == false) {
-    File('simple_test_new.db').createSync();
+  final file = File('sqlite.db');
+  if (file.existsSync()) {
+    file.deleteSync();
   }
-  final database = SqliteDatabase.open('simple_test_new.db');
+  file.createSync();
+  final database = SqliteDatabase.open(file.path);
   return database;
 }

@@ -92,4 +92,71 @@ void main() {
     expect(response.statusCode, HttpStatus.unauthorized);
     expect(await utf8.decoder.bind(response).join(), 'blocked');
   });
+
+  test('runs inline helper and explicit contract guards', () async {
+    final app = DartEdge<void>(services: () {});
+
+    app.get(
+      '/inline-guarded',
+      guards: [
+        HandlerGuard<void>(
+          debugName: 'denyInline',
+          handler: (_) => GuardResult.deny(
+            RawResponse.text(status: HttpStatus.forbidden, body: 'inline'),
+          ),
+        ),
+      ],
+      handler: (_) => 'ok',
+    );
+    app.register(
+      _GuardedContractRoute(
+        guard: HandlerGuard<void>(
+          debugName: 'denyContract',
+          handler: (_) => GuardResult.deny(
+            RawResponse.text(status: HttpStatus.forbidden, body: 'contract'),
+          ),
+        ),
+      ),
+    );
+
+    final server = await app.listen(port: 0);
+    final client = HttpClient();
+
+    addTearDown(() async {
+      client.close(force: true);
+      await server.close();
+    });
+
+    final inlineResponse = await (await client.getUrl(
+      Uri.http('127.0.0.1:${server.port}', '/inline-guarded'),
+    )).close();
+    expect(inlineResponse.statusCode, HttpStatus.forbidden);
+    expect(await utf8.decoder.bind(inlineResponse).join(), 'inline');
+
+    final contractResponse = await (await client.getUrl(
+      Uri.http('127.0.0.1:${server.port}', '/contract-guarded'),
+    )).close();
+    expect(contractResponse.statusCode, HttpStatus.forbidden);
+    expect(await utf8.decoder.bind(contractResponse).join(), 'contract');
+  });
+}
+
+final class _GuardedContractRoute extends JsonRouteDefinition<void, String> {
+  _GuardedContractRoute({required this.guard});
+
+  final Guard<void> guard;
+
+  @override
+  RouteContract get contract => RouteContract(
+    method: HttpMethod.get,
+    path: '/contract-guarded',
+    options: RouteOptions(
+      operationId: 'contractGuarded',
+      success: ResponseSpec.text(),
+    ),
+    guards: [guard],
+  );
+
+  @override
+  String handle(RequestContext<void> ctx) => 'ok';
 }

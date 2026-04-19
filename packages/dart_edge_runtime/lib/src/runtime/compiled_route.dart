@@ -35,11 +35,12 @@ final class CompiledRoute<TServices> {
 
     final path = joinRoutePath(registration.prefix, contract.path);
     final patternSegments = _parsePattern(path);
+    final guards = _mergeGuards(registration.guards, contract.guards);
     return CompiledRoute<TServices>(
       routeId: routeId,
       route: route,
-      guards: registration.guards,
-      contract: _effectiveContract(registration, contract, path),
+      guards: guards,
+      contract: _effectiveContract(registration, contract, path, guards),
       path: path,
       openApiPath: _openApiPath(patternSegments),
       patternSegments: patternSegments,
@@ -66,19 +67,24 @@ RouteContract _effectiveContract<TServices>(
   RouteRegistration<TServices> registration,
   RouteContract contract,
   String path,
+  List<Guard<TServices>> guards,
 ) {
   return RouteContract(
     method: contract.method,
     path: path,
-    operationId: contract.operationId,
-    summary: contract.summary,
-    tags: _mergeTags(registration.tags, contract.tags),
-    deprecated: contract.deprecated,
-    params: contract.params,
-    query: contract.query,
-    headers: contract.headers,
-    body: contract.body,
-    responses: contract.responses,
+    options: RouteOptions(
+      operationId: contract.operationId,
+      summary: contract.summary,
+      tags: _mergeTags(registration.tags, contract.tags),
+      deprecated: contract.deprecated,
+      params: contract.params,
+      query: contract.query,
+      headers: contract.headers,
+      body: contract.body,
+      success: contract.responses.success,
+      errors: contract.responses.errors,
+    ),
+    guards: _eraseGuards(guards),
   );
 }
 
@@ -159,4 +165,22 @@ List<String> _mergeTags(Iterable<String> first, Iterable<String> second) {
     }
   }
   return List<String>.unmodifiable(merged);
+}
+
+List<Guard<TServices>> _mergeGuards<TServices>(
+  Iterable<Guard<TServices>> first,
+  Iterable<Guard<Object?>> second,
+) {
+  return List<Guard<TServices>>.unmodifiable([
+    ...first,
+    ...second.cast<Guard<TServices>>(),
+  ]);
+}
+
+List<Guard<Object?>> _eraseGuards<TServices>(
+  Iterable<Guard<TServices>> guards,
+) {
+  return List<Guard<Object?>>.unmodifiable(
+    guards.map((guard) => guard as Guard<Object?>),
+  );
 }

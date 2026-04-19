@@ -164,9 +164,11 @@ final class _DartEdgeAuthRoute<TServices>
   RouteContract get contract => RouteContract(
     method: route.method,
     path: _runtimePath(route.path),
-    operationId: route.operationId,
-    body: route.acceptsJsonBody ? RequestBody.jsonValue() : null,
-    responses: ResponseSet(success: ResponseSpec.json<Object?>()),
+    options: RouteOptions(
+      operationId: route.operationId,
+      body: route.acceptsJsonBody ? RequestBody.jsonValue() : null,
+      success: ResponseSpec.json<Object?>(),
+    ),
   );
 
   @override

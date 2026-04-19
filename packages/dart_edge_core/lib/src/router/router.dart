@@ -1,4 +1,5 @@
 import '../http/http_method.dart';
+import '../http/route_contract.dart';
 import 'guard.dart';
 import 'handler_json_route_definition.dart';
 import 'route_definition.dart';
@@ -64,12 +65,14 @@ class Router<TServices> {
   void get<TSuccess>(
     String path, {
     RouteOptions options = const RouteOptions(),
+    List<Guard<TServices>>? guards,
     required JsonRouteHandler<TServices, TSuccess> handler,
   }) {
     _registerHttpRoute(
       method: HttpMethod.get,
       path: path,
       options: options,
+      guards: guards,
       handler: handler,
     );
   }
@@ -78,12 +81,14 @@ class Router<TServices> {
   void post<TSuccess>(
     String path, {
     RouteOptions options = const RouteOptions(),
+    List<Guard<TServices>>? guards,
     required JsonRouteHandler<TServices, TSuccess> handler,
   }) {
     _registerHttpRoute(
       method: HttpMethod.post,
       path: path,
       options: options,
+      guards: guards,
       handler: handler,
     );
   }
@@ -92,12 +97,14 @@ class Router<TServices> {
   void put<TSuccess>(
     String path, {
     RouteOptions options = const RouteOptions(),
+    List<Guard<TServices>>? guards,
     required JsonRouteHandler<TServices, TSuccess> handler,
   }) {
     _registerHttpRoute(
       method: HttpMethod.put,
       path: path,
       options: options,
+      guards: guards,
       handler: handler,
     );
   }
@@ -106,12 +113,14 @@ class Router<TServices> {
   void patch<TSuccess>(
     String path, {
     RouteOptions options = const RouteOptions(),
+    List<Guard<TServices>>? guards,
     required JsonRouteHandler<TServices, TSuccess> handler,
   }) {
     _registerHttpRoute(
       method: HttpMethod.patch,
       path: path,
       options: options,
+      guards: guards,
       handler: handler,
     );
   }
@@ -120,12 +129,14 @@ class Router<TServices> {
   void delete<TSuccess>(
     String path, {
     RouteOptions options = const RouteOptions(),
+    List<Guard<TServices>>? guards,
     required JsonRouteHandler<TServices, TSuccess> handler,
   }) {
     _registerHttpRoute(
       method: HttpMethod.delete,
       path: path,
       options: options,
+      guards: guards,
       handler: handler,
     );
   }
@@ -134,12 +145,14 @@ class Router<TServices> {
   void head<TSuccess>(
     String path, {
     RouteOptions options = const RouteOptions(),
+    List<Guard<TServices>>? guards,
     required JsonRouteHandler<TServices, TSuccess> handler,
   }) {
     _registerHttpRoute(
       method: HttpMethod.head,
       path: path,
       options: options,
+      guards: guards,
       handler: handler,
     );
   }
@@ -148,12 +161,14 @@ class Router<TServices> {
   void options<TSuccess>(
     String path, {
     RouteOptions options = const RouteOptions(),
+    List<Guard<TServices>>? guards,
     required JsonRouteHandler<TServices, TSuccess> handler,
   }) {
     _registerHttpRoute(
       method: HttpMethod.options,
       path: path,
       options: options,
+      guards: guards,
       handler: handler,
     );
   }
@@ -162,17 +177,46 @@ class Router<TServices> {
     required HttpMethod method,
     required String path,
     required RouteOptions options,
+    List<Guard<TServices>>? guards,
     required JsonRouteHandler<TServices, TSuccess> handler,
   }) {
     register(
       HandlerJsonRouteDefinition<TServices, TSuccess>(
-        contract: options.toRouteContract(
+        contract: RouteContract(
           method: method,
           path: path,
-          defaultOperationId: _defaultOperationId(method: method, path: path),
+          options: _withDefaultOperationId(
+            options,
+            _defaultOperationId(method: method, path: path),
+          ),
+          guards: _eraseGuards(guards ?? <Guard<TServices>>[]),
         ),
         handler: handler,
       ),
+    );
+  }
+
+  RouteOptions _withDefaultOperationId(
+    RouteOptions options,
+    String defaultOperationId,
+  ) {
+    return RouteOptions(
+      operationId: options.operationId ?? defaultOperationId,
+      summary: options.summary,
+      tags: options.tags,
+      deprecated: options.deprecated,
+      params: options.params,
+      query: options.query,
+      headers: options.headers,
+      body: options.body,
+      success: options.success,
+      errors: options.errors,
+    );
+  }
+
+  List<Guard<Object?>> _eraseGuards(Iterable<Guard<TServices>> guards) {
+    return List<Guard<Object?>>.unmodifiable(
+      guards.map((guard) => guard as Guard<Object?>),
     );
   }
 
