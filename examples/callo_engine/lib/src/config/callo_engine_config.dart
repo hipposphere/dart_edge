@@ -38,11 +38,8 @@ final class CalloEngineConfig {
     final rtpEndPort = _parsePort(env['SIP_RTP_END_PORT'], fallback: 40100);
     final startupJingleDuration = Duration(
       seconds: _parseNonNegativeInt(
-        _firstPresent([
-          env['CALLO_JINGLE_SECONDS'],
-          env['PHONE_ASSISTANT_JINGLE_SECONDS'],
-        ]),
-        fallback: 3,
+        env['CALLO_JINGLE_SECONDS'],
+        fallback: 2,
         name: 'CALLO_JINGLE_SECONDS',
       ),
     );
@@ -56,10 +53,7 @@ final class CalloEngineConfig {
       bindPort: bindPort,
       testHost: testHost,
       realm: env['SIP_REALM'] ?? testHost,
-      assistantUser:
-          env['CALLO_ASSISTANT_USER'] ??
-          env['SIP_ASSISTANT_USER'] ??
-          'assistant',
+      assistantUser: env['CALLO_ASSISTANT_USER'] ?? 'assistant',
       testEndpointId: env['SIP_TEST_ENDPOINT_ID'] ?? 'test-phone',
       testExtension: testExtension,
       testUsername: env['SIP_TEST_USERNAME'] ?? testExtension,
@@ -72,17 +66,8 @@ final class CalloEngineConfig {
         model: env['GEMINI_LIVE_MODEL'] ?? defaultGeminiLiveModel,
         voiceName: env['GEMINI_VOICE_NAME'] ?? 'Kore',
         startupJingleDuration: startupJingleDuration,
-        initialPrompt:
-            env['CALLO_INITIAL_PROMPT'] ??
-            env['PHONE_ASSISTANT_INITIAL_PROMPT'] ??
-            'Greet the caller in one short sentence and ask how you can help.',
-        systemPrompt:
-            env['CALLO_SYSTEM_PROMPT'] ??
-            env['PHONE_ASSISTANT_SYSTEM_PROMPT'] ??
-            'You are a concise, helpful phone assistant. Keep answers short, '
-                'speak naturally, ask follow-up questions only when needed, '
-                'and avoid markdown or bullet lists because the user hears '
-                'your response over the phone.',
+        initialPrompt: env['CALLO_INITIAL_PROMPT'] ?? defaultInitialPrompt,
+        systemPrompt: env['CALLO_SYSTEM_PROMPT'] ?? defaultSystemPrompt,
       ),
     );
   }

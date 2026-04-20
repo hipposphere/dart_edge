@@ -58,7 +58,7 @@ Optional:
 - `CALLO_SYSTEM_PROMPT`
 - `CALLO_INITIAL_PROMPT`
 - `CALLO_JINGLE_SECONDS`
-  Default: `3`. Set to `0` to disable the local startup jingle.
+  Default: `2`. Set to `0` to disable the local startup jingle.
 - `CALLO_ASSISTANT_USER`
   Default: `assistant`
 - `SIP_BIND_HOST`
@@ -84,10 +84,6 @@ Optional:
 - `SIP_EXTERNAL_ADDRESS`
   Useful when the softphone is on another machine and RTP must advertise a
   reachable host or IP.
-
-The older `PHONE_ASSISTANT_SYSTEM_PROMPT`,
-`PHONE_ASSISTANT_INITIAL_PROMPT`, and `PHONE_ASSISTANT_JINGLE_SECONDS`
-environment names are still accepted as fallbacks.
 
 ## Calling From A Softphone
 
