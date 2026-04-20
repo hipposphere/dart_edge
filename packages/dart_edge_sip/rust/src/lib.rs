@@ -56,7 +56,7 @@ struct NativeCommand {
     #[serde(rename = "sessionId")]
     session_id: Option<String>,
     payload: Option<Value>,
-    request: Option<NativeOriginateRequest>,
+    request: Option<Value>,
 }
 
 #[derive(Deserialize)]
@@ -65,6 +65,14 @@ struct NativeOriginateRequest {
     trunk_id: String,
     from_uri: String,
     to_uri: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct NativeEndpointCallRequest {
+    endpoint_id: String,
+    from_uri: Option<String>,
+    to_uri: Option<String>,
 }
 
 #[derive(Default, Deserialize)]
@@ -77,6 +85,19 @@ struct NativeStatusPayload {
 #[serde(rename_all = "camelCase")]
 struct NativeBridgePayload {
     other_call_id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct NativeRouteEndpointPayload {
+    endpoint_id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct NativeRouteTrunkPayload {
+    trunk_id: String,
+    target_uri: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -256,6 +277,7 @@ impl PjsipRuntime {
             enable_tls: config.engine.enable_tls,
             enable_srtp: config.engine.enable_srtp && config.media.enable_srtp,
             enable_rport: config.engine.enable_rport,
+            enable_registrar: config.features.registrar,
             user_agent: user_agent.as_ptr(),
             external_address: external_address
                 .as_ref()
@@ -280,6 +302,9 @@ impl PjsipRuntime {
 
         for transport in &config.transports {
             runtime.add_transport(transport, config.media.external_address.as_deref())?;
+        }
+        for endpoint in &config.endpoints {
+            runtime.add_endpoint(endpoint, config)?;
         }
         for trunk in &config.trunks {
             runtime.add_trunk(trunk)?;
@@ -372,6 +397,52 @@ impl PjsipRuntime {
         }
     }
 
+    fn add_endpoint(
+        &mut self,
+        endpoint: &NativeSipEndpointConfig,
+        config: &NativeSipServerConfig,
+    ) -> Result<(), String> {
+        let id = c_string(&endpoint.id)?;
+        let extension = c_string(&endpoint.extension)?;
+        let username = c_string(&endpoint.username)?;
+        let password = c_string(&endpoint.password)?;
+        let realm = c_string(&endpoint.realm)?;
+        let display_name = optional_c_string(endpoint.display_name.as_deref())?;
+        let require_authentication = config.features.authentication
+            && config
+                .realms
+                .iter()
+                .find(|realm| realm.realm == endpoint.realm || realm.domain == endpoint.realm)
+                .is_none_or(|realm| realm.require_authentication);
+        let mut error = ErrorBuffer::new();
+        let binding = dart_edge_sip_bridge_endpoint_config {
+            id: id.as_ptr(),
+            extension: extension.as_ptr(),
+            username: username.as_ptr(),
+            password: password.as_ptr(),
+            realm: realm.as_ptr(),
+            display_name: display_name
+                .as_ref()
+                .map_or(std::ptr::null(), |value| value.as_ptr()),
+            allow_registrations: config.features.registrar && endpoint.allow_registrations,
+            require_authentication,
+        };
+
+        let ok = unsafe {
+            dart_edge_sip_bridge_add_endpoint(
+                self.raw.as_ptr(),
+                &binding,
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if ok {
+            Ok(())
+        } else {
+            Err(error.message("Failed to add SIP endpoint."))
+        }
+    }
+
     fn start(&mut self) -> Result<(), String> {
         let mut error = ErrorBuffer::new();
         let ok = unsafe {
@@ -420,6 +491,133 @@ impl PjsipRuntime {
 
         read_fixed_c_string(&session_id)
             .ok_or_else(|| "SIP bridge returned no call session ID.".to_string())
+    }
+
+    fn originate_endpoint_call(
+        &mut self,
+        request: &NativeEndpointCallRequest,
+    ) -> Result<String, String> {
+        let endpoint_id = c_string(&request.endpoint_id)?;
+        let from_uri = optional_c_string(request.from_uri.as_deref())?;
+        let to_uri = optional_c_string(request.to_uri.as_deref())?;
+        let mut session_id = [0 as c_char; SESSION_BUFFER_LEN];
+        let mut error = ErrorBuffer::new();
+        let ok = unsafe {
+            dart_edge_sip_bridge_originate_endpoint_call(
+                self.raw.as_ptr(),
+                endpoint_id.as_ptr(),
+                from_uri
+                    .as_ref()
+                    .map_or(std::ptr::null(), |value| value.as_ptr()),
+                to_uri
+                    .as_ref()
+                    .map_or(std::ptr::null(), |value| value.as_ptr()),
+                session_id.as_mut_ptr(),
+                session_id.len(),
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if !ok {
+            return Err(error.message("Failed to originate SIP endpoint call."));
+        }
+
+        read_fixed_c_string(&session_id)
+            .ok_or_else(|| "SIP bridge returned no call session ID.".to_string())
+    }
+
+    fn route_call_to_endpoint(
+        &mut self,
+        session_id: &str,
+        payload: &NativeRouteEndpointPayload,
+    ) -> Result<String, String> {
+        let session_id = c_string(session_id)?;
+        let endpoint_id = c_string(&payload.endpoint_id)?;
+        let mut routed_session_id = [0 as c_char; SESSION_BUFFER_LEN];
+        let mut error = ErrorBuffer::new();
+        let ok = unsafe {
+            dart_edge_sip_bridge_route_call_to_endpoint(
+                self.raw.as_ptr(),
+                session_id.as_ptr(),
+                endpoint_id.as_ptr(),
+                routed_session_id.as_mut_ptr(),
+                routed_session_id.len(),
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if !ok {
+            return Err(error.message("Failed to route SIP call to endpoint."));
+        }
+
+        read_fixed_c_string(&routed_session_id)
+            .ok_or_else(|| "SIP bridge returned no routed call session ID.".to_string())
+    }
+
+    fn route_call_to_trunk(
+        &mut self,
+        session_id: &str,
+        payload: &NativeRouteTrunkPayload,
+    ) -> Result<String, String> {
+        let session_id = c_string(session_id)?;
+        let trunk_id = c_string(&payload.trunk_id)?;
+        let target_uri = optional_c_string(payload.target_uri.as_deref())?;
+        let mut routed_session_id = [0 as c_char; SESSION_BUFFER_LEN];
+        let mut error = ErrorBuffer::new();
+        let ok = unsafe {
+            dart_edge_sip_bridge_route_call_to_trunk(
+                self.raw.as_ptr(),
+                session_id.as_ptr(),
+                trunk_id.as_ptr(),
+                target_uri
+                    .as_ref()
+                    .map_or(std::ptr::null(), |value| value.as_ptr()),
+                routed_session_id.as_mut_ptr(),
+                routed_session_id.len(),
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if !ok {
+            return Err(error.message("Failed to route SIP call to trunk."));
+        }
+
+        read_fixed_c_string(&routed_session_id)
+            .ok_or_else(|| "SIP bridge returned no routed call session ID.".to_string())
+    }
+
+    fn registered_endpoints(&mut self) -> Vec<Value> {
+        let count = unsafe {
+            dart_edge_sip_bridge_list_registered_endpoints(
+                self.raw.as_ptr(),
+                std::ptr::null_mut(),
+                0,
+            )
+        };
+        if count == 0 {
+            return Vec::new();
+        }
+
+        let mut endpoints = vec![dart_edge_sip_bridge_registered_endpoint::default(); count];
+        let written = unsafe {
+            dart_edge_sip_bridge_list_registered_endpoints(
+                self.raw.as_ptr(),
+                endpoints.as_mut_ptr(),
+                endpoints.len(),
+            )
+        };
+        endpoints
+            .into_iter()
+            .take(written)
+            .map(|endpoint| {
+                let expires_at_epoch_seconds = endpoint.expires_at_epoch_seconds;
+                json!({
+                    "endpointId": string_or_empty(&endpoint.endpoint_id),
+                    "contactUri": string_or_empty(&endpoint.contact_uri),
+                    "expiresAtEpochSeconds": expires_at_epoch_seconds,
+                })
+            })
+            .collect()
     }
 
     fn answer_call(
@@ -946,18 +1144,16 @@ pub extern "C" fn dart_edge_sip_issue_command(
     let session_id = session_id.as_deref();
 
     let result = match kind.as_str() {
-        "originateCall" => {
-            let request = match request {
-                Some(request) => request,
-                None => {
-                    set_last_error("originateCall requires a request payload.");
-                    return std::ptr::null_mut();
-                }
-            };
-            runtime
-                .originate_call(&request)
-                .map(|session_id| json!({ "ok": true, "sessionId": session_id }))
-        }
+        "originateCall" => parse_request::<NativeOriginateRequest>(request)
+            .and_then(|request| runtime.originate_call(&request))
+            .map(|session_id| json!({ "ok": true, "sessionId": session_id })),
+        "originateEndpointCall" => parse_request::<NativeEndpointCallRequest>(request)
+            .and_then(|request| runtime.originate_endpoint_call(&request))
+            .map(|session_id| json!({ "ok": true, "sessionId": session_id })),
+        "registeredEndpoints" => Ok(json!({
+            "ok": true,
+            "endpoints": runtime.registered_endpoints(),
+        })),
         "answer" => parse_payload::<NativeStatusPayload>(payload)
             .and_then(|payload| runtime.answer_call(required_session_id(session_id)?, &payload))
             .map(|()| json!({ "ok": true })),
@@ -967,6 +1163,16 @@ pub extern "C" fn dart_edge_sip_issue_command(
         "bridge" => parse_payload::<NativeBridgePayload>(payload)
             .and_then(|payload| runtime.bridge_calls(required_session_id(session_id)?, &payload))
             .map(|()| json!({ "ok": true })),
+        "routeToEndpoint" => parse_payload::<NativeRouteEndpointPayload>(payload)
+            .and_then(|payload| {
+                runtime.route_call_to_endpoint(required_session_id(session_id)?, &payload)
+            })
+            .map(|routed_session_id| json!({ "ok": true, "sessionId": routed_session_id })),
+        "routeToTrunk" => parse_payload::<NativeRouteTrunkPayload>(payload)
+            .and_then(|payload| {
+                runtime.route_call_to_trunk(required_session_id(session_id)?, &payload)
+            })
+            .map(|routed_session_id| json!({ "ok": true, "sessionId": routed_session_id })),
         "hold" => required_session_id(session_id)
             .and_then(|session_id| runtime.hold_call(session_id))
             .map(|()| json!({ "ok": true })),
@@ -1360,6 +1566,17 @@ where
         .map_err(|error| format!("Invalid dart_edge_sip command payload: {error}"))
 }
 
+fn parse_request<T>(request: Option<Value>) -> Result<T, String>
+where
+    T: for<'de> Deserialize<'de>,
+{
+    let Some(request) = request else {
+        return Err("Missing dart_edge_sip request payload.".to_string());
+    };
+    serde_json::from_value(request)
+        .map_err(|error| format!("Invalid dart_edge_sip request payload: {error}"))
+}
+
 fn required_session_id(session_id: Option<&str>) -> Result<&str, String> {
     session_id.ok_or_else(|| "Missing sessionId.".to_string())
 }
@@ -1389,6 +1606,14 @@ fn bridge_event_to_json(event: &dart_edge_sip_bridge_event) -> Value {
                 ),
             );
             maybe_insert_string(&mut json, "contactUri", &event.contact_uri);
+            if event.expires_at_epoch_seconds > 0 {
+                json.insert(
+                    "metadata".to_string(),
+                    json!({
+                        "expiresAtEpochSeconds": event.expires_at_epoch_seconds,
+                    }),
+                );
+            }
             Value::Object(json)
         }
         BRIDGE_EVENT_TRUNK => {
@@ -1701,6 +1926,7 @@ struct dart_edge_sip_bridge_config {
     enable_tls: bool,
     enable_srtp: bool,
     enable_rport: bool,
+    enable_registrar: bool,
     user_agent: *const c_char,
     external_address: *const c_char,
     recording_directory: *const c_char,
@@ -1728,6 +1954,32 @@ struct dart_edge_sip_bridge_trunk_config {
 }
 
 #[repr(C)]
+struct dart_edge_sip_bridge_endpoint_config {
+    id: *const c_char,
+    extension: *const c_char,
+    username: *const c_char,
+    password: *const c_char,
+    realm: *const c_char,
+    display_name: *const c_char,
+    allow_registrations: bool,
+    require_authentication: bool,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct dart_edge_sip_bridge_registered_endpoint {
+    endpoint_id: [c_char; 64],
+    contact_uri: [c_char; 256],
+    expires_at_epoch_seconds: u64,
+}
+
+impl Default for dart_edge_sip_bridge_registered_endpoint {
+    fn default() -> Self {
+        unsafe { std::mem::zeroed() }
+    }
+}
+
+#[repr(C)]
 struct dart_edge_sip_bridge_event {
     kind: i32,
     call_direction: i32,
@@ -1737,6 +1989,7 @@ struct dart_edge_sip_bridge_event {
     recording_state: i32,
     voicemail_state: i32,
     status_code: i32,
+    expires_at_epoch_seconds: u64,
     call_id: [c_char; 64],
     related_call_id: [c_char; 64],
     endpoint_id: [c_char; 64],
@@ -1781,6 +2034,13 @@ unsafe extern "C" {
         error_len: usize,
     ) -> bool;
 
+    fn dart_edge_sip_bridge_add_endpoint(
+        runtime: *mut dart_edge_sip_bridge_runtime,
+        endpoint: *const dart_edge_sip_bridge_endpoint_config,
+        error: *mut c_char,
+        error_len: usize,
+    ) -> bool;
+
     fn dart_edge_sip_bridge_start(
         runtime: *mut dart_edge_sip_bridge_runtime,
         error: *mut c_char,
@@ -1803,6 +2063,44 @@ unsafe extern "C" {
         error: *mut c_char,
         error_len: usize,
     ) -> bool;
+
+    fn dart_edge_sip_bridge_originate_endpoint_call(
+        runtime: *mut dart_edge_sip_bridge_runtime,
+        endpoint_id: *const c_char,
+        from_uri: *const c_char,
+        to_uri: *const c_char,
+        session_id: *mut c_char,
+        session_id_len: usize,
+        error: *mut c_char,
+        error_len: usize,
+    ) -> bool;
+
+    fn dart_edge_sip_bridge_route_call_to_endpoint(
+        runtime: *mut dart_edge_sip_bridge_runtime,
+        session_id: *const c_char,
+        endpoint_id: *const c_char,
+        routed_session_id: *mut c_char,
+        routed_session_id_len: usize,
+        error: *mut c_char,
+        error_len: usize,
+    ) -> bool;
+
+    fn dart_edge_sip_bridge_route_call_to_trunk(
+        runtime: *mut dart_edge_sip_bridge_runtime,
+        session_id: *const c_char,
+        trunk_id: *const c_char,
+        target_uri: *const c_char,
+        routed_session_id: *mut c_char,
+        routed_session_id_len: usize,
+        error: *mut c_char,
+        error_len: usize,
+    ) -> bool;
+
+    fn dart_edge_sip_bridge_list_registered_endpoints(
+        runtime: *mut dart_edge_sip_bridge_runtime,
+        endpoints: *mut dart_edge_sip_bridge_registered_endpoint,
+        endpoint_capacity: usize,
+    ) -> usize;
 
     fn dart_edge_sip_bridge_answer_call(
         runtime: *mut dart_edge_sip_bridge_runtime,

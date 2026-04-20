@@ -42,6 +42,30 @@ final class SipOutboundCallRequest {
   };
 }
 
+final class SipEndpointCallRequest {
+  const SipEndpointCallRequest({
+    required this.endpointId,
+    this.fromUri,
+    this.toUri,
+    this.headers = const <String, String>{},
+    this.metadata = const <String, Object?>{},
+  });
+
+  final String endpointId;
+  final String? fromUri;
+  final String? toUri;
+  final Map<String, String> headers;
+  final Map<String, Object?> metadata;
+
+  Map<String, Object?> toJson() => {
+    'endpointId': endpointId,
+    if (fromUri case final fromUri?) 'fromUri': fromUri,
+    if (toUri case final toUri?) 'toUri': toUri,
+    if (headers.isNotEmpty) 'headers': headers,
+    if (metadata.isNotEmpty) 'metadata': metadata,
+  };
+}
+
 sealed class SipDialplanDecision {
   const SipDialplanDecision();
 
@@ -49,8 +73,10 @@ sealed class SipDialplanDecision {
     required String endpointId,
   }) = SipRouteToEndpointDecision;
 
-  const factory SipDialplanDecision.routeToTrunk({required String trunkId}) =
-      SipRouteToTrunkDecision;
+  const factory SipDialplanDecision.routeToTrunk({
+    required String trunkId,
+    String? targetUri,
+  }) = SipRouteToTrunkDecision;
 
   const factory SipDialplanDecision.routeToMediaApp({
     required String mediaAppId,
@@ -72,9 +98,10 @@ final class SipRouteToEndpointDecision implements SipDialplanDecision {
 }
 
 final class SipRouteToTrunkDecision implements SipDialplanDecision {
-  const SipRouteToTrunkDecision({required this.trunkId});
+  const SipRouteToTrunkDecision({required this.trunkId, this.targetUri});
 
   final String trunkId;
+  final String? targetUri;
 }
 
 final class SipRouteToMediaAppDecision implements SipDialplanDecision {

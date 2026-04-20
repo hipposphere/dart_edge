@@ -53,6 +53,20 @@ final class SipCallSession {
     return _execute('bridge', payload: {'otherCallId': other.id});
   }
 
+  Future<void> routeToEndpoint({required String endpointId}) {
+    return _execute('routeToEndpoint', payload: {'endpointId': endpointId});
+  }
+
+  Future<void> routeToTrunk({required String trunkId, String? targetUri}) {
+    return _execute(
+      'routeToTrunk',
+      payload: {
+        'trunkId': trunkId,
+        if (targetUri case final targetUri?) 'targetUri': targetUri,
+      },
+    );
+  }
+
   Future<void> hold() {
     return _execute('hold');
   }

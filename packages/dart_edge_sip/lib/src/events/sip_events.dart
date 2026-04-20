@@ -138,6 +138,11 @@ final class SipCallEvent extends SipEvent {
       metadata: _readMetadata(json),
     );
   }
+
+  @override
+  String toString() =>
+      'SipCallEvent(callId: $callId, direction: $direction, state: $state, '
+      'fromUri: $fromUri, toUri: $toUri, mediaAppId: $mediaAppId)';
 }
 
 final class SipRegistrationEvent extends SipEvent {
@@ -162,6 +167,11 @@ final class SipRegistrationEvent extends SipEvent {
       metadata: _readMetadata(json),
     );
   }
+
+  @override
+  String toString() =>
+      'SipRegistrationEvent(endpointId: $endpointId, state: $state, '
+      'contactUri: $contactUri)';
 }
 
 final class SipTrunkEvent extends SipEvent {
@@ -186,6 +196,10 @@ final class SipTrunkEvent extends SipEvent {
       metadata: _readMetadata(json),
     );
   }
+
+  @override
+  String toString() =>
+      'SipTrunkEvent(trunkId: $trunkId, state: $state, details: $details)';
 }
 
 final class SipRecordingEvent extends SipEvent {
@@ -213,6 +227,11 @@ final class SipRecordingEvent extends SipEvent {
       metadata: _readMetadata(json),
     );
   }
+
+  @override
+  String toString() =>
+      'SipRecordingEvent(callId: $callId, recordingId: $recordingId, '
+      'state: $state, storageUri: $storageUri)';
 }
 
 final class SipVoicemailEvent extends SipEvent {
@@ -243,6 +262,11 @@ final class SipVoicemailEvent extends SipEvent {
       metadata: _readMetadata(json),
     );
   }
+
+  @override
+  String toString() =>
+      'SipVoicemailEvent(callId: $callId, mailbox: $mailbox, '
+      'state: $state, messageId: $messageId, storageUri: $storageUri)';
 }
 
 DateTime _readTimestamp(Map<String, Object?> json) {

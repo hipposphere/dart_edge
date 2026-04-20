@@ -98,6 +98,11 @@ The current implementation now includes:
 
 - a real PJSIP-backed runtime bootstrap behind Rust
 - transport creation for UDP/TCP/TLS bindings
+- configured endpoint installation into a built-in registrar
+- digest-authenticated endpoint registration and registration-state events
+- active endpoint contact lookup from Dart
+- endpoint and trunk routing commands that create a routed outbound leg and
+  bridge media once both call legs are established
 - trunk account setup and trunk registration-state events
 - outbound call origination plus inbound/outbound call-state events
 - call control for answer, reject, hold, resume, transfer, bridge, and hangup
@@ -106,7 +111,8 @@ The current implementation now includes:
 - media-app attachment plus normalized PCM16 media-session access for assistant
   flows, backed by native streaming conference ports for bidirectional audio
 
-The package is still not a complete PBX or registrar. The main remaining gap is
-full endpoint/registrar handling above the PJSUA user-agent layer. Production
-scaling also depends on shipping a custom `pjproject` build with higher
-`PJSUA_*` compile-time limits than the stock system package usually provides.
+The package is still not a complete PBX. The remaining registrar work is
+advanced policy such as multi-contact selection, distributed registration
+storage, presence, and richer authorization hooks. Production scaling also
+depends on shipping a custom `pjproject` build with higher `PJSUA_*`
+compile-time limits than the stock system package usually provides.

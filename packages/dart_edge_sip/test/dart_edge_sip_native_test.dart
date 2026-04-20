@@ -30,6 +30,7 @@ void main() {
       addTearDown(sip.dispose);
 
       await sip.start();
+      expect(await sip.registeredEndpoints(), isEmpty);
 
       final inviteEventFuture = sip.callEvents.first;
       final call = await sip.originateCall(
@@ -108,6 +109,23 @@ void main() {
     await mediaSession.clearPlaybackQueue();
 
     await call.hangup();
+    await mediaSession.closed.timeout(const Duration(seconds: 2));
+    expect(mediaSession.isClosed, isTrue);
+  });
+
+  test('media session close signal completes when runtime closes it', () async {
+    final session = SipRealtimeMediaSession.internal(
+      callId: 'call-1',
+      mediaAppId: 'assistant',
+      format: const SipAudioFormat.voiceAssistant(),
+      handle: 0,
+      detach: () async {},
+    );
+
+    session.closeFromRuntime();
+
+    await session.closed.timeout(const Duration(seconds: 1));
+    expect(session.isClosed, isTrue);
   });
 }
 

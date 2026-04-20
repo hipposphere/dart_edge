@@ -73,6 +73,7 @@ typedef struct {
   bool enable_tls;
   bool enable_srtp;
   bool enable_rport;
+  bool enable_registrar;
   const char* user_agent;
   const char* external_address;
   const char* recording_directory;
@@ -98,6 +99,23 @@ typedef struct {
 } dart_edge_sip_bridge_trunk_config;
 
 typedef struct {
+  const char* id;
+  const char* extension;
+  const char* username;
+  const char* password;
+  const char* realm;
+  const char* display_name;
+  bool allow_registrations;
+  bool require_authentication;
+} dart_edge_sip_bridge_endpoint_config;
+
+typedef struct {
+  char endpoint_id[64];
+  char contact_uri[256];
+  uint64_t expires_at_epoch_seconds;
+} dart_edge_sip_bridge_registered_endpoint;
+
+typedef struct {
   int32_t kind;
   int32_t call_direction;
   int32_t call_state;
@@ -106,6 +124,7 @@ typedef struct {
   int32_t recording_state;
   int32_t voicemail_state;
   int32_t status_code;
+  uint64_t expires_at_epoch_seconds;
   char call_id[64];
   char related_call_id[64];
   char endpoint_id[64];
@@ -140,6 +159,12 @@ bool dart_edge_sip_bridge_add_trunk(
     char* error,
     size_t error_len);
 
+bool dart_edge_sip_bridge_add_endpoint(
+    dart_edge_sip_bridge_runtime* runtime,
+    const dart_edge_sip_bridge_endpoint_config* endpoint,
+    char* error,
+    size_t error_len);
+
 bool dart_edge_sip_bridge_start(
     dart_edge_sip_bridge_runtime* runtime,
     char* error,
@@ -159,6 +184,40 @@ bool dart_edge_sip_bridge_originate_call(
     size_t session_id_len,
     char* error,
     size_t error_len);
+
+bool dart_edge_sip_bridge_originate_endpoint_call(
+    dart_edge_sip_bridge_runtime* runtime,
+    const char* endpoint_id,
+    const char* from_uri,
+    const char* to_uri,
+    char* session_id,
+    size_t session_id_len,
+    char* error,
+    size_t error_len);
+
+bool dart_edge_sip_bridge_route_call_to_endpoint(
+    dart_edge_sip_bridge_runtime* runtime,
+    const char* session_id,
+    const char* endpoint_id,
+    char* routed_session_id,
+    size_t routed_session_id_len,
+    char* error,
+    size_t error_len);
+
+bool dart_edge_sip_bridge_route_call_to_trunk(
+    dart_edge_sip_bridge_runtime* runtime,
+    const char* session_id,
+    const char* trunk_id,
+    const char* target_uri,
+    char* routed_session_id,
+    size_t routed_session_id_len,
+    char* error,
+    size_t error_len);
+
+size_t dart_edge_sip_bridge_list_registered_endpoints(
+    dart_edge_sip_bridge_runtime* runtime,
+    dart_edge_sip_bridge_registered_endpoint* endpoints,
+    size_t endpoint_capacity);
 
 bool dart_edge_sip_bridge_answer_call(
     dart_edge_sip_bridge_runtime* runtime,

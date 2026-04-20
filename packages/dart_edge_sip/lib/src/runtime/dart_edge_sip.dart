@@ -7,6 +7,7 @@ import '../media/sip_audio.dart';
 import '../media/sip_media_app.dart';
 import '../media/sip_realtime_media_session.dart';
 import '../native/dart_edge_sip_native.dart';
+import '../registrar/sip_registrar.dart';
 import 'sip_call_session.dart';
 
 final class DartEdgeSip {
@@ -30,6 +31,7 @@ final class DartEdgeSip {
       StreamController<SipEvent>.broadcast();
   final Map<String, SipRealtimeMediaSession> _mediaSessions =
       <String, SipRealtimeMediaSession>{};
+  final Map<String, SipCallState> _callStates = <String, SipCallState>{};
   final Set<String> _handledInboundInvites = <String>{};
 
   int? _handle;
@@ -92,6 +94,8 @@ final class DartEdgeSip {
     _pollTimer?.cancel();
     _pollTimer = null;
     _closeAllMediaSessions();
+    _callStates.clear();
+    _handledInboundInvites.clear();
 
     final handle = _handle;
     if (handle != null) {
@@ -119,6 +123,39 @@ final class DartEdgeSip {
   Future<SipCallSession> originateCall(SipOutboundCallRequest request) async {
     _ensureStarted();
 
+    final dialplan = _dialplan;
+    if (dialplan != null) {
+      final decision = await dialplan.onOutboundCall(request);
+      switch (decision) {
+        case SipRouteToTrunkDecision(:final trunkId, :final targetUri):
+          request = SipOutboundCallRequest(
+            trunkId: trunkId,
+            fromUri: request.fromUri,
+            toUri: targetUri ?? request.toUri,
+            headers: request.headers,
+            metadata: request.metadata,
+          );
+        case SipRouteToEndpointDecision(:final endpointId):
+          return callEndpoint(
+            SipEndpointCallRequest(
+              endpointId: endpointId,
+              fromUri: request.fromUri,
+              metadata: request.metadata,
+            ),
+          );
+        case SipRejectDecision(:final status, :final reason):
+          throw StateError(
+            'Outbound SIP call rejected by dialplan '
+            '($status${reason == null ? '' : ', $reason'}).',
+          );
+        case SipRouteToMediaAppDecision():
+        case SipSendToVoicemailDecision():
+          throw UnsupportedError(
+            'Outbound SIP calls must route to a trunk or registered endpoint.',
+          );
+      }
+    }
+
     final payload = DartEdgeSipNative.issueCommand(_handle!, {
       'kind': 'originateCall',
       'request': request.toJson(),
@@ -131,6 +168,58 @@ final class DartEdgeSip {
     }
 
     return _session(sessionId);
+  }
+
+  Future<SipCallSession> callEndpoint(SipEndpointCallRequest request) async {
+    _ensureStarted();
+
+    final payload = DartEdgeSipNative.issueCommand(_handle!, {
+      'kind': 'originateEndpointCall',
+      'request': request.toJson(),
+    });
+    await _drainEvents();
+
+    final sessionId = payload['sessionId'];
+    if (sessionId is! String || sessionId.isEmpty) {
+      throw StateError(
+        'dart_edge_sip originateEndpointCall returned no sessionId.',
+      );
+    }
+
+    return _session(sessionId);
+  }
+
+  Future<List<SipRegisteredEndpoint>> registeredEndpoints() async {
+    _ensureStarted();
+
+    final payload = DartEdgeSipNative.issueCommand(_handle!, {
+      'kind': 'registeredEndpoints',
+    });
+    await _drainEvents();
+
+    final endpoints = payload['endpoints'];
+    if (endpoints is! List) {
+      throw StateError(
+        'dart_edge_sip registeredEndpoints returned no endpoint list.',
+      );
+    }
+
+    return [
+      for (final endpoint in endpoints)
+        SipRegisteredEndpoint.fromJson(
+          (endpoint as Map).cast<String, Object?>(),
+        ),
+    ];
+  }
+
+  Future<SipRegisteredEndpoint?> registeredEndpoint(String endpointId) async {
+    final endpoints = await registeredEndpoints();
+    for (final endpoint in endpoints) {
+      if (endpoint.endpointId == endpointId) {
+        return endpoint;
+      }
+    }
+    return null;
   }
 
   SipCallSession _session(String sessionId) {
@@ -226,6 +315,9 @@ final class DartEdgeSip {
         break;
       }
       final event = SipEvent.fromJson(payload);
+      if (event case SipCallEvent(:final callId, :final state)) {
+        _callStates[callId] = state;
+      }
       _events.add(event);
       if (event case SipCallEvent(
         state: SipCallState.terminated,
@@ -239,6 +331,32 @@ final class DartEdgeSip {
       )) {
         await _maybeHandleInboundInvite(event);
       }
+    }
+  }
+
+  Future<void> _waitForCallState(
+    String callId,
+    SipCallState expectedState, {
+    Duration timeout = const Duration(seconds: 2),
+  }) async {
+    final deadline = DateTime.now().add(timeout);
+    while (_started && !_events.isClosed) {
+      await _drainEvents();
+      final state = _callStates[callId];
+      if (state == expectedState ||
+          state == SipCallState.terminated ||
+          state == SipCallState.rejected) {
+        return;
+      }
+
+      final remaining = deadline.difference(DateTime.now());
+      if (remaining <= Duration.zero) {
+        return;
+      }
+      final delay = remaining < const Duration(milliseconds: 20)
+          ? remaining
+          : const Duration(milliseconds: 20);
+      await Future<void>.delayed(delay);
     }
   }
 
@@ -270,12 +388,8 @@ final class DartEdgeSip {
   ) async {
     switch (decision) {
       case SipRouteToMediaAppDecision(:final mediaAppId):
-        await _issueCallCommand(
-          call.id,
-          'answer',
-          payload: {'status': 200},
-          drain: false,
-        );
+        await _issueCallCommand(call.id, 'answer', payload: {'status': 200});
+        await _waitForCallState(call.id, SipCallState.established);
         await attachMediaApp(
           call,
           mediaAppId: mediaAppId,
@@ -304,17 +418,22 @@ final class DartEdgeSip {
           payload: {'mailbox': mailbox},
           drain: false,
         );
-      case SipRouteToEndpointDecision():
-        _events.addError(
-          UnsupportedError(
-            'Inbound routeToEndpoint is not wired in dart_edge_sip yet.',
-          ),
+      case SipRouteToEndpointDecision(:final endpointId):
+        await _issueCallCommand(
+          call.id,
+          'routeToEndpoint',
+          payload: {'endpointId': endpointId},
+          drain: false,
         );
-      case SipRouteToTrunkDecision():
-        _events.addError(
-          UnsupportedError(
-            'Inbound routeToTrunk is not wired in dart_edge_sip yet.',
-          ),
+      case SipRouteToTrunkDecision(:final trunkId, :final targetUri):
+        await _issueCallCommand(
+          call.id,
+          'routeToTrunk',
+          payload: {
+            'trunkId': trunkId,
+            if (targetUri case final targetUri?) 'targetUri': targetUri,
+          },
+          drain: false,
         );
     }
   }

@@ -12,11 +12,13 @@ The package now includes a real **PJSIP-backed native runtime foundation**:
 runtime lifecycle, transport/trunk setup, outbound/inbound call state events,
 call control, bridge/hold/resume/transfer commands, prompt playback, call
 recording, voicemail recording hooks, and first-pass media-app attachment with
-assistant-oriented PCM audio access.
+assistant-oriented PCM audio access. Configured endpoints can also register
+with the built-in registrar, surface registration events, be queried from Dart,
+and receive routed calls through active contacts.
 
-It is still not a finished PBX. Full registrar/auth endpoint handling,
-distributed telephony concerns, and browser/WebRTC edges remain outside the
-current implementation.
+It is still not a finished PBX. Distributed telephony concerns, advanced
+registrar policy, and browser/WebRTC edges remain outside the current
+implementation.
 
 ## Runtime Choice
 
@@ -83,6 +85,7 @@ The top-level package exports these main concepts:
 - `SipTrunkConfig`: trunk definitions
 - `SipDialplan`: inbound/outbound routing policy interface
 - `SipCallSession`: one call/session control handle
+- `SipRegisteredEndpoint`: active endpoint contact snapshots from the registrar
 - `SipMediaApp`: engine-neutral media app interface
 - `SipRealtimeMediaSession` and `SipAudioFormat`: attached media session and
   normalized audio format
@@ -134,6 +137,9 @@ Future<void> main() async {
   final subscription = sip.events.listen(print);
   await sip.start();
 
+  final registeredContacts = await sip.registeredEndpoints();
+  print('Registered endpoints: $registeredContacts');
+
   final call = await sip.originateCall(
     const SipOutboundCallRequest(
       trunkId: 'carrier-a',
@@ -148,6 +154,36 @@ Future<void> main() async {
   await subscription.cancel();
 }
 ```
+
+## Registrar and Endpoint Routing
+
+Configured `SipEndpointConfig` entries are installed into the native registrar
+when `SipFeatureFlags.registrar` is enabled. SIP user agents can `REGISTER`
+against the configured realm, registration state is emitted through
+`sip.registrationEvents`, and Dart can inspect active contacts with:
+
+```dart
+final contacts = await sip.registeredEndpoints();
+final salesPhone = await sip.registeredEndpoint('sales-1000');
+```
+
+An app can call a registered endpoint directly:
+
+```dart
+final call = await sip.callEndpoint(
+  const SipEndpointCallRequest(endpointId: 'sales-1000'),
+);
+```
+
+Inbound dialplans can now return `SipDialplanDecision.routeToEndpoint(...)` or
+`SipDialplanDecision.routeToTrunk(...)`. The native runtime creates the routed
+outbound leg and bridges media once both legs are established.
+
+For a full inbound voice-assistant example that attaches Gemini Live realtime
+audio to a SIP call, see
+[`example/gemini_live_phone_assistant.dart`](example/gemini_live_phone_assistant.dart)
+and
+[`example/README.md`](example/README.md).
 
 ## Native Layout
 

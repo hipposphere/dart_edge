@@ -77,10 +77,13 @@ final class SipRealtimeMediaSession {
   final SipAudioFormat format;
   final int _handle;
   final Future<void> Function() _detach;
+  final Completer<void> _closedCompleter = Completer<void>();
 
   var _closed = false;
 
   bool get isClosed => _closed;
+
+  Future<void> get closed => _closedCompleter.future;
 
   Future<SipOwnedAudioFrame?> pollIncomingFrame() async {
     _ensureOpen();
@@ -107,7 +110,7 @@ final class SipRealtimeMediaSession {
         yield frame;
         continue;
       }
-      await Future<void>.delayed(pollInterval);
+      await Future.any<void>([Future<void>.delayed(pollInterval), closed]);
     }
   }
 
@@ -146,12 +149,12 @@ final class SipRealtimeMediaSession {
     if (_closed) {
       return;
     }
-    _closed = true;
+    _markClosed();
     await _detach();
   }
 
   void closeFromRuntime() {
-    _closed = true;
+    _markClosed();
   }
 
   void _ensureOpen() {
@@ -160,5 +163,13 @@ final class SipRealtimeMediaSession {
         'The SIP realtime media session has already been closed.',
       );
     }
+  }
+
+  void _markClosed() {
+    if (_closed) {
+      return;
+    }
+    _closed = true;
+    _closedCompleter.complete();
   }
 }
