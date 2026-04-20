@@ -110,10 +110,7 @@ final class SipRealtimeMediaSession {
 
   Future<SipOwnedAudioFrame?> pollIncomingFrame() async {
     _ensureOpen();
-    final frame = DartEdgeSipNativeMedia.pollIncomingFrame(
-      handle: _handle,
-      sessionId: callId,
-    );
+    final frame = _pollIncomingFrame();
     if (frame == null) {
       return null;
     }
@@ -122,6 +119,20 @@ final class SipRealtimeMediaSession {
       format: frame.format,
       sequence: frame.sequence,
     );
+  }
+
+  SipNativeAudioFrameData? _pollIncomingFrame() {
+    try {
+      return DartEdgeSipNativeMedia.pollIncomingFrame(
+        handle: _handle,
+        sessionId: callId,
+      );
+    } on StateError catch (error) {
+      if (_markClosedIfNativeMediaDetached(error)) {
+        return null;
+      }
+      rethrow;
+    }
   }
 
   Stream<SipOwnedAudioFrame> incomingFrames({
@@ -139,12 +150,19 @@ final class SipRealtimeMediaSession {
 
   Future<void> playAudioBytes(Uint8List bytes, {SipAudioFormat? format}) async {
     _ensureOpen();
-    DartEdgeSipNativeMedia.playAudioBytes(
-      handle: _handle,
-      sessionId: callId,
-      bytes: bytes,
-      format: format ?? this.format,
-    );
+    try {
+      DartEdgeSipNativeMedia.playAudioBytes(
+        handle: _handle,
+        sessionId: callId,
+        bytes: bytes,
+        format: format ?? this.format,
+      );
+    } on StateError catch (error) {
+      if (_markClosedIfNativeMediaDetached(error)) {
+        return;
+      }
+      rethrow;
+    }
   }
 
   Future<void> playOwnedAudioBytes(
@@ -152,20 +170,34 @@ final class SipRealtimeMediaSession {
     SipAudioFormat? format,
   }) async {
     _ensureOpen();
-    DartEdgeSipNativeMedia.playOwnedAudioBytes(
-      handle: _handle,
-      sessionId: callId,
-      bytes: bytes,
-      format: format ?? this.format,
-    );
+    try {
+      DartEdgeSipNativeMedia.playOwnedAudioBytes(
+        handle: _handle,
+        sessionId: callId,
+        bytes: bytes,
+        format: format ?? this.format,
+      );
+    } on StateError catch (error) {
+      if (_markClosedIfNativeMediaDetached(error)) {
+        return;
+      }
+      rethrow;
+    }
   }
 
   Future<void> clearPlaybackQueue() async {
     _ensureOpen();
-    DartEdgeSipNativeMedia.clearPlaybackQueue(
-      handle: _handle,
-      sessionId: callId,
-    );
+    try {
+      DartEdgeSipNativeMedia.clearPlaybackQueue(
+        handle: _handle,
+        sessionId: callId,
+      );
+    } on StateError catch (error) {
+      if (_markClosedIfNativeMediaDetached(error)) {
+        return;
+      }
+      rethrow;
+    }
   }
 
   Future<void> close() async {
@@ -194,5 +226,13 @@ final class SipRealtimeMediaSession {
     }
     _closed = true;
     _closedCompleter.complete();
+  }
+
+  bool _markClosedIfNativeMediaDetached(StateError error) {
+    if (error.message != 'No SIP media app is attached to this call.') {
+      return false;
+    }
+    _markClosed();
+    return true;
   }
 }

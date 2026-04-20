@@ -85,11 +85,12 @@ final class _GeminiLiveBridge {
         await client.sendRealtimeText(initialPrompt);
       }
       await Future.any(<Future<void>>[...tasks, session.media.closed]);
-    } catch (error, stackTrace) {
       if (session.media.isClosed) {
-        logger.error(
-          '$_tag Gemini Live setup failed after the SIP call ended: $error',
-        );
+        logger.info('$_tag SIP media closed; ending Gemini Live session.');
+      }
+    } catch (error, stackTrace) {
+      if (session.media.isClosed || _isExpectedSipMediaClosure(error)) {
+        logger.info('$_tag SIP media closed; ending Gemini Live session.');
       } else {
         logger.error('$_tag bridge error: $error');
         if (!isExpectedGeminiSetupFailure(error)) {
@@ -153,6 +154,9 @@ final class _GeminiLiveBridge {
 
   Future<void> _pumpGeminiEventsToSip(GeminiLiveClient client) async {
     await for (final message in client.messages) {
+      if (session.media.isClosed) {
+        break;
+      }
       switch (message) {
         case genai.BidiGenerateContentSetupComplete(:final sessionId):
           logger.info(
@@ -187,6 +191,15 @@ final class _GeminiLiveBridge {
           );
       }
     }
+  }
+
+  bool _isExpectedSipMediaClosure(Object error) {
+    return switch (error) {
+      StateError(:final message) =>
+        message == 'The SIP realtime media session has already been closed.' ||
+            message == 'No SIP media app is attached to this call.',
+      _ => false,
+    };
   }
 
   Future<void> _handleServerContent(
