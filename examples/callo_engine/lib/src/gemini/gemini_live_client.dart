@@ -31,60 +31,14 @@ final class GeminiLiveClient {
     required CalloLogger logger,
   }) async {
     final model = geminiLiveModelId(settings.model);
-
-    try {
-      return await _connectWithConfig(
-        settings,
-        logTag: logTag,
-        logger: logger,
-        model: model,
-        minimalConfig: false,
-      );
-    } catch (error) {
-      if (!_shouldRetryGeminiMinimalConfig(error)) {
-        rethrow;
-      }
-
-      logger.info(
-        '$logTag retrying Gemini Live setup with minimal config '
-        '(responseModalities=AUDIO only).',
-      );
-      try {
-        return await _connectWithConfig(
-          settings,
-          logTag: logTag,
-          logger: logger,
-          model: model,
-          minimalConfig: true,
-        );
-      } catch (minimalError) {
-        throw StateError(
-          'Gemini Live SDK setup failed for model ${settings.model} with both '
-          'the full phone-assistant config and the minimal AUDIO-only config. '
-          'Full config error: $error. Minimal config error: $minimalError',
-        );
-      }
-    }
-  }
-
-  static Future<GeminiLiveClient> _connectWithConfig(
-    GeminiLiveConfig settings, {
-    required String logTag,
-    required CalloLogger logger,
-    required String model,
-    required bool minimalConfig,
-  }) async {
     final client = createGeminiSdkClient(settings);
     final liveClient = client.createLiveClient();
-    final liveConfig = _buildGeminiLiveConfig(settings, minimal: minimalConfig);
+    final liveConfig = _buildGeminiLiveConfig(settings);
 
-    final configDescription = minimalConfig
-        ? 'minimal audio config'
-        : 'voice=${settings.voiceName}, transcription=on, vad=auto';
     logger.info(
       '$logTag opening Gemini Live SDK session '
       '(sdk=googleai_dart, api=v1beta, model=$model, '
-      '$configDescription).',
+      'voice=${settings.voiceName}, transcription=on, vad=auto).',
     );
     final stopwatch = Stopwatch()..start();
 
@@ -198,16 +152,7 @@ bool isExpectedGeminiSetupFailure(Object error) {
       message.contains('WebSocketConnectionClosed');
 }
 
-genai.LiveConfig _buildGeminiLiveConfig(
-  GeminiLiveConfig settings, {
-  required bool minimal,
-}) {
-  if (minimal) {
-    return genai.LiveConfig(
-      generationConfig: genai.LiveGenerationConfig.audioOnly(),
-    );
-  }
-
+genai.LiveConfig _buildGeminiLiveConfig(GeminiLiveConfig settings) {
   return genai.LiveConfig(
     generationConfig: genai.LiveGenerationConfig.audioOnly(
       speechConfig: genai.SpeechConfig.withVoice(settings.voiceName),
@@ -215,20 +160,13 @@ genai.LiveConfig _buildGeminiLiveConfig(
     systemInstruction: genai.Content(
       parts: [genai.TextPart(settings.systemPrompt)],
     ),
-    inputAudioTranscription: genai.AudioTranscriptionConfig.enabled(),
-    outputAudioTranscription: genai.AudioTranscriptionConfig.enabled(),
+    // inputAudioTranscription: genai.AudioTranscriptionConfig.enabled(),
+    // outputAudioTranscription: genai.AudioTranscriptionConfig.enabled(),
     realtimeInputConfig: genai.RealtimeInputConfig.withVAD(
       silenceDurationMs: 500,
       activityHandling: genai.ActivityHandling.startOfActivityInterrupts,
     ),
   );
-}
-
-bool _shouldRetryGeminiMinimalConfig(Object error) {
-  final message = error.toString();
-  return message.contains('Gemini Live SDK setup failed') ||
-      message.contains('Gemini Live SDK closed the WebSocket') ||
-      message.contains('Gemini Live SDK failed during setup');
 }
 
 bool _isWebSocketClosedSetupError(Object error) {

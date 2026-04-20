@@ -12,7 +12,7 @@ Vermeide es, Informationen zu erfinden, wenn du dir unsicher bist. Biete stattde
 ''';
 
 const defaultInitialPrompt =
-    'Greet the caller in one short sentence and ask how you can help.';
+    'Begrüße den Anrufer, stelle dich vor und frage, wie du ihm helfen kannst.';
 
 final class GeminiLiveConfig {
   const GeminiLiveConfig({
