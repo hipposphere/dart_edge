@@ -1,6 +1,8 @@
 name: dart_edge_http_server_runtime
 description: HTTP server runtime and shared contracts for Dart Edge.
 version: 0.1.0
+publish_to: "https://registry.hippolabs.org/pub/internal-pub/"
+repository: https://github.com/flowhorn/dart_edge/tree/main/packages/dart_edge_http_server_runtime
 
 environment:
   sdk: ">=3.11.0 <4.0.0"
@@ -9,7 +11,7 @@ resolution: workspace
 
 dependencies:
   code_assets: ^1.0.0
-  dart_edge_core: 0.1.0
+  dart_edge_core: ^0.1.0
   ffi: ^2.2.0
   hooks: ^1.0.2
   native_toolchain_rust: ^1.0.3

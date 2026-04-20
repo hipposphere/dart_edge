@@ -1,6 +1,8 @@
 name: dart_edge_helpers
 description: Optional helper APIs for Dart Edge.
 version: 0.1.0
+publish_to: "https://registry.hippolabs.org/pub/internal-pub/"
+repository: https://github.com/flowhorn/dart_edge/tree/main/packages/dart_edge_helpers
 
 environment:
   sdk: ">=3.11.0 <4.0.0"
@@ -8,4 +10,4 @@ environment:
 resolution: workspace
 
 dependencies:
-  dart_edge_http_server_runtime: 0.1.0
+  dart_edge_http_server_runtime: ^0.1.0

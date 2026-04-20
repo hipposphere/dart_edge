@@ -125,6 +125,8 @@ struct dart_edge_sip_bridge_runtime {
 };
 
 static dart_edge_sip_bridge_runtime* g_active_runtime = NULL;
+static _Thread_local pj_thread_desc g_external_thread_desc;
+static _Thread_local pj_thread_t* g_external_thread = NULL;
 
 static void clear_media_streams(dart_edge_sip_bridge_media_slot* media_slot);
 static void destroy_media_slots(dart_edge_sip_bridge_runtime* runtime);
@@ -222,6 +224,21 @@ static void store_status_error(
     return;
   }
   snprintf(error, error_len, "%s: %s (%d)", context, detail, status);
+}
+
+static bool ensure_current_thread_registered(char* error, size_t error_len) {
+  if (pj_thread_is_registered()) {
+    return true;
+  }
+
+  memset(g_external_thread_desc, 0, sizeof(g_external_thread_desc));
+  pj_status_t status =
+      pj_thread_register("dart_edge_sip_ffi", g_external_thread_desc, &g_external_thread);
+  if (status != PJ_SUCCESS) {
+    store_status_error(error, error_len, "Failed to register Dart FFI thread with PJLIB", status);
+    return false;
+  }
+  return true;
 }
 
 static const char* uri_to_path(const char* value) {
@@ -382,6 +399,11 @@ static int32_t map_call_state(
     case PJSIP_INV_STATE_EARLY:
       return DART_EDGE_SIP_BRIDGE_CALL_RINGING;
     case PJSIP_INV_STATE_CONNECTING:
+      // 2xx has been sent/received, but the INVITE transaction is not
+      // confirmed until ACK. Softphones such as Linphone usually start their
+      // duration counter only after CONFIRMED, so do not expose CONNECTING as
+      // established.
+      return DART_EDGE_SIP_BRIDGE_CALL_RINGING;
     case PJSIP_INV_STATE_CONFIRMED:
       return DART_EDGE_SIP_BRIDGE_CALL_ESTABLISHED;
     case PJSIP_INV_STATE_DISCONNECTED:
@@ -1974,6 +1996,10 @@ bool dart_edge_sip_bridge_start(
     store_status_error(error, error_len, "Failed to create PJSIP runtime", status);
     return false;
   }
+  if (!ensure_current_thread_registered(error, error_len)) {
+    pjsua_destroy();
+    return false;
+  }
 
   pjsua_config ua_config;
   pjsua_logging_config log_config;
@@ -2096,6 +2122,9 @@ bool dart_edge_sip_bridge_stop(
   if (!runtime->started) {
     return true;
   }
+  if (!ensure_current_thread_registered(error, error_len)) {
+    return false;
+  }
 
   runtime->shutting_down = true;
   if (runtime->registrar_module_registered) {
@@ -2150,6 +2179,9 @@ bool dart_edge_sip_bridge_originate_call(
   }
   if (to_uri == NULL || to_uri[0] == '\0') {
     store_error(error, error_len, "originateCall requires a destination URI.");
+    return false;
+  }
+  if (!ensure_current_thread_registered(error, error_len)) {
     return false;
   }
 
@@ -2229,6 +2261,9 @@ static bool make_related_call(
   }
   if (target_uri == NULL || target_uri[0] == '\0') {
     store_error(error, error_len, "SIP routing requires a target URI.");
+    return false;
+  }
+  if (!ensure_current_thread_registered(error, error_len)) {
     return false;
   }
 
@@ -2438,6 +2473,9 @@ bool dart_edge_sip_bridge_answer_call(
     store_error(error, error_len, "Invalid SIP call session ID.");
     return false;
   }
+  if (!ensure_current_thread_registered(error, error_len)) {
+    return false;
+  }
 
   pj_str_t reason_str = pj_str((char*)(reason == NULL ? "" : reason));
   pj_status_t status = pjsua_call_answer(
@@ -2462,6 +2500,9 @@ bool dart_edge_sip_bridge_reject_call(
   pjsua_call_id call_id;
   if (!session_id_to_call_id(session_id, &call_id)) {
     store_error(error, error_len, "Invalid SIP call session ID.");
+    return false;
+  }
+  if (!ensure_current_thread_registered(error, error_len)) {
     return false;
   }
 
@@ -2505,6 +2546,9 @@ bool dart_edge_sip_bridge_hangup_call(
     store_error(error, error_len, "Invalid SIP call session ID.");
     return false;
   }
+  if (!ensure_current_thread_registered(error, error_len)) {
+    return false;
+  }
 
   pj_str_t reason_str = pj_str((char*)(reason == NULL ? "" : reason));
   pj_status_t status = pjsua_call_hangup(
@@ -2544,6 +2588,9 @@ bool dart_edge_sip_bridge_bridge_calls(
   if (!session_id_to_call_id(session_id, &first_call_id) ||
       !session_id_to_call_id(other_session_id, &second_call_id)) {
     store_error(error, error_len, "Invalid SIP call session ID.");
+    return false;
+  }
+  if (!ensure_current_thread_registered(error, error_len)) {
     return false;
   }
 
@@ -2596,6 +2643,9 @@ bool dart_edge_sip_bridge_hold_call(
     store_error(error, error_len, "Invalid SIP call session ID.");
     return false;
   }
+  if (!ensure_current_thread_registered(error, error_len)) {
+    return false;
+  }
 
   pj_status_t status = pjsua_call_set_hold(call_id, NULL);
   if (status != PJ_SUCCESS) {
@@ -2625,6 +2675,9 @@ bool dart_edge_sip_bridge_resume_call(
   pjsua_call_id call_id;
   if (!session_id_to_call_id(session_id, &call_id)) {
     store_error(error, error_len, "Invalid SIP call session ID.");
+    return false;
+  }
+  if (!ensure_current_thread_registered(error, error_len)) {
     return false;
   }
 
@@ -2657,6 +2710,9 @@ bool dart_edge_sip_bridge_transfer_call(
   pjsua_call_id call_id;
   if (!session_id_to_call_id(session_id, &call_id)) {
     store_error(error, error_len, "Invalid SIP call session ID.");
+    return false;
+  }
+  if (!ensure_current_thread_registered(error, error_len)) {
     return false;
   }
 
@@ -2712,6 +2768,9 @@ bool dart_edge_sip_bridge_play_prompt(
   pjsua_call_id call_id;
   if (!session_id_to_call_id(session_id, &call_id)) {
     store_error(error, error_len, "Invalid SIP call session ID.");
+    return false;
+  }
+  if (!ensure_current_thread_registered(error, error_len)) {
     return false;
   }
 
@@ -2777,6 +2836,9 @@ bool dart_edge_sip_bridge_start_recording(
   pjsua_call_id call_id;
   if (!session_id_to_call_id(session_id, &call_id)) {
     store_error(error, error_len, "Invalid SIP call session ID.");
+    return false;
+  }
+  if (!ensure_current_thread_registered(error, error_len)) {
     return false;
   }
 
@@ -2869,6 +2931,9 @@ bool dart_edge_sip_bridge_send_to_voicemail(
   pjsua_call_id call_id;
   if (!session_id_to_call_id(session_id, &call_id)) {
     store_error(error, error_len, "Invalid SIP call session ID.");
+    return false;
+  }
+  if (!ensure_current_thread_registered(error, error_len)) {
     return false;
   }
 
@@ -2966,6 +3031,9 @@ bool dart_edge_sip_bridge_attach_media_app(
     store_error(error, error_len, "Invalid SIP call session ID.");
     return false;
   }
+  if (!ensure_current_thread_registered(error, error_len)) {
+    return false;
+  }
 
   dart_edge_sip_bridge_call_slot* slot = slot_for_call(runtime, call_id);
   if (slot == NULL) {
@@ -3004,6 +3072,9 @@ bool dart_edge_sip_bridge_detach_media_app(
   pjsua_call_id call_id;
   if (!session_id_to_call_id(session_id, &call_id)) {
     store_error(error, error_len, "Invalid SIP call session ID.");
+    return false;
+  }
+  if (!ensure_current_thread_registered(error, error_len)) {
     return false;
   }
 
@@ -3069,6 +3140,9 @@ bool dart_edge_sip_bridge_read_media_frame(
     store_error(error, error_len, "Invalid SIP call session ID.");
     return false;
   }
+  if (!ensure_current_thread_registered(error, error_len)) {
+    return false;
+  }
 
   dart_edge_sip_bridge_call_slot* slot = slot_for_call(runtime, call_id);
   if (slot == NULL || !slot->media_session_active) {
@@ -3125,6 +3199,9 @@ bool dart_edge_sip_bridge_play_raw_audio(
   pjsua_call_id call_id;
   if (!session_id_to_call_id(session_id, &call_id)) {
     store_error(error, error_len, "Invalid SIP call session ID.");
+    return false;
+  }
+  if (!ensure_current_thread_registered(error, error_len)) {
     return false;
   }
 

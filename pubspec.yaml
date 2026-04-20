@@ -8,3 +8,21 @@ workspace:
   - packages/*
   - benchmarks/*/*
   - examples/*
+
+dev_dependencies:
+  melos: ^7.5.1
+
+melos:
+  scripts:
+    analyze:
+      run: dart analyze
+      description: Run static analysis across the workspace.
+    format:
+      run: dart format .
+      description: Format Dart sources across the workspace.
+    test:
+      run: melos exec --dir-exists=test -- dart test
+      description: Run tests in workspace packages that have a test directory.
+    publish:dry-run:
+      run: melos publish --no-private --dry-run --yes
+      description: Validate publishable packages without uploading them.

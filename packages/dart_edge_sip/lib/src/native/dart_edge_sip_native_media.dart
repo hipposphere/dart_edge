@@ -10,8 +10,10 @@ import 'package:ffi/ffi.dart';
 import '../media/sip_audio.dart';
 import 'dart_edge_sip_native.dart';
 
+const _maxIncomingAudioFrameBytes = 4096;
+
 typedef SipNativeAudioFrameData = ({
-  core_ffi.NativeOwnedBytes bytes,
+  Uint8List bytes,
   SipAudioFormat format,
   int sequence,
 });
@@ -119,25 +121,37 @@ abstract final class DartEdgeSipNativeMedia {
       }
 
       final frame = framePtr.ref;
-      if (frame.bytes.ptr == ffi.nullptr || frame.bytes.len == 0) {
+      final nativeBytes = frame.bytes;
+      if (nativeBytes.ptr == ffi.nullptr || nativeBytes.len == 0) {
         return null;
       }
+      if (nativeBytes.len < 0 ||
+          nativeBytes.len > _maxIncomingAudioFrameBytes) {
+        throw StateError(
+          'Invalid SIP audio frame size from native runtime: '
+          '${nativeBytes.len} bytes.',
+        );
+      }
 
-      return (
-        bytes: frame.bytes,
-        format: SipAudioFormat(
-          encoding: switch (frame.encoding) {
-            0 => SipAudioEncoding.pcm16le,
-            final value => throw StateError(
-              'Unsupported SIP audio encoding: $value',
-            ),
-          },
-          sampleRateHz: frame.sampleRateHz,
-          channels: frame.channels,
-          frameDurationMs: frame.frameDurationMs,
-        ),
-        sequence: frame.sequence,
-      );
+      try {
+        return (
+          bytes: core_ffi.copyNativeOwnedBytes(nativeBytes),
+          format: SipAudioFormat(
+            encoding: switch (frame.encoding) {
+              0 => SipAudioEncoding.pcm16le,
+              final value => throw StateError(
+                'Unsupported SIP audio encoding: $value',
+              ),
+            },
+            sampleRateHz: frame.sampleRateHz,
+            channels: frame.channels,
+            frameDurationMs: frame.frameDurationMs,
+          ),
+          sequence: frame.sequence,
+        );
+      } finally {
+        freeOwnedBytes(nativeBytes);
+      }
     } finally {
       calloc.free(framePtr);
       calloc.free(sessionIdPtr);

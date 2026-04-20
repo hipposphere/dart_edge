@@ -10,17 +10,14 @@ import 'sip_audio.dart';
 
 final class SipOwnedAudioFrame {
   SipOwnedAudioFrame._({
-    required core_ffi.NativeOwnedBytes bytes,
+    required Uint8List bytes,
     required this.format,
     required this.sequence,
-  }) : _bytes = bytes {
-    _nativeBytesStorage = calloc<core_ffi.NativeBytes>()
-      ..ref.ptr = bytes.ptr
-      ..ref.len = bytes.len;
-  }
+  }) : _bytes = bytes;
 
-  final core_ffi.NativeOwnedBytes _bytes;
-  late final Pointer<core_ffi.NativeBytes> _nativeBytesStorage;
+  final Uint8List _bytes;
+  Pointer<core_ffi.NativeBytes>? _nativeBytesStorage;
+  Pointer<Uint8>? _nativeBytesCopy;
 
   final SipAudioFormat format;
   final int sequence;
@@ -28,22 +25,42 @@ final class SipOwnedAudioFrame {
 
   core_ffi.NativeBytes get nativeBytes {
     _ensureActive();
-    return _nativeBytesStorage.ref;
+    final existingStorage = _nativeBytesStorage;
+    if (existingStorage != null) {
+      return existingStorage.ref;
+    }
+
+    final storage = calloc<core_ffi.NativeBytes>();
+    final bytesCopy = _bytes.isEmpty ? nullptr : calloc<Uint8>(_bytes.length);
+    if (_bytes.isNotEmpty) {
+      bytesCopy.asTypedList(_bytes.length).setAll(0, _bytes);
+    }
+    storage
+      ..ref.ptr = bytesCopy
+      ..ref.len = _bytes.length;
+    _nativeBytesStorage = storage;
+    _nativeBytesCopy = bytesCopy;
+    return storage.ref;
   }
 
   int get length {
     _ensureActive();
-    return _bytes.len;
+    return _bytes.length;
   }
 
   bool get isEmpty => length == 0;
 
+  Uint8List get bytes {
+    _ensureActive();
+    return _bytes;
+  }
+
   Uint8List copyBytes() {
     _ensureActive();
-    if (_bytes.ptr == nullptr || _bytes.len == 0) {
+    if (_bytes.isEmpty) {
       return Uint8List(0);
     }
-    return Uint8List.fromList(_bytes.ptr.asTypedList(_bytes.len));
+    return Uint8List.fromList(_bytes);
   }
 
   void dispose() {
@@ -51,8 +68,14 @@ final class SipOwnedAudioFrame {
       return;
     }
     _disposed = true;
-    DartEdgeSipNativeMedia.freeOwnedBytes(_bytes);
-    calloc.free(_nativeBytesStorage);
+    final nativeBytesCopy = _nativeBytesCopy;
+    if (nativeBytesCopy != null && nativeBytesCopy != nullptr) {
+      calloc.free(nativeBytesCopy);
+    }
+    final nativeBytesStorage = _nativeBytesStorage;
+    if (nativeBytesStorage != null) {
+      calloc.free(nativeBytesStorage);
+    }
   }
 
   void _ensureActive() {

@@ -179,11 +179,8 @@ Inbound dialplans can now return `SipDialplanDecision.routeToEndpoint(...)` or
 `SipDialplanDecision.routeToTrunk(...)`. The native runtime creates the routed
 outbound leg and bridges media once both legs are established.
 
-For a full inbound voice-assistant example that attaches Gemini Live realtime
-audio to a SIP call, see
-[`example/gemini_live_phone_assistant.dart`](example/gemini_live_phone_assistant.dart)
-and
-[`example/README.md`](example/README.md).
+For a full inbound voice-assistant package that attaches Gemini Live realtime
+audio to a SIP call, see [`examples/callo_engine`](../../examples/callo_engine).
 
 ## Native Layout
 
