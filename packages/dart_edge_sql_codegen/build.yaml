@@ -1,0 +1,8 @@
+builders:
+  dart_edge_sql:
+    import: "package:dart_edge_sql_codegen/builder.dart"
+    builder_factories: ["dartEdgeSqlBuilder"]
+    build_extensions:
+      ".dart_edge_sql.json": [".dart_edge_sql.g.dart"]
+    auto_apply: dependents
+    build_to: source

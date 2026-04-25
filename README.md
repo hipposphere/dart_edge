@@ -13,10 +13,11 @@ This repository is a Pub workspace. The app-facing default package is
 lower-level runtime, helper, codegen, auth, SQL, audio, and benchmark
 packages.
 
-The current delivered center is HTTP. The codegen package already exposes
-annotations and client-generation pieces, while full generated route and
-registry output is still in progress. WebSocket contract types exist, but
-WebSocket transport is not the shipped path yet.
+The current delivered center is HTTP. The HTTP codegen package exposes
+annotations, normalized route artifact generation, schema registry generation,
+runtime codec registry skeletons, and client-generation pieces. A full
+analyzer-backed builder remains a later layer. WebSocket contract types exist,
+but WebSocket transport is not the shipped path yet.
 
 ## Quick Start
 
@@ -78,8 +79,9 @@ from `dart_edge_helpers`.
   runtime plus shared route, schema, and context contracts
 - [`packages/dart_edge_helpers`](packages/dart_edge_helpers): helper-layer APIs
   such as OpenAPI JSON and Swagger UI mounting
-- [`packages/dart_edge_codegen`](packages/dart_edge_codegen): build-time route
-  annotations, normalized metadata, and generated HTTP client support
+- [`packages/dart_edge_http_server_codegen`](packages/dart_edge_http_server_codegen): build-time HTTP route
+  annotations, normalized metadata, generated route artifacts, schema registries,
+  codec registry skeletons, and generated HTTP client support
 - [`packages/dart_edge_auth`](packages/dart_edge_auth): Better Auth route
   integration for Dart Edge apps
 - [`packages/dart_edge_sql`](packages/dart_edge_sql): native-backed typed SQL
@@ -171,8 +173,8 @@ for targets, scenarios, external dependencies, and methodology.
 - Benchmark packages live under `benchmarks/`.
 - Keep `dart_edge_http_server` as the default app-facing package.
 - Keep helper-only APIs out of `dart_edge_http_server_runtime`.
-- Keep build-time annotations and generator-facing APIs in
-  `dart_edge_codegen`.
+- Keep build-time HTTP annotations and generator-facing APIs in
+  `dart_edge_http_server_codegen`.
 
 For lower-level package details, use the package-local READMEs. The root README
 should stay focused on the overall platform, workspace shape, and the default

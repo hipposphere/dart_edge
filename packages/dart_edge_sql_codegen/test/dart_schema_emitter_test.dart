@@ -79,9 +79,14 @@ void main() {
     expect(defaultSchema, contains('static const users = UsersTable.table;'));
     expect(
       defaultSchema,
-      contains('static const jsonSchemas = JsonSchemaRegistry('),
+      contains(
+        'static const JsonSchemaRegistry jsonSchemas = JsonSchemaRegistry(',
+      ),
     );
-    expect(defaultSchema, contains('static const schemas = <JsonSchema>['));
+    expect(
+      defaultSchema,
+      contains('static const List<JsonSchema> schemas = <JsonSchema>['),
+    );
 
     expect(usersTable, isNot(contains(RegExp(r'^library\s', multiLine: true))));
     expect(
@@ -113,19 +118,19 @@ void main() {
     );
     expect(
       usersTable,
-      contains("'created_at': JsonSchema.string(format: 'date-time'),"),
+      contains("'created_at': JsonSchema.string(format: 'date-time')"),
     );
     expect(usersTable, contains("if (id.isPresent) 'id': id.value,"));
     expect(
       usersTable,
       contains(
-        "String toString() => 'UsersRow(id: \$id, email: \$email, displayName: \$displayName, createdAt: \$createdAt)';",
+        "'UsersRow(id: \$id, email: \$email, displayName: \$displayName, createdAt: \$createdAt)'",
       ),
     );
     expect(
       usersTable,
       contains(
-        "String toString() => 'UsersInsert(id: \$id, email: \$email, displayName: \$displayName, createdAt: \$createdAt)';",
+        "'UsersInsert(id: \$id, email: \$email, displayName: \$displayName, createdAt: \$createdAt)'",
       ),
     );
   });
@@ -259,9 +264,6 @@ void main() {
 
     expect(tableFile, contains('static final nameColumn = SqlColumn<String>('));
     expect(tableFile, contains('nameColumn.asObjectColumn,'));
-    expect(
-      tableFile,
-      contains("@override String get name => 'schema_migrations';"),
-    );
+    expect(tableFile, contains("String get name => 'schema_migrations';"));
   });
 }

@@ -11,6 +11,8 @@ and emit a structured Dart source tree containing:
 
 ## Typical Flow
 
+### Programmatic structured output
+
 ```dart
 import 'package:dart_edge_sql/dart_edge_sql.dart';
 import 'package:dart_edge_sql_codegen/dart_edge_sql_codegen.dart';
@@ -41,6 +43,44 @@ lib/generated/
       enums/
 ```
 
+### build_runner output
+
+For checked-in schema snapshots, add a JSON file ending in
+`.dart_edge_sql.json` and run build_runner:
+
+```shell
+dart run build_runner build
+```
+
+The builder emits a single Dart library beside the snapshot:
+
+```text
+lib/schema.dart_edge_sql.json
+lib/schema.dart_edge_sql.g.dart
+```
+
+Snapshot JSON uses the same shape as `IntrospectedDatabase.toJson()`:
+
+```json
+{
+  "databaseClassName": "AppSchema",
+  "dialect": "sqlite",
+  "tables": [
+    {
+      "name": "users",
+      "columns": [
+        {
+          "name": "id",
+          "databaseType": "INTEGER",
+          "dartType": "int",
+          "primaryKey": true
+        }
+      ]
+    }
+  ]
+}
+```
+
 ## Main Types
 
 - `SqliteIntrospector` and `PostgresIntrospector` read schema metadata through
@@ -48,6 +88,7 @@ lib/generated/
 - `IntrospectedDatabase`, `IntrospectedTable`, and `IntrospectedColumn`
   describe the discovered schema
 - `emitDartSchema` turns that description into a `DartSchemaEmission`
+- `emitDartSchemaLibrary` emits the single-library form used by build_runner
 - `DartSchemaEmission.writeToDirectory(...)` replaces stale generated files and
   writes the structured output tree
 - `SqlCodegenConfig` is a configuration object you can reuse from your own

@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-import 'package:dart_edge_codegen/dart_edge_codegen.dart';
+import 'package:dart_edge_http_server_codegen/dart_edge_http_server_codegen.dart';
 import 'package:dart_edge_http_server_runtime/dart_edge_http_server_runtime.dart';
 import 'package:test/test.dart';
 
@@ -35,11 +35,11 @@ void main() {
 
       expect(source, contains('final class UsersClient'));
       expect(source, contains('Future<UserDto> getUser({'));
-      expect(source, contains("pathTemplate: \"/users/<id>\""));
-      expect(source, contains("paramsSchemaId: \"UserPath\""));
-      expect(source, contains("querySchemaId: \"GetUserQuery\""));
-      expect(source, contains("successSchemaId: \"UserDto\""));
-      expect(source, contains('import "package:example/models.dart";'));
+      expect(source, contains("pathTemplate: '/users/<id>'"));
+      expect(source, contains("paramsSchemaId: 'UserPath'"));
+      expect(source, contains("querySchemaId: 'GetUserQuery'"));
+      expect(source, contains("successSchemaId: 'UserDto'"));
+      expect(source, contains("import 'package:example/models.dart';"));
     });
   });
 

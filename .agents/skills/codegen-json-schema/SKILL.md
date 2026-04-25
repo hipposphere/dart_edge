@@ -1,11 +1,11 @@
 ---
 name: codegen-json-schema
-description: Use when designing or editing typed route annotations, JSON Schema generation, schema registries, $ref handling, manifest generation, or build-time APIs in dart_edge_codegen.
+description: Use when designing or editing typed route annotations, JSON Schema generation, schema registries, $ref handling, manifest generation, or build-time APIs in dart_edge_http_server_codegen.
 ---
 
 # Codegen And JSON Schema
 
-`dart_edge_codegen` is the single build-time package for the repo.
+`dart_edge_http_server_codegen` is the HTTP server build-time package for the repo.
 
 ## Responsibilities
 

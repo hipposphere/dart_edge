@@ -18,7 +18,7 @@ repository root and composed from `packages/*`, with shared Rust crates under
 - `benchmarks`: reproducible benchmark apps and the benchmark runner
 - `packages/dart_edge_helpers`: optional helper APIs such as OpenAPI/Swagger
   serving and ergonomic extensions
-- `packages/dart_edge_codegen`: build-time annotations and generator-facing API
+- `packages/dart_edge_http_server_codegen`: build-time HTTP annotations and generator-facing API
 - `packages/dart_edge_s3_client`: standalone native S3 client package for AWS
   S3 and compatible object stores
 - `packages/dart_edge_sip`: standalone native SIP runtime concept package for
@@ -64,8 +64,8 @@ repository root and composed from `packages/*`, with shared Rust crates under
   `path` dependencies.
 - Helpers and codegen packages must stay pure Dart unless a later design
   explicitly changes that.
-- Keep build-time annotations and generated API surface in
-  `dart_edge_codegen`.
+- Keep build-time HTTP annotations and generated API surface in
+  `dart_edge_http_server_codegen`.
 - Keep app-facing imports simple by re-exporting the normal runtime and helper
   surface from `dart_edge_http_server`.
 - Keep benchmark targets small and symmetrical. If one target adds a route or

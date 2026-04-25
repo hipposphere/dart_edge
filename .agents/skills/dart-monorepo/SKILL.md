@@ -33,8 +33,8 @@ This repository uses a Pub workspace rooted at the repo root.
 - Do not introduce a second monorepo tool unless the user explicitly asks for
   it.
 - Keep package boundaries clear: runtime and shared contracts in
-  `dart_edge_runtime`, helpers in `dart_edge_helpers`, build-time API in
-  `dart_edge_codegen`.
+  `dart_edge_runtime`, helpers in `dart_edge_helpers`, HTTP build-time API in
+  `dart_edge_http_server_codegen`.
 
 ## Commands
 

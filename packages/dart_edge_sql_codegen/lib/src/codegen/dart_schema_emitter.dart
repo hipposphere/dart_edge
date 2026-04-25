@@ -1,5 +1,8 @@
 import 'dart:io';
 
+import 'package:code_builder/code_builder.dart';
+import 'package:dart_style/dart_style.dart';
+
 import '../introspection/introspected_database.dart';
 
 /// One generated Dart file in a structured schema emission.
@@ -111,110 +114,910 @@ DartSchemaEmission emitDartSchema(
   );
 }
 
+/// Emits a single generated Dart library suitable for build_runner outputs.
+String emitDartSchemaLibrary(
+  IntrospectedDatabase database, {
+  String databaseClassName = 'GeneratedDatabaseSchema',
+}) {
+  final schemaGroups = _groupTablesBySchema(database.tables);
+  final library = Library((builder) {
+    builder
+      ..comments.add('GENERATED CODE - DO NOT MODIFY BY HAND.')
+      ..directives.add(
+        Directive.import(
+          'package:dart_edge_http_server_runtime/dart_edge_http_server_runtime.dart',
+        ),
+      )
+      ..directives.add(
+        Directive.import('package:dart_edge_sql/dart_edge_sql.dart'),
+      )
+      ..body.add(_databaseClass(databaseClassName, schemaGroups))
+      ..body.addAll(schemaGroups.map(_schemaClass));
+
+    for (final group in schemaGroups) {
+      for (final table in group.tables) {
+        builder.body.addAll(_tableSpecs(table));
+      }
+    }
+  });
+  return _format(library);
+}
+
 String _emitEntrypoint({
   required String databaseClassName,
   required List<_SchemaGroup> schemaGroups,
 }) {
-  final buffer = StringBuffer()
-    ..writeln(
-      "import 'package:dart_edge_http_server_runtime/dart_edge_http_server_runtime.dart';",
-    );
+  final library = Library((builder) {
+    builder
+      ..directives.add(
+        Directive.import(
+          'package:dart_edge_http_server_runtime/dart_edge_http_server_runtime.dart',
+        ),
+      )
+      ..body.add(_databaseClass(databaseClassName, schemaGroups));
 
-  for (final group in schemaGroups) {
-    buffer.writeln("import 'schemas/${group.folderName}/schema.dart';");
-  }
-
-  buffer
-    ..writeln()
-    ..writeln('final class $databaseClassName {')
-    ..writeln('  const $databaseClassName._();')
-    ..writeln();
-
-  for (final group in schemaGroups) {
-    buffer.writeln(
-      '  static const ${group.memberName} = ${group.className}.instance;',
-    );
-  }
-
-  buffer
-    ..writeln()
-    ..writeln('  static const schemas = <JsonSchema>[');
-  for (final group in schemaGroups) {
-    buffer.writeln('    ...${group.className}.schemas,');
-  }
-  buffer
-    ..writeln('  ];')
-    ..writeln()
-    ..writeln('  static const jsonSchemas = JsonSchemaRegistry(')
-    ..writeln('    schemas: schemas,')
-    ..writeln('  );')
-    ..writeln('}');
-
-  return buffer.toString();
+    for (final group in schemaGroups) {
+      builder.directives.add(
+        Directive.import('schemas/${group.folderName}/schema.dart'),
+      );
+    }
+  });
+  return _format(library);
 }
 
 String _emitSchemaLibrary(_SchemaGroup group) {
-  final buffer = StringBuffer()
-    ..writeln(
-      "import 'package:dart_edge_http_server_runtime/dart_edge_http_server_runtime.dart';",
-    );
+  final library = Library((builder) {
+    builder
+      ..directives.add(
+        Directive.import(
+          'package:dart_edge_http_server_runtime/dart_edge_http_server_runtime.dart',
+        ),
+      )
+      ..body.add(_schemaClass(group));
 
-  for (final table in group.tables) {
-    buffer.writeln("import 'tables/${_tableFileName(table)}';");
-  }
-
-  buffer
-    ..writeln()
-    ..writeln('final class ${group.className} {')
-    ..writeln('  const ${group.className}._();')
-    ..writeln()
-    ..writeln('  static const instance = ${group.className}._();')
-    ..writeln(
-      "  static const schemaName = '${_escapeLiteral(group.schemaName)}';",
-    )
-    ..writeln();
-
-  for (final table in group.tables) {
-    buffer.writeln(
-      '  static const ${_schemaTableMemberName(table.name)} = '
-      '${_upperCamel(table.name)}Table.table;',
-    );
-  }
-
-  buffer
-    ..writeln()
-    ..writeln('  static const schemas = <JsonSchema>[');
-  for (final table in group.tables) {
-    final baseName = _upperCamel(table.name);
-    buffer.writeln('    ${baseName}Row.jsonSchema,');
-    buffer.writeln('    ${baseName}Insert.jsonSchema,');
-    buffer.writeln('    ${baseName}Update.jsonSchema,');
-  }
-  buffer
-    ..writeln('  ];')
-    ..writeln()
-    ..writeln('  static const jsonSchemas = JsonSchemaRegistry(')
-    ..writeln('    schemas: schemas,')
-    ..writeln('  );')
-    ..writeln('}');
-
-  return buffer.toString();
+    for (final table in group.tables) {
+      builder.directives.add(
+        Directive.import('tables/${_tableFileName(table)}'),
+      );
+    }
+  });
+  return _format(library);
 }
 
 String _emitTableLibrary(IntrospectedTable table) {
-  final buffer = StringBuffer()
-    ..writeln(
-      "import 'package:dart_edge_http_server_runtime/dart_edge_http_server_runtime.dart';",
-    )
-    ..writeln("import 'package:dart_edge_sql/dart_edge_sql.dart';")
-    ..writeln();
+  final library = Library((builder) {
+    builder
+      ..directives.add(
+        Directive.import(
+          'package:dart_edge_http_server_runtime/dart_edge_http_server_runtime.dart',
+        ),
+      )
+      ..directives.add(
+        Directive.import('package:dart_edge_sql/dart_edge_sql.dart'),
+      )
+      ..body.addAll(_tableSpecs(table));
+  });
+  return _format(library);
+}
 
-  _emitRowClass(buffer, table);
-  _emitInsertClass(buffer, table);
-  _emitUpdateClass(buffer, table);
-  _emitTableClass(buffer, table);
+Class _databaseClass(
+  String databaseClassName,
+  List<_SchemaGroup> schemaGroups,
+) {
+  return Class((builder) {
+    builder
+      ..modifier = ClassModifier.final$
+      ..name = databaseClassName
+      ..constructors.add(_privateConstConstructor())
+      ..fields.addAll([
+        for (final group in schemaGroups)
+          _staticConstField(
+            name: group.memberName,
+            assignment: refer(group.className).property('instance'),
+          ),
+        _staticConstField(
+          name: 'schemas',
+          type: _listOf(refer('JsonSchema')),
+          assignment: literalList([
+            for (final group in schemaGroups)
+              refer(group.className).property('schemas').spread,
+          ], refer('JsonSchema')),
+        ),
+        _staticConstField(
+          name: 'jsonSchemas',
+          type: refer('JsonSchemaRegistry'),
+          assignment: refer(
+            'JsonSchemaRegistry',
+          ).constInstance(const <Expression>[], {'schemas': refer('schemas')}),
+        ),
+      ]);
+  });
+}
 
-  return buffer.toString();
+Class _schemaClass(_SchemaGroup group) {
+  return Class((builder) {
+    builder
+      ..modifier = ClassModifier.final$
+      ..name = group.className
+      ..constructors.add(_privateConstConstructor())
+      ..fields.addAll([
+        _staticConstField(
+          name: 'instance',
+          assignment: refer(group.className).constInstanceNamed('_', const []),
+        ),
+        _staticConstField(
+          name: 'schemaName',
+          assignment: literalString(group.schemaName),
+        ),
+        for (final table in group.tables)
+          _staticConstField(
+            name: _schemaTableMemberName(table.name),
+            assignment: refer(
+              '${_upperCamel(table.name)}Table',
+            ).property('table'),
+          ),
+        _staticConstField(
+          name: 'schemas',
+          type: _listOf(refer('JsonSchema')),
+          assignment: literalList([
+            for (final table in group.tables) ...[
+              refer('${_upperCamel(table.name)}Row').property('jsonSchema'),
+              refer('${_upperCamel(table.name)}Insert').property('jsonSchema'),
+              refer('${_upperCamel(table.name)}Update').property('jsonSchema'),
+            ],
+          ], refer('JsonSchema')),
+        ),
+        _staticConstField(
+          name: 'jsonSchemas',
+          type: refer('JsonSchemaRegistry'),
+          assignment: refer(
+            'JsonSchemaRegistry',
+          ).constInstance(const <Expression>[], {'schemas': refer('schemas')}),
+        ),
+      ]);
+  });
+}
+
+Iterable<Spec> _tableSpecs(IntrospectedTable table) sync* {
+  yield _rowClass(table);
+  yield _insertClass(table);
+  yield _updateClass(table);
+  yield _tableClass(table);
+}
+
+Class _rowClass(IntrospectedTable table) {
+  final rowType = '${_upperCamel(table.name)}Row';
+  return Class((builder) {
+    builder
+      ..modifier = ClassModifier.final$
+      ..name = rowType
+      ..implements.add(refer('JsonEncodable'))
+      ..constructors.add(
+        _fieldConstructor(
+          table.columns.map(
+            (column) =>
+                _fieldParameter(_lowerCamel(column.name), required: true),
+          ),
+        ),
+      )
+      ..fields.addAll([
+        ..._schemaFields(
+          className: rowType,
+          table: table,
+          shape: _GeneratedShape.row,
+        ),
+        for (final column in table.columns)
+          _instanceFinalField(_lowerCamel(column.name), _fieldType(column)),
+      ])
+      ..constructors.addAll([
+        _fromSqlRowFactory(rowType, table),
+        _fromColumnsFactory(rowType),
+        _fromJsonFactory(rowType, table, _GeneratedShape.row),
+      ])
+      ..methods.addAll([
+        _mapMethod(
+          name: 'toColumns',
+          entries: [
+            for (final column in table.columns)
+              _MapEntrySpec(
+                key: column.name,
+                value: refer(_lowerCamel(column.name)),
+              ),
+          ],
+        ),
+        _mapMethod(
+          name: 'toJson',
+          annotations: [refer('override')],
+          entries: [
+            for (final column in table.columns)
+              _MapEntrySpec(
+                key: column.name,
+                value: _toJsonExpression(
+                  column,
+                  source: refer(_lowerCamel(column.name)),
+                ),
+              ),
+          ],
+        ),
+        _toStringMethod(rowType, table.columns.map((c) => _lowerCamel(c.name))),
+      ]);
+  });
+}
+
+Class _insertClass(IntrospectedTable table) {
+  final insertType = '${_upperCamel(table.name)}Insert';
+  return Class((builder) {
+    builder
+      ..modifier = ClassModifier.final$
+      ..name = insertType
+      ..implements.add(refer('JsonEncodable'))
+      ..constructors.add(
+        _fieldConstructor(
+          table.columns.map((column) {
+            final fieldName = _lowerCamel(column.name);
+            return _fieldParameter(
+              fieldName,
+              required: !_isOptionalInsertColumn(column),
+              defaultTo: _isOptionalInsertColumn(column)
+                  ? refer(
+                      'SqlValue',
+                    ).constInstanceNamed('absent', const []).code
+                  : null,
+            );
+          }),
+        ),
+      )
+      ..fields.addAll([
+        ..._schemaFields(
+          className: insertType,
+          table: table,
+          shape: _GeneratedShape.insert,
+        ),
+        for (final column in table.columns)
+          _instanceFinalField(
+            _lowerCamel(column.name),
+            _insertFieldType(column),
+          ),
+      ])
+      ..constructors.add(
+        _fromJsonFactory(insertType, table, _GeneratedShape.insert),
+      )
+      ..methods.addAll([
+        _mapMethod(
+          name: 'toColumns',
+          entries: [
+            for (final column in table.columns) _insertMapEntry(column),
+          ],
+        ),
+        _mapMethod(
+          name: 'toJson',
+          annotations: [refer('override')],
+          entries: [
+            for (final column in table.columns)
+              _insertMapEntry(column, encodeJson: true),
+          ],
+        ),
+        _toStringMethod(
+          insertType,
+          table.columns.map((c) => _lowerCamel(c.name)),
+        ),
+      ]);
+  });
+}
+
+Class _updateClass(IntrospectedTable table) {
+  final updateType = '${_upperCamel(table.name)}Update';
+  return Class((builder) {
+    builder
+      ..modifier = ClassModifier.final$
+      ..name = updateType
+      ..implements.add(refer('JsonEncodable'))
+      ..constructors.add(
+        _fieldConstructor(
+          table.columns.map(
+            (column) => _fieldParameter(
+              _lowerCamel(column.name),
+              defaultTo: refer(
+                'SqlValue',
+              ).constInstanceNamed('absent', const []).code,
+            ),
+          ),
+        ),
+      )
+      ..fields.addAll([
+        ..._schemaFields(
+          className: updateType,
+          table: table,
+          shape: _GeneratedShape.update,
+        ),
+        for (final column in table.columns)
+          _instanceFinalField(
+            _lowerCamel(column.name),
+            _updateFieldType(column),
+          ),
+      ])
+      ..constructors.add(
+        _fromJsonFactory(updateType, table, _GeneratedShape.update),
+      )
+      ..methods.addAll([
+        _mapMethod(
+          name: 'toColumns',
+          entries: [
+            for (final column in table.columns) _updateMapEntry(column),
+          ],
+        ),
+        _mapMethod(
+          name: 'toJson',
+          annotations: [refer('override')],
+          entries: [
+            for (final column in table.columns)
+              _updateMapEntry(column, encodeJson: true),
+          ],
+        ),
+        _toStringMethod(
+          updateType,
+          table.columns.map((c) => _lowerCamel(c.name)),
+        ),
+      ]);
+  });
+}
+
+Class _tableClass(IntrospectedTable table) {
+  final baseName = _upperCamel(table.name);
+  final rowType = '${baseName}Row';
+  final insertType = '${baseName}Insert';
+  final updateType = '${baseName}Update';
+  final tableClassName = '${baseName}Table';
+
+  return Class((builder) {
+    builder
+      ..modifier = ClassModifier.final$
+      ..name = tableClassName
+      ..extend = _type('SqlTable', [
+        refer(rowType),
+        refer(insertType),
+        refer(updateType),
+      ])
+      ..constructors.add(_privateConstConstructor())
+      ..fields.addAll([
+        _staticConstField(
+          name: 'table',
+          assignment: refer(tableClassName).constInstanceNamed('_', const []),
+        ),
+        for (final column in table.columns)
+          Field((field) {
+            field
+              ..static = true
+              ..modifier = FieldModifier.final$
+              ..name = _columnFieldName(column.name)
+              ..assignment =
+                  _type('SqlColumn', [
+                    refer(_normalizedValueType(column)),
+                  ]).newInstance(const <Expression>[], {
+                    'table': refer('table'),
+                    'name': literalString(column.name),
+                    'nullable': literalBool(column.nullable),
+                  }).code;
+          }),
+      ])
+      ..methods.addAll([
+        _getter('name', refer('String'), literalString(table.name)),
+        _getter(
+          'schema',
+          refer('String?'),
+          table.schema == null ? literalNull : literalString(table.schema!),
+        ),
+        _getter(
+          'columns',
+          _listOf(_type('SqlColumn', [refer('Object?')])),
+          literalList([
+            for (final column in table.columns)
+              refer(_columnFieldName(column.name)).property('asObjectColumn'),
+          ], _type('SqlColumn', [refer('Object?')])),
+        ),
+        Method((method) {
+          method
+            ..annotations.add(refer('override'))
+            ..returns = refer(rowType)
+            ..name = 'mapRow'
+            ..requiredParameters.add(_typedParameter('row', refer('SqlRow')))
+            ..optionalParameters.add(
+              _namedParameter(
+                'prefix',
+                type: refer('String'),
+                defaultTo: literalString('').code,
+              ),
+            )
+            ..lambda = true
+            ..body = refer(rowType)
+                .newInstanceNamed(
+                  'fromSqlRow',
+                  [refer('row')],
+                  {'prefix': refer('prefix')},
+                )
+                .code;
+        }),
+        _encodeMethod('encodeInsert', insertType),
+        _encodeMethod('encodeUpdate', updateType),
+      ]);
+  });
+}
+
+List<Field> _schemaFields({
+  required String className,
+  required IntrospectedTable table,
+  required _GeneratedShape shape,
+}) {
+  return <Field>[
+    _staticConstField(
+      name: 'schemaRef',
+      assignment: refer('JsonSchemaRef').constInstance(
+        [literalString(className)],
+        const <String, Expression>{},
+        [refer(className)],
+      ),
+    ),
+    _staticConstField(
+      name: 'jsonSchema',
+      assignment: _jsonSchemaForTable(table, shape, refer('schemaRef')),
+    ),
+  ];
+}
+
+Expression _jsonSchemaForTable(
+  IntrospectedTable table,
+  _GeneratedShape shape,
+  Expression ref,
+) {
+  return refer(
+    'JsonSchema',
+  ).constInstanceNamed('object', const <Expression>[], {
+    'ref': ref,
+    'properties': literalConstMap(
+      {
+        for (final column in table.columns)
+          literalString(column.name): _jsonSchemaForColumn(column),
+      },
+      refer('String'),
+      refer('JsonSchema'),
+    ),
+    'required': literalConstList(
+      _requiredColumns(table, shape).map(literalString).toList(growable: false),
+      refer('String'),
+    ),
+    'additionalProperties': literalBool(false),
+  });
+}
+
+Constructor _fromSqlRowFactory(String rowType, IntrospectedTable table) {
+  return Constructor((constructor) {
+    constructor
+      ..factory = true
+      ..name = 'fromSqlRow'
+      ..requiredParameters.add(_typedParameter('row', refer('SqlRow')))
+      ..optionalParameters.add(
+        _namedParameter(
+          'prefix',
+          type: refer('String'),
+          defaultTo: literalString('').code,
+        ),
+      )
+      ..lambda = true
+      ..body = refer(rowType).newInstance(const <Expression>[], {
+        for (final column in table.columns)
+          _lowerCamel(column.name): _rowReadExpression(column),
+      }).code;
+  });
+}
+
+Constructor _fromColumnsFactory(String rowType) {
+  return Constructor((constructor) {
+    constructor
+      ..factory = true
+      ..name = 'fromColumns'
+      ..requiredParameters.add(
+        _typedParameter('columns', _mapOf(refer('String'), refer('Object?'))),
+      )
+      ..optionalParameters.add(
+        _namedParameter(
+          'prefix',
+          type: refer('String'),
+          defaultTo: literalString('').code,
+        ),
+      )
+      ..lambda = true
+      ..body = refer(rowType)
+          .newInstanceNamed(
+            'fromSqlRow',
+            [
+              refer('SqlRow').newInstance([refer('columns')]),
+            ],
+            {'prefix': refer('prefix')},
+          )
+          .code;
+  });
+}
+
+Constructor _fromJsonFactory(
+  String typeName,
+  IntrospectedTable table,
+  _GeneratedShape shape,
+) {
+  return Constructor((constructor) {
+    constructor
+      ..factory = true
+      ..name = 'fromJson'
+      ..requiredParameters.add(
+        _typedParameter('json', _mapOf(refer('String'), refer('Object?'))),
+      )
+      ..lambda = true
+      ..body = refer(typeName).newInstance(const <Expression>[], {
+        for (final column in table.columns)
+          _lowerCamel(column.name): switch (shape) {
+            _GeneratedShape.row => _fromJsonExpression(
+              column,
+              source: _jsonLookup(column.name),
+              nullable: column.nullable,
+            ),
+            _GeneratedShape.insert => _sqlValueFromJsonExpression(
+              column,
+              optional: _isOptionalInsertColumn(column),
+            ),
+            _GeneratedShape.update => _sqlValueFromJsonExpression(
+              column,
+              optional: true,
+            ),
+          },
+      }).code;
+  });
+}
+
+Expression _rowReadExpression(IntrospectedColumn column) {
+  final fieldKey = '\${prefix}${column.name}';
+  final type = _normalizedValueType(column);
+  if (type == 'Object?') {
+    return refer('row')
+        .property('read')
+        .call(
+          [literalString(fieldKey)],
+          const <String, Expression>{},
+          [refer('Object?')],
+        );
+  }
+  if (column.nullable) {
+    return refer('row')
+        .property('readNullable')
+        .call(
+          [literalString(fieldKey)],
+          const <String, Expression>{},
+          [refer(type)],
+        );
+  }
+  return refer('row')
+      .property('read')
+      .call(
+        [literalString(fieldKey)],
+        const <String, Expression>{},
+        [refer(type)],
+      );
+}
+
+Expression _sqlValueFromJsonExpression(
+  IntrospectedColumn column, {
+  required bool optional,
+}) {
+  final key = column.name;
+  final valueType = _nullableType(
+    _normalizedValueType(column),
+    column.nullable,
+  );
+  final parsed = _fromJsonExpression(
+    column,
+    source: _jsonLookup(key),
+    nullable: column.nullable,
+  );
+  if (!optional) {
+    return parsed;
+  }
+  return CodeExpression(
+    Code(
+      "json.containsKey('${_escapeLiteral(key)}') ? "
+      '${_typeCode(_type('SqlValue', [refer(valueType)]))}(${_code(parsed)}) : '
+      'const SqlValue.absent()',
+    ),
+  );
+}
+
+Expression _fromJsonExpression(
+  IntrospectedColumn column, {
+  required Expression source,
+  required bool nullable,
+}) {
+  final type = _normalizedValueType(column);
+
+  Expression wrapNullable(Expression expression) {
+    if (!nullable) {
+      return expression;
+    }
+    return CodeExpression(
+      Code('${_code(source)} == null ? null : ${_code(expression)}'),
+    );
+  }
+
+  return switch (type) {
+    'int' => wrapNullable(
+      source.asA(refer('num')).property('toInt').call(const []),
+    ),
+    'double' => wrapNullable(
+      source.asA(refer('num')).property('toDouble').call(const []),
+    ),
+    'num' => wrapNullable(source.asA(refer('num'))),
+    'bool' => wrapNullable(source.asA(refer('bool'))),
+    'String' => wrapNullable(source.asA(refer('String'))),
+    'DateTime' => wrapNullable(
+      refer('DateTime').property('parse').call([source.asA(refer('String'))]),
+    ),
+    'List<int>' => wrapNullable(
+      _type('List', [
+        refer('int'),
+      ]).newInstanceNamed('from', [source.asA(refer('List'))]),
+    ),
+    'List<Object?>' => wrapNullable(
+      _type('List', [
+        refer('Object?'),
+      ]).newInstanceNamed('from', [source.asA(refer('List'))]),
+    ),
+    'Object?' => source,
+    _ => wrapNullable(source.asA(refer(type))),
+  };
+}
+
+Expression _toJsonExpression(
+  IntrospectedColumn column, {
+  required Expression source,
+}) {
+  final type = _normalizedValueType(column);
+
+  Expression wrapNullable(Expression expression) {
+    if (!column.nullable) {
+      return expression;
+    }
+    return CodeExpression(
+      Code('${_code(source)} == null ? null : ${_code(expression)}'),
+    );
+  }
+
+  return switch (type) {
+    'DateTime' => wrapNullable(
+      source.property('toIso8601String').call(const []),
+    ),
+    'List<int>' => wrapNullable(
+      _type('List', [refer('int')]).newInstanceNamed('from', [source]),
+    ),
+    'List<Object?>' => wrapNullable(
+      _type('List', [refer('Object?')]).newInstanceNamed('from', [source]),
+    ),
+    _ => source,
+  };
+}
+
+Expression _jsonSchemaForColumn(IntrospectedColumn column) {
+  final type = _normalizedValueType(column);
+
+  if (type == 'Object?') {
+    return refer('JsonSchema').constInstanceNamed('any', const []);
+  }
+
+  return switch (type) {
+    'int' => _jsonSchemaFactory('integer', nullable: column.nullable),
+    'double' ||
+    'num' => _jsonSchemaFactory('number', nullable: column.nullable),
+    'bool' => _jsonSchemaFactory('boolean', nullable: column.nullable),
+    'String' => _jsonSchemaFactory('string', nullable: column.nullable),
+    'DateTime' => _jsonSchemaFactory(
+      'string',
+      nullable: column.nullable,
+      format: 'date-time',
+    ),
+    'List<int>' => _jsonSchemaFactory(
+      'array',
+      nullable: column.nullable,
+      items: refer('JsonSchema').constInstanceNamed('integer', const []),
+    ),
+    'List<Object?>' => _jsonSchemaFactory(
+      'array',
+      nullable: column.nullable,
+      items: refer('JsonSchema').constInstanceNamed('any', const []),
+    ),
+    _ => _jsonSchemaFactory('string', nullable: column.nullable),
+  };
+}
+
+Expression _jsonSchemaFactory(
+  String kind, {
+  required bool nullable,
+  String? format,
+  Expression? items,
+}) {
+  return refer('JsonSchema').constInstanceNamed(kind, const <Expression>[], {
+    if (nullable) 'nullable': literalBool(true),
+    if (format case final format?) 'format': literalString(format),
+    if (items case final items?) 'items': items,
+  });
+}
+
+Method _mapMethod({
+  required String name,
+  required Iterable<_MapEntrySpec> entries,
+  Iterable<Expression> annotations = const [],
+}) {
+  return Method((method) {
+    method
+      ..annotations.addAll(annotations)
+      ..returns = _mapOf(refer('String'), refer('Object?'))
+      ..name = name
+      ..lambda = true
+      ..body = _mapExpression(entries).code;
+  });
+}
+
+Expression _mapExpression(Iterable<_MapEntrySpec> entries) {
+  final rendered = entries.map((entry) {
+    final condition = entry.condition;
+    final prefix = condition == null ? '' : 'if (${_code(condition)}) ';
+    return "$prefix'${_escapeLiteral(entry.key)}': ${_code(entry.value)},";
+  }).join();
+  return CodeExpression(Code('<String, Object?>{$rendered}'));
+}
+
+_MapEntrySpec _insertMapEntry(
+  IntrospectedColumn column, {
+  bool encodeJson = false,
+}) {
+  final fieldName = _lowerCamel(column.name);
+  final isOptional = _isOptionalInsertColumn(column);
+  final source = isOptional
+      ? refer(fieldName).property('value')
+      : refer(fieldName);
+  return _MapEntrySpec(
+    key: column.name,
+    value: encodeJson ? _toJsonExpression(column, source: source) : source,
+    condition: isOptional ? refer(fieldName).property('isPresent') : null,
+  );
+}
+
+_MapEntrySpec _updateMapEntry(
+  IntrospectedColumn column, {
+  bool encodeJson = false,
+}) {
+  final fieldName = _lowerCamel(column.name);
+  final source = refer(fieldName).property('value');
+  return _MapEntrySpec(
+    key: column.name,
+    value: encodeJson ? _toJsonExpression(column, source: source) : source,
+    condition: refer(fieldName).property('isPresent'),
+  );
+}
+
+Method _toStringMethod(String className, Iterable<String> fieldNames) {
+  final description = fieldNames.map((name) => '$name: \$$name').join(', ');
+  return Method((method) {
+    method
+      ..annotations.add(refer('override'))
+      ..returns = refer('String')
+      ..name = 'toString'
+      ..lambda = true
+      ..body = Code("'$className($description)'");
+  });
+}
+
+Method _getter(String name, Reference returns, Expression body) {
+  return Method((method) {
+    method
+      ..annotations.add(refer('override'))
+      ..type = MethodType.getter
+      ..returns = returns
+      ..name = name
+      ..lambda = true
+      ..body = body.code;
+  });
+}
+
+Method _encodeMethod(String name, String valueType) {
+  return Method((method) {
+    method
+      ..annotations.add(refer('override'))
+      ..returns = _mapOf(refer('String'), refer('Object?'))
+      ..name = name
+      ..requiredParameters.add(_typedParameter('value', refer(valueType)))
+      ..lambda = true
+      ..body = refer('value').property('toColumns').call(const []).code;
+  });
+}
+
+Constructor _fieldConstructor(Iterable<Parameter> parameters) {
+  return Constructor((constructor) {
+    constructor
+      ..constant = true
+      ..optionalParameters.addAll(parameters);
+  });
+}
+
+Constructor _privateConstConstructor() {
+  return Constructor((constructor) {
+    constructor
+      ..constant = true
+      ..name = '_';
+  });
+}
+
+Field _staticConstField({
+  required String name,
+  Reference? type,
+  required Expression assignment,
+}) {
+  return Field((field) {
+    field
+      ..static = true
+      ..modifier = FieldModifier.constant
+      ..type = type
+      ..name = name
+      ..assignment = assignment.code;
+  });
+}
+
+Field _instanceFinalField(String name, Reference type) {
+  return Field((field) {
+    field
+      ..modifier = FieldModifier.final$
+      ..type = type
+      ..name = name;
+  });
+}
+
+Parameter _fieldParameter(
+  String name, {
+  bool required = false,
+  Code? defaultTo,
+}) {
+  return Parameter((parameter) {
+    parameter
+      ..name = name
+      ..named = true
+      ..toThis = true
+      ..required = required
+      ..defaultTo = defaultTo;
+  });
+}
+
+Parameter _typedParameter(String name, Reference type) {
+  return Parameter((parameter) {
+    parameter
+      ..name = name
+      ..type = type;
+  });
+}
+
+Parameter _namedParameter(String name, {Reference? type, Code? defaultTo}) {
+  return Parameter((parameter) {
+    parameter
+      ..name = name
+      ..named = true
+      ..type = type
+      ..defaultTo = defaultTo;
+  });
+}
+
+Expression _jsonLookup(String key) {
+  return CodeExpression(Code("json['${_escapeLiteral(key)}']"));
+}
+
+String _code(Spec spec) => '${spec.accept(DartEmitter())}';
+
+String _typeCode(Reference reference) => '${reference.accept(DartEmitter())}';
+
+String _format(Library library) {
+  return _dartFormatter.format('${library.accept(DartEmitter())}');
 }
 
 List<_SchemaGroup> _groupTablesBySchema(Iterable<IntrospectedTable> tables) {
@@ -239,381 +1042,6 @@ List<_SchemaGroup> _groupTablesBySchema(Iterable<IntrospectedTable> tables) {
   ];
 }
 
-String _schemaName(String? schema) {
-  final normalized = schema?.trim();
-  if (normalized == null || normalized.isEmpty) {
-    return 'default';
-  }
-  return normalized;
-}
-
-String _schemaFolderName(String schemaName) {
-  return _fileStem(schemaName);
-}
-
-String _tableFileName(IntrospectedTable table) =>
-    '${_fileStem(table.name)}.dart';
-
-void _emitRowClass(StringBuffer buffer, IntrospectedTable table) {
-  final rowType = '${_upperCamel(table.name)}Row';
-
-  buffer
-    ..writeln('final class $rowType implements JsonEncodable {')
-    ..writeln('  const $rowType({');
-  for (final column in table.columns) {
-    buffer.writeln('    required this.${_lowerCamel(column.name)},');
-  }
-  buffer
-    ..writeln('  });')
-    ..writeln();
-
-  _writeSchemaConstants(
-    buffer,
-    className: rowType,
-    table: table,
-    shape: _GeneratedShape.row,
-  );
-
-  buffer..writeln(
-    '  factory $rowType.fromSqlRow(SqlRow row, {String prefix = \'\'}) => $rowType(',
-  );
-  for (final column in table.columns) {
-    buffer.writeln(
-      '        ${_lowerCamel(column.name)}: ${_rowReadExpression(column)},',
-    );
-  }
-  buffer
-    ..writeln('      );')
-    ..writeln()
-    ..writeln(
-      '  factory $rowType.fromColumns(Map<String, Object?> columns, {String prefix = \'\'}) =>',
-    )
-    ..writeln('      $rowType.fromSqlRow(SqlRow(columns), prefix: prefix);')
-    ..writeln()
-    ..writeln(
-      '  factory $rowType.fromJson(Map<String, Object?> json) => $rowType(',
-    );
-  for (final column in table.columns) {
-    buffer.writeln(
-      '        ${_lowerCamel(column.name)}: ${_fromJsonExpression(column, source: "json[\'${_escapeLiteral(column.name)}\']", nullable: column.nullable)},',
-    );
-  }
-  buffer
-    ..writeln('      );')
-    ..writeln();
-
-  for (final column in table.columns) {
-    buffer.writeln(
-      '  final ${_fieldType(column)} ${_lowerCamel(column.name)};',
-    );
-  }
-
-  buffer
-    ..writeln()
-    ..writeln('  Map<String, Object?> toColumns() => <String, Object?>{');
-  for (final column in table.columns) {
-    buffer.writeln(
-      "        '${_escapeLiteral(column.name)}': ${_lowerCamel(column.name)},",
-    );
-  }
-  buffer
-    ..writeln('      };')
-    ..writeln()
-    ..writeln('  @override')
-    ..writeln('  Map<String, Object?> toJson() => <String, Object?>{');
-  for (final column in table.columns) {
-    buffer.writeln(
-      "        '${_escapeLiteral(column.name)}': ${_toJsonExpression(column, source: _lowerCamel(column.name))},",
-    );
-  }
-  buffer
-    ..writeln('      };')
-    ..writeln();
-
-  _writeToStringOverride(
-    buffer,
-    className: rowType,
-    fieldNames: [for (final column in table.columns) _lowerCamel(column.name)],
-  );
-
-  buffer
-    ..writeln('}')
-    ..writeln();
-}
-
-void _emitInsertClass(StringBuffer buffer, IntrospectedTable table) {
-  final insertType = '${_upperCamel(table.name)}Insert';
-
-  buffer
-    ..writeln('final class $insertType implements JsonEncodable {')
-    ..writeln('  const $insertType({');
-  for (final column in table.columns) {
-    buffer.writeln('    ${_insertConstructorParameter(column)}');
-  }
-  buffer
-    ..writeln('  });')
-    ..writeln();
-
-  _writeSchemaConstants(
-    buffer,
-    className: insertType,
-    table: table,
-    shape: _GeneratedShape.insert,
-  );
-
-  buffer
-    ..writeln()
-    ..writeln(
-      '  factory $insertType.fromJson(Map<String, Object?> json) => $insertType(',
-    );
-  for (final column in table.columns) {
-    buffer.writeln(
-      '        ${_lowerCamel(column.name)}: ${_insertFromJsonExpression(column)},',
-    );
-  }
-  buffer
-    ..writeln('      );')
-    ..writeln();
-
-  for (final column in table.columns) {
-    buffer.writeln(
-      '  final ${_insertFieldType(column)} ${_lowerCamel(column.name)};',
-    );
-  }
-
-  buffer
-    ..writeln()
-    ..writeln('  Map<String, Object?> toColumns() => <String, Object?>{');
-  for (final column in table.columns) {
-    final fieldName = _lowerCamel(column.name);
-    if (_isOptionalInsertColumn(column)) {
-      buffer.writeln(
-        "        if ($fieldName.isPresent) '${_escapeLiteral(column.name)}': $fieldName.value,",
-      );
-    } else {
-      buffer.writeln("        '${_escapeLiteral(column.name)}': $fieldName,");
-    }
-  }
-  buffer
-    ..writeln('      };')
-    ..writeln()
-    ..writeln('  @override')
-    ..writeln('  Map<String, Object?> toJson() => <String, Object?>{');
-  for (final column in table.columns) {
-    final fieldName = _lowerCamel(column.name);
-    if (_isOptionalInsertColumn(column)) {
-      buffer.writeln(
-        "        if ($fieldName.isPresent) '${_escapeLiteral(column.name)}': ${_toJsonExpression(column, source: '$fieldName.value')},",
-      );
-    } else {
-      buffer.writeln(
-        "        '${_escapeLiteral(column.name)}': ${_toJsonExpression(column, source: fieldName)},",
-      );
-    }
-  }
-  buffer
-    ..writeln('      };')
-    ..writeln();
-
-  _writeToStringOverride(
-    buffer,
-    className: insertType,
-    fieldNames: [for (final column in table.columns) _lowerCamel(column.name)],
-  );
-
-  buffer
-    ..writeln('}')
-    ..writeln();
-}
-
-void _emitUpdateClass(StringBuffer buffer, IntrospectedTable table) {
-  final updateType = '${_upperCamel(table.name)}Update';
-
-  buffer
-    ..writeln('final class $updateType implements JsonEncodable {')
-    ..writeln('  const $updateType({');
-  for (final column in table.columns) {
-    buffer.writeln(
-      '    this.${_lowerCamel(column.name)} = const SqlValue.absent(),',
-    );
-  }
-  buffer
-    ..writeln('  });')
-    ..writeln();
-
-  _writeSchemaConstants(
-    buffer,
-    className: updateType,
-    table: table,
-    shape: _GeneratedShape.update,
-  );
-
-  buffer
-    ..writeln()
-    ..writeln(
-      '  factory $updateType.fromJson(Map<String, Object?> json) => $updateType(',
-    );
-  for (final column in table.columns) {
-    buffer.writeln(
-      '        ${_lowerCamel(column.name)}: ${_updateFromJsonExpression(column)},',
-    );
-  }
-  buffer
-    ..writeln('      );')
-    ..writeln();
-
-  for (final column in table.columns) {
-    buffer.writeln(
-      '  final ${_updateFieldType(column)} ${_lowerCamel(column.name)};',
-    );
-  }
-
-  buffer
-    ..writeln()
-    ..writeln('  Map<String, Object?> toColumns() => <String, Object?>{');
-  for (final column in table.columns) {
-    final fieldName = _lowerCamel(column.name);
-    buffer.writeln(
-      "        if ($fieldName.isPresent) '${_escapeLiteral(column.name)}': $fieldName.value,",
-    );
-  }
-  buffer
-    ..writeln('      };')
-    ..writeln()
-    ..writeln('  @override')
-    ..writeln('  Map<String, Object?> toJson() => <String, Object?>{');
-  for (final column in table.columns) {
-    final fieldName = _lowerCamel(column.name);
-    buffer.writeln(
-      "        if ($fieldName.isPresent) '${_escapeLiteral(column.name)}': ${_toJsonExpression(column, source: '$fieldName.value')},",
-    );
-  }
-  buffer
-    ..writeln('      };')
-    ..writeln();
-
-  _writeToStringOverride(
-    buffer,
-    className: updateType,
-    fieldNames: [for (final column in table.columns) _lowerCamel(column.name)],
-  );
-
-  buffer
-    ..writeln('}')
-    ..writeln();
-}
-
-void _emitTableClass(StringBuffer buffer, IntrospectedTable table) {
-  final baseName = _upperCamel(table.name);
-  final rowType = '${baseName}Row';
-  final insertType = '${baseName}Insert';
-  final updateType = '${baseName}Update';
-  final tableClassName = '${baseName}Table';
-
-  buffer
-    ..writeln(
-      'final class $tableClassName extends SqlTable<$rowType, $insertType, $updateType> {',
-    )
-    ..writeln('  const $tableClassName._();')
-    ..writeln()
-    ..writeln('  static const table = $tableClassName._();')
-    ..writeln();
-
-  for (final column in table.columns) {
-    final columnFieldName = _columnFieldName(column.name);
-    buffer.writeln(
-      "  static final $columnFieldName = SqlColumn<${_normalizedValueType(column)}>("
-      "table: table, name: '${_escapeLiteral(column.name)}', nullable: ${column.nullable});",
-    );
-  }
-
-  buffer
-    ..writeln()
-    ..writeln("  @override String get name => '${_escapeLiteral(table.name)}';")
-    ..writeln(
-      "  @override String? get schema => ${table.schema == null ? 'null' : "'${_escapeLiteral(table.schema!)}'"};",
-    )
-    ..writeln()
-    ..writeln('  @override')
-    ..writeln(
-      '  List<SqlColumn<Object?>> get columns => <SqlColumn<Object?>>[',
-    );
-  for (final column in table.columns) {
-    buffer.writeln('        ${_columnFieldName(column.name)}.asObjectColumn,');
-  }
-  buffer
-    ..writeln('      ];')
-    ..writeln()
-    ..writeln('  @override')
-    ..writeln(
-      '  $rowType mapRow(SqlRow row, {String prefix = \'\'}) => $rowType.fromSqlRow(row, prefix: prefix);',
-    )
-    ..writeln()
-    ..writeln('  @override')
-    ..writeln(
-      '  Map<String, Object?> encodeInsert($insertType value) => value.toColumns();',
-    )
-    ..writeln()
-    ..writeln('  @override')
-    ..writeln(
-      '  Map<String, Object?> encodeUpdate($updateType value) => value.toColumns();',
-    )
-    ..writeln('}')
-    ..writeln();
-}
-
-void _writeSchemaConstants(
-  StringBuffer buffer, {
-  required String className,
-  required IntrospectedTable table,
-  required _GeneratedShape shape,
-}) {
-  final requiredColumns = _requiredColumns(table, shape);
-
-  buffer
-    ..writeln(
-      "  static const schemaRef = JsonSchemaRef<$className>('$className');",
-    )
-    ..writeln('  static const jsonSchema = JsonSchema.object(')
-    ..writeln('    ref: schemaRef,')
-    ..writeln('    properties: <String, JsonSchema>{');
-
-  for (final column in table.columns) {
-    buffer.writeln(
-      "      '${_escapeLiteral(column.name)}': ${_jsonSchemaForColumn(column)},",
-    );
-  }
-
-  buffer.writeln('    },');
-  if (requiredColumns.isNotEmpty) {
-    buffer.writeln('    required: <String>[');
-    for (final columnName in requiredColumns) {
-      buffer.writeln("      '$columnName',");
-    }
-    buffer.writeln('    ],');
-  }
-  buffer
-    ..writeln('    additionalProperties: false,')
-    ..writeln('  );')
-    ..writeln();
-}
-
-void _writeToStringOverride(
-  StringBuffer buffer, {
-  required String className,
-  required Iterable<String> fieldNames,
-}) {
-  final members = fieldNames.toList(growable: false);
-  final description = members
-      .map((fieldName) => '$fieldName: \$$fieldName')
-      .join(', ');
-
-  buffer
-    ..writeln('  @override')
-    ..writeln("  String toString() => '$className($description)';")
-    ..writeln();
-}
-
 List<String> _requiredColumns(IntrospectedTable table, _GeneratedShape shape) {
   return switch (shape) {
     _GeneratedShape.row =>
@@ -627,138 +1055,23 @@ List<String> _requiredColumns(IntrospectedTable table, _GeneratedShape shape) {
   };
 }
 
-String _rowReadExpression(IntrospectedColumn column) {
-  final fieldKey = '\${prefix}${_escapeLiteral(column.name)}';
-  final type = _normalizedValueType(column);
-  if (type == 'Object?') {
-    return "row.read<Object?>('$fieldKey')";
-  }
-  if (column.nullable) {
-    return "row.readNullable<$type>('$fieldKey')";
-  }
-  return "row.read<$type>('$fieldKey')";
+Reference _fieldType(IntrospectedColumn column) {
+  return refer(_nullableType(_normalizedValueType(column), column.nullable));
 }
 
-String _insertFromJsonExpression(IntrospectedColumn column) {
-  final key = _escapeLiteral(column.name);
-  final source = "json['$key']";
+Reference _insertFieldType(IntrospectedColumn column) {
   if (_isOptionalInsertColumn(column)) {
-    return "json.containsKey('$key') ? SqlValue<${_nullableType(_normalizedValueType(column), column.nullable)}>(${_fromJsonExpression(column, source: source, nullable: column.nullable)}) : const SqlValue.absent()";
-  }
-  return _fromJsonExpression(column, source: source, nullable: column.nullable);
-}
-
-String _updateFromJsonExpression(IntrospectedColumn column) {
-  final key = _escapeLiteral(column.name);
-  final source = "json['$key']";
-  return "json.containsKey('$key') ? SqlValue<${_nullableType(_normalizedValueType(column), column.nullable)}>(${_fromJsonExpression(column, source: source, nullable: column.nullable)}) : const SqlValue.absent()";
-}
-
-String _fromJsonExpression(
-  IntrospectedColumn column, {
-  required String source,
-  required bool nullable,
-}) {
-  final type = _normalizedValueType(column);
-
-  String wrapNullable(String expression) =>
-      nullable ? '$source == null ? null : $expression' : expression;
-
-  return switch (type) {
-    'int' => wrapNullable('($source as num).toInt()'),
-    'double' => wrapNullable('($source as num).toDouble()'),
-    'num' => wrapNullable('$source as num'),
-    'bool' => wrapNullable('$source as bool'),
-    'String' => wrapNullable('$source as String'),
-    'DateTime' => wrapNullable('DateTime.parse($source as String)'),
-    'List<int>' => wrapNullable('List<int>.from($source as List)'),
-    'List<Object?>' => wrapNullable('List<Object?>.from($source as List)'),
-    'Object?' => source,
-    _ => wrapNullable('$source as $type'),
-  };
-}
-
-String _toJsonExpression(IntrospectedColumn column, {required String source}) {
-  final type = _normalizedValueType(column);
-
-  String wrapNullable(String expression) =>
-      column.nullable ? '$source == null ? null : $expression' : expression;
-
-  return switch (type) {
-    'DateTime' => wrapNullable('$source.toIso8601String()'),
-    'List<int>' => wrapNullable('List<int>.from($source)'),
-    'List<Object?>' => wrapNullable('List<Object?>.from($source)'),
-    _ => source,
-  };
-}
-
-String _jsonSchemaForColumn(IntrospectedColumn column) {
-  final type = _normalizedValueType(column);
-
-  if (type == 'Object?') {
-    return 'JsonSchema.any()';
-  }
-
-  return switch (type) {
-    'int' => _jsonSchemaFactory('integer', nullable: column.nullable),
-    'double' ||
-    'num' => _jsonSchemaFactory('number', nullable: column.nullable),
-    'bool' => _jsonSchemaFactory('boolean', nullable: column.nullable),
-    'String' => _jsonSchemaFactory('string', nullable: column.nullable),
-    'DateTime' => _jsonSchemaFactory(
-      'string',
-      nullable: column.nullable,
-      format: 'date-time',
-    ),
-    'List<int>' => _jsonSchemaFactory(
-      'array',
-      nullable: column.nullable,
-      items: 'JsonSchema.integer()',
-    ),
-    'List<Object?>' => _jsonSchemaFactory(
-      'array',
-      nullable: column.nullable,
-      items: 'JsonSchema.any()',
-    ),
-    _ => _jsonSchemaFactory('string', nullable: column.nullable),
-  };
-}
-
-String _jsonSchemaFactory(
-  String kind, {
-  required bool nullable,
-  String? format,
-  String? items,
-}) {
-  final arguments = <String>[
-    if (nullable) 'nullable: true',
-    if (format case final format?) "format: '$format'",
-    if (items case final items?) 'items: $items',
-  ];
-
-  final suffix = arguments.isEmpty ? '' : arguments.join(', ');
-  return suffix.isEmpty ? 'JsonSchema.$kind()' : 'JsonSchema.$kind($suffix)';
-}
-
-String _fieldType(IntrospectedColumn column) =>
-    _nullableType(_normalizedValueType(column), column.nullable);
-
-String _insertFieldType(IntrospectedColumn column) {
-  if (_isOptionalInsertColumn(column)) {
-    return 'SqlValue<${_nullableType(_normalizedValueType(column), column.nullable)}>';
+    return _type('SqlValue', [
+      refer(_nullableType(_normalizedValueType(column), column.nullable)),
+    ]);
   }
   return _fieldType(column);
 }
 
-String _updateFieldType(IntrospectedColumn column) =>
-    'SqlValue<${_nullableType(_normalizedValueType(column), column.nullable)}>';
-
-String _insertConstructorParameter(IntrospectedColumn column) {
-  final fieldName = _lowerCamel(column.name);
-  if (_isOptionalInsertColumn(column)) {
-    return 'this.$fieldName = const SqlValue.absent(),';
-  }
-  return 'required this.$fieldName,';
+Reference _updateFieldType(IntrospectedColumn column) {
+  return _type('SqlValue', [
+    refer(_nullableType(_normalizedValueType(column), column.nullable)),
+  ]);
 }
 
 bool _isOptionalInsertColumn(IntrospectedColumn column) =>
@@ -784,6 +1097,35 @@ String _nullableType(String typeName, bool isNullable) {
   }
   return '$typeName?';
 }
+
+TypeReference _type(String symbol, [Iterable<Reference> types = const []]) {
+  return TypeReference((builder) {
+    builder
+      ..symbol = symbol
+      ..types.addAll(types);
+  });
+}
+
+TypeReference _listOf(Reference valueType) => _type('List', [valueType]);
+
+TypeReference _mapOf(Reference keyType, Reference valueType) {
+  return _type('Map', [keyType, valueType]);
+}
+
+String _schemaName(String? schema) {
+  final normalized = schema?.trim();
+  if (normalized == null || normalized.isEmpty) {
+    return 'default';
+  }
+  return normalized;
+}
+
+String _schemaFolderName(String schemaName) {
+  return _fileStem(schemaName);
+}
+
+String _tableFileName(IntrospectedTable table) =>
+    '${_fileStem(table.name)}.dart';
 
 String _upperCamel(String value) {
   final parts = value
@@ -872,6 +1214,14 @@ final class _SchemaGroup {
   String get memberName => _lowerCamel(className);
 }
 
+final class _MapEntrySpec {
+  const _MapEntrySpec({required this.key, required this.value, this.condition});
+
+  final String key;
+  final Expression value;
+  final Expression? condition;
+}
+
 enum _GeneratedShape { row, insert, update }
 
 const _reservedSchemaMemberNames = <String>{
@@ -890,3 +1240,7 @@ const _reservedTableMemberNames = <String>{
   'schema',
   'table',
 };
+
+final _dartFormatter = DartFormatter(
+  languageVersion: DartFormatter.latestLanguageVersion,
+);

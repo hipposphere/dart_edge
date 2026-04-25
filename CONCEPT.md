@@ -41,7 +41,7 @@ The workspace already contains:
   runtime
 - `dart_edge_helpers`: optional helper routes, currently centered on OpenAPI
   mounting
-- `dart_edge_codegen`: generator-facing annotations and normalized client
+- `dart_edge_http_server_codegen`: HTTP generator-facing annotations and normalized client
   generation
 - `dart_edge_auth`: native Better Auth route mounting for Dart Edge apps
 - `dart_edge_sql`: native-backed typed SQL pools and query builders
@@ -56,10 +56,11 @@ That means Dart Edge is no longer just "a framework idea". It is becoming a
 backend platform where multiple packages share contracts, schema concepts, and a
 native integration model.
 
-The HTTP runtime is the real delivered center today. The codegen package
-already exposes annotations and client-generation pieces, while full generated
-route and registry output is still the next stage. WebSocket contract types
-exist, but WebSocket transport is not yet the shipped path.
+The HTTP runtime is the real delivered center today. The HTTP codegen package
+now exposes annotations, generated route artifacts, schema registry output,
+runtime codec registry skeletons, and client-generation pieces. A full
+analyzer-backed builder remains a later layer. WebSocket contract types exist,
+but WebSocket transport is not yet the shipped path.
 
 ## Product Position
 
@@ -122,7 +123,7 @@ This axis is responsible for:
 
 This is the normalization axis:
 
-- `dart_edge_codegen`
+- `dart_edge_http_server_codegen`
 - `RouteContract`
 - `JsonSchemaRef`
 - `JsonSchemaRegistry`
@@ -170,7 +171,7 @@ This is a stronger concept than one giant runtime package.
   Owns helper-layer APIs that wrap runtime capabilities. OpenAPI JSON mounting
   and Swagger UI mounting belong here, not in the core runtime.
 
-- `dart_edge_codegen`
+- `dart_edge_http_server_codegen`
   Owns build-time route annotations, generator-facing metadata, and normalized
   client generation. It should compile down to runtime contracts, schema refs,
   codec registries, and generated registries, not runtime reflection.
@@ -412,11 +413,14 @@ clients should share a normalized model.
 - runtime codec registries
 - OpenAPI document generation from compiled routes plus the schema registry
 - helper-layer mounting for OpenAPI JSON and Swagger UI
+- generated route artifact source from normalized HTTP route specs
+- generated runtime codec registry skeletons
 - client generation from normalized route contracts
 
 ### What should happen next
 
-The build-time pipeline should emit a coherent set of artifacts together:
+The build-time pipeline should grow an analyzer-backed builder that emits a
+coherent set of artifacts together:
 
 - route definitions or route registries
 - schema registries
