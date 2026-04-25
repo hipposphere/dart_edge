@@ -588,11 +588,7 @@ impl NativeAuthBackend {
 }
 
 fn decode_shared_dialect(value: i32) -> Option<SharedSqlDialect> {
-    match value {
-        0 => Some(SharedSqlDialect::Postgres),
-        1 => Some(SharedSqlDialect::Sqlite),
-        _ => None,
-    }
+    SharedSqlDialect::from_native_code(value)
 }
 
 fn native_shared_dialect(value: SharedSqlDialect) -> NativeSharedSqlDialect {

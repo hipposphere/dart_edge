@@ -1,7 +1,8 @@
 # Dart Edge Agent Guide
 
 This repository is a Dart monorepo organized as a Pub workspace rooted at the
-repository root and composed from `packages/*`.
+repository root and composed from `packages/*`, with shared Rust crates under
+`crates/*`.
 
 ## Repo Shape
 
@@ -12,6 +13,8 @@ repository root and composed from `packages/*`.
 - `packages/dart_edge_http_server_runtime/hook`: SDK-discovered build hooks for the runtime
 - `packages/dart_edge_http_server_runtime/rust`: Rust crate compiled into the runtime's
   native asset
+- `crates/dart_edge_core`: shared Rust FFI primitives used by native packages
+- `crates/dart_edge_sql_core`: shared Rust SQL wire payload types used by native packages
 - `benchmarks`: reproducible benchmark apps and the benchmark runner
 - `packages/dart_edge_helpers`: optional helper APIs such as OpenAPI/Swagger
   serving and ergonomic extensions
@@ -45,6 +48,8 @@ repository root and composed from `packages/*`.
 - Work on one package with pub commands: `dart pub -C packages/<package> <cmd>`
 - Exercise the runtime native asset: `cd packages/dart_edge_http_server_runtime && dart run example/native_probe.dart`
 - Run the benchmark suite: `dart pub -C benchmarks/basic-http-server/runner run bin/run.dart`
+- Check shared Rust crates: `cargo check --workspace`
+- Check one native asset crate: `cargo check --manifest-path packages/<package>/rust/Cargo.toml`
 
 ## Package Rules
 
@@ -53,9 +58,12 @@ repository root and composed from `packages/*`.
 - Do not add stray `pubspec.yaml` files between the repo root and a workspace
   package.
 - Keep helper-only APIs out of `dart_edge_http_server_runtime`.
-- Keep native compilation hooks and Rust crate sources inside
-  `dart_edge_http_server_runtime`; helpers and codegen packages must stay pure Dart unless a
-  later design explicitly changes that.
+- Keep package-owned native asset crates inside `packages/<package>/rust`.
+- Keep reusable Rust libraries under `crates/` and make published native asset
+  crates depend on them through normal Cargo version dependencies, not sibling
+  `path` dependencies.
+- Helpers and codegen packages must stay pure Dart unless a later design
+  explicitly changes that.
 - Keep build-time annotations and generated API surface in
   `dart_edge_codegen`.
 - Keep app-facing imports simple by re-exporting the normal runtime and helper
@@ -120,6 +128,17 @@ repository root and composed from `packages/*`.
   `dev_dependencies`, because consuming apps execute those hooks.
 - Build native libraries with `native_toolchain_rust`; do not add ad hoc shell
   scripts or platform-specific build glue when the hook can own the build.
+- Use the repo-root Cargo workspace for shared Rust crates. Package-owned
+  native asset crates are intentionally excluded from that workspace because
+  independent native assets can have incompatible native `links` dependencies.
+- The root `.cargo/config.toml` maps shared crates in `crates/` to local paths
+  during repo development while package manifests keep normal Cargo version
+  dependencies for publication.
+- Do not put `path = "../../..."` dependencies in package native asset crates
+  that will be published to Pub; consumers only receive the package root, not
+  monorepo sibling directories.
+- Do not check in `packages/<package>/rust/Cargo.lock` for published native
+  asset crates; local Cargo patches would otherwise leak into package archives.
 - Keep the generated native asset ID aligned with the Dart library URI that
   declares the generated bindings.
 - For `dart_edge_http_server_runtime`, the asset name should stay `dart_edge_http_server_runtime.dart`.

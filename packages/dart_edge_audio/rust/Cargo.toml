@@ -8,7 +8,7 @@ publish = false
 crate-type = ["staticlib", "cdylib"]
 
 [dependencies]
-dart_edge_core = { path = "../../dart_edge_core/rust" }
+dart_edge_core = "0.1.0"
 hound = "3.5"
 once_cell = "1.21"
 rubato = "0.16"

@@ -25,3 +25,16 @@ final class NativePair extends ffi.Struct {
 
   external NativeBytes value;
 }
+
+final class NativeResult extends ffi.Struct {
+  @ffi.Int32()
+  external int status;
+
+  external NativeBytes code;
+
+  external NativeBytes message;
+}
+
+final class NativeString extends ffi.Struct {
+  external NativeBytes bytes;
+}

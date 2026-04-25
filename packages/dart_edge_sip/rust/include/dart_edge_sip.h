@@ -4,7 +4,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "../../../dart_edge_core/rust/include/dart_edge_core_ffi.h"
+#include "../../../../crates/dart_edge_core/include/dart_edge_core_ffi.h"
 
 typedef struct dart_edge_sip_audio_frame {
   NativeOwnedBytes bytes;

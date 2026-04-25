@@ -10,5 +10,8 @@ coverage/
 packages/**/pubspec.lock
 packages/**/.dart_tool/
 packages/**/rust/target/
+packages/**/rust/Cargo.lock
 benchmarks/**/pubspec.lock
 benchmarks/**/.dart_tool/
+target/
+crates/**/target/

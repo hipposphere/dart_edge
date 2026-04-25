@@ -7,12 +7,14 @@ output:
     import-path: package:dart_edge_core/ffi.dart
 headers:
   entry-points:
-    - ../rust/include/dart_edge_core_ffi.h
+    - ../../../crates/dart_edge_core/include/dart_edge_core_ffi.h
 structs:
   include:
     - NativeBytes
     - NativeOwnedBytes
+    - NativeString
     - NativePair
+    - NativeResult
 exclude-all-by-default: true
 sort: true
 use-supported-typedefs: true

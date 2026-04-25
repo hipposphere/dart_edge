@@ -10,3 +10,7 @@ files:
         name: NativeOwnedBytes
       c:@S@NativePair:
         name: NativePair
+      c:@S@NativeResult:
+        name: NativeResult
+      c:@S@NativeString:
+        name: NativeString

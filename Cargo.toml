@@ -1,0 +1,27 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/dart_edge_core",
+    "crates/dart_edge_sql_core",
+]
+exclude = [
+    "benchmarks/auth-db-http-server/runner",
+    "benchmarks/basic-http-server/axum",
+    "benchmarks/basic-http-server/runner",
+    "packages/dart_edge_audio/rust",
+    "packages/dart_edge_auth/rust",
+    "packages/dart_edge_bluetooth_server/rust",
+    "packages/dart_edge_http_server_runtime/rust",
+    "packages/dart_edge_s3_client/rust",
+    "packages/dart_edge_sip/rust",
+    "packages/dart_edge_sql/rust",
+]
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+codegen-units = 1
+lto = "thin"
+panic = "abort"
+strip = "symbols"

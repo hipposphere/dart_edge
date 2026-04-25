@@ -4,6 +4,7 @@ use std::ptr::NonNull;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicI64, Ordering};
 
+use dart_edge_core::{NativeOwnedBytes, free_owned_bytes, into_native_owned_bytes};
 use once_cell::sync::Lazy;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -1824,27 +1825,6 @@ unsafe fn read_byte_slice<'a>(value: *const u8, len: isize) -> Option<&'a [u8]> 
     Some(unsafe { std::slice::from_raw_parts(value, len as usize) })
 }
 
-fn into_native_owned_bytes(bytes: Vec<u8>) -> NativeOwnedBytes {
-    let mut boxed_bytes = bytes.into_boxed_slice();
-    let native_bytes = NativeOwnedBytes {
-        ptr: boxed_bytes.as_mut_ptr(),
-        len: boxed_bytes.len() as isize,
-    };
-    std::mem::forget(boxed_bytes);
-    native_bytes
-}
-
-unsafe fn free_owned_bytes(value: NativeOwnedBytes) {
-    if value.ptr.is_null() {
-        return;
-    }
-
-    let slice = std::ptr::slice_from_raw_parts_mut(value.ptr, value.len as usize);
-    unsafe {
-        let _ = Box::<[u8]>::from_raw(slice);
-    }
-}
-
 struct ErrorBuffer {
     bytes: [c_char; ERROR_BUFFER_LEN],
 }
@@ -1871,13 +1851,6 @@ impl ErrorBuffer {
 
 #[repr(C)]
 #[derive(Clone, Copy)]
-pub struct NativeOwnedBytes {
-    pub ptr: *mut u8,
-    pub len: isize,
-}
-
-#[repr(C)]
-#[derive(Clone, Copy)]
 pub struct dart_edge_sip_audio_frame {
     pub bytes: NativeOwnedBytes,
     pub encoding: i32,
@@ -1885,15 +1858,6 @@ pub struct dart_edge_sip_audio_frame {
     pub channels: u32,
     pub frame_duration_ms: u32,
     pub sequence: u64,
-}
-
-impl Default for NativeOwnedBytes {
-    fn default() -> Self {
-        Self {
-            ptr: std::ptr::null_mut(),
-            len: 0,
-        }
-    }
 }
 
 impl Default for dart_edge_sip_audio_frame {

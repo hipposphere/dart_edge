@@ -15,7 +15,7 @@ use better_auth::{
     UserOps, Verification, VerificationOps,
 };
 use chrono::{DateTime, Utc};
-use serde::Deserialize;
+use dart_edge_sql_core::{SqlResult, SqlRow, SqlStatement, SqlValue};
 use serde_json::{Value, json};
 use uuid::Uuid;
 
@@ -186,11 +186,7 @@ CREATE INDEX IF NOT EXISTS idx_passkeys_user_id ON "passkeys" (user_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_passkeys_credential_id ON "passkeys" (credential_id);
 "#;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum SharedSqlDialect {
-    Postgres,
-    Sqlite,
-}
+pub use dart_edge_sql_core::SqlDialect as SharedSqlDialect;
 
 #[derive(Clone, Copy)]
 pub struct SharedSqlCallbacks {
@@ -207,39 +203,7 @@ pub struct SharedSqlDatabaseAdapter {
     callbacks: SharedSqlCallbacks,
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct NativeSqlResultPayload {
-    affected_rows: usize,
-    #[serde(default)]
-    rows: Vec<NativeSqlRowPayload>,
-}
-
-#[derive(Deserialize)]
-struct NativeSqlRowPayload {
-    values: Vec<NativeSqlColumnPayload>,
-}
-
-#[derive(Deserialize)]
-struct NativeSqlColumnPayload {
-    name: String,
-    value: NativeSqlValuePayload,
-}
-
-#[derive(Clone, Debug, Deserialize)]
-#[serde(tag = "kind", rename_all = "camelCase")]
-enum NativeSqlValuePayload {
-    Null,
-    Integer { value: i64 },
-    Double { value: f64 },
-    Boolean { value: bool },
-    String { value: String },
-    Bytes { value: String },
-    DateTime { value: String },
-    Json { value: Value },
-}
-
-type RowMap = HashMap<String, NativeSqlValuePayload>;
+type RowMap = HashMap<String, SqlValue>;
 
 #[derive(Clone, Debug)]
 enum SqlParam {
@@ -277,16 +241,15 @@ impl SharedSqlDatabaseAdapter {
         Ok(())
     }
 
-    fn execute_statement(
-        &self,
-        sql: String,
-        params: Vec<SqlParam>,
-    ) -> AuthResult<NativeSqlResultPayload> {
-        let payload = json!({
-            "sql": sql,
-            "parameters": params.into_iter().map(SqlParam::to_json).collect::<Vec<_>>(),
-        });
-        let statement_json = serde_json::to_string(&payload)
+    fn execute_statement(&self, sql: String, params: Vec<SqlParam>) -> AuthResult<SqlResult> {
+        let statement = SqlStatement {
+            sql,
+            parameters: params
+                .into_iter()
+                .map(SqlParam::into_native_value)
+                .collect(),
+        };
+        let statement_json = serde_json::to_string(&statement)
             .map_err(|error| AuthError::internal(error.to_string()))?;
         let statement_json =
             CString::new(statement_json).map_err(|error| AuthError::internal(error.to_string()))?;
@@ -307,7 +270,7 @@ impl SharedSqlDatabaseAdapter {
             (self.callbacks.free_string)(result_ptr);
         }
 
-        serde_json::from_str::<NativeSqlResultPayload>(&json)
+        serde_json::from_str::<SqlResult>(&json)
             .map_err(|error| AuthError::internal(error.to_string()))
     }
 
@@ -332,7 +295,7 @@ impl SharedSqlDatabaseAdapter {
 
     fn execute_affected(&self, sql: String, params: Vec<SqlParam>) -> AuthResult<usize> {
         self.execute_statement(sql, params)
-            .map(|result| result.affected_rows)
+            .map(|result| result.affected_rows.max(0) as usize)
     }
 
     fn fetch_optional_row(&self, sql: String, params: Vec<SqlParam>) -> AuthResult<Option<RowMap>> {
@@ -351,10 +314,7 @@ impl SharedSqlDatabaseAdapter {
     }
 
     fn placeholder(&self, index: usize) -> String {
-        match self.dialect {
-            SharedSqlDialect::Postgres => format!("${index}"),
-            SharedSqlDialect::Sqlite => "?".to_string(),
-        }
+        self.dialect.placeholder(index)
     }
 
     fn placeholders(&self, start: usize, count: usize) -> Vec<String> {
@@ -372,13 +332,13 @@ impl SharedSqlDatabaseAdapter {
 }
 
 impl SqlParam {
-    fn to_json(self) -> Value {
+    fn into_native_value(self) -> SqlValue {
         match self {
-            Self::Null => json!({ "kind": "null" }),
-            Self::Integer(value) => json!({ "kind": "integer", "value": value }),
-            Self::Boolean(value) => json!({ "kind": "boolean", "value": value }),
-            Self::String(value) => json!({ "kind": "string", "value": value }),
-            Self::Json(value) => json!({ "kind": "json", "value": value }),
+            Self::Null => SqlValue::Null,
+            Self::Integer(value) => SqlValue::Integer(value),
+            Self::Boolean(value) => SqlValue::Boolean(value),
+            Self::String(value) => SqlValue::String(value),
+            Self::Json(value) => SqlValue::Json(value),
         }
     }
 }
@@ -388,7 +348,7 @@ impl<'a> RowReader<'a> {
         Self { values }
     }
 
-    fn value(&self, name: &str) -> AuthResult<&NativeSqlValuePayload> {
+    fn value(&self, name: &str) -> AuthResult<&SqlValue> {
         self.values.get(name).ok_or_else(|| {
             AuthError::internal(format!("Missing SQL column \"{name}\" in auth result"))
         })
@@ -396,14 +356,14 @@ impl<'a> RowReader<'a> {
 
     fn string(&self, name: &str) -> AuthResult<String> {
         match self.value(name)? {
-            NativeSqlValuePayload::String { value }
-            | NativeSqlValuePayload::DateTime { value }
-            | NativeSqlValuePayload::Bytes { value } => Ok(value.clone()),
-            NativeSqlValuePayload::Integer { value } => Ok(value.to_string()),
-            NativeSqlValuePayload::Double { value } => Ok(value.to_string()),
-            NativeSqlValuePayload::Boolean { value } => Ok(value.to_string()),
-            NativeSqlValuePayload::Json { value } => Ok(value.to_string()),
-            NativeSqlValuePayload::Null => Err(AuthError::internal(format!(
+            SqlValue::String(value) | SqlValue::DateTime(value) | SqlValue::Bytes(value) => {
+                Ok(value.clone())
+            }
+            SqlValue::Integer(value) => Ok(value.to_string()),
+            SqlValue::Double(value) => Ok(value.to_string()),
+            SqlValue::Boolean(value) => Ok(value.to_string()),
+            SqlValue::Json(value) => Ok(value.to_string()),
+            SqlValue::Null => Err(AuthError::internal(format!(
                 "Column \"{name}\" was unexpectedly null"
             ))),
         }
@@ -411,24 +371,22 @@ impl<'a> RowReader<'a> {
 
     fn opt_string(&self, name: &str) -> AuthResult<Option<String>> {
         Ok(match self.values.get(name) {
-            None | Some(NativeSqlValuePayload::Null) => None,
+            None | Some(SqlValue::Null) => None,
             Some(_) => Some(self.string(name)?),
         })
     }
 
     fn boolean(&self, name: &str) -> AuthResult<bool> {
         match self.value(name)? {
-            NativeSqlValuePayload::Boolean { value } => Ok(*value),
-            NativeSqlValuePayload::Integer { value } => Ok(*value != 0),
-            NativeSqlValuePayload::String { value } | NativeSqlValuePayload::DateTime { value } => {
-                match value.as_str() {
-                    "true" | "TRUE" | "1" => Ok(true),
-                    "false" | "FALSE" | "0" => Ok(false),
-                    _ => Err(AuthError::internal(format!(
-                        "Column \"{name}\" could not be read as a boolean"
-                    ))),
-                }
-            }
+            SqlValue::Boolean(value) => Ok(*value),
+            SqlValue::Integer(value) => Ok(*value != 0),
+            SqlValue::String(value) | SqlValue::DateTime(value) => match value.as_str() {
+                "true" | "TRUE" | "1" => Ok(true),
+                "false" | "FALSE" | "0" => Ok(false),
+                _ => Err(AuthError::internal(format!(
+                    "Column \"{name}\" could not be read as a boolean"
+                ))),
+            },
             _ => Err(AuthError::internal(format!(
                 "Column \"{name}\" could not be read as a boolean"
             ))),
@@ -437,13 +395,11 @@ impl<'a> RowReader<'a> {
 
     fn integer(&self, name: &str) -> AuthResult<i64> {
         match self.value(name)? {
-            NativeSqlValuePayload::Integer { value } => Ok(*value),
-            NativeSqlValuePayload::Boolean { value } => Ok(if *value { 1 } else { 0 }),
-            NativeSqlValuePayload::String { value } | NativeSqlValuePayload::DateTime { value } => {
-                value
-                    .parse::<i64>()
-                    .map_err(|error| AuthError::internal(error.to_string()))
-            }
+            SqlValue::Integer(value) => Ok(*value),
+            SqlValue::Boolean(value) => Ok(if *value { 1 } else { 0 }),
+            SqlValue::String(value) | SqlValue::DateTime(value) => value
+                .parse::<i64>()
+                .map_err(|error| AuthError::internal(error.to_string())),
             _ => Err(AuthError::internal(format!(
                 "Column \"{name}\" could not be read as an integer"
             ))),
@@ -459,7 +415,7 @@ impl<'a> RowReader<'a> {
 
     fn opt_datetime(&self, name: &str) -> AuthResult<Option<DateTime<Utc>>> {
         Ok(match self.values.get(name) {
-            None | Some(NativeSqlValuePayload::Null) => None,
+            None | Some(SqlValue::Null) => None,
             Some(_) => Some(self.datetime(name)?),
         })
     }
@@ -470,10 +426,9 @@ impl<'a> RowReader<'a> {
 
     fn opt_json(&self, name: &str) -> AuthResult<Option<Value>> {
         Ok(match self.values.get(name) {
-            None | Some(NativeSqlValuePayload::Null) => None,
-            Some(NativeSqlValuePayload::Json { value }) => Some(value.clone()),
-            Some(NativeSqlValuePayload::String { value })
-            | Some(NativeSqlValuePayload::DateTime { value }) => {
+            None | Some(SqlValue::Null) => None,
+            Some(SqlValue::Json(value)) => Some(value.clone()),
+            Some(SqlValue::String(value)) | Some(SqlValue::DateTime(value)) => {
                 Some(serde_json::from_str(value).unwrap_or_else(|_| Value::String(value.clone())))
             }
             Some(_) => {
@@ -485,7 +440,7 @@ impl<'a> RowReader<'a> {
     }
 }
 
-fn row_payload_to_map(row: NativeSqlRowPayload) -> RowMap {
+fn row_payload_to_map(row: SqlRow) -> RowMap {
     row.values
         .into_iter()
         .map(|column| (column.name, column.value))
@@ -933,10 +888,7 @@ impl SessionOps for SharedSqlDatabaseAdapter {
             token_col = quoted("token"),
             placeholder = self.placeholder(1),
             active_col = quoted("active"),
-            active_value = match self.dialect {
-                SharedSqlDialect::Postgres => "TRUE",
-                SharedSqlDialect::Sqlite => "1",
-            },
+            active_value = self.dialect.bool_literal(true),
         );
         self.fetch_optional_row(sql, vec![SqlParam::String(token.to_string())])?
             .map(decode_session)
@@ -950,10 +902,7 @@ impl SessionOps for SharedSqlDatabaseAdapter {
             user_id_col = quoted("user_id"),
             placeholder = self.placeholder(1),
             active_col = quoted("active"),
-            active_value = match self.dialect {
-                SharedSqlDialect::Postgres => "TRUE",
-                SharedSqlDialect::Sqlite => "1",
-            },
+            active_value = self.dialect.bool_literal(true),
             created_at_col = quoted("created_at"),
         );
         self.fetch_all_rows(sql, vec![SqlParam::String(user_id.to_string())])?
@@ -978,10 +927,7 @@ impl SessionOps for SharedSqlDatabaseAdapter {
             token_col = quoted("token"),
             token_placeholder = self.placeholder(3),
             active_col = quoted("active"),
-            active_value = match self.dialect {
-                SharedSqlDialect::Postgres => "TRUE",
-                SharedSqlDialect::Sqlite => "1",
-            },
+            active_value = self.dialect.bool_literal(true),
         );
         self.execute_affected(
             sql,
@@ -1023,10 +969,7 @@ impl SessionOps for SharedSqlDatabaseAdapter {
             expires_at_col = quoted("expires_at"),
             placeholder = self.placeholder(1),
             active_col = quoted("active"),
-            inactive_value = match self.dialect {
-                SharedSqlDialect::Postgres => "FALSE",
-                SharedSqlDialect::Sqlite => "0",
-            },
+            inactive_value = self.dialect.bool_literal(false),
         );
         self.execute_affected(sql, vec![SqlParam::String(now_text())])
     }
@@ -1047,10 +990,7 @@ impl SessionOps for SharedSqlDatabaseAdapter {
             token_col = quoted("token"),
             token_placeholder = self.placeholder(3),
             active_col = quoted("active"),
-            active_value = match self.dialect {
-                SharedSqlDialect::Postgres => "TRUE",
-                SharedSqlDialect::Sqlite => "1",
-            },
+            active_value = self.dialect.bool_literal(true),
         );
         let row = self.fetch_one_row(
             sql,

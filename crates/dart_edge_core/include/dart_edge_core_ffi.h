@@ -14,9 +14,24 @@ typedef struct NativeOwnedBytes {
   intptr_t len;
 } NativeOwnedBytes;
 
+typedef struct NativeString {
+  NativeBytes bytes;
+} NativeString;
+
 typedef struct NativePair {
   NativeBytes key;
   NativeBytes value;
 } NativePair;
+
+typedef int32_t NativeStatus;
+
+#define NativeStatusOk 0
+#define NativeStatusError 1
+
+typedef struct NativeResult {
+  NativeStatus status;
+  NativeBytes code;
+  NativeBytes message;
+} NativeResult;
 
 #endif  // DART_EDGE_CORE_FFI_H_
