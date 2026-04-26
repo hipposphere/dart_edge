@@ -1,23 +1,30 @@
-typedef DartEdgeClientEncoder<T> = Object? Function(T value);
-typedef DartEdgeClientDecoder<T> = T Function(Object? value);
+import 'package:dart_edge_http_server_runtime/dart_edge_http_server_runtime.dart';
 
-/// Codec used by generated clients to encode request values and decode
-/// responses for one schema-backed Dart type.
+/// Backwards-compatible client name for the shared schema encoder callback.
+typedef DartEdgeClientEncoder<T> = DartEdgeEncoder<T>;
+
+/// Backwards-compatible client name for the shared schema decoder callback.
+typedef DartEdgeClientDecoder<T> = DartEdgeDecoder<T>;
+
+/// Client-facing wrapper for a shared schema codec.
 final class DartEdgeClientCodec<T> {
   const DartEdgeClientCodec({required this.encode, required this.decode});
 
   final DartEdgeClientEncoder<T> encode;
   final DartEdgeClientDecoder<T> decode;
+
+  DartEdgeCodec<T> toRuntimeCodec() {
+    return DartEdgeCodec<T>(encode: encode, decode: decode);
+  }
 }
 
-/// Registry of schema-id keyed codecs used by generated clients.
+/// Client-facing wrapper around the shared schema-id keyed codec registry.
 final class DartEdgeClientCodecRegistry {
   const DartEdgeClientCodecRegistry([
-    Map<String, _ErasedDartEdgeClientCodec> codecs =
-        const <String, _ErasedDartEdgeClientCodec>{},
-  ]) : _codecs = codecs;
+    DartEdgeCodecRegistry registry = DartEdgeCodecRegistry.empty,
+  ]) : _registry = registry;
 
-  final Map<String, _ErasedDartEdgeClientCodec> _codecs;
+  final DartEdgeCodecRegistry _registry;
 
   static const empty = DartEdgeClientCodecRegistry();
 
@@ -25,44 +32,16 @@ final class DartEdgeClientCodecRegistry {
     String schemaId,
     DartEdgeClientCodec<T> codec,
   ) {
-    return DartEdgeClientCodecRegistry({
-      ..._codecs,
-      schemaId: _ErasedDartEdgeClientCodec(
-        encode: (value) => codec.encode(value as T),
-        decode: codec.decode,
-      ),
-    });
+    return DartEdgeClientCodecRegistry(
+      _registry.withCodec<T>(schemaId, codec.toRuntimeCodec()),
+    );
   }
 
   Object? encodeValue(String schemaId, Object? value) {
-    if (value == null) {
-      return null;
-    }
-
-    final codec = _codecs[schemaId];
-    if (codec == null) {
-      return value;
-    }
-
-    return codec.encode(value);
+    return _registry.encodeValue(schemaId, value);
   }
 
   T decodeValue<T>(String schemaId, Object? value) {
-    final codec = _codecs[schemaId];
-    if (codec == null) {
-      throw StateError('No client codec registered for schema "$schemaId".');
-    }
-
-    return codec.decode(value) as T;
+    return _registry.decodeValue<T>(schemaId, value);
   }
-}
-
-final class _ErasedDartEdgeClientCodec {
-  const _ErasedDartEdgeClientCodec({
-    required this.encode,
-    required this.decode,
-  });
-
-  final Object? Function(Object? value) encode;
-  final Object? Function(Object? value) decode;
 }

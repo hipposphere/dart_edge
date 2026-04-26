@@ -7,7 +7,10 @@ import 'package:dart_edge_core/dart_edge_core.dart';
 import 'dart_edge_auth_config.dart';
 import 'native/dart_edge_auth_native.dart';
 
+part 'dart_edge_auth_api_types.dart';
 part 'dart_edge_auth_api.dart';
+part 'dart_edge_auth_admin_api.dart';
+part 'dart_edge_auth_api_response.dart';
 
 /// Owns a native Better Auth instance and exposes its routes to Dart Edge.
 ///
