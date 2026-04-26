@@ -1,7 +1,7 @@
 /// App-facing HTTP server library for building Dart Edge services.
 ///
 /// Import this library when you want the default combination of runtime APIs
-/// such as [DartEdge], [JsonRouteDefinition], and [RequestContext], plus helper
+/// such as [DartEdge], [HttpRouteDefinition], and [RequestContext], plus helper
 /// APIs such as [OpenApiHelpers].
 library dart_edge_http_server;
 

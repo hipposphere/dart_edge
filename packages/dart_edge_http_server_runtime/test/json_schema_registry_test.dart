@@ -71,7 +71,7 @@ void main() {
     );
 
     final app = DartEdge<void>(services: () {});
-    app.register(_SchemaRoute());
+    app.routePost('/users', _SchemaRoute());
 
     final compiledRoutes = CompiledRouteTable.fromRegistrations(
       app.routeRegistry.registrations,
@@ -94,18 +94,12 @@ void main() {
 }
 
 final class _SchemaRoute
-    extends JsonRouteDefinition<void, Map<String, Object?>> {
+    extends HttpRouteDefinition<void, Map<String, Object?>> {
   @override
-  RouteContract get contract => RouteContract(
-    method: HttpMethod.post,
-    path: '/users',
-    options: RouteOptions(
-      operationId: 'createUser',
-      body: RequestBody.json<Object?>(
-        ref: JsonSchemaRef<Object?>('UsersInsert'),
-      ),
-      success: ResponseSpec.json<Object?>(),
-    ),
+  RouteOptions get options => RouteOptions(
+    operationId: 'createUser',
+    body: RequestBody.json<Object?>(ref: JsonSchemaRef<Object?>('UsersInsert')),
+    success: ResponseSpec.json<Object?>(),
   );
 
   @override

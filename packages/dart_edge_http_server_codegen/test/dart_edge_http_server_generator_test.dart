@@ -5,27 +5,23 @@ import 'package:test/test.dart';
 void main() {
   group('DartEdgeHttpServerGenerator', () {
     test(
-      'emits route contracts, schema registry, codec skeleton, and client',
+      'emits route options, schema registry, direct serializers, and client',
       () {
-        final contract = RouteContract(
-          method: HttpMethod.post,
-          path: '/users',
-          options: RouteOptions(
-            operationId: 'createUser',
-            summary: 'Create a user.',
-            tags: const <String>['users'],
-            headers: const JsonSchemaRef<Object?>('RequestHeaders'),
-            body: RequestBody.json<Object?>(
-              ref: const JsonSchemaRef<Object?>('CreateUserInput'),
-            ),
-            success: ResponseSpec.json<Object?>(
-              status: 201,
-              ref: const JsonSchemaRef<Object?>('UserDto'),
-            ),
-            errors: const <ErrorResponse>[
-              ErrorResponse(status: 409, code: 'email_conflict'),
-            ],
+        final options = RouteOptions(
+          operationId: 'createUser',
+          summary: 'Create a user.',
+          tags: const <String>['users'],
+          headers: const JsonSchemaRef<Object?>('RequestHeaders'),
+          body: RequestBody.json<Object?>(
+            ref: const JsonSchemaRef<Object?>('CreateUserInput'),
           ),
+          success: ResponseSpec.json<Object?>(
+            status: 201,
+            ref: const JsonSchemaRef<Object?>('UserDto'),
+          ),
+          errors: const <ErrorResponse>[
+            ErrorResponse(status: 409, code: 'email_conflict'),
+          ],
         );
 
         final source = const DartEdgeHttpServerGenerator().generate(
@@ -55,23 +51,30 @@ void main() {
                 additionalProperties: false,
               ),
             ],
-            codecs: const <DartEdgeRuntimeCodecSpec>[
-              DartEdgeRuntimeCodecSpec(
-                schemaId: 'CreateUserInput',
-                dartType: 'CreateUserInput',
-              ),
-              DartEdgeRuntimeCodecSpec(
-                schemaId: 'UserDto',
-                dartType: 'UserDto',
-              ),
-            ],
             routes: [
               DartEdgeHttpRouteSpec(
                 routeClassName: 'CreateUserRoute',
-                contract: contract,
+                method: HttpMethod.post,
+                path: '/users',
+                options: options,
                 successType: 'UserDto',
                 headersType: 'RequestHeaders',
                 bodyType: 'CreateUserInput',
+                inputs: const <DartEdgeRouteInputSpec>[
+                  DartEdgeRouteInputSpec(
+                    source: DartEdgeRouteInputSource.headers,
+                    parameterName: 'requestId',
+                    wireName: 'x-request-id',
+                    dartType: 'String?',
+                    required: false,
+                  ),
+                  DartEdgeRouteInputSpec(
+                    source: DartEdgeRouteInputSource.body,
+                    parameterName: 'body',
+                    dartType: 'CreateUserInput',
+                    required: true,
+                  ),
+                ],
               ),
             ],
           ),
@@ -80,19 +83,30 @@ void main() {
         expect(source, contains('final JsonSchemaRegistry \$generatedSchemas'));
         expect(source, contains('CreateUserRoute<TServices>'));
         expect(source, contains('CreateUserRoute(this.handler);'));
-        expect(source, contains('final RouteContract createUserRouteContract'));
+        expect(source, contains('final RouteOptions createUserRouteOptions'));
         expect(source, contains("operationId: 'createUser'"));
         expect(source, contains("JsonSchemaRef<Object?>('CreateUserInput')"));
-        expect(source, contains('DartEdgeCodecRegistry \$generatedCodecs({'));
-        expect(source, contains("withCodec<UserDto>('UserDto', userDtoCodec)"));
+        expect(source, isNot(contains('DartEdgeCodecRegistry')));
+        expect(
+          source,
+          contains('CreateUserInput.fromJson(ctx.req.bodyOrNull)'),
+        );
         expect(
           source,
           contains('List<RouteDefinition<TServices>> \$generatedRoutes'),
         );
         expect(source, contains('final class UsersClient'));
         expect(source, contains('Future<UserDto> createUser({'));
-        expect(source, contains("bodySchemaId: 'CreateUserInput'"));
-        expect(source, contains("successSchemaId: 'UserDto'"));
+        expect(
+          source,
+          contains(
+            'invoke<UserDto, Never, Never, RequestHeaders?, CreateUserInput>',
+          ),
+        );
+        expect(source, contains("schemaId: 'CreateUserInput'"));
+        expect(source, contains("schemaId: 'UserDto'"));
+        expect(source, contains('decoder: UserDto.fromJson'));
+        expect(source, contains('encoder: (value) => value.toJson()'));
       },
     );
   });

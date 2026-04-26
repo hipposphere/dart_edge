@@ -20,19 +20,12 @@ external Future<UserDto> createUser(
 );
 
 Future<void> main() async {
-  final app = DartEdge<AppServices>(
-    services: AppServices.new,
-    codecs: $generatedCodecs(
-      createUserInputCodec: createUserInputRuntimeCodec,
-      userDtoCodec: userDtoRuntimeCodec,
-    ),
-  );
+  final app = DartEdge<AppServices>(services: AppServices.new);
   app.installSchemaRegistry($generatedSchemas);
   app.registerAll(
     $generatedRoutes<AppServices>(
-      createUserRoute: (ctx) {
-        final input = ctx.req.body<CreateUserInput>();
-        return UserDto(id: 'user-1', name: input.name, email: input.email);
+      createUserRoute: (body, requestId) {
+        return UserDto(id: 'user-1', name: body.name, email: body.email);
       },
     ),
   );
@@ -43,7 +36,6 @@ Future<void> main() async {
   final client = UsersClient(
     baseUri: Uri.parse('https://api.example.test'),
     transport: const ExampleTransport(),
-    codecs: clientCodecs,
   );
 
   final created = await client.createUser(
@@ -99,31 +91,6 @@ final class UserDto {
     );
   }
 }
-
-final createUserInputRuntimeCodec = DartEdgeCodec<CreateUserInput>(
-  encode: (value) => value.toJson(),
-  decode: CreateUserInput.fromJson,
-);
-final userDtoRuntimeCodec = DartEdgeCodec<UserDto>(
-  encode: (value) => value.toJson(),
-  decode: UserDto.fromJson,
-);
-
-final clientCodecs = DartEdgeClientCodecRegistry.empty
-    .withCodec<CreateUserInput>(
-      'CreateUserInput',
-      DartEdgeClientCodec(
-        encode: (value) => value.toJson(),
-        decode: CreateUserInput.fromJson,
-      ),
-    )
-    .withCodec<UserDto>(
-      'UserDto',
-      DartEdgeClientCodec(
-        encode: (value) => value.toJson(),
-        decode: UserDto.fromJson,
-      ),
-    );
 
 final class ExampleTransport implements DartEdgeClientTransport {
   const ExampleTransport();

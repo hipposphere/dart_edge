@@ -13,16 +13,14 @@ void main() {
           additionalImports: const ['package:example/models.dart'],
           operations: [
             DartEdgeClientOperation(
-              contract: RouteContract(
-                method: HttpMethod.get,
-                path: '/users/<id>',
-                options: RouteOptions(
-                  operationId: 'getUser',
-                  params: const JsonSchemaRef<Object?>('UserPath'),
-                  query: const JsonSchemaRef<Object?>('GetUserQuery'),
-                  success: ResponseSpec.json<Object?>(
-                    ref: const JsonSchemaRef<Object?>('UserDto'),
-                  ),
+              method: HttpMethod.get,
+              path: '/users/<id>',
+              options: RouteOptions(
+                operationId: 'getUser',
+                params: const JsonSchemaRef<Object?>('UserPath'),
+                query: const JsonSchemaRef<Object?>('GetUserQuery'),
+                success: ResponseSpec.json<Object?>(
+                  ref: const JsonSchemaRef<Object?>('UserDto'),
                 ),
               ),
               successType: 'UserDto',
@@ -36,111 +34,106 @@ void main() {
       expect(source, contains('final class UsersClient'));
       expect(source, contains('Future<UserDto> getUser({'));
       expect(source, contains("pathTemplate: '/users/<id>'"));
-      expect(source, contains("paramsSchemaId: 'UserPath'"));
-      expect(source, contains("querySchemaId: 'GetUserQuery'"));
-      expect(source, contains("successSchemaId: 'UserDto'"));
+      expect(
+        source,
+        contains('invoke<UserDto, UserPath, GetUserQuery?, Never, Never>'),
+      );
+      expect(source, contains("schemaId: 'UserPath'"));
+      expect(source, contains("schemaId: 'GetUserQuery'"));
+      expect(source, contains("schemaId: 'UserDto'"));
       expect(source, contains("import 'package:example/models.dart';"));
     });
   });
 
   group('DartEdgeGeneratedClientBase', () {
-    test('builds requests and decodes responses via schema codecs', () async {
-      final transport = _FakeTransport(
-        onSend: (request) async {
-          expect(request.method, HttpMethod.post);
-          expect(
-            request.uri,
-            Uri.parse(
-              'https://api.example.test/v1/users/42'
-              '?includeDeleted=true'
-              '&tags=alpha'
-              '&tags=beta',
-            ),
-          );
-          expect(request.headers, {
-            'x-api-key': 'secret',
-            'x-request-id': 'req_1',
-            'content-type': 'application/json; charset=utf-8',
-          });
-          expect(jsonDecode(request.body!), {'name': 'Ada'});
+    test(
+      'builds requests and decodes responses via generated serializers',
+      () async {
+        final transport = _FakeTransport(
+          onSend: (request) async {
+            expect(request.method, HttpMethod.post);
+            expect(
+              request.uri,
+              Uri.parse(
+                'https://api.example.test/v1/users/42'
+                '?includeDeleted=true'
+                '&tags=alpha'
+                '&tags=beta',
+              ),
+            );
+            expect(request.headers, {
+              'x-api-key': 'secret',
+              'x-request-id': 'req_1',
+              'content-type': 'application/json; charset=utf-8',
+            });
+            expect(jsonDecode(request.body!), {'name': 'Ada'});
 
-          return DartEdgeClientResponse(
-            status: 201,
-            contentType: 'application/json; charset=utf-8',
-            body: jsonEncode({'id': '42', 'name': 'Ada'}),
-          );
-        },
-      );
-      final client = _TestClient(
-        baseUri: Uri.parse('https://api.example.test/v1'),
-        transport: transport,
-        defaultHeaders: const {'x-api-key': 'secret'},
-        codecs: DartEdgeClientCodecRegistry.empty
-            .withCodec<UserPath>(
-              'UserPath',
-              DartEdgeClientCodec(
-                encode: (value) => {'id': value.id},
-                decode: (_) => throw UnimplementedError(),
-              ),
-            )
-            .withCodec<UserQuery>(
-              'UserQuery',
-              DartEdgeClientCodec(
-                encode: (value) => {
-                  'includeDeleted': value.includeDeleted,
-                  'tags': value.tags,
-                },
-                decode: (_) => throw UnimplementedError(),
-              ),
-            )
-            .withCodec<RequestHeaders>(
-              'RequestHeaders',
-              DartEdgeClientCodec(
-                encode: (value) => {'x-request-id': value.requestId},
-                decode: (_) => throw UnimplementedError(),
-              ),
-            )
-            .withCodec<CreateUserBody>(
-              'CreateUserBody',
-              DartEdgeClientCodec(
-                encode: (value) => {'name': value.name},
-                decode: (_) => throw UnimplementedError(),
-              ),
-            )
-            .withCodec<UserDto>(
-              'UserDto',
-              DartEdgeClientCodec(
-                encode: (value) => {'id': value.id, 'name': value.name},
-                decode: (json) {
-                  final map = json! as Map<String, Object?>;
-                  return UserDto(
-                    id: map['id']! as String,
-                    name: map['name']! as String,
-                  );
-                },
-              ),
-            ),
-      );
+            return DartEdgeClientResponse(
+              status: 201,
+              contentType: 'application/json; charset=utf-8',
+              body: jsonEncode({'id': '42', 'name': 'Ada'}),
+            );
+          },
+        );
+        final client = _TestClient(
+          baseUri: Uri.parse('https://api.example.test/v1'),
+          transport: transport,
+          defaultHeaders: const {'x-api-key': 'secret'},
+        );
 
-      final response = await client.invoke<UserDto>(
-        method: HttpMethod.post,
-        pathTemplate: '/users/<id>',
-        successStatus: 201,
-        successContentType: 'application/json; charset=utf-8',
-        successSchemaId: 'UserDto',
-        paramsSchemaId: 'UserPath',
-        params: const UserPath(id: '42'),
-        querySchemaId: 'UserQuery',
-        query: const UserQuery(includeDeleted: true, tags: ['alpha', 'beta']),
-        headersSchemaId: 'RequestHeaders',
-        headers: const RequestHeaders(requestId: 'req_1'),
-        requestContentType: 'application/json; charset=utf-8',
-        bodySchemaId: 'CreateUserBody',
-        body: const CreateUserBody(name: 'Ada'),
-      );
+        final response = await client
+            .invoke<
+              UserDto,
+              UserPath,
+              UserQuery,
+              RequestHeaders,
+              CreateUserBody
+            >(
+              const DartEdgeClientInvocation<
+                UserDto,
+                UserPath,
+                UserQuery,
+                RequestHeaders,
+                CreateUserBody
+              >(
+                method: HttpMethod.post,
+                pathTemplate: '/users/<id>',
+                success: DartEdgeClientResponseSpec<UserDto>(
+                  status: 201,
+                  contentType: 'application/json; charset=utf-8',
+                  schemaId: 'UserDto',
+                  decoder: UserDto.fromJson,
+                ),
+                params: DartEdgeClientRequestValue<UserPath>(
+                  schemaId: 'UserPath',
+                  value: UserPath(id: '42'),
+                  encoder: UserPath.toJson,
+                ),
+                query: DartEdgeClientRequestValue<UserQuery>(
+                  schemaId: 'UserQuery',
+                  value: UserQuery(
+                    includeDeleted: true,
+                    tags: ['alpha', 'beta'],
+                  ),
+                  encoder: UserQuery.toJson,
+                ),
+                headers: DartEdgeClientRequestValue<RequestHeaders>(
+                  schemaId: 'RequestHeaders',
+                  value: RequestHeaders(requestId: 'req_1'),
+                  encoder: RequestHeaders.toJson,
+                ),
+                body: DartEdgeClientRequestBody<CreateUserBody>(
+                  contentType: 'application/json; charset=utf-8',
+                  schemaId: 'CreateUserBody',
+                  value: CreateUserBody(name: 'Ada'),
+                  encoder: CreateUserBody.toJson,
+                ),
+              ),
+            );
 
-      expect(response, const UserDto(id: '42', name: 'Ada'));
-    });
+        expect(response, const UserDto(id: '42', name: 'Ada'));
+      },
+    );
   });
 }
 
@@ -148,7 +141,6 @@ final class _TestClient extends DartEdgeGeneratedClientBase {
   const _TestClient({
     required super.baseUri,
     required super.transport,
-    super.codecs,
     super.defaultHeaders,
   });
 }
@@ -169,6 +161,8 @@ final class UserPath {
   const UserPath({required this.id});
 
   final String id;
+
+  static Map<String, Object?> toJson(UserPath value) => {'id': value.id};
 }
 
 final class UserQuery {
@@ -176,18 +170,31 @@ final class UserQuery {
 
   final bool includeDeleted;
   final List<String> tags;
+
+  static Map<String, Object?> toJson(UserQuery value) => {
+    'includeDeleted': value.includeDeleted,
+    'tags': value.tags,
+  };
 }
 
 final class RequestHeaders {
   const RequestHeaders({required this.requestId});
 
   final String requestId;
+
+  static Map<String, Object?> toJson(RequestHeaders value) => {
+    'x-request-id': value.requestId,
+  };
 }
 
 final class CreateUserBody {
   const CreateUserBody({required this.name});
 
   final String name;
+
+  static Map<String, Object?> toJson(CreateUserBody value) => {
+    'name': value.name,
+  };
 }
 
 final class UserDto {
@@ -195,6 +202,11 @@ final class UserDto {
 
   final String id;
   final String name;
+
+  static UserDto fromJson(Object? value) {
+    final map = value! as Map<String, Object?>;
+    return UserDto(id: map['id']! as String, name: map['name']! as String);
+  }
 
   @override
   bool operator ==(Object other) {

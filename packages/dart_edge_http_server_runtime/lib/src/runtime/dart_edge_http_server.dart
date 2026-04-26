@@ -212,10 +212,10 @@ class DartEdge<TServices> extends Router<TServices> {
       request,
       codecs: _codecRegistry,
       nativeRequest: requestLease.nativeRequest,
-      paramsSchemaId: compiledRoute.contract.options.params?.id,
-      querySchemaId: compiledRoute.contract.options.query?.id,
-      headersSchemaId: compiledRoute.contract.options.headers?.id,
-      body: compiledRoute.contract.options.body,
+      paramsSchemaId: compiledRoute.options.params?.id,
+      querySchemaId: compiledRoute.options.query?.id,
+      headersSchemaId: compiledRoute.options.headers?.id,
+      body: compiledRoute.options.body,
     );
     final ctx = RequestContext<TServices>(
       services: _createServices(),
@@ -225,7 +225,7 @@ class DartEdge<TServices> extends Router<TServices> {
       final decision = await Future.sync(() => guard.authorize(ctx));
       if (!decision.isAllowed) {
         final response = encodeResponse(
-          spec: compiledRoute.contract.responses.success,
+          spec: compiledRoute.options.responses.success,
           body: decision.response,
           response: ctx.res,
         );
@@ -248,7 +248,7 @@ class DartEdge<TServices> extends Router<TServices> {
     }
 
     final response = encodeResponse(
-      spec: compiledRoute.contract.responses.success,
+      spec: compiledRoute.options.responses.success,
       body: body,
       response: ctx.res,
     );
@@ -369,7 +369,7 @@ class DartEdge<TServices> extends Router<TServices> {
             .catchError((Object error, StackTrace stackTrace) {
               stderr.writeln(
                 'dart_edge_http_server_runtime websocket handling failed for '
-                '${compiledRoute.contract.operationId}: $error',
+                '${compiledRoute.options.operationId}: $error',
               );
               stderr.writeln(stackTrace);
             })
@@ -453,15 +453,11 @@ class DartEdge<TServices> extends Router<TServices> {
   ) {
     return switch (request.requestKind) {
           TransportRequestKind.http =>
-            compiledRoutes
-                .routesById[request.routeId]
-                ?.contract
-                .options
-                .operationId,
+            compiledRoutes.routesById[request.routeId]?.options.operationId,
           TransportRequestKind.webSocket =>
             compiledRoutes
                 .webSocketRoutesById[request.routeId]
-                ?.contract
+                ?.options
                 .operationId,
         } ??
         request.routeId;

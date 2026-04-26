@@ -7,7 +7,7 @@ final class CompiledWebSocketRoute<TServices> {
     required this.routeId,
     required this.route,
     required this.guards,
-    required this.contract,
+    required this.options,
     required this.path,
     required this.patternSegments,
   });
@@ -15,7 +15,7 @@ final class CompiledWebSocketRoute<TServices> {
   final String routeId;
   final WebSocketRouteDefinition<TServices> route;
   final List<Guard<TServices>> guards;
-  final WebSocketContract contract;
+  final WebSocketOptions options;
   final String path;
   final List<RouteSegment> patternSegments;
 
@@ -28,13 +28,20 @@ final class CompiledWebSocketRoute<TServices> {
       return null;
     }
 
-    final contract = route.contract;
-    final path = joinRoutePath(registration.prefix, contract.path);
+    final options = route.options.normalized();
+    final routePath = registration.httpPath;
+    if (routePath == null) {
+      throw StateError(
+        'WebSocket route ${options.operationId} is missing path registration '
+        'metadata.',
+      );
+    }
+    final path = joinRoutePath(registration.prefix, routePath);
     return CompiledWebSocketRoute<TServices>(
       routeId: routeId,
       route: route,
       guards: registration.guards,
-      contract: _effectiveContract(registration, contract, path),
+      options: _effectiveOptions(registration, options),
       path: path,
       patternSegments: _parsePattern(path),
     );
@@ -45,7 +52,7 @@ final class CompiledWebSocketRoute<TServices> {
     'routeId': routeId,
     'method': 'GET',
     'path': path,
-    'operationId': contract.operationId,
+    'operationId': options.operationId,
     'pathSegments': patternSegments.map((segment) => segment.toJson()).toList(),
     'paramsSchemaId': null,
     'querySchemaId': null,
@@ -54,17 +61,15 @@ final class CompiledWebSocketRoute<TServices> {
   };
 }
 
-WebSocketContract _effectiveContract<TServices>(
+WebSocketOptions _effectiveOptions<TServices>(
   RouteRegistration<TServices> registration,
-  WebSocketContract contract,
-  String path,
+  WebSocketOptions options,
 ) {
-  return WebSocketContract(
-    path: path,
-    operationId: contract.operationId,
-    summary: contract.summary,
-    tags: _mergeTags(registration.tags, contract.tags),
-    deprecated: contract.deprecated,
+  return WebSocketOptions(
+    operationId: options.operationId,
+    summary: options.summary,
+    tags: _mergeTags(registration.tags, options.tags),
+    deprecated: options.deprecated,
   );
 }
 

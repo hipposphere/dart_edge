@@ -5,16 +5,18 @@ final class CompiledRoute<TServices> {
     required this.routeId,
     required this.route,
     required this.guards,
-    required this.contract,
+    required this.method,
+    required this.options,
     required this.path,
     required this.openApiPath,
     required this.patternSegments,
   });
 
   final String routeId;
-  final JsonRouteDefinition<TServices, dynamic> route;
+  final HttpRouteDefinition<TServices, dynamic> route;
   final List<Guard<TServices>> guards;
-  final RouteContract contract;
+  final HttpMethod method;
+  final RouteOptions options;
   final String path;
   final String openApiPath;
   final List<RouteSegment> patternSegments;
@@ -24,22 +26,27 @@ final class CompiledRoute<TServices> {
     String routeId,
   ) {
     final route = registration.route;
-    if (route is! JsonRouteDefinition<TServices, dynamic>) {
+    if (route is! HttpRouteDefinition<TServices, dynamic>) {
       return null;
     }
 
-    final contract = route.contract;
-    if (contract is! RouteContract) {
-      return null;
+    final options = route.options.normalized();
+    final method = registration.httpMethod;
+    final routePath = registration.httpPath;
+    if (method == null || routePath == null) {
+      throw StateError(
+        'HTTP route ${options.operationId} is missing method/path '
+        'registration metadata.',
+      );
     }
-
-    final path = joinRoutePath(registration.prefix, contract.path);
+    final path = joinRoutePath(registration.prefix, routePath);
     final patternSegments = _parsePattern(path);
     return CompiledRoute<TServices>(
       routeId: routeId,
       route: route,
       guards: registration.guards,
-      contract: _effectiveContract(registration, contract, path),
+      method: method,
+      options: _effectiveOptions(registration, options),
       path: path,
       openApiPath: _openApiPath(patternSegments),
       patternSegments: patternSegments,
@@ -49,40 +56,35 @@ final class CompiledRoute<TServices> {
   Map<String, Object?> toNativeJson() => {
     'kind': 'http',
     'routeId': routeId,
-    'method': _httpMethodName(contract.method),
+    'method': _httpMethodName(method),
     'path': path,
-    'operationId': contract.options.operationId!,
+    'operationId': options.operationId!,
     'pathSegments': patternSegments.map((segment) => segment.toJson()).toList(),
-    'paramsSchemaId': contract.options.params?.id,
-    'querySchemaId': contract.options.query?.id,
-    'headersSchemaId': contract.options.headers?.id,
-    'requestBody': switch (contract.options.body) {
+    'paramsSchemaId': options.params?.id,
+    'querySchemaId': options.query?.id,
+    'headersSchemaId': options.headers?.id,
+    'requestBody': switch (options.body) {
       null => null,
       final body => {'contentType': body.contentType, 'schemaId': body.ref?.id},
     },
   };
 }
 
-RouteContract _effectiveContract<TServices>(
+RouteOptions _effectiveOptions<TServices>(
   RouteRegistration<TServices> registration,
-  RouteContract contract,
-  String path,
+  RouteOptions options,
 ) {
-  return RouteContract(
-    method: contract.method,
-    path: path,
-    options: RouteOptions(
-      operationId: contract.options.operationId!,
-      summary: contract.options.summary,
-      tags: _mergeTags(registration.tags, contract.options.tags),
-      deprecated: contract.options.deprecated,
-      params: contract.options.params,
-      query: contract.options.query,
-      headers: contract.options.headers,
-      body: contract.options.body,
-      success: contract.responses.success,
-      errors: contract.responses.errors,
-    ),
+  return RouteOptions(
+    operationId: options.operationId!,
+    summary: options.summary,
+    tags: _mergeTags(registration.tags, options.tags),
+    deprecated: options.deprecated,
+    params: options.params,
+    query: options.query,
+    headers: options.headers,
+    body: options.body,
+    success: options.responses.success,
+    errors: options.responses.errors,
   );
 }
 

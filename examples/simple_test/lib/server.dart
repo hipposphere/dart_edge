@@ -78,7 +78,11 @@ Future<DartEdge<void>> buildServer() async {
   );
   final auth = buildAuth(database);
 
-  server.register(GuardedRoute(), guards: [DartEdgeAuthGuard(auth: auth)]);
+  server.routeGet(
+    '/guarded',
+    GuardedRoute(),
+    guards: [DartEdgeAuthGuard(auth: auth)],
+  );
 
   final email = 'test@dicto.org';
   final password = 'password';

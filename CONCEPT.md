@@ -89,7 +89,7 @@ The workspace is deliberate. These packages are not independent experiments.
 
 They share:
 
-- route contracts
+- route options
 - schema references and registry concepts
 - native ABIs and build-hook conventions
 - generated client and codegen expectations
@@ -116,7 +116,7 @@ This axis is responsible for:
 - compiling route metadata into a native manifest
 - validating incoming requests
 - decoding typed inputs for Dart handlers
-- generating OpenAPI documents from route contracts and schema registries
+- generating OpenAPI documents from route options and schema registries
 - serving convenience helper endpoints such as OpenAPI JSON and Swagger UI
 
 ### 2. Contracts And Codegen
@@ -124,7 +124,7 @@ This axis is responsible for:
 This is the normalization axis:
 
 - `dart_edge_http_server_codegen`
-- `RouteContract`
+- `RouteOptions`
 - `JsonSchemaRef`
 - `JsonSchemaRegistry`
 - runtime codec registries
@@ -164,7 +164,7 @@ This is a stronger concept than one giant runtime package.
 
 - `dart_edge_http_server_runtime`
   Owns the concrete HTTP runtime plus the shared contract surface. This is where
-  route contracts, request context, schema references, middleware descriptors,
+  route options, request context, schema references, middleware descriptors,
   and the native server bridge live.
 
 - `dart_edge_helpers`
@@ -230,7 +230,7 @@ native packages when that improves:
 
 The platform should keep pushing toward:
 
-- explicit route contracts
+- explicit route options
 - explicit schema references
 - explicit codec registries
 - explicit generated registries
@@ -344,7 +344,7 @@ directly instead of pretending the repo is still at the whiteboard stage.
 
 ## Contracts Are The Center
 
-The normalized HTTP contract is `RouteContract`.
+The normalized HTTP contract is `RouteOptions`.
 
 That is the object that should keep owning:
 
@@ -381,8 +381,8 @@ ideological requirement when simple inline handlers are good enough.
 This is the normalized reusable route form:
 
 - `RouteDefinition`
-- `JsonRouteDefinition`
-- explicit `RouteContract`
+- `HttpRouteDefinition`
+- explicit `RouteOptions`
 
 This should stay the clearest low-level abstraction for advanced routes,
 reusable definitions, and framework-level clarity.
@@ -392,7 +392,7 @@ reusable definitions, and framework-level clarity.
 This is the intended build-time expansion path:
 
 - annotated source
-- generated `RouteContract`
+- generated `RouteOptions`
 - generated schema refs and registries
 - generated codec registries
 - generated route registries
@@ -415,7 +415,7 @@ clients should share a normalized model.
 - helper-layer mounting for OpenAPI JSON and Swagger UI
 - generated route artifact source from normalized HTTP route specs
 - generated runtime codec registry skeletons
-- client generation from normalized route contracts
+- client generation from normalized route options
 
 ### What should happen next
 
@@ -513,7 +513,7 @@ error. The next step should be a better first-class application error model
 that keeps these rules:
 
 - validation failures that Rust can decide should never invoke Dart
-- domain errors should be expressible as explicit route contracts
+- domain errors should be expressible as explicit route options
 - unexpected failures should still degrade predictably
 
 This should become better without turning the framework into exception magic.

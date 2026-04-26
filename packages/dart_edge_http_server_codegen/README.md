@@ -5,7 +5,7 @@ generation.
 
 This package provides a `build_runner` builder plus the lower-level generator
 APIs behind it. The builder reads annotated Dart libraries and emits
-`*.g.dart` part files containing `RouteContract` objects, JSON Schema
+`*.g.dart` part files containing `RouteOptions` objects, JSON Schema
 registries, runtime codec registry factories, generated route wrappers, and
 optional typed clients.
 
@@ -74,7 +74,7 @@ The generated part exposes:
 - `$generatedSchemas`
 - `$generatedCodecs(...)`
 - `$generatedRoutes<TServices>(...)`
-- route contract constants such as `createUserRouteContract`
+- route options constants such as `createUserRouteOptions`
 
 If a client should be emitted from the same route graph, configure the builder:
 
@@ -103,17 +103,12 @@ final source = const DartEdgeHttpServerGenerator().generate(
   DartEdgeHttpServerLibrarySpec(
     clientClassName: 'UsersClient',
     schemas: userSchemas,
-    codecs: const [
-      DartEdgeRuntimeCodecSpec(
-        schemaId: 'CreateUserInput',
-        dartType: 'CreateUserInput',
-      ),
-      DartEdgeRuntimeCodecSpec(schemaId: 'UserDto', dartType: 'UserDto'),
-    ],
     routes: [
       DartEdgeHttpRouteSpec(
         routeClassName: 'CreateUserRoute',
-        contract: createUserRouteContract,
+        method: HttpMethod.post,
+        path: '/users/<id>',
+        contract: createUserRouteOptions,
         successType: 'UserDto',
         bodyType: 'CreateUserInput',
       ),
@@ -124,16 +119,15 @@ final source = const DartEdgeHttpServerGenerator().generate(
 
 The emitted library includes:
 
-- `RouteContract` objects
-- generated `JsonRouteDefinition` wrappers
+- `RouteOptions` objects
+- generated `HttpRouteDefinition` wrappers
 - a `JsonSchemaRegistry` with stable ids
-- a `DartEdgeCodecRegistry` factory that asks app code for concrete codecs
 - an optional generated client class
 
 ## Client Generation
 
 `dart_edge_http_server_codegen` also contains the client-generation slice for HTTP
-routes. It is intentionally built around normalized route contracts plus
+routes. It is intentionally built around normalized route options plus
 schema-id keyed codecs, not runtime reflection.
 
 ```dart
@@ -142,7 +136,9 @@ final source = const DartEdgeClientGenerator().generate(
     className: 'UsersClient',
     operations: [
       DartEdgeClientOperation(
-        contract: userRouteContract,
+        method: HttpMethod.post,
+        path: '/users/<id>',
+        contract: userRouteOptions,
         successType: 'UserDto',
         paramsType: 'UserPath',
         queryType: 'GetUserQuery',
@@ -155,5 +151,5 @@ final source = const DartEdgeClientGenerator().generate(
 The generated client class extends `DartEdgeGeneratedClientBase` and uses:
 
 - `DartEdgeClientTransport` for outbound HTTP
-- `DartEdgeClientCodecRegistry` for schema-backed request/response conversion
-- `RouteContract` metadata for method, path, content type, and status handling
+- `DartEdgeCodecRegistry` for schema-backed request/response conversion
+- `RouteOptions` metadata for method, path, content type, and status handling

@@ -1,6 +1,7 @@
 export 'router/guard.dart';
-export 'router/handler_json_route_definition.dart';
-export 'router/json_route_definition.dart';
+export 'router/handler_http_route_definition.dart';
+export 'router/http_route_definition.dart';
+export 'router/http_route_mount.dart';
 export 'router/route_definition.dart';
 export 'router/route_options.dart';
 export 'router/route_path.dart';

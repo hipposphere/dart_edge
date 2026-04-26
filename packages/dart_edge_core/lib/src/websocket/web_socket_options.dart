@@ -18,4 +18,23 @@ final class WebSocketOptions {
 
   /// Whether the route should be marked as deprecated.
   final bool deprecated;
+
+  /// Returns a normalized options object suitable for runtime execution.
+  WebSocketOptions normalized({String? defaultOperationId}) {
+    final resolvedOperationId = operationId ?? defaultOperationId;
+    if (resolvedOperationId == null) {
+      throw ArgumentError.value(
+        this,
+        'options',
+        'WebSocketOptions.operationId is required for WebSocket routes.',
+      );
+    }
+
+    return WebSocketOptions(
+      operationId: resolvedOperationId,
+      summary: summary,
+      tags: List<String>.unmodifiable(tags),
+      deprecated: deprecated,
+    );
+  }
 }

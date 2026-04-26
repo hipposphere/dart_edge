@@ -43,40 +43,40 @@ void main() {
     final deleteRegistration = app.routeRegistry.registrations[2];
 
     final healthRoute =
-        healthRegistration.route as JsonRouteDefinition<TestServices, dynamic>;
+        healthRegistration.route as HttpRouteDefinition<TestServices, dynamic>;
     final updateRoute =
-        updateRegistration.route as JsonRouteDefinition<TestServices, dynamic>;
+        updateRegistration.route as HttpRouteDefinition<TestServices, dynamic>;
     final deleteRoute =
-        deleteRegistration.route as JsonRouteDefinition<TestServices, dynamic>;
+        deleteRegistration.route as HttpRouteDefinition<TestServices, dynamic>;
 
-    final healthContract = healthRoute.contract as RouteContract;
-    final updateContract = updateRoute.contract as RouteContract;
-    final deleteContract = deleteRoute.contract as RouteContract;
+    final healthOptions = healthRoute.options;
+    final updateOptions = updateRoute.options;
+    final deleteOptions = deleteRoute.options;
 
     expect(healthRegistration.prefix, '');
     expect(updateRegistration.prefix, '/api');
     expect(deleteRegistration.prefix, '/api');
 
-    expect(healthContract.method, HttpMethod.get);
-    expect(healthContract.options.operationId, 'getHealth');
+    expect(healthRegistration.httpMethod, HttpMethod.get);
+    expect(healthRegistration.httpPath, '/health');
+    expect(healthOptions.operationId, 'getHealth');
     expect(healthRegistration.guards, [same(healthGuard)]);
     expect(
-      healthContract.responses.success.contentType,
+      healthOptions.responses.success.contentType,
       'application/json; charset=utf-8',
     );
 
-    expect(updateContract.method, HttpMethod.put);
-    expect(updateContract.options.operationId, 'putApiUsersById');
-    expect(
-      updateContract.options.body?.contentType,
-      'application/json; charset=utf-8',
-    );
-    expect(updateContract.responses.success.status, HttpStatus.accepted);
+    expect(updateRegistration.httpMethod, HttpMethod.put);
+    expect(updateRegistration.httpPath, '/users/<id>');
+    expect(updateOptions.operationId, 'putApiUsersById');
+    expect(updateOptions.body?.contentType, 'application/json; charset=utf-8');
+    expect(updateOptions.responses.success.status, HttpStatus.accepted);
 
-    expect(deleteContract.method, HttpMethod.delete);
-    expect(deleteContract.options.operationId, 'deleteApiUsersById');
+    expect(deleteRegistration.httpMethod, HttpMethod.delete);
+    expect(deleteRegistration.httpPath, '/users/<id>');
+    expect(deleteOptions.operationId, 'deleteApiUsersById');
     expect(
-      deleteContract.responses.success.contentType,
+      deleteOptions.responses.success.contentType,
       'text/plain; charset=utf-8',
     );
 
@@ -112,12 +112,12 @@ void main() {
     );
 
     expect(
-      healthContract.toString(),
-      'RouteContract(GET /health, operationId: getHealth, success: 200 application/json; charset=utf-8)',
+      healthOptions.toString(),
+      'RouteOptions(operationId: getHealth, success: 200 application/json; charset=utf-8)',
     );
     expect(
       healthRoute.toString(),
-      'HandlerJsonRouteDefinition<TestServices, Map<String, String>>(GET /health, operationId: getHealth)',
+      'HandlerHttpRouteDefinition<TestServices, Map<String, String>>(operationId: getHealth)',
     );
     expect(
       updateRegistration.toString(),
@@ -129,8 +129,8 @@ void main() {
     expect(
       updateRegistration.toString(),
       contains(
-        'route: HandlerJsonRouteDefinition<TestServices, Map<String, Object?>>'
-        '(PUT /users/<id>, operationId: putApiUsersById)',
+        'route: HandlerHttpRouteDefinition<TestServices, Map<String, Object?>>'
+        '(operationId: putApiUsersById)',
       ),
     );
   });
@@ -148,9 +148,7 @@ void main() {
 
     final methods = [
       for (final registration in app.routeRegistry.registrations)
-        ((registration.route as JsonRouteDefinition<void, dynamic>).contract
-                as RouteContract)
-            .method,
+        registration.httpMethod,
     ];
 
     expect(methods, [
@@ -176,10 +174,10 @@ void main() {
 
     final registration = app.routeRegistry.registrations.single;
     final route = registration.route as WebSocketRouteDefinition<TestServices>;
-    final contract = route.contract;
+    final options = route.options;
 
-    expect(contract.path, '/ws/<roomId>');
-    expect(contract.operationId, 'webSocketWsByRoomId');
+    expect(registration.httpPath, '/ws/<roomId>');
+    expect(options.operationId, 'webSocketWsByRoomId');
     expect(
       registration.toString(),
       contains(

@@ -427,7 +427,8 @@ void main() {
       ],
       handler: (_) => 'ok',
     );
-    app.register(
+    app.routeGet(
+      '/contract-guarded',
       _GuardedContractRoute(),
       guards: [
         HandlerGuard<void>(
@@ -461,15 +462,11 @@ void main() {
   });
 }
 
-final class _GuardedContractRoute extends JsonRouteDefinition<void, String> {
+final class _GuardedContractRoute extends HttpRouteDefinition<void, String> {
   @override
-  RouteContract get contract => RouteContract(
-    method: HttpMethod.get,
-    path: '/contract-guarded',
-    options: RouteOptions(
-      operationId: 'contractGuarded',
-      success: ResponseSpec.text(),
-    ),
+  RouteOptions get options => RouteOptions(
+    operationId: 'contractGuarded',
+    success: ResponseSpec.text(),
   );
 
   @override

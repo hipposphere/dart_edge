@@ -6,16 +6,12 @@ import 'package:dart_edge_http_server/dart_edge_http_server.dart';
 
 import '../services.dart';
 
-final class RawRoute extends JsonRouteDefinition<Services, Object?> {
+final class RawRoute extends HttpRouteDefinition<Services, Object?> {
   @override
-  RouteContract get contract => RouteContract(
-    method: HttpMethod.get,
-    path: '/bench/raw',
-    options: RouteOptions(
-      operationId: 'benchmarkRaw',
-      success: ResponseSpec.json<Object?>(),
-      errors: [ErrorResponse.unauthorized(code: 'unauthorized')],
-    ),
+  RouteOptions get options => RouteOptions(
+    operationId: 'benchmarkRaw',
+    success: ResponseSpec.json<Object?>(),
+    errors: [ErrorResponse.unauthorized(code: 'unauthorized')],
   );
 
   @override

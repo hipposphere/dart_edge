@@ -18,7 +18,9 @@ final class DartEdgeClientLibrarySpec {
 /// Build-time description of one generated client method.
 final class DartEdgeClientOperation {
   const DartEdgeClientOperation({
-    required this.contract,
+    required this.method,
+    required this.path,
+    required this.options,
     required this.successType,
     this.methodName,
     this.paramsType,
@@ -27,7 +29,9 @@ final class DartEdgeClientOperation {
     this.bodyType,
   });
 
-  final RouteContract contract;
+  final HttpMethod method;
+  final String path;
+  final RouteOptions options;
   final String successType;
   final String? methodName;
   final String? paramsType;
@@ -36,10 +40,10 @@ final class DartEdgeClientOperation {
   final String? bodyType;
 
   String get resolvedMethodName =>
-      methodName ?? _lowerCamel(contract.options.operationId!);
+      methodName ?? _lowerCamel(options.operationId!);
 }
 
-/// Emits Dart source for an HTTP client backed by normalized route contracts.
+/// Emits Dart source for an HTTP client backed by normalized route options.
 final class DartEdgeClientGenerator {
   const DartEdgeClientGenerator();
 
@@ -88,12 +92,6 @@ final class DartEdgeClientGenerator {
         _superParameter('baseUri', required: true),
         _superParameter('transport', required: true),
         _superParameter(
-          'codecs',
-          defaultTo: refer(
-            'DartEdgeClientCodecRegistry',
-          ).property('empty').code,
-        ),
-        _superParameter(
           'defaultHeaders',
           defaultTo: literalConstMap(
             const <String, String>{},
@@ -129,46 +127,138 @@ final class DartEdgeClientGenerator {
   }
 
   Expression _invokeExpression(DartEdgeClientOperation operation) {
-    final contract = operation.contract;
+    final invocationTypes = _invocationTypes(operation);
+    final invocation = refer('DartEdgeClientInvocation').newInstance(
+      const <Expression>[],
+      _invocationArguments(operation),
+      invocationTypes,
+    );
+
+    return refer('invoke').call(
+      <Expression>[invocation],
+      const <String, Expression>{},
+      invocationTypes,
+    );
+  }
+
+  List<Reference> _invocationTypes(DartEdgeClientOperation operation) {
+    return <Reference>[
+      refer(operation.successType),
+      refer(operation.paramsType ?? 'Never'),
+      refer(operation.queryType == null ? 'Never' : '${operation.queryType}?'),
+      refer(
+        operation.headersType == null ? 'Never' : '${operation.headersType}?',
+      ),
+      refer(operation.bodyType ?? 'Never'),
+    ];
+  }
+
+  Map<String, Expression> _invocationArguments(
+    DartEdgeClientOperation operation,
+  ) {
+    final options = operation.options;
     final arguments = <String, Expression>{
-      'method': refer('HttpMethod').property(contract.method.name),
-      'pathTemplate': literalString(contract.path),
-      'successStatus': literalNum(contract.responses.success.status),
-      'successContentType': literalString(
-        contract.responses.success.contentType,
+      'method': refer('HttpMethod').property(operation.method.name),
+      'pathTemplate': literalString(operation.path),
+      'success': refer('DartEdgeClientResponseSpec').newInstance(
+        const <Expression>[],
+        <String, Expression>{
+          'status': literalNum(options.responses.success.status),
+          'contentType': literalString(options.responses.success.contentType),
+          if (options.responses.success.ref case final ref?)
+            'schemaId': literalString(ref.id),
+          if (options.responses.success.ref != null)
+            'decoder': refer(operation.successType).property('fromJson'),
+        },
+        <Reference>[refer(operation.successType)],
       ),
     };
 
-    if (contract.responses.success.ref case final ref?) {
-      arguments['successSchemaId'] = literalString(ref.id);
+    if (options.params case final ref?) {
+      arguments['params'] = _requestValueExpression(
+        type: operation.paramsType!,
+        schemaId: ref.id,
+        value: refer('params'),
+        encode: _encoderFor(operation.paramsType!),
+      );
     }
-    if (contract.options.params case final ref?) {
-      arguments
-        ..['paramsSchemaId'] = literalString(ref.id)
-        ..['params'] = refer('params');
+    if (options.query case final ref?) {
+      arguments['query'] = _requestValueExpression(
+        type: '${operation.queryType}?',
+        schemaId: ref.id,
+        value: refer('query'),
+        encode: _nullableEncoderFor(operation.queryType!),
+      );
     }
-    if (contract.options.query case final ref?) {
-      arguments
-        ..['querySchemaId'] = literalString(ref.id)
-        ..['query'] = refer('query');
+    if (options.headers case final ref?) {
+      arguments['headers'] = _requestValueExpression(
+        type: '${operation.headersType}?',
+        schemaId: ref.id,
+        value: refer('headers'),
+        encode: _nullableEncoderFor(operation.headersType!),
+      );
     }
-    if (contract.options.headers case final ref?) {
-      arguments
-        ..['headersSchemaId'] = literalString(ref.id)
-        ..['headers'] = refer('headers');
-    }
-    if (contract.options.body case final body?) {
-      arguments['requestContentType'] = literalString(body.contentType);
-      if (body.ref case final ref?) {
-        arguments['bodySchemaId'] = literalString(ref.id);
-      }
-      arguments['body'] = refer('body');
+    if (options.body case final body?) {
+      final bodyEncoder = body.ref == null
+          ? null
+          : _encoderFor(operation.bodyType!);
+      arguments['body'] = refer('DartEdgeClientRequestBody').newInstance(
+        const <Expression>[],
+        <String, Expression>{
+          'contentType': literalString(body.contentType),
+          if (body.ref case final ref?) 'schemaId': literalString(ref.id),
+          'value': refer('body'),
+          if (bodyEncoder != null) 'encoder': bodyEncoder,
+        },
+        <Reference>[refer(operation.bodyType!)],
+      );
     }
 
-    return refer(
-      'invoke',
-    ).call(const <Expression>[], arguments, [refer(operation.successType)]);
+    return arguments;
   }
+}
+
+Expression _requestValueExpression({
+  required String type,
+  required String schemaId,
+  required Expression value,
+  Expression? encode,
+}) {
+  return refer('DartEdgeClientRequestValue').newInstance(
+    const <Expression>[],
+    <String, Expression>{
+      'schemaId': literalString(schemaId),
+      'value': value,
+      if (encode != null) 'encoder': encode,
+    },
+    <Reference>[refer(type)],
+  );
+}
+
+Expression? _encoderFor(String type) {
+  if (_isRawTransportType(type)) {
+    return null;
+  }
+  return const CodeExpression(Code('(value) => value.toJson()'));
+}
+
+Expression? _nullableEncoderFor(String type) {
+  if (_isRawTransportType(type)) {
+    return null;
+  }
+  return const CodeExpression(Code('(value) => value?.toJson()'));
+}
+
+bool _isRawTransportType(String type) {
+  return type == 'Map<String, Object?>' ||
+      type == 'Map<String, String>' ||
+      type == 'String' ||
+      type == 'int' ||
+      type == 'double' ||
+      type == 'num' ||
+      type == 'bool' ||
+      type == 'Object?' ||
+      type == 'Object';
 }
 
 Parameter _superParameter(

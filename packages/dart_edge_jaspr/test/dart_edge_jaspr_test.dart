@@ -35,12 +35,11 @@ void main() {
     );
 
     final registration = app.routeRegistry.registrations.single;
-    final contract =
-        (registration.route as JsonRouteDefinition<void, dynamic>).contract
-            as RouteContract;
+    final options =
+        (registration.route as HttpRouteDefinition<void, dynamic>).options;
 
-    expect(contract.options.summary, 'Preview an HTML page.');
-    expect(contract.responses.success.contentType, 'text/html; charset=utf-8');
+    expect(options.summary, 'Preview an HTML page.');
+    expect(options.responses.success.contentType, 'text/html; charset=utf-8');
 
     final server = await app.listen(port: 0);
     final client = HttpClient();

@@ -9,11 +9,9 @@ final class DartEdgeHttpServerLibrarySpec {
   const DartEdgeHttpServerLibrarySpec({
     required this.routes,
     this.schemas = const <JsonSchema>[],
-    this.codecs = const <DartEdgeRuntimeCodecSpec>[],
     this.additionalImports = const <String>[],
     this.routesFactoryName = r'$generatedRoutes',
     this.schemaRegistryName = r'$generatedSchemas',
-    this.codecRegistryFactoryName = r'$generatedCodecs',
     this.clientClassName,
   });
 
@@ -22,9 +20,6 @@ final class DartEdgeHttpServerLibrarySpec {
 
   /// Shared schema graph used by runtime validation, OpenAPI, and clients.
   final List<JsonSchema> schemas;
-
-  /// Runtime codec slots required by the generated route contracts.
-  final List<DartEdgeRuntimeCodecSpec> codecs;
 
   /// Imports for model types referenced by route and codec specs.
   final List<String> additionalImports;
@@ -35,18 +30,17 @@ final class DartEdgeHttpServerLibrarySpec {
   /// Name of the generated [JsonSchemaRegistry] variable.
   final String schemaRegistryName;
 
-  /// Name of the generated runtime codec registry factory.
-  final String codecRegistryFactoryName;
-
   /// Optional generated HTTP client class name.
   final String? clientClassName;
 }
 
-/// Build-time description of one generated JSON route.
+/// Build-time description of one generated HTTP route.
 final class DartEdgeHttpRouteSpec {
   const DartEdgeHttpRouteSpec({
     required this.routeClassName,
-    required this.contract,
+    required this.method,
+    required this.path,
+    required this.options,
     required this.successType,
     this.handlerParameterName,
     this.clientMethodName,
@@ -54,13 +48,23 @@ final class DartEdgeHttpRouteSpec {
     this.queryType,
     this.headersType,
     this.bodyType,
+    this.inputs = const <DartEdgeRouteInputSpec>[],
+    this.params = const <DartEdgeRouteFieldSpec>[],
+    this.query = const <DartEdgeRouteFieldSpec>[],
+    this.headers = const <DartEdgeRouteFieldSpec>[],
   });
 
-  /// Concrete `JsonRouteDefinition` class name to emit.
+  /// Concrete `HttpRouteDefinition` class name to emit.
   final String routeClassName;
 
-  /// Normalized runtime contract for the route.
-  final RouteContract contract;
+  /// HTTP method accepted by the generated route.
+  final HttpMethod method;
+
+  /// Route path pattern, for example `/users/<id>`.
+  final String path;
+
+  /// Normalized runtime options for the route.
+  final RouteOptions options;
 
   /// Dart success type returned by the generated route and client method.
   final String successType;
@@ -75,33 +79,66 @@ final class DartEdgeHttpRouteSpec {
   final String? queryType;
   final String? headersType;
   final String? bodyType;
+  final List<DartEdgeRouteInputSpec> inputs;
+  final List<DartEdgeRouteFieldSpec> params;
+  final List<DartEdgeRouteFieldSpec> query;
+  final List<DartEdgeRouteFieldSpec> headers;
 
   String get resolvedHandlerParameterName =>
       handlerParameterName ?? _lowerCamel(routeClassName);
 }
 
-/// Runtime codec slot emitted into the generated codec registry factory.
-final class DartEdgeRuntimeCodecSpec {
-  const DartEdgeRuntimeCodecSpec({
-    required this.schemaId,
+enum DartEdgeRouteInputSource { params, query, headers, body }
+
+/// One generated route handler argument read from the request.
+final class DartEdgeRouteInputSpec {
+  const DartEdgeRouteInputSpec({
+    required this.source,
+    required this.parameterName,
     required this.dartType,
-    this.parameterName,
+    required this.required,
+    this.wireName,
   });
 
-  /// Schema id used by `RouteContract` and `JsonSchemaRegistry`.
-  final String schemaId;
+  /// Request location for this handler argument.
+  final DartEdgeRouteInputSource source;
 
-  /// Dart model type handled by this codec.
+  /// Handler parameter name.
+  final String parameterName;
+
+  /// Dart value type passed to the handler.
   final String dartType;
 
-  /// Optional generated factory parameter name.
-  final String? parameterName;
+  /// Whether the source annotated parameter was required.
+  final bool required;
 
-  String get resolvedParameterName =>
-      parameterName ?? '${_lowerCamel(dartType)}Codec';
+  /// Wire name used by path, query, and header inputs.
+  final String? wireName;
 }
 
-/// Emits Dart source for generated HTTP route contracts and registries.
+/// One generated route handler argument read from path, query, or headers.
+final class DartEdgeRouteFieldSpec {
+  const DartEdgeRouteFieldSpec({
+    required this.parameterName,
+    required this.wireName,
+    required this.dartType,
+    required this.required,
+  });
+
+  /// Handler parameter name.
+  final String parameterName;
+
+  /// Wire name used by the HTTP request.
+  final String wireName;
+
+  /// Dart value type passed to the handler.
+  final String dartType;
+
+  /// Whether the source annotated parameter was required.
+  final bool required;
+}
+
+/// Emits Dart source for generated HTTP route options and registries.
 final class DartEdgeHttpServerGenerator {
   const DartEdgeHttpServerGenerator();
 
@@ -117,9 +154,8 @@ final class DartEdgeHttpServerGenerator {
   List<Spec> buildSpecs(DartEdgeHttpServerLibrarySpec spec) {
     return <Spec>[
       _schemaRegistryField(spec),
-      _codecRegistryFactory(spec),
       for (final route in spec.routes) ...[
-        _contractField(route),
+        _optionsField(route),
         _handlerTypeDef(route),
         _routeClass(route),
       ],
@@ -131,7 +167,9 @@ final class DartEdgeHttpServerGenerator {
             operations: [
               for (final route in spec.routes)
                 DartEdgeClientOperation(
-                  contract: route.contract,
+                  method: route.method,
+                  path: route.path,
+                  options: route.options,
                   successType: route.successType,
                   methodName: route.clientMethodName,
                   paramsType: route.paramsType,
@@ -196,31 +234,13 @@ final class DartEdgeHttpServerGenerator {
     });
   }
 
-  Method _codecRegistryFactory(DartEdgeHttpServerLibrarySpec spec) {
-    return Method((builder) {
-      builder
-        ..returns = refer('DartEdgeCodecRegistry')
-        ..name = spec.codecRegistryFactoryName
-        ..optionalParameters.addAll(
-          spec.codecs.map(
-            (codec) => _namedParameter(
-              codec.resolvedParameterName,
-              type: _type('DartEdgeCodec', [refer(codec.dartType)]),
-              required: true,
-            ),
-          ),
-        )
-        ..body = _codecRegistryExpression(spec.codecs).returned.statement;
-    });
-  }
-
-  Field _contractField(DartEdgeHttpRouteSpec route) {
+  Field _optionsField(DartEdgeHttpRouteSpec route) {
     return Field((builder) {
       builder
         ..modifier = FieldModifier.final$
-        ..type = refer('RouteContract')
-        ..name = _contractName(route)
-        ..assignment = _routeContractExpression(route.contract).code;
+        ..type = refer('RouteOptions')
+        ..name = _optionsName(route)
+        ..assignment = _routeOptionsExpression(route.options).code;
     });
   }
 
@@ -232,9 +252,7 @@ final class DartEdgeHttpServerGenerator {
         ..definition = FunctionType((function) {
           function
             ..returnType = _type('FutureOr', [refer(route.successType)])
-            ..requiredParameters.add(
-              _type('RequestContext', [refer('TServices')]),
-            );
+            ..requiredParameters.addAll(_handlerParameters(route));
         });
     });
   }
@@ -245,7 +263,7 @@ final class DartEdgeHttpServerGenerator {
         ..modifier = ClassModifier.final$
         ..name = route.routeClassName
         ..types.add(refer('TServices'))
-        ..extend = _type('JsonRouteDefinition', [
+        ..extend = _type('HttpRouteDefinition', [
           refer('TServices'),
           refer(route.successType),
         ])
@@ -273,10 +291,10 @@ final class DartEdgeHttpServerGenerator {
             method
               ..annotations.add(refer('override'))
               ..type = MethodType.getter
-              ..returns = refer('RouteContract')
-              ..name = 'contract'
+              ..returns = refer('RouteOptions')
+              ..name = 'options'
               ..lambda = true
-              ..body = refer(_contractName(route)).code;
+              ..body = refer(_optionsName(route)).code;
           }),
           Method((method) {
             method
@@ -290,7 +308,7 @@ final class DartEdgeHttpServerGenerator {
                     ..name = 'ctx';
                 }),
               )
-              ..body = refer('handler').call([refer('ctx')]).returned.statement;
+              ..body = _handleBody(route);
           }),
         ]);
     });
@@ -315,34 +333,20 @@ final class DartEdgeHttpServerGenerator {
         )
         ..body = literalList(
           spec.routes.map(
-            (route) => _type(route.routeClassName, [
-              refer('TServices'),
-            ]).newInstance([refer(route.resolvedHandlerParameterName)]),
+            (route) =>
+                _type('HttpRouteMount', [
+                  refer('TServices'),
+                  refer(route.successType),
+                ]).newInstance(const <Expression>[], {
+                  'method': refer('HttpMethod').property(route.method.name),
+                  'path': literalString(route.path),
+                  'route': _type(route.routeClassName, [
+                    refer('TServices'),
+                  ]).newInstance([refer(route.resolvedHandlerParameterName)]),
+                }),
           ),
           _type('RouteDefinition', [refer('TServices')]),
         ).returned.statement;
-    });
-  }
-
-  Expression _codecRegistryExpression(List<DartEdgeRuntimeCodecSpec> codecs) {
-    var expression = refer('DartEdgeCodecRegistry').property('empty');
-    for (final codec in codecs) {
-      expression = expression
-          .property('withCodec')
-          .call(
-            [literalString(codec.schemaId), refer(codec.resolvedParameterName)],
-            const <String, Expression>{},
-            [refer(codec.dartType)],
-          );
-    }
-    return expression;
-  }
-
-  Expression _routeContractExpression(RouteContract contract) {
-    return refer('RouteContract').newInstance(const <Expression>[], {
-      'method': refer('HttpMethod').property(contract.method.name),
-      'path': literalString(contract.path),
-      'options': _routeOptionsExpression(contract.options),
     });
   }
 
@@ -385,6 +389,76 @@ final class DartEdgeHttpServerGenerator {
 
     return refer('RouteOptions').newInstance(const <Expression>[], arguments);
   }
+}
+
+Iterable<Reference> _handlerParameters(DartEdgeHttpRouteSpec route) {
+  return <Reference>[
+    for (final input in route.inputs) refer(_inputParameterType(input)),
+  ];
+}
+
+Code _handleBody(DartEdgeHttpRouteSpec route) {
+  final arguments = <String>[
+    for (final input in route.inputs) _readInputExpression(input),
+  ];
+
+  return Code('return handler(${arguments.join(', ')});');
+}
+
+String _inputParameterType(DartEdgeRouteInputSpec input) {
+  if (input.required || input.dartType.endsWith('?')) {
+    return input.dartType;
+  }
+  return '${input.dartType}?';
+}
+
+String _readInputExpression(DartEdgeRouteInputSpec input) {
+  return switch (input.source) {
+    DartEdgeRouteInputSource.params => _readScalarExpression(
+      'ctx.req.param',
+      input,
+    ),
+    DartEdgeRouteInputSource.query => _readScalarExpression(
+      'ctx.req.queryParam',
+      input,
+    ),
+    DartEdgeRouteInputSource.headers => _readScalarExpression(
+      'ctx.req.header',
+      input,
+    ),
+    DartEdgeRouteInputSource.body =>
+      '${input.dartType}.fromJson(ctx.req.bodyOrNull)',
+  };
+}
+
+String _readScalarExpression(String reader, DartEdgeRouteInputSpec input) {
+  final source = "$reader('${input.wireName}')";
+  final nullable = !input.required || input.dartType.endsWith('?');
+  final raw = nullable ? source : '$source!';
+  final type = input.dartType.endsWith('?')
+      ? input.dartType.substring(0, input.dartType.length - 1)
+      : input.dartType;
+
+  return switch (type) {
+    'String' => raw,
+    'int' =>
+      nullable
+          ? '($source == null ? null : int.parse($source!))'
+          : 'int.parse($raw)',
+    'double' =>
+      nullable
+          ? '($source == null ? null : double.parse($source!))'
+          : 'double.parse($raw)',
+    'num' =>
+      nullable
+          ? '($source == null ? null : num.parse($source!))'
+          : 'num.parse($raw)',
+    'bool' =>
+      nullable
+          ? '($source == null ? null : $source == \'true\')'
+          : '$raw == \'true\'',
+    _ => raw,
+  };
 }
 
 Expression _schemaExpression(JsonSchema schema) {
@@ -588,8 +662,8 @@ TypeReference _type(String symbol, [Iterable<Reference> types = const []]) {
   });
 }
 
-String _contractName(DartEdgeHttpRouteSpec route) {
-  return '${_lowerCamel(route.routeClassName)}Contract';
+String _optionsName(DartEdgeHttpRouteSpec route) {
+  return '${_lowerCamel(route.routeClassName)}Options';
 }
 
 String _handlerTypeName(DartEdgeHttpRouteSpec route) {

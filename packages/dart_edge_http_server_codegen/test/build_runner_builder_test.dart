@@ -124,7 +124,7 @@ final class UserDto {
             allOf([
               isNot(contains('part of')),
               contains('final JsonSchemaRegistry \$generatedSchemas'),
-              contains('final RouteContract createUserRouteContract'),
+              contains('final RouteOptions createUserRouteOptions'),
               contains("path: '/users/<id>'"),
               contains(
                 "params: const JsonSchemaRef<Object?>('CreateUserParams')",
@@ -137,7 +137,10 @@ final class UserDto {
               ),
               contains("JsonSchemaRef<Object?>('CreateUserInput')"),
               contains("JsonSchemaRef<Object?>('UserDto')"),
-              contains('DartEdgeCodecRegistry \$generatedCodecs({'),
+              isNot(contains('DartEdgeCodecRegistry \$generatedCodecs({')),
+              contains('CreateUserInput.fromJson(ctx.req.bodyOrNull)'),
+              contains('decoder: UserDto.fromJson'),
+              contains('encoder: (value) => value.toJson()'),
               contains('CreateUserRoute<TServices>'),
               contains('List<RouteDefinition<TServices>> \$generatedRoutes'),
               contains('final class UsersClient'),

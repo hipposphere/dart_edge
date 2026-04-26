@@ -6,7 +6,6 @@
 library dart_edge_http_server_codegen;
 
 export 'src/annotations.dart';
-export 'src/client/dart_edge_client_codec.dart';
 export 'src/client/dart_edge_client_generator.dart';
 export 'src/client/dart_edge_client_transport.dart';
 export 'src/client/dart_edge_generated_client_base.dart';

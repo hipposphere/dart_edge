@@ -40,47 +40,37 @@ final JsonSchemaRegistry $generatedSchemas = JsonSchemaRegistry(
     ),
   ],
 );
-DartEdgeCodecRegistry $generatedCodecs({
-  required DartEdgeCodec<CreateUserInput> createUserInputCodec,
-  required DartEdgeCodec<UserDto> userDtoCodec,
-}) {
-  return DartEdgeCodecRegistry.empty
-      .withCodec<CreateUserInput>('CreateUserInput', createUserInputCodec)
-      .withCodec<UserDto>('UserDto', userDtoCodec);
-}
-
-final RouteContract createUserRouteContract = RouteContract(
-  method: HttpMethod.post,
-  path: '/users',
-  options: RouteOptions(
-    operationId: 'createUser',
-    summary: 'Create a user.',
-    tags: <String>['users'],
-    headers: const JsonSchemaRef<Object?>('CreateUserHeaders'),
-    body: RequestBody.json<Object?>(
-      ref: const JsonSchemaRef<Object?>('CreateUserInput'),
-    ),
-    success: ResponseSpec.json<Object?>(
-      status: 201,
-      ref: const JsonSchemaRef<Object?>('UserDto'),
-    ),
+final RouteOptions createUserRouteOptions = RouteOptions(
+  operationId: 'createUser',
+  summary: 'Create a user.',
+  tags: <String>['users'],
+  headers: const JsonSchemaRef<Object?>('CreateUserHeaders'),
+  body: RequestBody.json<Object?>(
+    ref: const JsonSchemaRef<Object?>('CreateUserInput'),
+  ),
+  success: ResponseSpec.json<Object?>(
+    status: 201,
+    ref: const JsonSchemaRef<Object?>('UserDto'),
   ),
 );
 typedef _CreateUserRouteHandler<TServices> =
-    FutureOr<UserDto> Function(RequestContext<TServices>);
+    FutureOr<UserDto> Function(CreateUserInput, String?);
 
 final class CreateUserRoute<TServices>
-    extends JsonRouteDefinition<TServices, UserDto> {
+    extends HttpRouteDefinition<TServices, UserDto> {
   CreateUserRoute(this.handler);
 
   final _CreateUserRouteHandler<TServices> handler;
 
   @override
-  RouteContract get contract => createUserRouteContract;
+  RouteOptions get options => createUserRouteOptions;
 
   @override
   FutureOr<UserDto> handle(RequestContext<TServices> ctx) {
-    return handler(ctx);
+    return handler(
+      CreateUserInput.fromJson(ctx.req.bodyOrNull),
+      ctx.req.header('x-request-id'),
+    );
   }
 }
 
@@ -88,7 +78,11 @@ List<RouteDefinition<TServices>> $generatedRoutes<TServices>({
   required _CreateUserRouteHandler<TServices> createUserRoute,
 }) {
   return <RouteDefinition<TServices>>[
-    CreateUserRoute<TServices>(createUserRoute),
+    HttpRouteMount<TServices, UserDto>(
+      method: HttpMethod.post,
+      path: '/users',
+      route: CreateUserRoute<TServices>(createUserRoute),
+    ),
   ];
 }
 
@@ -96,7 +90,6 @@ final class UsersClient extends DartEdgeGeneratedClientBase {
   UsersClient({
     required super.baseUri,
     required super.transport,
-    super.codecs = DartEdgeClientCodecRegistry.empty,
     super.defaultHeaders = const <String, String>{},
   });
 
@@ -104,17 +97,39 @@ final class UsersClient extends DartEdgeGeneratedClientBase {
     Map<String, Object?>? headers,
     required CreateUserInput body,
   }) {
-    return invoke<UserDto>(
-      method: HttpMethod.post,
-      pathTemplate: '/users',
-      successStatus: 201,
-      successContentType: 'application/json; charset=utf-8',
-      successSchemaId: 'UserDto',
-      headersSchemaId: 'CreateUserHeaders',
-      headers: headers,
-      requestContentType: 'application/json; charset=utf-8',
-      bodySchemaId: 'CreateUserInput',
-      body: body,
+    return invoke<
+      UserDto,
+      Never,
+      Never,
+      Map<String, Object?>?,
+      CreateUserInput
+    >(
+      DartEdgeClientInvocation<
+        UserDto,
+        Never,
+        Never,
+        Map<String, Object?>?,
+        CreateUserInput
+      >(
+        method: HttpMethod.post,
+        pathTemplate: '/users',
+        success: DartEdgeClientResponseSpec<UserDto>(
+          status: 201,
+          contentType: 'application/json; charset=utf-8',
+          schemaId: 'UserDto',
+          decoder: UserDto.fromJson,
+        ),
+        headers: DartEdgeClientRequestValue<Map<String, Object?>?>(
+          schemaId: 'CreateUserHeaders',
+          value: headers,
+        ),
+        body: DartEdgeClientRequestBody<CreateUserInput>(
+          contentType: 'application/json; charset=utf-8',
+          schemaId: 'CreateUserInput',
+          value: body,
+          encoder: (value) => value.toJson(),
+        ),
+      ),
     );
   }
 }

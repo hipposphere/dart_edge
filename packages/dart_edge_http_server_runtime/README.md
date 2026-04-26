@@ -3,7 +3,7 @@
 Core runtime and shared contract package for Dart Edge.
 
 Use this package directly when you want the low-level Dart Edge API surface
-without the higher-level HTTP server package. It owns the route contracts, request context,
+without the higher-level HTTP server package. It owns the route options, request context,
 schema registry model, middleware configuration, and native server bridge.
 
 ## Quick Start
@@ -40,8 +40,8 @@ For local-only development, omit `host:` and the runtime stays bound to
 - `Router.get`, `post`, `put`, `patch`, `delete`, `head`, and `options` add
   inline HTTP handlers without writing a route class, with metadata grouped in
   `RouteOptions`
-- `JsonRouteDefinition` is the main HTTP route base class
-- `RouteContract`, `RequestBody`, `ResponseSpec`, and `ResponseSet` describe the
+- `HttpRouteDefinition` is the main HTTP route base class
+- `RouteOptions`, `RequestBody`, `ResponseSpec`, and `ResponseSet` describe the
   request and response shape
 - `RequestContext` gives handlers access to services, decoded request values, and
   request-scoped extensions

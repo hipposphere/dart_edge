@@ -1,10 +1,12 @@
 import '../http/http_method.dart';
-import '../http/route_contract.dart';
 import '../websocket/handler_web_socket_route_definition.dart';
-import '../websocket/web_socket_contract.dart';
 import '../websocket/web_socket_options.dart';
+import '../websocket/web_socket_route_definition.dart';
+import '../websocket/web_socket_route_mount.dart';
 import 'guard.dart';
-import 'handler_json_route_definition.dart';
+import 'handler_http_route_definition.dart';
+import 'http_route_definition.dart';
+import 'http_route_mount.dart';
 import 'route_definition.dart';
 import 'route_options.dart';
 import 'route_path.dart';
@@ -47,7 +49,7 @@ class Router<TServices> {
     );
   }
 
-  /// Registers one route definition.
+  /// Registers one mounted route definition.
   void register(
     RouteDefinition<TServices> route, {
     List<Guard<TServices>>? guards,
@@ -60,7 +62,7 @@ class Router<TServices> {
     );
   }
 
-  /// Registers many route definitions.
+  /// Registers many mounted route definitions.
   void registerAll(
     Iterable<RouteDefinition<TServices>> definitions, {
     List<Guard<TServices>>? guards,
@@ -75,7 +77,7 @@ class Router<TServices> {
     String path, {
     RouteOptions options = const RouteOptions(),
     List<Guard<TServices>>? guards,
-    required JsonRouteHandler<TServices, TSuccess> handler,
+    required HttpRouteHandler<TServices, TSuccess> handler,
   }) {
     _registerHttpRoute(
       method: HttpMethod.get,
@@ -86,12 +88,26 @@ class Router<TServices> {
     );
   }
 
+  /// Registers an explicit route class for `GET`.
+  void routeGet<TSuccess>(
+    String path,
+    HttpRouteDefinition<TServices, TSuccess> route, {
+    List<Guard<TServices>>? guards,
+  }) {
+    _registerHttpRouteDefinition(
+      method: HttpMethod.get,
+      path: path,
+      route: route,
+      guards: guards,
+    );
+  }
+
   /// Registers an inline `POST` handler.
   void post<TSuccess>(
     String path, {
     RouteOptions options = const RouteOptions(),
     List<Guard<TServices>>? guards,
-    required JsonRouteHandler<TServices, TSuccess> handler,
+    required HttpRouteHandler<TServices, TSuccess> handler,
   }) {
     _registerHttpRoute(
       method: HttpMethod.post,
@@ -102,12 +118,26 @@ class Router<TServices> {
     );
   }
 
+  /// Registers an explicit route class for `POST`.
+  void routePost<TSuccess>(
+    String path,
+    HttpRouteDefinition<TServices, TSuccess> route, {
+    List<Guard<TServices>>? guards,
+  }) {
+    _registerHttpRouteDefinition(
+      method: HttpMethod.post,
+      path: path,
+      route: route,
+      guards: guards,
+    );
+  }
+
   /// Registers an inline `PUT` handler.
   void put<TSuccess>(
     String path, {
     RouteOptions options = const RouteOptions(),
     List<Guard<TServices>>? guards,
-    required JsonRouteHandler<TServices, TSuccess> handler,
+    required HttpRouteHandler<TServices, TSuccess> handler,
   }) {
     _registerHttpRoute(
       method: HttpMethod.put,
@@ -118,12 +148,26 @@ class Router<TServices> {
     );
   }
 
+  /// Registers an explicit route class for `PUT`.
+  void routePut<TSuccess>(
+    String path,
+    HttpRouteDefinition<TServices, TSuccess> route, {
+    List<Guard<TServices>>? guards,
+  }) {
+    _registerHttpRouteDefinition(
+      method: HttpMethod.put,
+      path: path,
+      route: route,
+      guards: guards,
+    );
+  }
+
   /// Registers an inline `PATCH` handler.
   void patch<TSuccess>(
     String path, {
     RouteOptions options = const RouteOptions(),
     List<Guard<TServices>>? guards,
-    required JsonRouteHandler<TServices, TSuccess> handler,
+    required HttpRouteHandler<TServices, TSuccess> handler,
   }) {
     _registerHttpRoute(
       method: HttpMethod.patch,
@@ -134,12 +178,26 @@ class Router<TServices> {
     );
   }
 
+  /// Registers an explicit route class for `PATCH`.
+  void routePatch<TSuccess>(
+    String path,
+    HttpRouteDefinition<TServices, TSuccess> route, {
+    List<Guard<TServices>>? guards,
+  }) {
+    _registerHttpRouteDefinition(
+      method: HttpMethod.patch,
+      path: path,
+      route: route,
+      guards: guards,
+    );
+  }
+
   /// Registers an inline `DELETE` handler.
   void delete<TSuccess>(
     String path, {
     RouteOptions options = const RouteOptions(),
     List<Guard<TServices>>? guards,
-    required JsonRouteHandler<TServices, TSuccess> handler,
+    required HttpRouteHandler<TServices, TSuccess> handler,
   }) {
     _registerHttpRoute(
       method: HttpMethod.delete,
@@ -150,12 +208,26 @@ class Router<TServices> {
     );
   }
 
+  /// Registers an explicit route class for `DELETE`.
+  void routeDelete<TSuccess>(
+    String path,
+    HttpRouteDefinition<TServices, TSuccess> route, {
+    List<Guard<TServices>>? guards,
+  }) {
+    _registerHttpRouteDefinition(
+      method: HttpMethod.delete,
+      path: path,
+      route: route,
+      guards: guards,
+    );
+  }
+
   /// Registers an inline `HEAD` handler.
   void head<TSuccess>(
     String path, {
     RouteOptions options = const RouteOptions(),
     List<Guard<TServices>>? guards,
-    required JsonRouteHandler<TServices, TSuccess> handler,
+    required HttpRouteHandler<TServices, TSuccess> handler,
   }) {
     _registerHttpRoute(
       method: HttpMethod.head,
@@ -166,12 +238,26 @@ class Router<TServices> {
     );
   }
 
+  /// Registers an explicit route class for `HEAD`.
+  void routeHead<TSuccess>(
+    String path,
+    HttpRouteDefinition<TServices, TSuccess> route, {
+    List<Guard<TServices>>? guards,
+  }) {
+    _registerHttpRouteDefinition(
+      method: HttpMethod.head,
+      path: path,
+      route: route,
+      guards: guards,
+    );
+  }
+
   /// Registers an inline `OPTIONS` handler.
   void options<TSuccess>(
     String path, {
     RouteOptions options = const RouteOptions(),
     List<Guard<TServices>>? guards,
-    required JsonRouteHandler<TServices, TSuccess> handler,
+    required HttpRouteHandler<TServices, TSuccess> handler,
   }) {
     _registerHttpRoute(
       method: HttpMethod.options,
@@ -179,6 +265,20 @@ class Router<TServices> {
       options: options,
       guards: guards,
       handler: handler,
+    );
+  }
+
+  /// Registers an explicit route class for `OPTIONS`.
+  void routeOptions<TSuccess>(
+    String path,
+    HttpRouteDefinition<TServices, TSuccess> route, {
+    List<Guard<TServices>>? guards,
+  }) {
+    _registerHttpRouteDefinition(
+      method: HttpMethod.options,
+      path: path,
+      route: route,
+      guards: guards,
     );
   }
 
@@ -190,17 +290,27 @@ class Router<TServices> {
     required WebSocketRouteHandler<TServices> onConnect,
   }) {
     register(
-      HandlerWebSocketRouteDefinition<TServices>(
-        contract: WebSocketContract(
-          path: path,
-          operationId:
-              options.operationId ?? _defaultWebSocketOperationId(path: path),
-          summary: options.summary,
-          tags: options.tags,
-          deprecated: options.deprecated,
+      WebSocketRouteMount<TServices>(
+        path: path,
+        route: HandlerWebSocketRouteDefinition<TServices>(
+          options: options.normalized(
+            defaultOperationId: _defaultWebSocketOperationId(path: path),
+          ),
+          handler: onConnect,
         ),
-        handler: onConnect,
       ),
+      guards: guards,
+    );
+  }
+
+  /// Registers an explicit WebSocket route class.
+  void routeWebSocket(
+    String path,
+    WebSocketRouteDefinition<TServices> route, {
+    List<Guard<TServices>>? guards,
+  }) {
+    register(
+      WebSocketRouteMount<TServices>(path: path, route: route),
       guards: guards,
     );
   }
@@ -210,39 +320,34 @@ class Router<TServices> {
     required String path,
     required RouteOptions options,
     List<Guard<TServices>>? guards,
-    required JsonRouteHandler<TServices, TSuccess> handler,
+    required HttpRouteHandler<TServices, TSuccess> handler,
   }) {
-    register(
-      HandlerJsonRouteDefinition<TServices, TSuccess>(
-        contract: RouteContract(
-          method: method,
-          path: path,
-          options: _withDefaultOperationId(
-            options,
-            _defaultOperationId(method: method, path: path),
-          ),
+    _registerHttpRouteDefinition(
+      method: method,
+      path: path,
+      guards: guards,
+      route: HandlerHttpRouteDefinition<TServices, TSuccess>(
+        options: options.normalized(
+          defaultOperationId: _defaultOperationId(method: method, path: path),
         ),
         handler: handler,
       ),
-      guards: guards,
     );
   }
 
-  RouteOptions _withDefaultOperationId(
-    RouteOptions options,
-    String defaultOperationId,
-  ) {
-    return RouteOptions(
-      operationId: options.operationId ?? defaultOperationId,
-      summary: options.summary,
-      tags: options.tags,
-      deprecated: options.deprecated,
-      params: options.params,
-      query: options.query,
-      headers: options.headers,
-      body: options.body,
-      success: options.success,
-      errors: options.errors,
+  void _registerHttpRouteDefinition<TSuccess>({
+    required HttpMethod method,
+    required String path,
+    required HttpRouteDefinition<TServices, TSuccess> route,
+    List<Guard<TServices>>? guards,
+  }) {
+    register(
+      HttpRouteMount<TServices, TSuccess>(
+        method: method,
+        path: path,
+        route: route,
+      ),
+      guards: guards,
     );
   }
 

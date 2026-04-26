@@ -15,12 +15,12 @@ same contract model.
   for handler-facing request state
 - `Router`, `RouteDefinition`, `RouteRegistry`, `RouteOptions`, and `Guard`
   for transport-agnostic route registration
-- `RouteContract`, `ResponseSpec`, `RequestBody`, `ErrorResponse`, and
+- `RouteOptions`, `ResponseSpec`, `RequestBody`, `ErrorResponse`, and
   `HttpMethod` for explicit HTTP contracts
 - `JsonEncodable`, `JsonSchema`, `JsonSchemaRef`, and `JsonSchemaRegistry` for
   schema-driven request and response metadata
-- `WebSocketContract`, `WebSocketContext`, and related route definitions for
-  the planned WebSocket surface
+- `WebSocketOptions`, `WebSocketContext`, and related route definitions for the
+  planned WebSocket surface
 
 ## Quick Start
 

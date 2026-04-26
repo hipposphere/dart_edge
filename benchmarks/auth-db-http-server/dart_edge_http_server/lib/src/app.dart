@@ -31,10 +31,10 @@ Future<DartEdge<Services>> createApp({required int port}) async {
   );
 
   auth.mount(app);
-  app.register(HealthRoute());
-  protected.register(RawRoute());
-  protected.register(DatabaseRoute());
-  protected.register(UploadMultipartRoute());
+  app.routeGet('/healthz', HealthRoute());
+  protected.routeGet('/bench/raw', RawRoute());
+  protected.routeGet('/bench/db', DatabaseRoute());
+  protected.routePost('/upload_multipart', UploadMultipartRoute());
 
   return app;
 }

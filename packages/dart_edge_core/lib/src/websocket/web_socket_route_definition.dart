@@ -1,14 +1,11 @@
 import 'dart:async';
 
-import '../router/route_definition.dart';
 import 'web_socket_context.dart';
-import 'web_socket_contract.dart';
+import 'web_socket_options.dart';
 
 /// Base class for the planned WebSocket route surface.
-abstract class WebSocketRouteDefinition<TServices>
-    implements RouteDefinition<TServices> {
-  @override
-  WebSocketContract get contract;
+abstract class WebSocketRouteDefinition<TServices> {
+  WebSocketOptions get options;
 
   /// Called when the socket is connected.
   FutureOr<void> onConnect(WebSocketContext<TServices> socket);

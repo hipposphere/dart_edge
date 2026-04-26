@@ -2,8 +2,8 @@ import 'package:dart_edge_http_server_runtime/dart_edge_http_server_runtime.dart
 
 /// Declares the top-level HTTP metadata for a generated JSON route.
 ///
-/// Generators can translate this annotation into a [RouteContract] and a
-/// concrete [JsonRouteDefinition].
+/// Generators can translate this annotation into a [RouteOptions] and a
+/// concrete [HttpRouteDefinition].
 final class TypedJsonRoute {
   const TypedJsonRoute({
     required this.method,

@@ -9,7 +9,8 @@ surface from `dart_edge_helpers` in one import.
 ## What You Get
 
 - `DartEdge` and `Router` for starting the server and registering routes with
-  `get`/`post`/`put`/`patch`/`delete` helpers or `register()`
+  `get`/`post`/`put`/`patch`/`delete` helpers, plus `routeGet`/`routePost`
+  helpers for explicit route classes
 - `RouteOptions` for inline handlers and `RouteContract` for explicit route
   definitions
 - `OpenApiHelpers` for mounting helper endpoints alongside your app

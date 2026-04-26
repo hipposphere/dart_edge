@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'web_socket_context.dart';
-import 'web_socket_contract.dart';
+import 'web_socket_options.dart';
 import 'web_socket_route_definition.dart';
 
 /// Signature for a closure-backed WebSocket route handler.
@@ -12,16 +12,16 @@ typedef WebSocketRouteHandler<TServices> =
 final class HandlerWebSocketRouteDefinition<TServices>
     extends WebSocketRouteDefinition<TServices> {
   HandlerWebSocketRouteDefinition({
-    required WebSocketContract contract,
+    required WebSocketOptions options,
     required WebSocketRouteHandler<TServices> handler,
-  }) : _contract = contract,
+  }) : _options = options,
        _handler = handler;
 
-  final WebSocketContract _contract;
+  final WebSocketOptions _options;
   final WebSocketRouteHandler<TServices> _handler;
 
   @override
-  WebSocketContract get contract => _contract;
+  WebSocketOptions get options => _options;
 
   @override
   FutureOr<void> onConnect(WebSocketContext<TServices> socket) =>
@@ -30,7 +30,6 @@ final class HandlerWebSocketRouteDefinition<TServices>
   @override
   String toString() {
     return 'HandlerWebSocketRouteDefinition<$TServices>('
-        'WS ${_contract.path}, '
-        'operationId: ${_contract.operationId})';
+        'operationId: ${_options.operationId})';
   }
 }

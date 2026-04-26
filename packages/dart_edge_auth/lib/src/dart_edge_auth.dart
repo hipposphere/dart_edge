@@ -51,7 +51,13 @@ final class DartEdgeAuth {
   List<RouteDefinition<TServices>> routes<TServices>() {
     _ensureActive();
     return _routes
-        .map((route) => _DartEdgeAuthRoute<TServices>(auth: this, route: route))
+        .map(
+          (route) => HttpRouteMount<TServices, RawResponse>(
+            method: route.method,
+            path: _runtimePath(route.path),
+            route: _DartEdgeAuthRoute<TServices>(auth: this, route: route),
+          ),
+        )
         .toList(growable: false);
   }
 
@@ -157,21 +163,17 @@ final class DartEdgeAuth {
 }
 
 final class _DartEdgeAuthRoute<TServices>
-    extends JsonRouteDefinition<TServices, RawResponse> {
+    extends HttpRouteDefinition<TServices, RawResponse> {
   _DartEdgeAuthRoute({required this.auth, required this.route});
 
   final DartEdgeAuth auth;
   final NativeRouteDefinition route;
 
   @override
-  RouteContract get contract => RouteContract(
-    method: route.method,
-    path: _runtimePath(route.path),
-    options: RouteOptions(
-      operationId: route.operationId,
-      body: route.acceptsJsonBody ? RequestBody.jsonValue() : null,
-      success: ResponseSpec.json<Object?>(),
-    ),
+  RouteOptions get options => RouteOptions(
+    operationId: route.operationId,
+    body: route.acceptsJsonBody ? RequestBody.jsonValue() : null,
+    success: ResponseSpec.json<Object?>(),
   );
 
   @override
@@ -182,7 +184,6 @@ final class _DartEdgeAuthRoute<TServices>
   @override
   String toString() {
     return 'DartEdgeAuthRoute<$TServices>('
-        '${route.method.name.toUpperCase()} ${_runtimePath(route.path)}, '
         'operationId: ${route.operationId}, jsonBody: ${route.acceptsJsonBody})';
   }
 }

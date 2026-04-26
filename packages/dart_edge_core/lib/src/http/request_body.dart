@@ -1,6 +1,6 @@
 import 'json_schema_ref.dart';
 
-/// Declares the request body expected by a [RouteContract].
+/// Declares the request body expected by a [RouteOptions].
 final class RequestBody {
   const RequestBody._({required this.contentType, this.ref});
 

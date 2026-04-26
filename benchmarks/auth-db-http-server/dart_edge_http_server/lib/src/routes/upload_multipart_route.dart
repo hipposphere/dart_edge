@@ -7,20 +7,16 @@ import 'package:dart_edge_http_server/dart_edge_http_server.dart';
 import '../services.dart';
 
 final class UploadMultipartRoute
-    extends JsonRouteDefinition<Services, Object?> {
+    extends HttpRouteDefinition<Services, Object?> {
   @override
-  RouteContract get contract => RouteContract(
-    method: HttpMethod.post,
-    path: benchmarkUploadMultipartPath,
-    options: RouteOptions(
-      operationId: 'benchmarkUploadMultipart',
-      body: RequestBody.multipartFormData(),
-      success: ResponseSpec.json<Object?>(),
-      errors: [
-        ErrorResponse(status: HttpStatus.badRequest, code: 'invalid_upload'),
-        ErrorResponse.unauthorized(code: 'unauthorized'),
-      ],
-    ),
+  RouteOptions get options => RouteOptions(
+    operationId: 'benchmarkUploadMultipart',
+    body: RequestBody.multipartFormData(),
+    success: ResponseSpec.json<Object?>(),
+    errors: [
+      ErrorResponse(status: HttpStatus.badRequest, code: 'invalid_upload'),
+      ErrorResponse.unauthorized(code: 'unauthorized'),
+    ],
   );
 
   @override

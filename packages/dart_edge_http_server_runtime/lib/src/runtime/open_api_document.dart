@@ -35,10 +35,7 @@ final class OpenApiDocument {
         route.openApiPath,
         () => <String, Object?>{},
       );
-      pathItem[route.contract.method.name] = _buildOperation(
-        route,
-        schemaRegistry,
-      );
+      pathItem[route.method.name] = _buildOperation(route, schemaRegistry);
     }
 
     return {
@@ -82,17 +79,17 @@ Map<String, Object?> _buildOperation(
   CompiledRoute<dynamic> route,
   JsonSchemaRegistry? schemaRegistry,
 ) {
-  final contract = route.contract;
+  final options = route.options;
   final parameters = <Map<String, Object?>>[
     ..._buildPathParameters(route, schemaRegistry),
     ..._buildObjectParameters(
-      contract.options.query?.id,
+      options.query?.id,
       'query',
       schemaRegistry,
       requiredByDefault: false,
     ),
     ..._buildObjectParameters(
-      contract.options.headers?.id,
+      options.headers?.id,
       'header',
       schemaRegistry,
       requiredByDefault: false,
@@ -100,14 +97,13 @@ Map<String, Object?> _buildOperation(
   ];
 
   return {
-    'operationId': contract.options.operationId!,
-    if (contract.options.summary case final summary?) 'summary': summary,
-    if (contract.options.tags.isNotEmpty) 'tags': contract.options.tags,
-    if (contract.options.deprecated) 'deprecated': true,
+    'operationId': options.operationId!,
+    if (options.summary case final summary?) 'summary': summary,
+    if (options.tags.isNotEmpty) 'tags': options.tags,
+    if (options.deprecated) 'deprecated': true,
     if (parameters.isNotEmpty) 'parameters': parameters,
-    if (contract.options.body case final body?)
-      'requestBody': _buildRequestBody(body),
-    'responses': _buildResponses(contract.responses),
+    if (options.body case final body?) 'requestBody': _buildRequestBody(body),
+    'responses': _buildResponses(options.responses),
   };
 }
 
@@ -124,7 +120,7 @@ List<Map<String, Object?>> _buildPathParameters(
   }
 
   final properties = _objectSchema(
-    route.contract.options.params?.id,
+    route.options.params?.id,
     schemaRegistry,
   )?.properties;
   return [

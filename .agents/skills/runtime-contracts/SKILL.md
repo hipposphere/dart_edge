@@ -1,6 +1,6 @@
 ---
 name: runtime-contracts
-description: Use when changing RouteDefinition, RouteContract, RequestContext, WebSocket contracts, helper-vs-runtime boundaries, or the public runtime API in dart_edge_runtime.
+description: Use when changing RouteDefinition, RouteOptions, RequestContext, WebSocket contracts, helper-vs-runtime boundaries, or the public runtime API in dart_edge_runtime.
 ---
 
 # Runtime Contracts
@@ -11,9 +11,11 @@ server runtime.
 ## Keep together
 
 - `RouteDefinition`
-- `JsonRouteDefinition`
+- `HttpRouteDefinition`
+- `HttpRouteMount`
 - `WebSocketRouteDefinition`
-- `RouteContract`
+- `WebSocketRouteMount`
+- `RouteOptions`
 - `RequestContext`
 - `JsonSchemaRef`
 - runtime-facing manifest and schema model types

@@ -2,7 +2,6 @@ import 'dart:convert';
 
 import 'package:dart_edge_http_server_runtime/dart_edge_http_server_runtime.dart';
 
-import 'dart_edge_client_codec.dart';
 import 'dart_edge_client_transport.dart';
 
 /// Base class that generated HTTP clients extend.
@@ -10,89 +9,55 @@ abstract base class DartEdgeGeneratedClientBase {
   const DartEdgeGeneratedClientBase({
     required this.baseUri,
     required this.transport,
-    this.codecs = DartEdgeClientCodecRegistry.empty,
     this.defaultHeaders = const <String, String>{},
   });
 
   final Uri baseUri;
   final DartEdgeClientTransport transport;
-  final DartEdgeClientCodecRegistry codecs;
   final Map<String, String> defaultHeaders;
 
-  Future<T> invoke<T>({
-    required HttpMethod method,
-    required String pathTemplate,
-    required int successStatus,
-    required String successContentType,
-    String? successSchemaId,
-    String? paramsSchemaId,
-    Object? params,
-    String? querySchemaId,
-    Object? query,
-    String? headersSchemaId,
-    Object? headers,
-    String? requestContentType,
-    String? bodySchemaId,
-    Object? body,
-  }) async {
+  Future<TResponse> invoke<TResponse, TParams, TQuery, THeaders, TBody>(
+    DartEdgeClientInvocation<TResponse, TParams, TQuery, THeaders, TBody>
+    invocation,
+  ) async {
     final request = DartEdgeClientRequest(
-      method: method,
+      method: invocation.method,
       uri: _buildUri(
-        pathTemplate,
-        paramsSchemaId: paramsSchemaId,
-        params: params,
-        querySchemaId: querySchemaId,
-        query: query,
+        invocation.pathTemplate,
+        params: invocation.params,
+        query: invocation.query,
       ),
       headers: _buildHeaders(
-        headersSchemaId: headersSchemaId,
-        headers: headers,
-        requestContentType: requestContentType,
-        body: body,
+        headers: invocation.headers,
+        body: invocation.body,
       ),
-      body: _encodeRequestBody(
-        requestContentType: requestContentType,
-        bodySchemaId: bodySchemaId,
-        body: body,
-      ),
+      body: _encodeRequestBody(body: invocation.body),
     );
 
     final response = await transport.send(request);
-    if (response.status != successStatus) {
+    if (response.status != invocation.success.status) {
       throw DartEdgeClientResponseException(
-        method: method,
+        method: invocation.method,
         uri: request.uri,
-        expectedStatus: successStatus,
+        expectedStatus: invocation.success.status,
         actualStatus: response.status,
         body: response.body,
       );
     }
 
-    return _decodeResponse<T>(
-      response,
-      expectedContentType: successContentType,
-      schemaId: successSchemaId,
-    );
+    return _decodeResponse<TResponse>(response, success: invocation.success);
   }
 
-  Uri _buildUri(
+  Uri _buildUri<TParams, TQuery>(
     String pathTemplate, {
-    String? paramsSchemaId,
-    Object? params,
-    String? querySchemaId,
-    Object? query,
+    required DartEdgeClientRequestValue<TParams>? params,
+    required DartEdgeClientRequestValue<TQuery>? query,
   }) {
     final resolvedPath = _joinPaths(
       baseUri.path,
-      _resolvePathTemplate(
-        pathTemplate,
-        paramsSchemaId: paramsSchemaId,
-        params: params,
-      ),
+      _resolvePathTemplate(pathTemplate, params: params),
     );
-    final queryParametersAll = _normalizeQueryValues(
-      _encodeObject(paramsSchemaId: querySchemaId, value: query),
-    );
+    final queryParametersAll = _normalizeQueryValues(_encodeObject(query));
 
     return baseUri.replace(
       path: resolvedPath,
@@ -102,39 +67,31 @@ abstract base class DartEdgeGeneratedClientBase {
     );
   }
 
-  Map<String, String> _buildHeaders({
-    String? headersSchemaId,
-    Object? headers,
-    String? requestContentType,
-    Object? body,
+  Map<String, String> _buildHeaders<THeaders, TBody>({
+    required DartEdgeClientRequestValue<THeaders>? headers,
+    required DartEdgeClientRequestBody<TBody>? body,
   }) {
     final builtHeaders = <String, String>{
       ...defaultHeaders,
-      ..._normalizeHeaderValues(
-        _encodeObject(paramsSchemaId: headersSchemaId, value: headers),
-      ),
+      ..._normalizeHeaderValues(_encodeObject(headers)),
     };
 
-    if (requestContentType case final contentType? when body != null) {
-      builtHeaders.putIfAbsent('content-type', () => contentType);
+    if (body case final body? when body.value != null) {
+      builtHeaders.putIfAbsent('content-type', () => body.contentType);
     }
 
     return builtHeaders;
   }
 
-  String? _encodeRequestBody({
-    required String? requestContentType,
-    required String? bodySchemaId,
-    required Object? body,
+  String? _encodeRequestBody<TBody>({
+    required DartEdgeClientRequestBody<TBody>? body,
   }) {
-    if (body == null) {
+    if (body == null || body.value == null) {
       return null;
     }
 
-    final encodedBody = bodySchemaId == null
-        ? body
-        : codecs.encodeValue(bodySchemaId, body);
-    final contentType = requestContentType?.toLowerCase() ?? '';
+    final encodedBody = body.encode();
+    final contentType = body.contentType.toLowerCase();
 
     if (_isJsonContentType(contentType)) {
       return jsonEncode(encodedBody);
@@ -149,36 +106,32 @@ abstract base class DartEdgeGeneratedClientBase {
 
   T _decodeResponse<T>(
     DartEdgeClientResponse response, {
-    required String expectedContentType,
-    required String? schemaId,
+    required DartEdgeClientResponseSpec<T> success,
   }) {
-    if (_isJsonContentType(expectedContentType)) {
+    if (_isJsonContentType(success.contentType)) {
       final decoded = response.body.isEmpty ? null : jsonDecode(response.body);
-      if (schemaId case final schemaId?) {
-        return codecs.decodeValue<T>(schemaId, decoded);
+      if (success.decoder case final decoder?) {
+        return decoder(decoded);
       }
       return decoded as T;
     }
 
-    if (_isTextContentType(expectedContentType)) {
+    if (_isTextContentType(success.contentType)) {
       return response.body as T;
     }
 
-    if (schemaId case final schemaId?) {
-      return codecs.decodeValue<T>(schemaId, response.body);
+    if (success.decoder case final decoder?) {
+      return decoder(response.body);
     }
 
     return response.body as T;
   }
 
-  String _resolvePathTemplate(
+  String _resolvePathTemplate<TParams>(
     String template, {
-    required String? paramsSchemaId,
-    required Object? params,
+    required DartEdgeClientRequestValue<TParams>? params,
   }) {
-    final encodedParams = _normalizeScalarValues(
-      _encodeObject(paramsSchemaId: paramsSchemaId, value: params),
-    );
+    final encodedParams = _normalizeScalarValues(_encodeObject(params));
 
     return template.replaceAllMapped(_pathParameterPattern, (match) {
       final name = match.group(1)!;
@@ -192,17 +145,12 @@ abstract base class DartEdgeGeneratedClientBase {
     });
   }
 
-  Map<String, Object?> _encodeObject({
-    required String? paramsSchemaId,
-    required Object? value,
-  }) {
-    if (value == null) {
+  Map<String, Object?> _encodeObject<T>(DartEdgeClientRequestValue<T>? value) {
+    if (value == null || value.value == null) {
       return const <String, Object?>{};
     }
 
-    final encoded = paramsSchemaId == null
-        ? value
-        : codecs.encodeValue(paramsSchemaId, value);
+    final encoded = value.encode();
     if (encoded == null) {
       return const <String, Object?>{};
     }
@@ -214,7 +162,7 @@ abstract base class DartEdgeGeneratedClientBase {
     }
 
     throw StateError(
-      'Expected an encoded object map for schema "$paramsSchemaId", '
+      'Expected an encoded object map for schema "${value.schemaId}", '
       'but got ${encoded.runtimeType}.',
     );
   }
@@ -289,3 +237,121 @@ abstract base class DartEdgeGeneratedClientBase {
 }
 
 final _pathParameterPattern = RegExp(r'<([^>]+)>');
+
+/// Fully described generated-client invocation.
+final class DartEdgeClientInvocation<
+  TResponse,
+  TParams,
+  TQuery,
+  THeaders,
+  TBody
+> {
+  const DartEdgeClientInvocation({
+    required this.method,
+    required this.pathTemplate,
+    required this.success,
+    this.params,
+    this.query,
+    this.headers,
+    this.body,
+  });
+
+  /// HTTP method to send.
+  final HttpMethod method;
+
+  /// Route path template using Dart Edge parameter syntax.
+  final String pathTemplate;
+
+  /// Expected success response metadata.
+  final DartEdgeClientResponseSpec<TResponse> success;
+
+  /// Optional path-parameter payload.
+  final DartEdgeClientRequestValue<TParams>? params;
+
+  /// Optional query payload.
+  final DartEdgeClientRequestValue<TQuery>? query;
+
+  /// Optional header payload.
+  final DartEdgeClientRequestValue<THeaders>? headers;
+
+  /// Optional request body payload.
+  final DartEdgeClientRequestBody<TBody>? body;
+}
+
+/// Schema-backed generated-client request value.
+final class DartEdgeClientRequestValue<T> {
+  const DartEdgeClientRequestValue({
+    this.schemaId,
+    required this.value,
+    this.encoder,
+  });
+
+  /// Schema id used to encode [value], when one exists.
+  final String? schemaId;
+
+  /// Request value supplied by the generated client method.
+  final T value;
+
+  /// Encodes [value] into a transport value.
+  final Object? Function(T value)? encoder;
+
+  Object? encode() {
+    final encoder = this.encoder;
+    if (encoder == null) {
+      return value;
+    }
+    return encoder(value);
+  }
+}
+
+/// Schema-backed generated-client request body.
+final class DartEdgeClientRequestBody<T> {
+  const DartEdgeClientRequestBody({
+    required this.contentType,
+    this.schemaId,
+    required this.value,
+    this.encoder,
+  });
+
+  /// Request body content type.
+  final String contentType;
+
+  /// Schema id used to encode [value], when one exists.
+  final String? schemaId;
+
+  /// Request body value supplied by the generated client method.
+  final T value;
+
+  /// Encodes [value] into a transport body.
+  final Object? Function(T value)? encoder;
+
+  Object? encode() {
+    final encoder = this.encoder;
+    if (encoder == null) {
+      return value;
+    }
+    return encoder(value);
+  }
+}
+
+/// Expected generated-client response metadata.
+final class DartEdgeClientResponseSpec<T> {
+  const DartEdgeClientResponseSpec({
+    required this.status,
+    required this.contentType,
+    this.schemaId,
+    this.decoder,
+  });
+
+  /// Expected HTTP status code.
+  final int status;
+
+  /// Expected response content type.
+  final String contentType;
+
+  /// Schema id used to decode the response body, when one exists.
+  final String? schemaId;
+
+  /// Decodes the response body into [T].
+  final T Function(Object? value)? decoder;
+}

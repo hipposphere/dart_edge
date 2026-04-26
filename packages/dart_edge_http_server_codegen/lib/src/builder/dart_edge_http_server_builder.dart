@@ -38,7 +38,6 @@ final class DartEdgeHttpServerBuilderGenerator extends Generator {
 
     final routes = <DartEdgeHttpRouteSpec>[];
     final schemas = <String, JsonSchema>{};
-    final codecs = <String, DartEdgeRuntimeCodecSpec>{};
     final additionalImports = <String>{};
 
     for (final annotatedRoute in annotatedRoutes) {
@@ -59,10 +58,6 @@ final class DartEdgeHttpServerBuilderGenerator extends Generator {
           schemas.putIfAbsent(id, () => schema);
         }
       }
-
-      for (final codec in route.codecs) {
-        codecs.putIfAbsent(codec.schemaId, () => codec);
-      }
     }
 
     final clientClassName = options.config['client_class_name'];
@@ -71,7 +66,6 @@ final class DartEdgeHttpServerBuilderGenerator extends Generator {
       DartEdgeHttpServerLibrarySpec(
         routes: routes,
         schemas: schemas.values.toList(growable: false),
-        codecs: codecs.values.toList(growable: false),
         additionalImports: additionalImports.toList(growable: false),
         clientClassName: clientClassName is String && clientClassName.isNotEmpty
             ? clientClassName
@@ -102,15 +96,28 @@ _RouteBuildResult _buildRoute(
   final params = <_NamedField>[];
   final query = <_NamedField>[];
   final headers = <_NamedField>[];
+  final inputs = <DartEdgeRouteInputSpec>[];
   _TypedPart? body;
 
   for (final parameter in function.formalParameters) {
+    final parameterName = parameter.displayName;
     final pathParam = _firstAnnotation(_pathParamChecker, parameter);
     if (pathParam != null) {
+      final wireName = _annotationString(pathParam, 'name') ?? parameterName;
       params.add(
         _NamedField(
-          name: _annotationString(pathParam, 'name') ?? parameter.displayName,
+          name: wireName,
+          parameterName: parameterName,
           type: parameter.type,
+          required: parameter.isRequired,
+        ),
+      );
+      inputs.add(
+        DartEdgeRouteInputSpec(
+          source: DartEdgeRouteInputSource.params,
+          parameterName: parameterName,
+          wireName: wireName,
+          dartType: _parameterDartType(parameter.type),
           required: parameter.isRequired,
         ),
       );
@@ -119,10 +126,21 @@ _RouteBuildResult _buildRoute(
 
     final queryParam = _firstAnnotation(_queryParamChecker, parameter);
     if (queryParam != null) {
+      final wireName = _annotationString(queryParam, 'name') ?? parameterName;
       query.add(
         _NamedField(
-          name: _annotationString(queryParam, 'name') ?? parameter.displayName,
+          name: wireName,
+          parameterName: parameterName,
           type: parameter.type,
+          required: parameter.isRequired,
+        ),
+      );
+      inputs.add(
+        DartEdgeRouteInputSpec(
+          source: DartEdgeRouteInputSource.query,
+          parameterName: parameterName,
+          wireName: wireName,
+          dartType: _parameterDartType(parameter.type),
           required: parameter.isRequired,
         ),
       );
@@ -131,10 +149,21 @@ _RouteBuildResult _buildRoute(
 
     final headerParam = _firstAnnotation(_headerParamChecker, parameter);
     if (headerParam != null) {
+      final wireName = ConstantReader(headerParam).read('name').stringValue;
       headers.add(
         _NamedField(
-          name: ConstantReader(headerParam).read('name').stringValue,
+          name: wireName,
+          parameterName: parameterName,
           type: parameter.type,
+          required: parameter.isRequired,
+        ),
+      );
+      inputs.add(
+        DartEdgeRouteInputSpec(
+          source: DartEdgeRouteInputSource.headers,
+          parameterName: parameterName,
+          wireName: wireName,
+          dartType: _parameterDartType(parameter.type),
           required: parameter.isRequired,
         ),
       );
@@ -148,6 +177,14 @@ _RouteBuildResult _buildRoute(
         dartType: _dartType(parameter.type),
         contentType: ConstantReader(routeBody).read('contentType').stringValue,
         type: parameter.type,
+      );
+      inputs.add(
+        DartEdgeRouteInputSpec(
+          source: DartEdgeRouteInputSource.body,
+          parameterName: parameterName,
+          dartType: _parameterDartType(parameter.type),
+          required: parameter.isRequired,
+        ),
       );
     }
   }
@@ -163,7 +200,6 @@ _RouteBuildResult _buildRoute(
 
   final routeClassName = '${_upperCamel(operationId)}Route';
   final routeSchemas = <JsonSchema>[];
-  final routeCodecs = <DartEdgeRuntimeCodecSpec>[];
   final additionalImports = <String>{};
 
   JsonSchemaRef<Object?>? paramsRef;
@@ -192,54 +228,67 @@ _RouteBuildResult _buildRoute(
       ref: JsonSchemaRef<Object?>(body.schemaId),
     );
     routeSchemas.add(_schemaForType(body.type, body.schemaId));
-    routeCodecs.add(
-      DartEdgeRuntimeCodecSpec(
-        schemaId: body.schemaId,
-        dartType: body.dartType,
-      ),
-    );
     _addImport(additionalImports, body.type);
   }
 
   routeSchemas.add(_schemaForType(successPart.type, successPart.schemaId));
-  routeCodecs.add(
-    DartEdgeRuntimeCodecSpec(
-      schemaId: successPart.schemaId,
-      dartType: successPart.dartType,
-    ),
-  );
   _addImport(additionalImports, successPart.type);
 
   return _RouteBuildResult(
     spec: DartEdgeHttpRouteSpec(
       routeClassName: routeClassName,
-      contract: RouteContract(
-        method: method,
-        path: path,
-        options: RouteOptions(
-          operationId: operationId,
-          summary: summary,
-          tags: tags,
-          deprecated: deprecated,
-          params: paramsRef,
-          query: queryRef,
-          headers: headersRef,
-          body: requestBody,
-          success: ResponseSpec.json<Object?>(
-            status: success.status,
-            ref: JsonSchemaRef<Object?>(successPart.schemaId),
-          ),
-          errors: _errorResponses(function),
+      method: method,
+      path: path,
+      options: RouteOptions(
+        operationId: operationId,
+        summary: summary,
+        tags: tags,
+        deprecated: deprecated,
+        params: paramsRef,
+        query: queryRef,
+        headers: headersRef,
+        body: requestBody,
+        success: ResponseSpec.json<Object?>(
+          status: success.status,
+          ref: JsonSchemaRef<Object?>(successPart.schemaId),
         ),
+        errors: _errorResponses(function),
       ),
       successType: successPart.dartType,
       paramsType: params.isEmpty ? null : 'Map<String, Object?>',
       queryType: query.isEmpty ? null : 'Map<String, Object?>',
       headersType: headers.isEmpty ? null : 'Map<String, Object?>',
       bodyType: body?.dartType,
+      inputs: inputs,
+      params: [
+        for (final field in params)
+          DartEdgeRouteFieldSpec(
+            parameterName: field.parameterName,
+            wireName: field.name,
+            dartType: _parameterDartType(field.type),
+            required: field.required,
+          ),
+      ],
+      query: [
+        for (final field in query)
+          DartEdgeRouteFieldSpec(
+            parameterName: field.parameterName,
+            wireName: field.name,
+            dartType: _parameterDartType(field.type),
+            required: field.required,
+          ),
+      ],
+      headers: [
+        for (final field in headers)
+          DartEdgeRouteFieldSpec(
+            parameterName: field.parameterName,
+            wireName: field.name,
+            dartType: _parameterDartType(field.type),
+            required: field.required,
+          ),
+      ],
     ),
     schemas: routeSchemas,
-    codecs: routeCodecs,
     additionalImports: additionalImports,
   );
 }
@@ -403,6 +452,8 @@ String _dartType(DartType type) {
       : display;
 }
 
+String _parameterDartType(DartType type) => type.getDisplayString();
+
 bool _isCoreType(InterfaceType type) {
   final libraryUri = type.element.library.uri.toString();
   return libraryUri == 'dart:core';
@@ -438,13 +489,11 @@ final class _RouteBuildResult {
   const _RouteBuildResult({
     required this.spec,
     required this.schemas,
-    required this.codecs,
     required this.additionalImports,
   });
 
   final DartEdgeHttpRouteSpec spec;
   final List<JsonSchema> schemas;
-  final List<DartEdgeRuntimeCodecSpec> codecs;
   final Set<String> additionalImports;
 }
 
@@ -465,11 +514,13 @@ final class _TypedPart {
 final class _NamedField {
   const _NamedField({
     required this.name,
+    required this.parameterName,
     required this.type,
     required this.required,
   });
 
   final String name;
+  final String parameterName;
   final DartType type;
   final bool required;
 }

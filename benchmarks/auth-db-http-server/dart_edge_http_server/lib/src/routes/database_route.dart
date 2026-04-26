@@ -8,16 +8,12 @@ import 'package:dart_edge_sql/dart_edge_sql.dart';
 import '../benchmark_config.dart';
 import '../services.dart';
 
-final class DatabaseRoute extends JsonRouteDefinition<Services, Object?> {
+final class DatabaseRoute extends HttpRouteDefinition<Services, Object?> {
   @override
-  RouteContract get contract => RouteContract(
-    method: HttpMethod.get,
-    path: '/bench/db',
-    options: RouteOptions(
-      operationId: 'benchmarkDatabase',
-      success: ResponseSpec.json<Object?>(),
-      errors: [ErrorResponse.unauthorized(code: 'unauthorized')],
-    ),
+  RouteOptions get options => RouteOptions(
+    operationId: 'benchmarkDatabase',
+    success: ResponseSpec.json<Object?>(),
+    errors: [ErrorResponse.unauthorized(code: 'unauthorized')],
   );
 
   @override
