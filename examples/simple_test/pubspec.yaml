@@ -15,5 +15,6 @@ dependencies:
 
 
 dev_dependencies:
+  build_runner: ^2.10.0
   dart_edge_http_server_codegen: ^0.1.0
   dart_edge_sql_codegen: ^0.1.0

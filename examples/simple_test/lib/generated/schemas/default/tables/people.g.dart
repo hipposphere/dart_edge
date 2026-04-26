@@ -4,18 +4,6 @@ import 'package:dart_edge_sql/dart_edge_sql.dart';
 final class PeopleRow implements JsonEncodable {
   const PeopleRow({required this.id, required this.name, required this.email});
 
-  static const schemaRef = JsonSchemaRef<PeopleRow>('PeopleRow');
-  static const jsonSchema = JsonSchema.object(
-    ref: schemaRef,
-    properties: <String, JsonSchema>{
-      'id': JsonSchema.integer(nullable: true),
-      'name': JsonSchema.string(),
-      'email': JsonSchema.string(),
-    },
-    required: <String>['id', 'name', 'email'],
-    additionalProperties: false,
-  );
-
   factory PeopleRow.fromSqlRow(SqlRow row, {String prefix = ''}) => PeopleRow(
     id: row.readNullable<int>('${prefix}id'),
     name: row.read<String>('${prefix}name'),
@@ -29,12 +17,27 @@ final class PeopleRow implements JsonEncodable {
 
   factory PeopleRow.fromJson(Map<String, Object?> json) => PeopleRow(
     id: json['id'] == null ? null : (json['id'] as num).toInt(),
-    name: json['name'] as String,
-    email: json['email'] as String,
+    name: (json['name'] as String),
+    email: (json['email'] as String),
+  );
+
+  static const schemaRef = JsonSchemaRef<PeopleRow>('PeopleRow');
+
+  static const jsonSchema = JsonSchema.object(
+    ref: schemaRef,
+    properties: <String, JsonSchema>{
+      'id': JsonSchema.integer(nullable: true),
+      'name': JsonSchema.string(),
+      'email': JsonSchema.string(),
+    },
+    required: <String>['id', 'name', 'email'],
+    additionalProperties: false,
   );
 
   final int? id;
+
   final String name;
+
   final String email;
 
   Map<String, Object?> toColumns() => <String, Object?>{
@@ -61,7 +64,18 @@ final class PeopleInsert implements JsonEncodable {
     required this.email,
   });
 
+  factory PeopleInsert.fromJson(Map<String, Object?> json) => PeopleInsert(
+    id: json.containsKey('id')
+        ? SqlValue<int?>(
+            json['id'] == null ? null : (json['id'] as num).toInt(),
+          )
+        : const SqlValue.absent(),
+    name: (json['name'] as String),
+    email: (json['email'] as String),
+  );
+
   static const schemaRef = JsonSchemaRef<PeopleInsert>('PeopleInsert');
+
   static const jsonSchema = JsonSchema.object(
     ref: schemaRef,
     properties: <String, JsonSchema>{
@@ -73,18 +87,10 @@ final class PeopleInsert implements JsonEncodable {
     additionalProperties: false,
   );
 
-  factory PeopleInsert.fromJson(Map<String, Object?> json) => PeopleInsert(
-    id: json.containsKey('id')
-        ? SqlValue<int?>(
-            json['id'] == null ? null : (json['id'] as num).toInt(),
-          )
-        : const SqlValue.absent(),
-    name: json['name'] as String,
-    email: json['email'] as String,
-  );
-
   final SqlValue<int?> id;
+
   final String name;
+
   final String email;
 
   Map<String, Object?> toColumns() => <String, Object?>{
@@ -111,17 +117,6 @@ final class PeopleUpdate implements JsonEncodable {
     this.email = const SqlValue.absent(),
   });
 
-  static const schemaRef = JsonSchemaRef<PeopleUpdate>('PeopleUpdate');
-  static const jsonSchema = JsonSchema.object(
-    ref: schemaRef,
-    properties: <String, JsonSchema>{
-      'id': JsonSchema.integer(nullable: true),
-      'name': JsonSchema.string(),
-      'email': JsonSchema.string(),
-    },
-    additionalProperties: false,
-  );
-
   factory PeopleUpdate.fromJson(Map<String, Object?> json) => PeopleUpdate(
     id: json.containsKey('id')
         ? SqlValue<int?>(
@@ -129,15 +124,30 @@ final class PeopleUpdate implements JsonEncodable {
           )
         : const SqlValue.absent(),
     name: json.containsKey('name')
-        ? SqlValue<String>(json['name'] as String)
+        ? SqlValue<String>((json['name'] as String))
         : const SqlValue.absent(),
     email: json.containsKey('email')
-        ? SqlValue<String>(json['email'] as String)
+        ? SqlValue<String>((json['email'] as String))
         : const SqlValue.absent(),
   );
 
+  static const schemaRef = JsonSchemaRef<PeopleUpdate>('PeopleUpdate');
+
+  static const jsonSchema = JsonSchema.object(
+    ref: schemaRef,
+    properties: <String, JsonSchema>{
+      'id': JsonSchema.integer(nullable: true),
+      'name': JsonSchema.string(),
+      'email': JsonSchema.string(),
+    },
+    required: <String>[],
+    additionalProperties: false,
+  );
+
   final SqlValue<int?> id;
+
   final SqlValue<String> name;
+
   final SqlValue<String> email;
 
   Map<String, Object?> toColumns() => <String, Object?>{
@@ -164,11 +174,13 @@ final class PeopleTable
   static const table = PeopleTable._();
 
   static final id = SqlColumn<int>(table: table, name: 'id', nullable: true);
+
   static final nameColumn = SqlColumn<String>(
     table: table,
     name: 'name',
     nullable: false,
   );
+
   static final email = SqlColumn<String>(
     table: table,
     name: 'email',
@@ -177,6 +189,7 @@ final class PeopleTable
 
   @override
   String get name => 'people';
+
   @override
   String? get schema => null;
 

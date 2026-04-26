@@ -15,5 +15,5 @@ Future<void> main() async {
   final emission = emitDartSchema(schema, databaseClassName: 'AppSchema');
   emission.writeToDirectory('lib/generated');
   await database.close();
-  print('Database schema generated successfully!');
+  print('Database schema generated successfully.');
 }

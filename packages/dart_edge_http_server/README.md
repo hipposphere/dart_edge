@@ -23,7 +23,13 @@ surface from `dart_edge_helpers` in one import.
 import 'package:dart_edge_http_server/dart_edge_http_server.dart';
 
 Future<void> main() async {
-  final app = DartEdge<AppServices>(services: AppServices.new);
+  final app = DartEdge<AppServices>(
+    services: AppServices.new,
+    openApiDocument: OpenApiDocument(
+      title: 'Example API',
+      version: '1.0.0',
+    ),
+  );
 
   app.get('/health', handler: (ctx) => const {'status': 'ok'});
   OpenApiHelpers.mountJson(app, path: '/openapi.json');
@@ -39,3 +45,21 @@ final class AppServices {
 See [example/simple_http_server.dart](example/simple_http_server.dart) for a
 larger end-to-end example with nested routers, inline handlers, middleware, and
 OpenAPI helper mounting.
+
+## Request Bodies
+
+Use `ctx.req` for decoded bodies, native body access, and multipart parsing:
+
+```dart
+app.post('/upload', handler: (ctx) async {
+  final rawBody = ctx.req.nativeBody;
+  final copied = rawBody?.copyBytes();
+
+  final form = await ctx.req.multipart();
+  final file = form.files.single;
+  return {'bodyBytes': copied?.length ?? file.length};
+});
+```
+
+`nativeBody` is a borrowed native view for the current request. Copy it before
+storing it beyond the handler.

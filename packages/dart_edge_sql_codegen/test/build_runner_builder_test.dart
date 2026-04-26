@@ -38,11 +38,11 @@ void main() {
     await testBuilder(
       builder,
       <String, String>{
-        'test_app|lib/schema.dart_edge_sql.json': jsonEncode(database.toJson()),
+        'test_app|lib/app_schema.schema.json': jsonEncode(database.toJson()),
       },
-      generateFor: const {'test_app|lib/schema.dart_edge_sql.json'},
+      generateFor: const {'test_app|lib/app_schema.schema.json'},
       outputs: {
-        'test_app|lib/schema.dart_edge_sql.g.dart': decodedMatches(
+        'test_app|lib/app_schema.g.dart': decodedMatches(
           allOf([
             contains('final class AppSchema'),
             contains('final class UsersRow implements JsonEncodable'),

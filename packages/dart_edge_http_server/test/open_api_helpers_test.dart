@@ -6,10 +6,13 @@ import 'package:test/test.dart';
 
 void main() {
   test('serves the generated OpenAPI document and Swagger UI', () async {
-    final app = DartEdge<void>(services: () {});
-    app.openApiDocument
-      ..title = 'Example API'
-      ..version = '2026.04.17';
+    final app = DartEdge<void>(
+      services: () {},
+      openApiDocument: OpenApiDocument(
+        title: 'Example API',
+        version: '2026.04.17',
+      ),
+    );
     app.get('/health', handler: (_) => const {'status': 'ok'});
     OpenApiHelpers.mountJson(app, path: '/openapi.json');
     OpenApiHelpers.mountSwaggerUi(

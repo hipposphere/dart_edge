@@ -149,10 +149,9 @@ void main() {
       app.post(
         '/native-body',
         handler: (ctx) {
-          final request = ctx.nativeRequest;
-          final body = request?.body;
+          final body = ctx.req.nativeBody;
           return {
-            'hasNativeRequest': request != null,
+            'hasNativeBody': body != null,
             'length': body?.length ?? 0,
             'text': body == null ? '' : utf8.decode(body.copyBytes()),
           };
@@ -181,7 +180,7 @@ void main() {
           jsonDecode(await utf8.decoder.bind(response).join())
               as Map<String, Object?>;
       expect(body, {
-        'hasNativeRequest': true,
+        'hasNativeBody': true,
         'length': 17,
         'text': 'hello native body',
       });

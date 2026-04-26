@@ -8,20 +8,6 @@ final class DartEdgeSchemaMigrationsRow implements JsonEncodable {
     required this.appliedAt,
   });
 
-  static const schemaRef = JsonSchemaRef<DartEdgeSchemaMigrationsRow>(
-    'DartEdgeSchemaMigrationsRow',
-  );
-  static const jsonSchema = JsonSchema.object(
-    ref: schemaRef,
-    properties: <String, JsonSchema>{
-      'version': JsonSchema.string(nullable: true),
-      'name': JsonSchema.string(),
-      'applied_at': JsonSchema.string(),
-    },
-    required: <String>['version', 'name', 'applied_at'],
-    additionalProperties: false,
-  );
-
   factory DartEdgeSchemaMigrationsRow.fromSqlRow(
     SqlRow row, {
     String prefix = '',
@@ -38,13 +24,30 @@ final class DartEdgeSchemaMigrationsRow implements JsonEncodable {
 
   factory DartEdgeSchemaMigrationsRow.fromJson(Map<String, Object?> json) =>
       DartEdgeSchemaMigrationsRow(
-        version: json['version'] == null ? null : json['version'] as String,
-        name: json['name'] as String,
-        appliedAt: json['applied_at'] as String,
+        version: json['version'] == null ? null : (json['version'] as String),
+        name: (json['name'] as String),
+        appliedAt: (json['applied_at'] as String),
       );
 
+  static const schemaRef = JsonSchemaRef<DartEdgeSchemaMigrationsRow>(
+    'DartEdgeSchemaMigrationsRow',
+  );
+
+  static const jsonSchema = JsonSchema.object(
+    ref: schemaRef,
+    properties: <String, JsonSchema>{
+      'version': JsonSchema.string(nullable: true),
+      'name': JsonSchema.string(),
+      'applied_at': JsonSchema.string(),
+    },
+    required: <String>['version', 'name', 'applied_at'],
+    additionalProperties: false,
+  );
+
   final String? version;
+
   final String name;
+
   final String appliedAt;
 
   Map<String, Object?> toColumns() => <String, Object?>{
@@ -72,9 +75,23 @@ final class DartEdgeSchemaMigrationsInsert implements JsonEncodable {
     this.appliedAt = const SqlValue.absent(),
   });
 
+  factory DartEdgeSchemaMigrationsInsert.fromJson(Map<String, Object?> json) =>
+      DartEdgeSchemaMigrationsInsert(
+        version: json.containsKey('version')
+            ? SqlValue<String?>(
+                json['version'] == null ? null : (json['version'] as String),
+              )
+            : const SqlValue.absent(),
+        name: (json['name'] as String),
+        appliedAt: json.containsKey('applied_at')
+            ? SqlValue<String>((json['applied_at'] as String))
+            : const SqlValue.absent(),
+      );
+
   static const schemaRef = JsonSchemaRef<DartEdgeSchemaMigrationsInsert>(
     'DartEdgeSchemaMigrationsInsert',
   );
+
   static const jsonSchema = JsonSchema.object(
     ref: schemaRef,
     properties: <String, JsonSchema>{
@@ -86,21 +103,10 @@ final class DartEdgeSchemaMigrationsInsert implements JsonEncodable {
     additionalProperties: false,
   );
 
-  factory DartEdgeSchemaMigrationsInsert.fromJson(Map<String, Object?> json) =>
-      DartEdgeSchemaMigrationsInsert(
-        version: json.containsKey('version')
-            ? SqlValue<String?>(
-                json['version'] == null ? null : json['version'] as String,
-              )
-            : const SqlValue.absent(),
-        name: json['name'] as String,
-        appliedAt: json.containsKey('applied_at')
-            ? SqlValue<String>(json['applied_at'] as String)
-            : const SqlValue.absent(),
-      );
-
   final SqlValue<String?> version;
+
   final String name;
+
   final SqlValue<String> appliedAt;
 
   Map<String, Object?> toColumns() => <String, Object?>{
@@ -128,9 +134,25 @@ final class DartEdgeSchemaMigrationsUpdate implements JsonEncodable {
     this.appliedAt = const SqlValue.absent(),
   });
 
+  factory DartEdgeSchemaMigrationsUpdate.fromJson(Map<String, Object?> json) =>
+      DartEdgeSchemaMigrationsUpdate(
+        version: json.containsKey('version')
+            ? SqlValue<String?>(
+                json['version'] == null ? null : (json['version'] as String),
+              )
+            : const SqlValue.absent(),
+        name: json.containsKey('name')
+            ? SqlValue<String>((json['name'] as String))
+            : const SqlValue.absent(),
+        appliedAt: json.containsKey('applied_at')
+            ? SqlValue<String>((json['applied_at'] as String))
+            : const SqlValue.absent(),
+      );
+
   static const schemaRef = JsonSchemaRef<DartEdgeSchemaMigrationsUpdate>(
     'DartEdgeSchemaMigrationsUpdate',
   );
+
   static const jsonSchema = JsonSchema.object(
     ref: schemaRef,
     properties: <String, JsonSchema>{
@@ -138,26 +160,14 @@ final class DartEdgeSchemaMigrationsUpdate implements JsonEncodable {
       'name': JsonSchema.string(),
       'applied_at': JsonSchema.string(),
     },
+    required: <String>[],
     additionalProperties: false,
   );
 
-  factory DartEdgeSchemaMigrationsUpdate.fromJson(Map<String, Object?> json) =>
-      DartEdgeSchemaMigrationsUpdate(
-        version: json.containsKey('version')
-            ? SqlValue<String?>(
-                json['version'] == null ? null : json['version'] as String,
-              )
-            : const SqlValue.absent(),
-        name: json.containsKey('name')
-            ? SqlValue<String>(json['name'] as String)
-            : const SqlValue.absent(),
-        appliedAt: json.containsKey('applied_at')
-            ? SqlValue<String>(json['applied_at'] as String)
-            : const SqlValue.absent(),
-      );
-
   final SqlValue<String?> version;
+
   final SqlValue<String> name;
+
   final SqlValue<String> appliedAt;
 
   Map<String, Object?> toColumns() => <String, Object?>{
@@ -194,11 +204,13 @@ final class DartEdgeSchemaMigrationsTable
     name: 'version',
     nullable: true,
   );
+
   static final nameColumn = SqlColumn<String>(
     table: table,
     name: 'name',
     nullable: false,
   );
+
   static final appliedAt = SqlColumn<String>(
     table: table,
     name: 'applied_at',
@@ -207,6 +219,7 @@ final class DartEdgeSchemaMigrationsTable
 
   @override
   String get name => 'dart_edge_schema_migrations';
+
   @override
   String? get schema => null;
 

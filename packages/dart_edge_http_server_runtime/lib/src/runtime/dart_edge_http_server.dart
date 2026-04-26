@@ -9,7 +9,6 @@ import '../native/dart_edge_native.dart';
 import 'compiled_route_table.dart';
 import 'dart_edge_codec.dart';
 import 'dart_edge_server.dart';
-import 'native_request.dart';
 import 'open_api_document.dart';
 import 'request_decoder.dart';
 import 'response_writer.dart';
@@ -29,9 +28,11 @@ class DartEdge<TServices> extends Router<TServices> {
   /// Creates a new application instance.
   DartEdge({
     this.services,
+    OpenApiDocument? openApiDocument,
     List<RustMiddleware>? middlewares,
     DartEdgeCodecRegistry codecs = DartEdgeCodecRegistry.empty,
   }) : middlewares = List.unmodifiable(middlewares ?? const <RustMiddleware>[]),
+       openApiDocument = openApiDocument ?? OpenApiDocument(),
        _codecRegistry = codecs;
 
   /// Factory used to build request-scoped services.
@@ -41,7 +42,7 @@ class DartEdge<TServices> extends Router<TServices> {
   final List<RustMiddleware> middlewares;
 
   /// Application-level OpenAPI metadata attached to the app.
-  final OpenApiDocument openApiDocument = OpenApiDocument();
+  final OpenApiDocument openApiDocument;
   JsonSchemaRegistry? _schemaRegistry;
   DartEdgeCodecRegistry _codecRegistry;
   _RustTransportSession? _session;
@@ -220,7 +221,6 @@ class DartEdge<TServices> extends Router<TServices> {
       services: _createServices(),
       req: input,
     );
-    ctx.put<NativeRequest>(requestLease.nativeRequest);
     for (final guard in compiledRoute.guards) {
       final decision = await Future.sync(() => guard.authorize(ctx));
       if (!decision.isAllowed) {

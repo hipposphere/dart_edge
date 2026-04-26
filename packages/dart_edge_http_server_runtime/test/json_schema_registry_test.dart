@@ -30,6 +30,36 @@ void main() {
     });
   });
 
+  test('uses immutable OpenAPI document metadata from the constructor', () {
+    final servers = [const OpenApiServer(url: 'https://api.example.test')];
+    final app = DartEdge<void>(
+      services: () {},
+      openApiDocument: OpenApiDocument(
+        title: 'Example API',
+        version: '2026.04.26',
+        description: 'Immutable API metadata.',
+        servers: servers,
+      ),
+    );
+    servers.add(const OpenApiServer(url: 'https://mutated.example.test'));
+
+    final document = app.buildOpenApiDocumentJson();
+    expect(document['info'], {
+      'title': 'Example API',
+      'version': '2026.04.26',
+      'description': 'Immutable API metadata.',
+    });
+    expect(document['servers'], [
+      {'url': 'https://api.example.test'},
+    ]);
+    expect(
+      () => app.openApiDocument.servers.add(
+        const OpenApiServer(url: 'https://blocked.example.test'),
+      ),
+      throwsUnsupportedError,
+    );
+  });
+
   test('includes installed schemas in the native manifest', () {
     const registry = JsonSchemaRegistry(
       schemas: <JsonSchema>[

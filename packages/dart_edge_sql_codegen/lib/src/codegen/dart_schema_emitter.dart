@@ -71,7 +71,7 @@ DartSchemaEmission emitDartSchema(
   String databaseClassName = 'GeneratedDatabaseSchema',
 }) {
   final schemaGroups = _groupTablesBySchema(database.tables);
-  final entrypointFileName = '${_fileStem(databaseClassName)}.dart';
+  final entrypointFileName = '${_fileStem(databaseClassName)}.g.dart';
   final files = <DartSchemaEmissionFile>[
     DartSchemaEmissionFile(
       relativePath: entrypointFileName,
@@ -92,7 +92,7 @@ DartSchemaEmission emitDartSchema(
 
     files.add(
       DartSchemaEmissionFile(
-        relativePath: '$schemaFolder/schema.dart',
+        relativePath: '$schemaFolder/schema.g.dart',
         contents: _emitSchemaLibrary(group),
       ),
     );
@@ -158,7 +158,10 @@ String _emitEntrypoint({
 
     for (final group in schemaGroups) {
       builder.directives.add(
-        Directive.import('schemas/${group.folderName}/schema.dart'),
+        Directive.import('schemas/${group.folderName}/schema.g.dart'),
+      );
+      builder.directives.add(
+        Directive.export('schemas/${group.folderName}/schema.g.dart'),
       );
     }
   });
@@ -178,6 +181,11 @@ String _emitSchemaLibrary(_SchemaGroup group) {
     for (final table in group.tables) {
       builder.directives.add(
         Directive.import('tables/${_tableFileName(table)}'),
+      );
+    }
+    for (final table in group.tables) {
+      builder.directives.add(
+        Directive.export('tables/${_tableFileName(table)}'),
       );
     }
   });
@@ -1125,7 +1133,7 @@ String _schemaFolderName(String schemaName) {
 }
 
 String _tableFileName(IntrospectedTable table) =>
-    '${_fileStem(table.name)}.dart';
+    '${_fileStem(table.name)}.g.dart';
 
 String _upperCamel(String value) {
   final parts = value

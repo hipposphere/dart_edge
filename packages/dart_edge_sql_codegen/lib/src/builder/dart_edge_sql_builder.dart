@@ -7,8 +7,8 @@ import '../introspection/introspected_database.dart';
 
 /// Build runner integration for schema snapshots.
 ///
-/// Inputs are JSON files ending in `.dart_edge_sql.json`. The builder emits a
-/// single Dart library beside the snapshot, ending in `.dart_edge_sql.g.dart`.
+/// Inputs are JSON files ending in `.schema.json`. The builder emits a single
+/// Dart library beside the snapshot, ending in `.g.dart`.
 final class DartEdgeSqlBuilder implements Builder {
   const DartEdgeSqlBuilder(this.options);
 
@@ -16,7 +16,7 @@ final class DartEdgeSqlBuilder implements Builder {
 
   @override
   Map<String, List<String>> get buildExtensions => const {
-    '.dart_edge_sql.json': ['.dart_edge_sql.g.dart'],
+    '.schema.json': ['.g.dart'],
   };
 
   @override
@@ -36,10 +36,7 @@ final class DartEdgeSqlBuilder implements Builder {
         'GeneratedDatabaseSchema';
     final output = AssetId(
       input.package,
-      input.path.replaceFirst(
-        RegExp(r'\.dart_edge_sql\.json$'),
-        '.dart_edge_sql.g.dart',
-      ),
+      input.path.replaceFirst(RegExp(r'\.schema\.json$'), '.g.dart'),
     );
 
     await buildStep.writeAsString(

@@ -12,7 +12,13 @@ schema registry model, middleware configuration, and native server bridge.
 import 'package:dart_edge_http_server_runtime/dart_edge_http_server_runtime.dart';
 
 Future<void> main() async {
-  final app = DartEdge<AppServices>(services: AppServices.new);
+  final app = DartEdge<AppServices>(
+    services: AppServices.new,
+    openApiDocument: OpenApiDocument(
+      title: 'Example API',
+      version: '1.0.0',
+    ),
+  );
 
   app.get('/health', handler: (ctx) => const {'status': 'ok'});
   await app.listen(host: '0.0.0.0', port: 8080);
@@ -42,6 +48,25 @@ For local-only development, omit `host:` and the runtime stays bound to
 - `JsonSchemaRef`, `JsonSchema`, and `JsonSchemaRegistry` connect the
   runtime to generated JSON Schema metadata
 - `RustMiddleware` configures the transport-layer middleware stack
+
+## Request Body Ergonomics
+
+Handlers should use `ctx.req` for both decoded Dart payloads and native body
+access:
+
+```dart
+app.post('/upload', handler: (ctx) async {
+  final rawBody = ctx.req.nativeBody;
+  final bytes = rawBody?.copyBytes();
+
+  final form = await ctx.req.multipart();
+  final file = form.files.single;
+  return {'bytes': bytes?.length ?? file.length};
+});
+```
+
+`nativeBody` is a borrowed view and is only valid while the current request is
+being handled. Copy bytes if data needs to outlive the handler.
 
 See [example/native_probe.dart](example/native_probe.dart) for the native asset
 probe and [../dart_edge_http_server/example/simple_http_server.dart](../dart_edge_http_server/example/simple_http_server.dart)

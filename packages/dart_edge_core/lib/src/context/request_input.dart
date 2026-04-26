@@ -9,6 +9,7 @@ final class RequestInput {
     Map<String, String>? queryMap,
     Map<String, String>? headersMap,
     Future<Object?> Function()? multipartLoader,
+    Object? nativeBody,
   }) {
     final normalizedParamsMap = _normalizedStringMap(paramsMap, params);
     final normalizedQueryMap = _normalizedStringMap(queryMap, query);
@@ -23,6 +24,7 @@ final class RequestInput {
       queryMap: normalizedQueryMap,
       headersMap: normalizedHeadersMap,
       multipartLoader: multipartLoader,
+      nativeBody: nativeBody,
     );
   }
 
@@ -35,10 +37,12 @@ final class RequestInput {
     this.queryMap = const <String, String>{},
     this.headersMap = const <String, String>{},
     Future<Object?> Function()? multipartLoader,
+    Object? nativeBody,
   }) : _paramsValue = paramsValue,
        _queryValue = queryValue,
        _headerValue = headerValue,
        _bodyValue = bodyValue,
+       _nativeBody = nativeBody,
        _multipartLoader = multipartLoader;
 
   static const empty = RequestInput._();
@@ -48,6 +52,7 @@ final class RequestInput {
   final Object? _queryValue;
   final Object? _headerValue;
   final Object? _bodyValue;
+  final Object? _nativeBody;
 
   /// Raw path parameters as strings.
   final Map<String, String> paramsMap;
@@ -107,6 +112,15 @@ final class RequestInput {
 
   /// Decoded request body when you need the raw value without a cast.
   Object? get bodyOrNull => _bodyValue;
+
+  /// Runtime-specific native body view when one is available.
+  ///
+  /// Use a runtime package extension, such as `ctx.req.nativeBody`, for a
+  /// strongly typed view.
+  Object? get nativeBodyOrNull => _nativeBody;
+
+  /// Reads the runtime-specific native body as [T], or `null` when absent.
+  T? maybeNativeBody<T>() => _maybeRead<T>(_nativeBody);
 
   /// Whether this request exposes multipart form-data parsing.
   bool get hasMultipart => _multipartLoader != null;

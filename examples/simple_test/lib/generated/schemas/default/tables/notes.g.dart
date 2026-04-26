@@ -10,20 +10,6 @@ final class NotesRow implements JsonEncodable {
     required this.createdAt,
   });
 
-  static const schemaRef = JsonSchemaRef<NotesRow>('NotesRow');
-  static const jsonSchema = JsonSchema.object(
-    ref: schemaRef,
-    properties: <String, JsonSchema>{
-      'id': JsonSchema.integer(nullable: true),
-      'title': JsonSchema.string(),
-      'body': JsonSchema.string(),
-      'owner_id': JsonSchema.integer(),
-      'created_at': JsonSchema.string(),
-    },
-    required: <String>['id', 'title', 'body', 'owner_id', 'created_at'],
-    additionalProperties: false,
-  );
-
   factory NotesRow.fromSqlRow(SqlRow row, {String prefix = ''}) => NotesRow(
     id: row.readNullable<int>('${prefix}id'),
     title: row.read<String>('${prefix}title'),
@@ -39,16 +25,35 @@ final class NotesRow implements JsonEncodable {
 
   factory NotesRow.fromJson(Map<String, Object?> json) => NotesRow(
     id: json['id'] == null ? null : (json['id'] as num).toInt(),
-    title: json['title'] as String,
-    body: json['body'] as String,
+    title: (json['title'] as String),
+    body: (json['body'] as String),
     ownerId: (json['owner_id'] as num).toInt(),
-    createdAt: json['created_at'] as String,
+    createdAt: (json['created_at'] as String),
+  );
+
+  static const schemaRef = JsonSchemaRef<NotesRow>('NotesRow');
+
+  static const jsonSchema = JsonSchema.object(
+    ref: schemaRef,
+    properties: <String, JsonSchema>{
+      'id': JsonSchema.integer(nullable: true),
+      'title': JsonSchema.string(),
+      'body': JsonSchema.string(),
+      'owner_id': JsonSchema.integer(),
+      'created_at': JsonSchema.string(),
+    },
+    required: <String>['id', 'title', 'body', 'owner_id', 'created_at'],
+    additionalProperties: false,
   );
 
   final int? id;
+
   final String title;
+
   final String body;
+
   final int ownerId;
+
   final String createdAt;
 
   Map<String, Object?> toColumns() => <String, Object?>{
@@ -82,7 +87,22 @@ final class NotesInsert implements JsonEncodable {
     this.createdAt = const SqlValue.absent(),
   });
 
+  factory NotesInsert.fromJson(Map<String, Object?> json) => NotesInsert(
+    id: json.containsKey('id')
+        ? SqlValue<int?>(
+            json['id'] == null ? null : (json['id'] as num).toInt(),
+          )
+        : const SqlValue.absent(),
+    title: (json['title'] as String),
+    body: (json['body'] as String),
+    ownerId: (json['owner_id'] as num).toInt(),
+    createdAt: json.containsKey('created_at')
+        ? SqlValue<String>((json['created_at'] as String))
+        : const SqlValue.absent(),
+  );
+
   static const schemaRef = JsonSchemaRef<NotesInsert>('NotesInsert');
+
   static const jsonSchema = JsonSchema.object(
     ref: schemaRef,
     properties: <String, JsonSchema>{
@@ -96,24 +116,14 @@ final class NotesInsert implements JsonEncodable {
     additionalProperties: false,
   );
 
-  factory NotesInsert.fromJson(Map<String, Object?> json) => NotesInsert(
-    id: json.containsKey('id')
-        ? SqlValue<int?>(
-            json['id'] == null ? null : (json['id'] as num).toInt(),
-          )
-        : const SqlValue.absent(),
-    title: json['title'] as String,
-    body: json['body'] as String,
-    ownerId: (json['owner_id'] as num).toInt(),
-    createdAt: json.containsKey('created_at')
-        ? SqlValue<String>(json['created_at'] as String)
-        : const SqlValue.absent(),
-  );
-
   final SqlValue<int?> id;
+
   final String title;
+
   final String body;
+
   final int ownerId;
+
   final SqlValue<String> createdAt;
 
   Map<String, Object?> toColumns() => <String, Object?>{
@@ -147,7 +157,28 @@ final class NotesUpdate implements JsonEncodable {
     this.createdAt = const SqlValue.absent(),
   });
 
+  factory NotesUpdate.fromJson(Map<String, Object?> json) => NotesUpdate(
+    id: json.containsKey('id')
+        ? SqlValue<int?>(
+            json['id'] == null ? null : (json['id'] as num).toInt(),
+          )
+        : const SqlValue.absent(),
+    title: json.containsKey('title')
+        ? SqlValue<String>((json['title'] as String))
+        : const SqlValue.absent(),
+    body: json.containsKey('body')
+        ? SqlValue<String>((json['body'] as String))
+        : const SqlValue.absent(),
+    ownerId: json.containsKey('owner_id')
+        ? SqlValue<int>((json['owner_id'] as num).toInt())
+        : const SqlValue.absent(),
+    createdAt: json.containsKey('created_at')
+        ? SqlValue<String>((json['created_at'] as String))
+        : const SqlValue.absent(),
+  );
+
   static const schemaRef = JsonSchemaRef<NotesUpdate>('NotesUpdate');
+
   static const jsonSchema = JsonSchema.object(
     ref: schemaRef,
     properties: <String, JsonSchema>{
@@ -157,33 +188,18 @@ final class NotesUpdate implements JsonEncodable {
       'owner_id': JsonSchema.integer(),
       'created_at': JsonSchema.string(),
     },
+    required: <String>[],
     additionalProperties: false,
   );
 
-  factory NotesUpdate.fromJson(Map<String, Object?> json) => NotesUpdate(
-    id: json.containsKey('id')
-        ? SqlValue<int?>(
-            json['id'] == null ? null : (json['id'] as num).toInt(),
-          )
-        : const SqlValue.absent(),
-    title: json.containsKey('title')
-        ? SqlValue<String>(json['title'] as String)
-        : const SqlValue.absent(),
-    body: json.containsKey('body')
-        ? SqlValue<String>(json['body'] as String)
-        : const SqlValue.absent(),
-    ownerId: json.containsKey('owner_id')
-        ? SqlValue<int>((json['owner_id'] as num).toInt())
-        : const SqlValue.absent(),
-    createdAt: json.containsKey('created_at')
-        ? SqlValue<String>(json['created_at'] as String)
-        : const SqlValue.absent(),
-  );
-
   final SqlValue<int?> id;
+
   final SqlValue<String> title;
+
   final SqlValue<String> body;
+
   final SqlValue<int> ownerId;
+
   final SqlValue<String> createdAt;
 
   Map<String, Object?> toColumns() => <String, Object?>{
@@ -214,21 +230,25 @@ final class NotesTable extends SqlTable<NotesRow, NotesInsert, NotesUpdate> {
   static const table = NotesTable._();
 
   static final id = SqlColumn<int>(table: table, name: 'id', nullable: true);
+
   static final title = SqlColumn<String>(
     table: table,
     name: 'title',
     nullable: false,
   );
+
   static final body = SqlColumn<String>(
     table: table,
     name: 'body',
     nullable: false,
   );
+
   static final ownerId = SqlColumn<int>(
     table: table,
     name: 'owner_id',
     nullable: false,
   );
+
   static final createdAt = SqlColumn<String>(
     table: table,
     name: 'created_at',
@@ -237,6 +257,7 @@ final class NotesTable extends SqlTable<NotesRow, NotesInsert, NotesUpdate> {
 
   @override
   String get name => 'notes';
+
   @override
   String? get schema => null;
 

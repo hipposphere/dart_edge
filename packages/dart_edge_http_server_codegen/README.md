@@ -58,7 +58,15 @@ Future<UserDto> createUser(
 Run generation:
 
 ```sh
-dart run build_runner build
+dart run dart_edge_http_server_codegen:build
+```
+
+The command is a thin wrapper around `build_runner`, so normal build_runner
+flags still work:
+
+```sh
+dart run dart_edge_http_server_codegen:build --delete-conflicting-outputs
+dart run dart_edge_http_server_codegen:build watch
 ```
 
 The generated part exposes:

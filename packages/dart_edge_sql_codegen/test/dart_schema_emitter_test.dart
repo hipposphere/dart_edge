@@ -40,13 +40,13 @@ void main() {
 
     final emission = emitDartSchema(database, databaseClassName: 'AppSchema');
 
-    expect(emission.entrypointFileName, 'app_schema.dart');
+    expect(emission.entrypointFileName, 'app_schema.g.dart');
     expect(
       emission.files.map((file) => file.relativePath),
       containsAll(<String>[
-        'app_schema.dart',
-        'schemas/default/schema.dart',
-        'schemas/default/tables/users.dart',
+        'app_schema.g.dart',
+        'schemas/default/schema.g.dart',
+        'schemas/default/tables/users.g.dart',
       ]),
     );
     expect(
@@ -58,12 +58,12 @@ void main() {
       ]),
     );
 
-    final entrypoint = emission.fileAt('app_schema.dart').contents;
+    final entrypoint = emission.fileAt('app_schema.g.dart').contents;
     final defaultSchema = emission
-        .fileAt('schemas/default/schema.dart')
+        .fileAt('schemas/default/schema.g.dart')
         .contents;
     final usersTable = emission
-        .fileAt('schemas/default/tables/users.dart')
+        .fileAt('schemas/default/tables/users.g.dart')
         .contents;
 
     expect(entrypoint, isNot(contains(RegExp(r'^library\s', multiLine: true))));
@@ -171,14 +171,14 @@ void main() {
     expect(
       emission.files.map((file) => file.relativePath),
       containsAll(<String>[
-        'schemas/public/schema.dart',
-        'schemas/public/tables/users.dart',
-        'schemas/tenant/schema.dart',
-        'schemas/tenant/tables/users.dart',
+        'schemas/public/schema.g.dart',
+        'schemas/public/tables/users.g.dart',
+        'schemas/tenant/schema.g.dart',
+        'schemas/tenant/tables/users.g.dart',
       ]),
     );
 
-    final entrypoint = emission.fileAt('app_schema.dart').contents;
+    final entrypoint = emission.fileAt('app_schema.g.dart').contents;
     expect(
       entrypoint,
       contains('static const publicSchema = PublicSchema.instance;'),
@@ -225,7 +225,7 @@ void main() {
     expect(File('${outputDirectory.path}/stale.dart').existsSync(), isFalse);
     expect(Directory('${outputDirectory.path}/obsolete').existsSync(), isFalse);
     expect(
-      File('${outputDirectory.path}/app_schema.dart').existsSync(),
+      File('${outputDirectory.path}/app_schema.g.dart').existsSync(),
       isTrue,
     );
     expect(
@@ -234,7 +234,7 @@ void main() {
     );
     expect(
       File(
-        '${outputDirectory.path}/schemas/default/tables/users.dart',
+        '${outputDirectory.path}/schemas/default/tables/users.g.dart',
       ).existsSync(),
       isTrue,
     );
@@ -259,7 +259,7 @@ void main() {
 
     final emission = emitDartSchema(database);
     final tableFile = emission
-        .fileAt('schemas/default/tables/schema_migrations.dart')
+        .fileAt('schemas/default/tables/schema_migrations.g.dart')
         .contents;
 
     expect(tableFile, contains('static final nameColumn = SqlColumn<String>('));

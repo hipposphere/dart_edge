@@ -11,6 +11,40 @@ and emit a structured Dart source tree containing:
 
 ## Typical Flow
 
+### CLI
+
+For a live SQLite database:
+
+```shell
+dart run dart_edge_sql_codegen:schema \
+  --sqlite app.db \
+  --out lib/generated \
+  --class AppSchema
+```
+
+For PostgreSQL:
+
+```shell
+dart run dart_edge_sql_codegen:schema \
+  --postgres postgres://localhost/app \
+  --schema public \
+  --out lib/generated \
+  --class AppSchema
+```
+
+That writes a structured generated tree:
+
+```text
+lib/generated/
+  app_schema.g.dart
+  schemas/
+    default/
+      schema.g.dart
+      tables/
+        users.g.dart
+      enums/
+```
+
 ### Programmatic structured output
 
 ```dart
@@ -30,23 +64,23 @@ Future<void> main() async {
 }
 ```
 
-That writes a layout like:
+That writes the same layout as the CLI:
 
 ```text
 lib/generated/
-  app_schema.dart
+  app_schema.g.dart
   schemas/
     default/
-      schema.dart
+      schema.g.dart
       tables/
-        users.dart
+        users.g.dart
       enums/
 ```
 
 ### build_runner output
 
-For checked-in schema snapshots, add a JSON file ending in
-`.dart_edge_sql.json` and run build_runner:
+For checked-in schema snapshots, add a JSON file ending in `.schema.json` and
+run build_runner:
 
 ```shell
 dart run build_runner build
@@ -55,8 +89,8 @@ dart run build_runner build
 The builder emits a single Dart library beside the snapshot:
 
 ```text
-lib/schema.dart_edge_sql.json
-lib/schema.dart_edge_sql.g.dart
+lib/app_schema.schema.json
+lib/app_schema.g.dart
 ```
 
 Snapshot JSON uses the same shape as `IntrospectedDatabase.toJson()`:

@@ -5,6 +5,10 @@ import 'package:dart_edge_http_server/dart_edge_http_server.dart';
 Future<void> main() async {
   final app = DartEdge<AppServices>(
     services: AppServices.new,
+    openApiDocument: OpenApiDocument(
+      title: 'Dart Edge Example API',
+      version: '0.1.0',
+    ),
     middlewares: [
       RustMiddleware.requestId(),
       RustMiddleware.tracing(
@@ -17,9 +21,6 @@ Future<void> main() async {
       RustMiddleware.bodyLimit(maxBytes: 1024 * 1024),
     ],
   );
-  app.openApiDocument
-    ..title = 'Dart Edge Example API'
-    ..version = '0.1.0';
   app.installSchemaRegistry(_schemaRegistry);
   app.installCodecRegistry(_codecRegistry);
 

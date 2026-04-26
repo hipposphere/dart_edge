@@ -50,6 +50,17 @@ void main() {
     expect(input.queryMap, {'search': 'Ada'});
     expect(input.headersMap, {'accept': 'application/json'});
   });
+
+  test('carries an opaque native body slot for runtime extensions', () {
+    final input = RequestInput(nativeBody: const NativeBodyToken('body-1'));
+
+    expect(input.nativeBodyOrNull, const NativeBodyToken('body-1'));
+    expect(
+      input.maybeNativeBody<NativeBodyToken>(),
+      const NativeBodyToken('body-1'),
+    );
+    expect(input.maybeNativeBody<String>(), isNull);
+  });
 }
 
 final class SearchQuery {
@@ -62,4 +73,18 @@ final class CreateUserInput {
   const CreateUserInput({required this.name});
 
   final String name;
+}
+
+final class NativeBodyToken {
+  const NativeBodyToken(this.id);
+
+  final String id;
+
+  @override
+  bool operator ==(Object other) {
+    return other is NativeBodyToken && other.id == id;
+  }
+
+  @override
+  int get hashCode => id.hashCode;
 }

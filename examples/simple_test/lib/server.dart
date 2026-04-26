@@ -3,14 +3,18 @@ import 'package:dart_edge_http_server/dart_edge_http_server.dart';
 import 'package:dart_edge_sql/dart_edge_sql.dart';
 import 'package:dart_edge_sql_migrator/dart_edge_sql_migrator.dart';
 import 'package:http/http.dart' as http;
-import 'package:simple_test/generated/schemas/default/tables/notes.dart';
-import 'package:simple_test/generated/schemas/default/tables/people.dart';
+import 'package:simple_test/generated/app_schema.g.dart';
 import 'package:simple_test/src/auth.dart';
 import 'package:simple_test/src/database.dart';
 import 'package:simple_test/src/routes/guarded_route.dart';
 
 Future<DartEdge<void>> buildServer() async {
-  final server = DartEdge<void>();
+  final server = DartEdge<void>(
+    openApiDocument: OpenApiDocument(
+      title: 'Simple Test API',
+      version: '1.0.0',
+    ),
+  );
 
   final database = buildDatabase();
 
@@ -49,10 +53,6 @@ Future<DartEdge<void>> buildServer() async {
       .select([NotesTable.title, PeopleTable.id])
       .execute();
   print('Notes in database: $results');
-
-  server.openApiDocument
-    ..title = 'Simple Test API'
-    ..version = '1.0.0';
 
   server.get(
     '/',

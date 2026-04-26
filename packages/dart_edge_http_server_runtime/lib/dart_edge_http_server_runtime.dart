@@ -16,9 +16,7 @@ export 'src/runtime/native_request.dart'
         NativeMultipartField,
         NativeMultipartFile,
         NativeMultipartForm,
-        NativeRequest,
-        NativeRequestBody,
-        NativeRequestRequestContext;
+        NativeRequestBody;
 export 'src/runtime/open_api_document.dart';
 export 'src/runtime/open_telemetry_config.dart';
 export 'src/runtime/request_input_multipart.dart' show MultipartRequestInput;

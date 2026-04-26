@@ -9,16 +9,16 @@ final class OpenApiDocument {
     this.version = '1.0.0',
     this.description,
     List<OpenApiServer> servers = const <OpenApiServer>[],
-  }) : servers = List<OpenApiServer>.from(servers);
+  }) : servers = List<OpenApiServer>.unmodifiable(servers);
 
   /// API title shown in generated docs.
-  String title;
+  final String title;
 
   /// API version shown in generated docs.
-  String version;
+  final String version;
 
   /// Optional human-readable description for the API.
-  String? description;
+  final String? description;
 
   /// Explicit server list included in the generated document.
   final List<OpenApiServer> servers;

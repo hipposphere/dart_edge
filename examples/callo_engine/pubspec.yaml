@@ -9,4 +9,4 @@ environment:
 
 dependencies:
   dart_edge_sip: ^0.1.0
-  googleai_dart: ^6.1.0
+  googleai_dart: ^6.2.0

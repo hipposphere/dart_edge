@@ -41,6 +41,7 @@ Future<RequestInput> decodeRequestInput(
     queryMap: request.query,
     headersMap: request.headers,
     multipartLoader: nativeRequest?.multipart,
+    nativeBody: nativeRequest?.body,
   );
 }
 

@@ -11,7 +11,7 @@ resolution: workspace
 
 dependencies:
   dart_edge_core: ^0.1.0
-  jaspr: ^0.22.4
+  jaspr: ^0.23.0
 
 dev_dependencies:
   dart_edge_http_server_runtime: ^0.1.0

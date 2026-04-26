@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:ffi';
 import 'dart:typed_data';
 
-import 'package:dart_edge_core/dart_edge_core.dart';
 import 'package:dart_edge_core/ffi.dart' as core_ffi;
 import 'package:ffi/ffi.dart';
 
@@ -235,9 +234,4 @@ final class _NativeRequestLiveness {
     }
     _cleanup.clear();
   }
-}
-
-extension NativeRequestRequestContext<TServices> on RequestContext<TServices> {
-  /// Native request view for the current request, if one exists.
-  NativeRequest? get nativeRequest => maybe<NativeRequest>();
 }
