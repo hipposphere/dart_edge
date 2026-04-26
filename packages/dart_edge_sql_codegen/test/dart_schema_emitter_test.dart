@@ -120,6 +120,16 @@ void main() {
       usersTable,
       contains("'created_at': JsonSchema.string(format: 'date-time')"),
     );
+    expect(usersTable, contains('UsersRow copyWith({'));
+    expect(usersTable, contains('SqlValue<String?>? displayName,'));
+    expect(
+      usersTable,
+      contains('displayName == null || !displayName.isPresent'),
+    );
+    expect(usersTable, contains('UsersInsert copyWith({'));
+    expect(usersTable, contains('SqlValue<int>? id,'));
+    expect(usersTable, contains('UsersUpdate copyWith({'));
+    expect(usersTable, contains('SqlValue<DateTime>? createdAt,'));
     expect(usersTable, contains("if (id.isPresent) 'id': id.value,"));
     expect(
       usersTable,

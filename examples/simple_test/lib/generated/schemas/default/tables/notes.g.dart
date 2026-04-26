@@ -56,6 +56,22 @@ final class NotesRow implements JsonEncodable {
 
   final String createdAt;
 
+  NotesRow copyWith({
+    SqlValue<int?>? id,
+    String? title,
+    String? body,
+    int? ownerId,
+    String? createdAt,
+  }) {
+    return NotesRow(
+      id: id == null || !id.isPresent ? this.id : id.value,
+      title: title ?? this.title,
+      body: body ?? this.body,
+      ownerId: ownerId ?? this.ownerId,
+      createdAt: createdAt ?? this.createdAt,
+    );
+  }
+
   Map<String, Object?> toColumns() => <String, Object?>{
     'id': id,
     'title': title,
@@ -125,6 +141,22 @@ final class NotesInsert implements JsonEncodable {
   final int ownerId;
 
   final SqlValue<String> createdAt;
+
+  NotesInsert copyWith({
+    SqlValue<int?>? id,
+    String? title,
+    String? body,
+    int? ownerId,
+    SqlValue<String>? createdAt,
+  }) {
+    return NotesInsert(
+      id: id ?? this.id,
+      title: title ?? this.title,
+      body: body ?? this.body,
+      ownerId: ownerId ?? this.ownerId,
+      createdAt: createdAt ?? this.createdAt,
+    );
+  }
 
   Map<String, Object?> toColumns() => <String, Object?>{
     if (id.isPresent) 'id': id.value,
@@ -201,6 +233,22 @@ final class NotesUpdate implements JsonEncodable {
   final SqlValue<int> ownerId;
 
   final SqlValue<String> createdAt;
+
+  NotesUpdate copyWith({
+    SqlValue<int?>? id,
+    SqlValue<String>? title,
+    SqlValue<String>? body,
+    SqlValue<int>? ownerId,
+    SqlValue<String>? createdAt,
+  }) {
+    return NotesUpdate(
+      id: id ?? this.id,
+      title: title ?? this.title,
+      body: body ?? this.body,
+      ownerId: ownerId ?? this.ownerId,
+      createdAt: createdAt ?? this.createdAt,
+    );
+  }
 
   Map<String, Object?> toColumns() => <String, Object?>{
     if (id.isPresent) 'id': id.value,

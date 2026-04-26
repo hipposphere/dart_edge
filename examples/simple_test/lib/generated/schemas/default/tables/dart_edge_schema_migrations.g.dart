@@ -50,6 +50,20 @@ final class DartEdgeSchemaMigrationsRow implements JsonEncodable {
 
   final String appliedAt;
 
+  DartEdgeSchemaMigrationsRow copyWith({
+    SqlValue<String?>? version,
+    String? name,
+    String? appliedAt,
+  }) {
+    return DartEdgeSchemaMigrationsRow(
+      version: version == null || !version.isPresent
+          ? this.version
+          : version.value,
+      name: name ?? this.name,
+      appliedAt: appliedAt ?? this.appliedAt,
+    );
+  }
+
   Map<String, Object?> toColumns() => <String, Object?>{
     'version': version,
     'name': name,
@@ -108,6 +122,18 @@ final class DartEdgeSchemaMigrationsInsert implements JsonEncodable {
   final String name;
 
   final SqlValue<String> appliedAt;
+
+  DartEdgeSchemaMigrationsInsert copyWith({
+    SqlValue<String?>? version,
+    String? name,
+    SqlValue<String>? appliedAt,
+  }) {
+    return DartEdgeSchemaMigrationsInsert(
+      version: version ?? this.version,
+      name: name ?? this.name,
+      appliedAt: appliedAt ?? this.appliedAt,
+    );
+  }
 
   Map<String, Object?> toColumns() => <String, Object?>{
     if (version.isPresent) 'version': version.value,
@@ -169,6 +195,18 @@ final class DartEdgeSchemaMigrationsUpdate implements JsonEncodable {
   final SqlValue<String> name;
 
   final SqlValue<String> appliedAt;
+
+  DartEdgeSchemaMigrationsUpdate copyWith({
+    SqlValue<String?>? version,
+    SqlValue<String>? name,
+    SqlValue<String>? appliedAt,
+  }) {
+    return DartEdgeSchemaMigrationsUpdate(
+      version: version ?? this.version,
+      name: name ?? this.name,
+      appliedAt: appliedAt ?? this.appliedAt,
+    );
+  }
 
   Map<String, Object?> toColumns() => <String, Object?>{
     if (version.isPresent) 'version': version.value,

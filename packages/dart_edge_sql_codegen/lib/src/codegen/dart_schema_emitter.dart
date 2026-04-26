@@ -323,6 +323,7 @@ Class _rowClass(IntrospectedTable table) {
         _fromJsonFactory(rowType, table, _GeneratedShape.row),
       ])
       ..methods.addAll([
+        _copyWithMethod(rowType, _copyWithFields(table, _GeneratedShape.row)),
         _mapMethod(
           name: 'toColumns',
           entries: [
@@ -391,6 +392,10 @@ Class _insertClass(IntrospectedTable table) {
         _fromJsonFactory(insertType, table, _GeneratedShape.insert),
       )
       ..methods.addAll([
+        _copyWithMethod(
+          insertType,
+          _copyWithFields(table, _GeneratedShape.insert),
+        ),
         _mapMethod(
           name: 'toColumns',
           entries: [
@@ -448,6 +453,10 @@ Class _updateClass(IntrospectedTable table) {
         _fromJsonFactory(updateType, table, _GeneratedShape.update),
       )
       ..methods.addAll([
+        _copyWithMethod(
+          updateType,
+          _copyWithFields(table, _GeneratedShape.update),
+        ),
         _mapMethod(
           name: 'toColumns',
           entries: [
@@ -549,6 +558,76 @@ Class _tableClass(IntrospectedTable table) {
         _encodeMethod('encodeUpdate', updateType),
       ]);
   });
+}
+
+Method _copyWithMethod(String className, Iterable<_CopyWithFieldSpec> fields) {
+  return Method((method) {
+    method
+      ..returns = refer(className)
+      ..name = 'copyWith'
+      ..optionalParameters.addAll([
+        for (final field in fields)
+          _namedParameter(field.name, type: field.parameterType),
+      ])
+      ..body = refer(className)
+          .newInstance(const <Expression>[], {
+            for (final field in fields) field.name: field.value,
+          })
+          .returned
+          .statement;
+  });
+}
+
+List<_CopyWithFieldSpec> _copyWithFields(
+  IntrospectedTable table,
+  _GeneratedShape shape,
+) {
+  return <_CopyWithFieldSpec>[
+    for (final column in table.columns) _copyWithField(column, shape),
+  ];
+}
+
+_CopyWithFieldSpec _copyWithField(
+  IntrospectedColumn column,
+  _GeneratedShape shape,
+) {
+  final name = _lowerCamel(column.name);
+  final isSqlValueField =
+      shape == _GeneratedShape.update ||
+      (shape == _GeneratedShape.insert && _isOptionalInsertColumn(column));
+
+  if (isSqlValueField) {
+    final fieldType = switch (shape) {
+      _GeneratedShape.update => _updateFieldType(column),
+      _GeneratedShape.insert => _insertFieldType(column),
+      _GeneratedShape.row => throw StateError('Rows do not use SqlValue.'),
+    };
+    return _CopyWithFieldSpec(
+      name: name,
+      parameterType: refer('${_typeCode(fieldType)}?'),
+      value: CodeExpression(Code('$name ?? this.$name')),
+    );
+  }
+
+  final normalizedType = _normalizedValueType(column);
+  final isNullable = column.nullable || normalizedType == 'Object?';
+  if (isNullable) {
+    return _CopyWithFieldSpec(
+      name: name,
+      parameterType: refer(
+        '${_typeCode(_type('SqlValue', [refer(_nullableType(normalizedType, true))]))}?',
+      ),
+      value: CodeExpression(
+        Code('$name == null || !$name.isPresent ? this.$name : $name.value'),
+      ),
+    );
+  }
+
+  return _CopyWithFieldSpec(
+    name: name,
+    parameterType: refer('$normalizedType?'),
+    value: CodeExpression(Code('$name ?? this.$name')),
+  );
 }
 
 List<Field> _schemaFields({
@@ -1228,6 +1307,18 @@ final class _MapEntrySpec {
   final String key;
   final Expression value;
   final Expression? condition;
+}
+
+final class _CopyWithFieldSpec {
+  const _CopyWithFieldSpec({
+    required this.name,
+    required this.parameterType,
+    required this.value,
+  });
+
+  final String name;
+  final Reference parameterType;
+  final Expression value;
 }
 
 enum _GeneratedShape { row, insert, update }

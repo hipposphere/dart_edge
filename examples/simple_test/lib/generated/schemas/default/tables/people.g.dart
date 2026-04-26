@@ -40,6 +40,14 @@ final class PeopleRow implements JsonEncodable {
 
   final String email;
 
+  PeopleRow copyWith({SqlValue<int?>? id, String? name, String? email}) {
+    return PeopleRow(
+      id: id == null || !id.isPresent ? this.id : id.value,
+      name: name ?? this.name,
+      email: email ?? this.email,
+    );
+  }
+
   Map<String, Object?> toColumns() => <String, Object?>{
     'id': id,
     'name': name,
@@ -92,6 +100,14 @@ final class PeopleInsert implements JsonEncodable {
   final String name;
 
   final String email;
+
+  PeopleInsert copyWith({SqlValue<int?>? id, String? name, String? email}) {
+    return PeopleInsert(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      email: email ?? this.email,
+    );
+  }
 
   Map<String, Object?> toColumns() => <String, Object?>{
     if (id.isPresent) 'id': id.value,
@@ -149,6 +165,18 @@ final class PeopleUpdate implements JsonEncodable {
   final SqlValue<String> name;
 
   final SqlValue<String> email;
+
+  PeopleUpdate copyWith({
+    SqlValue<int?>? id,
+    SqlValue<String>? name,
+    SqlValue<String>? email,
+  }) {
+    return PeopleUpdate(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      email: email ?? this.email,
+    );
+  }
 
   Map<String, Object?> toColumns() => <String, Object?>{
     if (id.isPresent) 'id': id.value,
