@@ -78,19 +78,38 @@ jobs:
           set -euo pipefail
 
           publish_crate() {
-            cargo publish --dry-run --manifest-path "$1"
+            local manifest="$1"
+            shift
+            local output
+
+            if output=$(cargo publish "$@" --manifest-path "$manifest" 2>&1); then
+              if [[ -n "$output" ]]; then
+                printf '%s\n' "$output"
+              fi
+              return 0
+            fi
+
+            if [[ "$output" == *"already exists on crates.io index"* ]]; then
+              local crate_name
+              crate_name=$(basename "$(dirname "$manifest")")
+              echo "::notice::$crate_name already exists on crates.io at this version; skipping."
+              return 0
+            fi
+
+            printf '%s\n' "$output" >&2
+            return 1
           }
 
           case "$CRATE" in
             all)
-              publish_crate crates/dart_edge_core/Cargo.toml
-              publish_crate crates/dart_edge_sql_core/Cargo.toml
+              publish_crate crates/dart_edge_core/Cargo.toml --dry-run
+              publish_crate crates/dart_edge_sql_core/Cargo.toml --dry-run
               ;;
             dart_edge_core)
-              publish_crate crates/dart_edge_core/Cargo.toml
+              publish_crate crates/dart_edge_core/Cargo.toml --dry-run
               ;;
             dart_edge_sql_core)
-              publish_crate crates/dart_edge_sql_core/Cargo.toml
+              publish_crate crates/dart_edge_sql_core/Cargo.toml --dry-run
               ;;
             *)
               echo "::error::Unsupported crate selection: $CRATE"
@@ -107,7 +126,26 @@ jobs:
           set -euo pipefail
 
           publish_crate() {
-            cargo publish --manifest-path "$1"
+            local manifest="$1"
+            shift
+            local output
+
+            if output=$(cargo publish "$@" --manifest-path "$manifest" 2>&1); then
+              if [[ -n "$output" ]]; then
+                printf '%s\n' "$output"
+              fi
+              return 0
+            fi
+
+            if [[ "$output" == *"already exists on crates.io index"* ]]; then
+              local crate_name
+              crate_name=$(basename "$(dirname "$manifest")")
+              echo "::notice::$crate_name already exists on crates.io at this version; skipping."
+              return 0
+            fi
+
+            printf '%s\n' "$output" >&2
+            return 1
           }
 
           case "$CRATE" in
