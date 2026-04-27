@@ -8,5 +8,7 @@ environment:
   sdk: ">=3.11.0 <4.0.0"
 
 dependencies:
-  dart_edge_sip: ^0.2.0
+  dart_edge_sip:
+    hosted: "https://registry.hippolabs.org/pub/internal-pub/"
+    version: ^0.3.0
   googleai_dart: ^6.2.0

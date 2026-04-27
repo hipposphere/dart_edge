@@ -1,6 +1,6 @@
 name: dart_edge_auth
 description: Better Auth-powered authentication routes for Dart Edge.
-version: 0.2.0
+version: 0.3.0
 publish_to: "https://registry.hippolabs.org/pub/internal-pub/"
 repository: https://github.com/flowhorn/dart_edge/tree/main/packages/dart_edge_auth
 
@@ -11,14 +11,22 @@ resolution: workspace
 
 dependencies:
   code_assets: ^1.0.0
-  dart_edge_core: ^0.2.0
-  dart_edge_sql: ^0.2.0
+  dart_edge_core:
+    hosted: "https://registry.hippolabs.org/pub/internal-pub/"
+    version: ^0.2.0
+  dart_edge_sql:
+    hosted: "https://registry.hippolabs.org/pub/internal-pub/"
+    version: ^0.2.0
   ffi: ^2.2.0
   hooks: ^1.0.3
   native_toolchain_rust: ^1.0.3
 
 dev_dependencies:
-  dart_edge_http_server: ^0.2.0
-  dart_edge_http_server_runtime: ^0.2.0
+  dart_edge_http_server:
+    hosted: "https://registry.hippolabs.org/pub/internal-pub/"
+    version: ^0.3.0
+  dart_edge_http_server_runtime:
+    hosted: "https://registry.hippolabs.org/pub/internal-pub/"
+    version: ^0.3.0
   ffigen: ^20.1.1
   test: ^1.30.0
