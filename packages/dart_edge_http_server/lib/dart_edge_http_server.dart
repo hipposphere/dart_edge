@@ -5,5 +5,6 @@
 /// APIs such as [OpenApiHelpers].
 library dart_edge_http_server;
 
-export 'package:dart_edge_helpers/dart_edge_helpers.dart';
 export 'package:dart_edge_http_server_runtime/dart_edge_http_server_runtime.dart';
+
+export 'src/open_api_helpers.dart';

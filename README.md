@@ -10,8 +10,7 @@ Dart Edge is a Dart-first backend platform built around:
 
 This repository is a Pub workspace. The app-facing default package is
 [`package:dart_edge_http_server`](packages/dart_edge_http_server), while the workspace also contains the
-lower-level runtime, helper, codegen, auth, SQL, audio, and benchmark
-packages.
+lower-level runtime, codegen, auth, SQL, audio, and benchmark packages.
 
 The current delivered center is HTTP. The HTTP codegen package exposes
 annotations, normalized route artifact generation, schema registry generation,
@@ -68,17 +67,15 @@ For local-only development, `listen(port: 8080)` still binds loopback. For
 deployment, pass a real bind address such as `0.0.0.0` or `::`.
 
 Import `package:dart_edge_http_server/dart_edge_http_server.dart` when you want the normal developer
-experience: the runtime surface from `dart_edge_http_server_runtime` plus the helper APIs
-from `dart_edge_helpers`.
+experience: the runtime surface from `dart_edge_http_server_runtime` plus
+app-facing helper APIs such as `OpenApiHelpers`.
 
 ## Workspace Layout
 
 - [`packages/dart_edge_http_server`](packages/dart_edge_http_server): app-facing HTTP server package for application
-  authors
+  authors, including OpenAPI JSON and Swagger UI mounting helpers
 - [`packages/dart_edge_http_server_runtime`](packages/dart_edge_http_server_runtime): Rust-backed HTTP
   runtime plus shared route, schema, and context contracts
-- [`packages/dart_edge_helpers`](packages/dart_edge_helpers): helper-layer APIs
-  such as OpenAPI JSON and Swagger UI mounting
 - [`packages/dart_edge_http_server_codegen`](packages/dart_edge_http_server_codegen): build-time HTTP route
   annotations, normalized metadata, generated route artifacts, schema registries,
   codec registry skeletons, and generated HTTP client support

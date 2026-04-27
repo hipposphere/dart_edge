@@ -3,8 +3,8 @@
 App-facing HTTP server package for building Dart Edge services.
 
 Import `package:dart_edge_http_server/dart_edge_http_server.dart` when you want the normal developer
-experience: the runtime contracts from `dart_edge_http_server_runtime` plus the helper
-surface from `dart_edge_helpers` in one import.
+experience: the runtime contracts from `dart_edge_http_server_runtime` plus
+app-facing helpers in one import.
 
 ## What You Get
 

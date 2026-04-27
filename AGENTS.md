@@ -16,8 +16,6 @@ repository root and composed from `packages/*`, with shared Rust crates under
 - `crates/dart_edge_core`: shared Rust FFI primitives used by native packages
 - `crates/dart_edge_sql_core`: shared Rust SQL wire payload types used by native packages
 - `benchmarks`: reproducible benchmark apps and the benchmark runner
-- `packages/dart_edge_helpers`: optional helper APIs such as OpenAPI/Swagger
-  serving and ergonomic extensions
 - `packages/dart_edge_http_server_codegen`: build-time HTTP annotations and generator-facing API
 - `packages/dart_edge_s3_client`: standalone native S3 client package for AWS
   S3 and compatible object stores
@@ -62,11 +60,11 @@ repository root and composed from `packages/*`, with shared Rust crates under
 - Keep reusable Rust libraries under `crates/` and make published native asset
   crates depend on them through normal Cargo version dependencies, not sibling
   `path` dependencies.
-- Helpers and codegen packages must stay pure Dart unless a later design
-  explicitly changes that.
+- Codegen packages must stay pure Dart unless a later design explicitly changes
+  that.
 - Keep build-time HTTP annotations and generated API surface in
   `dart_edge_http_server_codegen`.
-- Keep app-facing imports simple by re-exporting the normal runtime and helper
+- Keep app-facing imports simple by exporting the normal runtime and helper
   surface from `dart_edge_http_server`.
 - Keep benchmark targets small and symmetrical. If one target adds a route or
   payload shape for comparison, update the other benchmark targets to match.
@@ -112,8 +110,8 @@ repository root and composed from `packages/*`, with shared Rust crates under
 ## Architecture Guardrails
 
 - Runtime and shared contract types live together in `dart_edge_http_server_runtime`.
-- `dart_edge_helpers` can wrap or mount runtime capabilities, but it should not
-  redefine core contracts.
+- App-facing helpers can wrap or mount runtime capabilities from
+  `dart_edge_http_server`, but they should not redefine core contracts.
 - Generated code should compile down to normalized route contracts and JSON
   Schema references rather than relying on runtime type inspection.
 - JSON Schema support must preserve `$ref` support for shared and recursive

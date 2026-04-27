@@ -39,8 +39,6 @@ The workspace already contains:
 - `dart_edge_http_server`: the app-facing umbrella package
 - `dart_edge_http_server_runtime`: the shared contract surface plus the Rust-backed HTTP
   runtime
-- `dart_edge_helpers`: optional helper routes, currently centered on OpenAPI
-  mounting
 - `dart_edge_http_server_codegen`: HTTP generator-facing annotations and normalized client
   generation
 - `dart_edge_auth`: native Better Auth route mounting for Dart Edge apps
@@ -107,7 +105,6 @@ This is the core HTTP application path:
 
 - `dart_edge_http_server`
 - `dart_edge_http_server_runtime`
-- `dart_edge_helpers`
 
 This axis is responsible for:
 
@@ -160,16 +157,13 @@ This is a stronger concept than one giant runtime package.
 
 - `dart_edge_http_server`
   Default app-facing entrypoint. It should stay the package most application
-  authors import.
+  authors import. It also owns app-facing helpers such as OpenAPI JSON and
+  Swagger UI mounting.
 
 - `dart_edge_http_server_runtime`
   Owns the concrete HTTP runtime plus the shared contract surface. This is where
   route options, request context, schema references, middleware descriptors,
   and the native server bridge live.
-
-- `dart_edge_helpers`
-  Owns helper-layer APIs that wrap runtime capabilities. OpenAPI JSON mounting
-  and Swagger UI mounting belong here, not in the core runtime.
 
 - `dart_edge_http_server_codegen`
   Owns build-time route annotations, generator-facing metadata, and normalized
@@ -245,7 +239,7 @@ The right model is not "put every native feature into `dart_edge_http_server_run
 The better model is:
 
 - a small, coherent runtime core
-- helper packages above it
+- app-facing helper APIs above it
 - focused native service packages beside it
 - one umbrella package to keep the default user experience simple
 
@@ -306,7 +300,7 @@ That is the right current mental model:
 - build a `DartEdge` app
 - register routes in Dart
 - optionally install schema and codec registries
-- mount helpers at the helper layer
+- mount app-facing helpers
 - start a Rust-backed HTTP server
 
 ### Request Flow Today
@@ -412,7 +406,7 @@ clients should share a normalized model.
 - `JsonSchemaRegistry`
 - runtime codec registries
 - OpenAPI document generation from compiled routes plus the schema registry
-- helper-layer mounting for OpenAPI JSON and Swagger UI
+- app-facing mounting for OpenAPI JSON and Swagger UI
 - generated route artifact source from normalized HTTP route specs
 - generated runtime codec registry skeletons
 - client generation from normalized route options
@@ -598,7 +592,7 @@ backend protocol.
 Future native-backed packages are fine if they respect the same boundary:
 
 - the runtime stays coherent
-- helpers stay helpers
+- helper APIs stay in the app-facing HTTP package
 - service packages stay focused
 - the umbrella package stays simple
 
@@ -703,8 +697,8 @@ The platform is on the right path if these remain true:
   generators
 - native work is used where it makes the product better, not just because it is
   available
-- auth, SQL, audio, helpers, and future packages fit beside the runtime
-  instead of turning it into a monolith
+- auth, SQL, audio, and future packages fit beside the runtime instead of
+  turning it into a monolith
 - benchmark claims stay measurable
 - the codegen story reduces manual wiring instead of creating a second model
 
