@@ -14,6 +14,7 @@ on:
         options:
           - all
           - dart_edge_core
+          - dart_edge_http_server_core
           - dart_edge_sql_core
 
 permissions:
@@ -46,10 +47,14 @@ jobs:
           case "$CRATE" in
             all)
               package_crate crates/dart_edge_core/Cargo.toml
+              package_crate crates/dart_edge_http_server_core/Cargo.toml
               package_crate crates/dart_edge_sql_core/Cargo.toml
               ;;
             dart_edge_core)
               package_crate crates/dart_edge_core/Cargo.toml
+              ;;
+            dart_edge_http_server_core)
+              package_crate crates/dart_edge_http_server_core/Cargo.toml
               ;;
             dart_edge_sql_core)
               package_crate crates/dart_edge_sql_core/Cargo.toml
@@ -103,10 +108,14 @@ jobs:
           case "$CRATE" in
             all)
               publish_crate crates/dart_edge_core/Cargo.toml --dry-run
+              publish_crate crates/dart_edge_http_server_core/Cargo.toml --dry-run
               publish_crate crates/dart_edge_sql_core/Cargo.toml --dry-run
               ;;
             dart_edge_core)
               publish_crate crates/dart_edge_core/Cargo.toml --dry-run
+              ;;
+            dart_edge_http_server_core)
+              publish_crate crates/dart_edge_http_server_core/Cargo.toml --dry-run
               ;;
             dart_edge_sql_core)
               publish_crate crates/dart_edge_sql_core/Cargo.toml --dry-run
@@ -151,10 +160,14 @@ jobs:
           case "$CRATE" in
             all)
               publish_crate crates/dart_edge_core/Cargo.toml
+              publish_crate crates/dart_edge_http_server_core/Cargo.toml
               publish_crate crates/dart_edge_sql_core/Cargo.toml
               ;;
             dart_edge_core)
               publish_crate crates/dart_edge_core/Cargo.toml
+              ;;
+            dart_edge_http_server_core)
+              publish_crate crates/dart_edge_http_server_core/Cargo.toml
               ;;
             dart_edge_sql_core)
               publish_crate crates/dart_edge_sql_core/Cargo.toml

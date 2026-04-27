@@ -11,6 +11,8 @@ dependencies.
 ## Crates
 
 - `dart_edge_core`: C-compatible FFI primitives shared by native packages.
+- `dart_edge_http_server_core`: C-compatible HTTP route ABI types shared by
+  HTTP-native packages.
 - `dart_edge_sql_core`: JSON wire contracts shared by SQL native bridges.
 
 ## Local Development
@@ -31,6 +33,7 @@ Useful commands:
 cargo test --workspace
 RUSTDOCFLAGS='-D warnings' cargo doc --workspace --no-deps
 cargo package --manifest-path crates/dart_edge_core/Cargo.toml --allow-dirty
+cargo package --manifest-path crates/dart_edge_http_server_core/Cargo.toml --allow-dirty
 cargo package --manifest-path crates/dart_edge_sql_core/Cargo.toml --allow-dirty
 ```
 
@@ -47,13 +50,15 @@ Publish shared crates before publishing Dart packages that depend on them.
 Recommended order:
 
 1. `dart_edge_core`
-2. `dart_edge_sql_core`
-3. Dart packages with native asset crates that depend on those Cargo crates
+2. `dart_edge_http_server_core`
+3. `dart_edge_sql_core`
+4. Dart packages with native asset crates that depend on those Cargo crates
 
 Package native asset manifests should use version dependencies, for example:
 
 ```toml
 dart_edge_core = "0.1.0"
+dart_edge_http_server_core = "0.1.0"
 dart_edge_sql_core = "0.1.0"
 ```
 
