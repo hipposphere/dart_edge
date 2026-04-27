@@ -58,6 +58,7 @@ jobs:
         if: ${{ inputs.dry_run }}
         env:
           PACKAGE_SCOPE: ${{ inputs.package_scope }}
+          PUB_TOKEN: ${{ secrets.INTERNAL_PUB_TOKEN }}
         run: |
           args=(--no-private --dry-run --yes)
 
@@ -71,6 +72,7 @@ jobs:
         if: ${{ !inputs.dry_run }}
         env:
           PACKAGE_SCOPE: ${{ inputs.package_scope }}
+          PUB_TOKEN: ${{ secrets.INTERNAL_PUB_TOKEN }}
         run: |
           args=(--no-private --no-dry-run --yes)
 
