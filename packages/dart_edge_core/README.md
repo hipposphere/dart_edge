@@ -13,7 +13,7 @@ same contract model.
 
 - `RequestContext`, `RequestInput`, `RequestTelemetry`, and `ResponseBuilder`
   for handler-facing request state
-- `Router`, `RouteDefinition`, `RouteRegistry`, `RouteOptions`, and `Guard`
+- `Router`, `RouteRegistry`, `RouteOptions`, and `Guard`
   for transport-agnostic route registration
 - `RouteOptions`, `ResponseSpec`, `RequestBody`, `ErrorResponse`, and
   `HttpMethod` for explicit HTTP contracts
@@ -41,6 +41,10 @@ Future<void> main() async {
 
   final registration = router.routeRegistry.registrations.single;
   print(registration);
+
+  final api = Router<AppServices>();
+  api.get('/users', handler: (ctx) => const <Map<String, Object?>>[]);
+  router.mountRouter('/api', api, tags: const ['api']);
 }
 
 final class AppServices {

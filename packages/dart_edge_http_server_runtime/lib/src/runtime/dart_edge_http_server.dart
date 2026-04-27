@@ -69,8 +69,9 @@ class DartEdge<TServices> extends Router<TServices> {
 
   /// Builds the current OpenAPI JSON document for the registered routes.
   Map<String, Object?> buildOpenApiDocumentJson() {
+    final compiledRoutes = _compileRoutes();
     return openApiDocument.toJson(
-      routes: _compileRoutes().routes,
+      routes: [...compiledRoutes.routes, ...compiledRoutes.nativeRoutes],
       schemaRegistry: _schemaRegistry,
     );
   }

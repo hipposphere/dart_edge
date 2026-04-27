@@ -40,8 +40,8 @@ final class DartEdgeAuthAdminApi {
     required String userId,
     required String role,
   }) async {
-    return (await _api.callOperation(
-      operationId: 'admin_set_role',
+    return (await _api.callKnownOperation(
+      operation: DartEdgeAuthOperation.adminSetRole,
       body: {'userId': userId, 'role': role},
     )).requireSuccess();
   }
@@ -53,8 +53,8 @@ final class DartEdgeAuthAdminApi {
     String? role,
     Object? data,
   }) async {
-    return (await _api.callOperation(
-      operationId: 'admin_create_user',
+    return (await _api.callKnownOperation(
+      operation: DartEdgeAuthOperation.adminCreateUser,
       body: {
         'email': email,
         'password': password,
@@ -77,8 +77,8 @@ final class DartEdgeAuthAdminApi {
     Object? filterValue,
     String? filterOperator,
   }) async {
-    return (await _api.callOperation(
-      operationId: 'admin_list_users',
+    return (await _api.callKnownOperation(
+      operation: DartEdgeAuthOperation.adminListUsers,
       query: {
         if (limit case final limit?) 'limit': limit,
         if (offset case final offset?) 'offset': offset,
@@ -100,8 +100,8 @@ final class DartEdgeAuthAdminApi {
   Future<DartEdgeAuthApiResponse> listUserSessions({
     required String userId,
   }) async {
-    return (await _api.callOperation(
-      operationId: 'admin_list_user_sessions',
+    return (await _api.callKnownOperation(
+      operation: DartEdgeAuthOperation.adminListUserSessions,
       body: {'userId': userId},
     )).requireSuccess();
   }
@@ -111,8 +111,8 @@ final class DartEdgeAuthAdminApi {
     String? banReason,
     int? banExpiresIn,
   }) async {
-    return (await _api.callOperation(
-      operationId: 'admin_ban_user',
+    return (await _api.callKnownOperation(
+      operation: DartEdgeAuthOperation.adminBanUser,
       body: {
         'userId': userId,
         if (banReason case final banReason?) 'banReason': banReason,
@@ -122,8 +122,8 @@ final class DartEdgeAuthAdminApi {
   }
 
   Future<DartEdgeAuthApiResponse> unbanUser({required String userId}) async {
-    return (await _api.callOperation(
-      operationId: 'admin_unban_user',
+    return (await _api.callKnownOperation(
+      operation: DartEdgeAuthOperation.adminUnbanUser,
       body: {'userId': userId},
     )).requireSuccess();
   }
@@ -131,23 +131,23 @@ final class DartEdgeAuthAdminApi {
   Future<DartEdgeAuthApiResponse> impersonateUser({
     required String userId,
   }) async {
-    return (await _api.callOperation(
-      operationId: 'admin_impersonate_user',
+    return (await _api.callKnownOperation(
+      operation: DartEdgeAuthOperation.adminImpersonateUser,
       body: {'userId': userId},
     )).requireSuccess();
   }
 
   Future<DartEdgeAuthApiResponse> stopImpersonating() async {
-    return (await _api.callOperation(
-      operationId: 'admin_stop_impersonating',
+    return (await _api.callKnownOperation(
+      operation: DartEdgeAuthOperation.adminStopImpersonating,
     )).requireSuccess();
   }
 
   Future<DartEdgeAuthApiResponse> revokeUserSession({
     required String sessionToken,
   }) async {
-    return (await _api.callOperation(
-      operationId: 'admin_revoke_user_session',
+    return (await _api.callKnownOperation(
+      operation: DartEdgeAuthOperation.adminRevokeUserSession,
       body: {'sessionToken': sessionToken},
     )).requireSuccess();
   }
@@ -155,15 +155,15 @@ final class DartEdgeAuthAdminApi {
   Future<DartEdgeAuthApiResponse> revokeUserSessions({
     required String userId,
   }) async {
-    return (await _api.callOperation(
-      operationId: 'admin_revoke_user_sessions',
+    return (await _api.callKnownOperation(
+      operation: DartEdgeAuthOperation.adminRevokeUserSessions,
       body: {'userId': userId},
     )).requireSuccess();
   }
 
   Future<DartEdgeAuthApiResponse> removeUser({required String userId}) async {
-    return (await _api.callOperation(
-      operationId: 'admin_remove_user',
+    return (await _api.callKnownOperation(
+      operation: DartEdgeAuthOperation.adminRemoveUser,
       body: {'userId': userId},
     )).requireSuccess();
   }
@@ -172,8 +172,8 @@ final class DartEdgeAuthAdminApi {
     required String userId,
     required String newPassword,
   }) async {
-    return (await _api.callOperation(
-      operationId: 'admin_set_user_password',
+    return (await _api.callKnownOperation(
+      operation: DartEdgeAuthOperation.adminSetUserPassword,
       body: {'userId': userId, 'newPassword': newPassword},
     )).requireSuccess();
   }
@@ -182,8 +182,8 @@ final class DartEdgeAuthAdminApi {
     Object? permission,
     Object? permissions,
   }) async {
-    return (await _api.callOperation(
-      operationId: 'admin_has_permission',
+    return (await _api.callKnownOperation(
+      operation: DartEdgeAuthOperation.adminHasPermission,
       body: {
         if (permission case final permission?) 'permission': permission,
         if (permissions case final permissions?) 'permissions': permissions,

@@ -9,11 +9,20 @@ library;
 
 import 'dart:ffi' as ffi;
 
+@ffi.Native<ffi.Bool Function(ffi.Int64, ffi.Pointer<ffi.Char>)>()
+external bool dart_edge_sip_clear_media_playback(
+  int handle,
+  ffi.Pointer<ffi.Char> session_id,
+);
+
 @ffi.Native<ffi.Int64 Function(ffi.Pointer<ffi.Char>)>()
 external int dart_edge_sip_create(ffi.Pointer<ffi.Char> config_json);
 
 @ffi.Native<ffi.Void Function(ffi.Int64)>(isLeaf: true)
 external void dart_edge_sip_dispose(int handle);
+
+@ffi.Native<ffi.Void Function(NativeOwnedBytes)>()
+external void dart_edge_sip_free_owned_bytes(NativeOwnedBytes value);
 
 @ffi.Native<ffi.Void Function(ffi.Pointer<ffi.Char>)>(isLeaf: true)
 external void dart_edge_sip_free_string(ffi.Pointer<ffi.Char> value);
@@ -27,8 +36,61 @@ external ffi.Pointer<ffi.Char> dart_edge_sip_issue_command(
 @ffi.Native<ffi.Int32 Function()>(isLeaf: true)
 external int dart_edge_sip_native_abi_version();
 
+@ffi.Native<
+  ffi.Bool Function(
+    ffi.Int64,
+    ffi.Pointer<ffi.Char>,
+    ffi.Pointer<ffi.Uint8>,
+    ffi.IntPtr,
+    ffi.Uint32,
+    ffi.Uint32,
+    ffi.Uint32,
+  )
+>()
+external bool dart_edge_sip_play_media_copy(
+  int handle,
+  ffi.Pointer<ffi.Char> session_id,
+  ffi.Pointer<ffi.Uint8> bytes,
+  int len,
+  int sample_rate_hz,
+  int channels,
+  int frame_duration_ms,
+);
+
+@ffi.Native<
+  ffi.Bool Function(
+    ffi.Int64,
+    ffi.Pointer<ffi.Char>,
+    NativeOwnedBytes,
+    ffi.Uint32,
+    ffi.Uint32,
+    ffi.Uint32,
+  )
+>()
+external bool dart_edge_sip_play_media_owned(
+  int handle,
+  ffi.Pointer<ffi.Char> session_id,
+  NativeOwnedBytes bytes,
+  int sample_rate_hz,
+  int channels,
+  int frame_duration_ms,
+);
+
 @ffi.Native<ffi.Pointer<ffi.Char> Function(ffi.Int64)>()
 external ffi.Pointer<ffi.Char> dart_edge_sip_poll_event(int handle);
+
+@ffi.Native<
+  ffi.Bool Function(
+    ffi.Int64,
+    ffi.Pointer<ffi.Char>,
+    ffi.Pointer<dart_edge_sip_audio_frame>,
+  )
+>()
+external bool dart_edge_sip_poll_media_frame(
+  int handle,
+  ffi.Pointer<ffi.Char> session_id,
+  ffi.Pointer<dart_edge_sip_audio_frame> frame_out,
+);
 
 @ffi.Native<ffi.Bool Function(ffi.Int64)>()
 external bool dart_edge_sip_start(int handle);
@@ -38,3 +100,29 @@ external bool dart_edge_sip_stop(int handle);
 
 @ffi.Native<ffi.Pointer<ffi.Char> Function()>()
 external ffi.Pointer<ffi.Char> dart_edge_sip_take_last_error();
+
+final class NativeOwnedBytes extends ffi.Struct {
+  external ffi.Pointer<ffi.Uint8> ptr;
+
+  @ffi.IntPtr()
+  external int len;
+}
+
+final class dart_edge_sip_audio_frame extends ffi.Struct {
+  external NativeOwnedBytes bytes;
+
+  @ffi.Int32()
+  external int encoding;
+
+  @ffi.Uint32()
+  external int sample_rate_hz;
+
+  @ffi.Uint32()
+  external int channels;
+
+  @ffi.Uint32()
+  external int frame_duration_ms;
+
+  @ffi.Uint64()
+  external int sequence;
+}

@@ -14,7 +14,10 @@ use axum::response::IntoResponse;
 use axum::routing::any;
 use dart_edge_core::{
     NativeBytes, NativePair, OwnedBytes, OwnedPair, boxed_pairs_ptr, native_pairs_from_owned,
-    owned_pairs_from_map, read_pairs_vec,
+    owned_pairs_from_map, read_native_bytes, read_native_string, read_pairs_vec,
+};
+use dart_edge_http_server_core::{
+    NativeHttpFreeResponse, NativeHttpHandler, NativeHttpMethod, NativeHttpRequest,
 };
 use futures_util::StreamExt;
 use once_cell::sync::Lazy;
@@ -231,6 +234,7 @@ struct RouteManifest {
 enum RouteTransportKind {
     #[default]
     Http,
+    NativeHttp,
     WebSocket,
 }
 
@@ -240,12 +244,15 @@ struct RouteManifestEntry {
     #[serde(default)]
     kind: RouteTransportKind,
     route_id: String,
-    method: String,
+    method: NativeHttpMethod,
     path_segments: Vec<RouteSegmentManifest>,
     params_schema_id: Option<String>,
     query_schema_id: Option<String>,
     headers_schema_id: Option<String>,
     request_body: Option<RequestBodyManifest>,
+    native_handle: Option<i64>,
+    native_handler_address: Option<usize>,
+    native_free_response_address: Option<usize>,
 }
 
 #[derive(Deserialize)]
@@ -266,12 +273,20 @@ struct RequestBodyManifest {
 struct CompiledRoute {
     kind: RouteTransportKind,
     route_id: String,
-    method: String,
+    method: NativeHttpMethod,
     path_segments: Vec<CompiledRouteSegment>,
     params_schema_id: Option<String>,
     query_schema_id: Option<String>,
     headers_schema_id: Option<String>,
     request_body: Option<RequestBodyValidation>,
+    native_handler: Option<CompiledNativeHttpHandler>,
+}
+
+#[derive(Clone, Copy)]
+struct CompiledNativeHttpHandler {
+    handle: i64,
+    handler: NativeHttpHandler,
+    free_response: NativeHttpFreeResponse,
 }
 
 #[derive(Clone)]
@@ -303,6 +318,7 @@ struct NativeRouteMatch {
     query_schema_id: Option<String>,
     headers_schema_id: Option<String>,
     request_body: Option<RequestBodyValidation>,
+    native_handler: Option<CompiledNativeHttpHandler>,
 }
 
 struct ValidatedBody {
@@ -847,7 +863,7 @@ async fn handle_request(request: Request<Body>) -> Response<Body> {
     }
 
     match route_match.kind {
-        RouteTransportKind::Http => {
+        RouteTransportKind::Http | RouteTransportKind::NativeHttp => {
             let body_bytes = match axum::body::to_bytes(body, usize::MAX).await {
                 Ok(bytes) => bytes,
                 Err(_) => {
@@ -872,7 +888,20 @@ async fn handle_request(request: Request<Body>) -> Response<Body> {
                 }
             }
 
-            handle_http_request(route_match, query, headers, body).await
+            match route_match.kind {
+                RouteTransportKind::NativeHttp => {
+                    handle_native_http_request(
+                        route_match,
+                        parts.method.as_str(),
+                        parts.uri.path(),
+                        query,
+                        headers,
+                        body,
+                    )
+                    .await
+                }
+                _ => handle_http_request(route_match, query, headers, body).await,
+            }
         }
         RouteTransportKind::WebSocket => {
             handle_web_socket_request(parts, route_match, query, headers).await
@@ -947,6 +976,85 @@ async fn handle_http_request(
             "Unexpected WebSocket response for HTTP request".to_string(),
         ),
     }
+}
+
+async fn handle_native_http_request(
+    route_match: NativeRouteMatch,
+    method: &str,
+    path: &str,
+    query: HashMap<String, String>,
+    headers: HashMap<String, String>,
+    body: ValidatedBody,
+) -> Response<Body> {
+    let Some(native_handler) = route_match.native_handler else {
+        return response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "text/plain; charset=utf-8",
+            "Native route is missing handler metadata".to_string(),
+        );
+    };
+
+    let path = CString::new(path).unwrap_or_default();
+    let query_pairs = owned_pairs_from_map(query);
+    let query_storage = native_pairs_from_owned(&query_pairs);
+    let header_pairs = owned_pairs_from_map(headers);
+    let header_storage = native_pairs_from_owned(&header_pairs);
+    let body_bytes = body.bytes.unwrap_or_default();
+    let body_ptr = if body_bytes.is_empty() {
+        std::ptr::null()
+    } else {
+        body_bytes.as_ptr()
+    };
+
+    let Some(method) = NativeHttpMethod::from_name(method) else {
+        return response(
+            StatusCode::METHOD_NOT_ALLOWED,
+            "text/plain; charset=utf-8",
+            "Unsupported HTTP method".to_string(),
+        );
+    };
+    let request_body = NativeBytes {
+        ptr: body_ptr,
+        len: body_bytes.len() as isize,
+    };
+    let native_request = NativeHttpRequest {
+        method: method.code(),
+        path: path.as_ptr(),
+        query_count: query_storage.len() as isize,
+        query: boxed_pairs_ptr(&query_storage),
+        header_count: header_storage.len() as isize,
+        headers: boxed_pairs_ptr(&header_storage),
+        body: request_body,
+    };
+    let response_ptr = unsafe { (native_handler.handler)(native_handler.handle, &native_request) };
+    if response_ptr.is_null() {
+        return response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "text/plain; charset=utf-8",
+            "Native route handler failed".to_string(),
+        );
+    }
+
+    let native_response = unsafe { &*response_ptr };
+    let status =
+        StatusCode::from_u16(native_response.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+    let content_type = unsafe { read_native_string(native_response.content_type) }
+        .unwrap_or_else(|| "application/octet-stream".to_string());
+    let response_body = unsafe { read_native_bytes(native_response.body) }
+        .map(|bytes| bytes.to_vec())
+        .unwrap_or_default();
+    let response_headers =
+        unsafe { read_pairs_vec(native_response.headers, native_response.header_count) };
+    unsafe {
+        (native_handler.free_response)(response_ptr);
+    }
+
+    response_body_with_headers(
+        status,
+        &content_type,
+        &response_headers,
+        Body::from(response_body),
+    )
 }
 
 async fn handle_web_socket_request(
@@ -1270,14 +1378,45 @@ fn compile_route(
     )?;
 
     let request_body = match route.kind {
-        RouteTransportKind::Http => route
-            .request_body
-            .map(|request_body| RequestBodyValidation {
-                kind: body_kind(&request_body.content_type),
-                content_type: request_body.content_type,
-                schema_id: request_body.schema_id,
-            }),
+        RouteTransportKind::Http | RouteTransportKind::NativeHttp => {
+            route
+                .request_body
+                .map(|request_body| RequestBodyValidation {
+                    kind: body_kind(&request_body.content_type),
+                    content_type: request_body.content_type,
+                    schema_id: request_body.schema_id,
+                })
+        }
         RouteTransportKind::WebSocket => None,
+    };
+    let native_handler = match route.kind {
+        RouteTransportKind::NativeHttp => {
+            let handle = route.native_handle.ok_or_else(|| {
+                format!("Native route '{}' is missing nativeHandle", route.route_id)
+            })?;
+            let handler_address = route.native_handler_address.ok_or_else(|| {
+                format!(
+                    "Native route '{}' is missing nativeHandlerAddress",
+                    route.route_id
+                )
+            })?;
+            let free_response_address = route.native_free_response_address.ok_or_else(|| {
+                format!(
+                    "Native route '{}' is missing nativeFreeResponseAddress",
+                    route.route_id
+                )
+            })?;
+            Some(CompiledNativeHttpHandler {
+                handle,
+                handler: unsafe {
+                    std::mem::transmute::<usize, NativeHttpHandler>(handler_address)
+                },
+                free_response: unsafe {
+                    std::mem::transmute::<usize, NativeHttpFreeResponse>(free_response_address)
+                },
+            })
+        }
+        _ => None,
     };
 
     Ok(CompiledRoute {
@@ -1299,6 +1438,7 @@ fn compile_route(
         query_schema_id: route.query_schema_id,
         headers_schema_id: route.headers_schema_id,
         request_body,
+        native_handler,
     })
 }
 
@@ -1541,10 +1681,10 @@ fn match_route(
     let routes = COMPILED_ROUTES.read().unwrap();
 
     for route in routes.iter() {
-        if route.kind != requested_kind {
+        if !route_kind_matches(route.kind, requested_kind) {
             continue;
         }
-        if route.method != method {
+        if route.method.as_str() != method {
             continue;
         }
         if route.path_segments.len() != request_segments.len() {
@@ -1578,11 +1718,25 @@ fn match_route(
                 query_schema_id: route.query_schema_id.clone(),
                 headers_schema_id: route.headers_schema_id.clone(),
                 request_body: route.request_body.clone(),
+                native_handler: route.native_handler,
             });
         }
     }
 
     None
+}
+
+fn route_kind_matches(route_kind: RouteTransportKind, requested_kind: RouteTransportKind) -> bool {
+    match requested_kind {
+        RouteTransportKind::Http => {
+            matches!(
+                route_kind,
+                RouteTransportKind::Http | RouteTransportKind::NativeHttp
+            )
+        }
+        RouteTransportKind::NativeHttp => false,
+        RouteTransportKind::WebSocket => route_kind == RouteTransportKind::WebSocket,
+    }
 }
 
 fn validate_and_read_body(

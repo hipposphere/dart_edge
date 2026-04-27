@@ -29,7 +29,7 @@ Add this package and `build_runner` to an app package:
 ```yaml
 dev_dependencies:
   build_runner: ^2.14.1
-  dart_edge_http_server_codegen: ^0.1.0
+  dart_edge_http_server_codegen: ^0.2.0
 ```
 
 Annotate top-level route functions and include the generated part:
@@ -121,6 +121,7 @@ The emitted library includes:
 
 - `RouteOptions` objects
 - generated `HttpRouteDefinition` wrappers
+- a generated function that mounts those wrappers on a `Router`
 - a `JsonSchemaRegistry` with stable ids
 - an optional generated client class
 

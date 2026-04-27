@@ -7,6 +7,15 @@ name = "dart_edge_core"
 version = "0.1.0"
 
 [[package]]
+name = "dart_edge_http_server_core"
+version = "0.1.0"
+dependencies = [
+ "dart_edge_core",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "dart_edge_sql_core"
 version = "0.1.0"
 dependencies = [

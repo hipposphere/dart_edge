@@ -1,7 +1,7 @@
 name: dart_edge_benchmark_runner
 description: Benchmark runner for comparing Dart Edge against other Dart servers.
 publish_to: none
-version: 0.1.0
+version: 0.2.0
 
 environment:
   sdk: ">=3.11.0 <4.0.0"

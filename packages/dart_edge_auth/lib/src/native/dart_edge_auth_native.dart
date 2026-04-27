@@ -12,34 +12,7 @@ import '../dart_edge_auth_config.dart';
 import '../dart_edge_auth_database.dart';
 import 'generated_bindings.dart' as gen;
 
-final class NativeRouteDefinition {
-  const NativeRouteDefinition({
-    required this.method,
-    required this.path,
-    required this.operationId,
-    required this.acceptsJsonBody,
-  });
-
-  final HttpMethod method;
-  final String path;
-  final String operationId;
-  final bool acceptsJsonBody;
-
-  factory NativeRouteDefinition.fromJson(Map<String, Object?> json) {
-    return NativeRouteDefinition(
-      method: _decodeMethod(json['method'] as String),
-      path: json['path'] as String,
-      operationId: json['operationId'] as String,
-      acceptsJsonBody: json['acceptsJsonBody'] as bool? ?? false,
-    );
-  }
-
-  @override
-  String toString() {
-    return 'NativeRouteDefinition(${method.name.toUpperCase()} $path, '
-        'operationId: $operationId, jsonBody: $acceptsJsonBody)';
-  }
-}
+typedef AuthNativeRouteDescriptor = NativeHttpRouteDescriptor;
 
 final class NativeAuthResponseData {
   const NativeAuthResponseData({
@@ -77,9 +50,24 @@ _sharedTakeLastErrorPointer = Native.addressOf(
 );
 final Pointer<NativeFunction<Void Function(Pointer<Char>)>>
 _sharedFreeStringPointer = Native.addressOf(sql_gen.dart_edge_sql_free_string);
+final Pointer<
+  NativeFunction<
+    Pointer<gen.NativeHttpResponse> Function(
+      Int64,
+      Pointer<gen.NativeHttpRequest>,
+    )
+  >
+>
+_authHandleRequestPointer = Native.addressOf(gen.dart_edge_auth_handle_request);
+final Pointer<NativeFunction<Void Function(Pointer<gen.NativeHttpResponse>)>>
+_authFreeResponsePointer = Native.addressOf(gen.dart_edge_auth_free_response);
 
 abstract final class DartEdgeAuthNative {
   static int get abiVersion => gen.dart_edge_auth_native_abi_version();
+
+  static int get handleRequestAddress => _authHandleRequestPointer.address;
+
+  static int get freeResponseAddress => _authFreeResponsePointer.address;
 
   static NativeAuthInstance create(DartEdgeAuthConfig config) {
     return switch (config.database) {
@@ -130,7 +118,7 @@ abstract final class DartEdgeAuthNative {
     }
   }
 
-  static List<NativeRouteDefinition> listRoutes(int handle) {
+  static List<AuthNativeRouteDescriptor> listRoutes(int handle) {
     final routesPtr = gen.dart_edge_auth_list_routes(handle);
     if (routesPtr == nullptr) {
       throw StateError(_takeLastError());
@@ -139,10 +127,7 @@ abstract final class DartEdgeAuthNative {
     try {
       final decoded =
           jsonDecode(routesPtr.cast<Utf8>().toDartString()) as List<Object?>;
-      return decoded
-          .cast<Map<String, Object?>>()
-          .map(NativeRouteDefinition.fromJson)
-          .toList(growable: false);
+      return NativeHttpRouteDescriptor.listFromJson(decoded);
     } finally {
       gen.dart_edge_auth_free_string(routesPtr);
     }
@@ -162,6 +147,7 @@ abstract final class DartEdgeAuthNative {
     final queryStorage = calloc<core_ffi.NativePair>(queryEntries.length);
     final headerStorage = calloc<core_ffi.NativePair>(headerEntries.length);
     final bodyStorage = body == null ? nullptr : calloc<Uint8>(body.length);
+    final requestStorage = calloc<gen.NativeHttpRequest>();
 
     try {
       _writePairs(queryStorage, queryEntries);
@@ -171,16 +157,19 @@ abstract final class DartEdgeAuthNative {
         bodyStorage.asTypedList(body.length).setAll(0, body);
       }
 
+      requestStorage.ref
+        ..method = _encodeMethod(method)
+        ..path = pathPtr.cast<Char>()
+        ..query_count = queryEntries.length
+        ..query = queryEntries.isEmpty ? nullptr : queryStorage
+        ..header_count = headerEntries.length
+        ..headers = headerEntries.isEmpty ? nullptr : headerStorage
+        ..body.ptr = bodyStorage
+        ..body.len = body?.length ?? 0;
+
       final responsePtr = gen.dart_edge_auth_handle_request(
         handle,
-        _encodeMethod(method),
-        pathPtr.cast<Char>(),
-        queryEntries.length,
-        queryEntries.isEmpty ? nullptr : queryStorage,
-        headerEntries.length,
-        headerEntries.isEmpty ? nullptr : headerStorage,
-        bodyStorage,
-        body?.length ?? 0,
+        requestStorage,
       );
       if (responsePtr == nullptr) {
         throw StateError(_takeLastError());
@@ -195,6 +184,7 @@ abstract final class DartEdgeAuthNative {
       calloc.free(pathPtr);
       calloc.free(queryStorage);
       calloc.free(headerStorage);
+      calloc.free(requestStorage);
       if (bodyStorage != nullptr) {
         calloc.free(bodyStorage);
       }
@@ -216,7 +206,7 @@ int _sharedDatabaseHandle(SqlPool database) => switch (database) {
 };
 
 NativeAuthResponseData _decodeResponse(
-  Pointer<gen.NativeAuthResponse> responsePtr,
+  Pointer<gen.NativeHttpResponse> responsePtr,
 ) {
   final response = responsePtr.ref;
 
@@ -301,17 +291,6 @@ int _encodeMethod(HttpMethod method) => switch (method) {
   HttpMethod.delete => 4,
   HttpMethod.head => 5,
   HttpMethod.options => 6,
-};
-
-HttpMethod _decodeMethod(String method) => switch (method.toUpperCase()) {
-  'GET' => HttpMethod.get,
-  'POST' => HttpMethod.post,
-  'PUT' => HttpMethod.put,
-  'PATCH' => HttpMethod.patch,
-  'DELETE' => HttpMethod.delete,
-  'HEAD' => HttpMethod.head,
-  'OPTIONS' => HttpMethod.options,
-  _ => throw ArgumentError.value(method, 'method', 'Unsupported HTTP method'),
 };
 
 int _encodeSqlDialect(SqlDialect dialect) => switch (dialect) {

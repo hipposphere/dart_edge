@@ -74,16 +74,11 @@ final class CreateUserRoute<TServices>
   }
 }
 
-List<RouteDefinition<TServices>> $generatedRoutes<TServices>({
+void $generatedRoutes<TServices>(
+  Router<TServices> router, {
   required _CreateUserRouteHandler<TServices> createUserRoute,
 }) {
-  return <RouteDefinition<TServices>>[
-    HttpRouteMount<TServices, UserDto>(
-      method: HttpMethod.post,
-      path: '/users',
-      route: CreateUserRoute<TServices>(createUserRoute),
-    ),
-  ];
+  router.routePost('/users', CreateUserRoute<TServices>(createUserRoute));
 }
 
 final class UsersClient extends DartEdgeGeneratedClientBase {

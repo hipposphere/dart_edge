@@ -1,7 +1,7 @@
 #ifndef DART_EDGE_S3_CLIENT_H_
 #define DART_EDGE_S3_CLIENT_H_
 
-#include "../../../../crates/dart_edge_core/include/dart_edge_core_ffi.h"
+#include <dart_edge_core_ffi.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>

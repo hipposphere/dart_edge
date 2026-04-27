@@ -185,6 +185,49 @@ void main() {
       ),
     );
   });
+
+  test('mounts an independently built router under a base path', () {
+    final app = DartEdge<TestServices>(services: TestServices.new);
+    final feature = Router<TestServices>(tags: const ['feature']);
+    final nested = feature.router('/v1', tags: const ['nested']);
+    final appGuard = HandlerGuard<TestServices>(
+      debugName: 'appGuard',
+      handler: (_) => const GuardResult.allow(),
+    );
+    final featureGuard = HandlerGuard<TestServices>(
+      debugName: 'featureGuard',
+      handler: (_) => const GuardResult.allow(),
+    );
+
+    nested.get(
+      '/status',
+      guards: [featureGuard],
+      handler: (_) => const {'status': 'ok'},
+    );
+    app.mountRouter('/api', feature, tags: const ['app'], guards: [appGuard]);
+
+    final registration = app.routeRegistry.registrations.single;
+
+    expect(registration.prefix, '/api/v1');
+    expect(registration.httpMethod, HttpMethod.get);
+    expect(registration.httpPath, '/status');
+    expect(registration.tags, const ['app', 'feature', 'nested']);
+    expect(registration.guards, [same(appGuard), same(featureGuard)]);
+    expect(
+      registration.toString(),
+      contains('RouteRegistration(GET /api/v1/status'),
+    );
+  });
+
+  test('rejects mounting a router that already shares the registry', () {
+    final app = DartEdge<TestServices>(services: TestServices.new);
+    final child = app.router('/api');
+
+    expect(
+      () => app.mountRouter('/mounted', child),
+      throwsA(isA<ArgumentError>()),
+    );
+  });
 }
 
 final class TestServices {

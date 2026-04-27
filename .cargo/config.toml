@@ -1,3 +1,4 @@
 [patch.crates-io]
 dart_edge_core = { path = "crates/dart_edge_core" }
+dart_edge_http_server_core = { path = "crates/dart_edge_http_server_core" }
 dart_edge_sql_core = { path = "crates/dart_edge_sql_core" }

@@ -98,7 +98,7 @@ final class DartEdgeAuthApi {
     Map<String, String> headers = const <String, String>{},
     Object? body,
   }) {
-    final route = _auth._routeForOperation(operationId);
+    final route = _auth._routeForOperationId(operationId);
     return call(
       method: route.method,
       path: _resolvePath(route.path, pathParams),
@@ -116,7 +116,43 @@ final class DartEdgeAuthApi {
     Map<String, String> headers = const <String, String>{},
     Object? body,
   }) {
-    final route = _auth._routeForOperation(operationId);
+    final route = _auth._routeForOperationId(operationId);
+    return callSync(
+      method: route.method,
+      path: _resolvePath(route.path, pathParams),
+      query: query,
+      headers: headers,
+      body: body,
+    );
+  }
+
+  /// Calls one known Better Auth route by compile-time operation token.
+  Future<DartEdgeAuthApiResponse> callKnownOperation({
+    required DartEdgeAuthOperation operation,
+    Map<String, String> pathParams = const <String, String>{},
+    Map<String, Object?> query = const <String, Object?>{},
+    Map<String, String> headers = const <String, String>{},
+    Object? body,
+  }) {
+    final route = _auth._routeForOperation(operation);
+    return call(
+      method: route.method,
+      path: _resolvePath(route.path, pathParams),
+      query: query,
+      headers: headers,
+      body: body,
+    );
+  }
+
+  /// Blocking version of [callKnownOperation].
+  DartEdgeAuthApiResponse callKnownOperationSync({
+    required DartEdgeAuthOperation operation,
+    Map<String, String> pathParams = const <String, String>{},
+    Map<String, Object?> query = const <String, Object?>{},
+    Map<String, String> headers = const <String, String>{},
+    Object? body,
+  }) {
+    final route = _auth._routeForOperation(operation);
     return callSync(
       method: route.method,
       path: _resolvePath(route.path, pathParams),
@@ -131,8 +167,8 @@ final class DartEdgeAuthApi {
     required String password,
     required String name,
   }) async {
-    return (await callOperation(
-      operationId: 'sign_up_email',
+    return (await callKnownOperation(
+      operation: DartEdgeAuthOperation.signUpEmail,
       body: {'email': email, 'password': password, 'name': name},
     )).requireSuccess();
   }
@@ -141,20 +177,24 @@ final class DartEdgeAuthApi {
     required String email,
     required String password,
   }) async {
-    return (await callOperation(
-      operationId: 'sign_in_email',
+    return (await callKnownOperation(
+      operation: DartEdgeAuthOperation.signInEmail,
       body: {'email': email, 'password': password},
     )).requireSuccess();
   }
 
   Future<DartEdgeAuthApiResponse> getSession({bool post = false}) async {
-    return (await callOperation(
-      operationId: post ? 'get_session_post' : 'get_session',
+    return (await callKnownOperation(
+      operation: post
+          ? DartEdgeAuthOperation.getSessionPost
+          : DartEdgeAuthOperation.getSession,
     )).requireSuccess();
   }
 
   Future<DartEdgeAuthApiResponse> signOut() async {
-    return (await callOperation(operationId: 'sign_out')).requireSuccess();
+    return (await callKnownOperation(
+      operation: DartEdgeAuthOperation.signOut,
+    )).requireSuccess();
   }
 
   Future<DartEdgeAuthApiResponse> updateUser({
@@ -166,8 +206,8 @@ final class DartEdgeAuthApi {
     String? role,
     Object? metadata,
   }) async {
-    return (await callOperation(
-      operationId: 'update_user',
+    return (await callKnownOperation(
+      operation: DartEdgeAuthOperation.updateUser,
       body: {
         if (email case final email?) 'email': email,
         if (name case final name?) 'name': name,
@@ -184,8 +224,8 @@ final class DartEdgeAuthApi {
   Future<DartEdgeAuthApiResponse> changeEmail({
     required String newEmail,
   }) async {
-    return (await callOperation(
-      operationId: 'change_email',
+    return (await callKnownOperation(
+      operation: DartEdgeAuthOperation.changeEmail,
       body: {'newEmail': newEmail},
     )).requireSuccess();
   }

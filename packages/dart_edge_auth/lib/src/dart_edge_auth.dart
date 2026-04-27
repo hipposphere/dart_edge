@@ -11,30 +11,122 @@ part 'dart_edge_auth_api_types.dart';
 part 'dart_edge_auth_api.dart';
 part 'dart_edge_auth_admin_api.dart';
 part 'dart_edge_auth_api_response.dart';
+part 'dart_edge_auth_route_table.dart';
+
+/// Compile-time token for a Better Auth operation exposed by Dart Edge Auth.
+final class DartEdgeAuthOperation {
+  const DartEdgeAuthOperation._(this.id, {this.pluginName});
+
+  /// Better Auth operation id.
+  final String id;
+
+  /// Better Auth plugin that contributes this route, when plugin-owned.
+  final String? pluginName;
+
+  static const signUpEmail = DartEdgeAuthOperation._(
+    'sign_up_email',
+    pluginName: 'email-password',
+  );
+  static const signInEmail = DartEdgeAuthOperation._(
+    'sign_in_email',
+    pluginName: 'email-password',
+  );
+  static const getSession = DartEdgeAuthOperation._(
+    'get_session',
+    pluginName: 'session-management',
+  );
+  static const getSessionPost = DartEdgeAuthOperation._(
+    'get_session_post',
+    pluginName: 'session-management',
+  );
+  static const signOut = DartEdgeAuthOperation._(
+    'sign_out',
+    pluginName: 'session-management',
+  );
+  static const updateUser = DartEdgeAuthOperation._('update_user');
+  static const changeEmail = DartEdgeAuthOperation._('change_email');
+  static const adminSetRole = DartEdgeAuthOperation._(
+    'admin_set_role',
+    pluginName: 'admin',
+  );
+  static const adminCreateUser = DartEdgeAuthOperation._(
+    'admin_create_user',
+    pluginName: 'admin',
+  );
+  static const adminListUsers = DartEdgeAuthOperation._(
+    'admin_list_users',
+    pluginName: 'admin',
+  );
+  static const adminListUserSessions = DartEdgeAuthOperation._(
+    'admin_list_user_sessions',
+    pluginName: 'admin',
+  );
+  static const adminBanUser = DartEdgeAuthOperation._(
+    'admin_ban_user',
+    pluginName: 'admin',
+  );
+  static const adminUnbanUser = DartEdgeAuthOperation._(
+    'admin_unban_user',
+    pluginName: 'admin',
+  );
+  static const adminImpersonateUser = DartEdgeAuthOperation._(
+    'admin_impersonate_user',
+    pluginName: 'admin',
+  );
+  static const adminStopImpersonating = DartEdgeAuthOperation._(
+    'admin_stop_impersonating',
+    pluginName: 'admin',
+  );
+  static const adminRevokeUserSession = DartEdgeAuthOperation._(
+    'admin_revoke_user_session',
+    pluginName: 'admin',
+  );
+  static const adminRevokeUserSessions = DartEdgeAuthOperation._(
+    'admin_revoke_user_sessions',
+    pluginName: 'admin',
+  );
+  static const adminRemoveUser = DartEdgeAuthOperation._(
+    'admin_remove_user',
+    pluginName: 'admin',
+  );
+  static const adminSetUserPassword = DartEdgeAuthOperation._(
+    'admin_set_user_password',
+    pluginName: 'admin',
+  );
+  static const adminHasPermission = DartEdgeAuthOperation._(
+    'admin_has_permission',
+    pluginName: 'admin',
+  );
+
+  @override
+  String toString() => id;
+}
 
 /// Owns a native Better Auth instance and exposes its routes to Dart Edge.
 ///
 /// Create one instance per configured auth backend, mount it on a [Router], and
 /// call [dispose] when you are done with it.
 final class DartEdgeAuth {
-  DartEdgeAuth._(this.config, this._nativeInstance, this._routes);
+  DartEdgeAuth._(this.config, this._nativeInstance, this._routeTable);
 
   /// Creates a new native Better Auth instance from [config].
   factory DartEdgeAuth(DartEdgeAuthConfig config) {
     final nativeInstance = DartEdgeAuthNative.create(config);
-    final routes = List<NativeRouteDefinition>.unmodifiable(
+    final routes = List<AuthNativeRouteDescriptor>.unmodifiable(
       DartEdgeAuthNative.listRoutes(nativeInstance.handle),
     );
-    return DartEdgeAuth._(config, nativeInstance, routes);
+    return DartEdgeAuth._(
+      config,
+      nativeInstance,
+      _DartEdgeAuthRouteTable(routes),
+    );
   }
 
   /// Configuration used to initialize the native auth instance.
   final DartEdgeAuthConfig config;
   final NativeAuthInstance _nativeInstance;
-  final List<NativeRouteDefinition> _routes;
-  late final Map<String, NativeRouteDefinition> _routesByOperationId = {
-    for (final route in _routes) route.operationId: route,
-  };
+  final _DartEdgeAuthRouteTable _routeTable;
+  List<AuthNativeRouteDescriptor> get _routes => _routeTable.routes;
   var _disposed = false;
   late final DartEdgeAuthApi api = DartEdgeAuthApi._(this);
 
@@ -44,11 +136,23 @@ final class DartEdgeAuth {
   /// them on the app itself or on a tag-only router. Do not add the same auth
   /// prefix again, or you will end up with paths like `/auth/auth/...`.
   void mount<TServices>(Router<TServices> router) {
-    router.registerAll(routes<TServices>());
+    for (final route in routes<TServices>()) {
+      router.mountHttpRoute(route);
+    }
   }
 
-  /// Returns the route definitions that proxy into the auth backend.
-  List<RouteDefinition<TServices>> routes<TServices>() {
+  /// Registers all auth routes as native routes on [router].
+  ///
+  /// Native routes are served directly by the HTTP server runtime without
+  /// crossing into Dart request handlers.
+  void mountNative<TServices>(Router<TServices> router) {
+    for (final route in nativeRoutes()) {
+      router.mountNativeHttpRoute(route);
+    }
+  }
+
+  /// Returns the mounted routes that proxy into the auth backend.
+  List<HttpRouteMount<TServices, RawResponse>> routes<TServices>() {
     _ensureActive();
     return _routes
         .map(
@@ -56,6 +160,23 @@ final class DartEdgeAuth {
             method: route.method,
             path: _runtimePath(route.path),
             route: _DartEdgeAuthRoute<TServices>(auth: this, route: route),
+          ),
+        )
+        .toList(growable: false);
+  }
+
+  /// Returns native HTTP route mounts that proxy directly into Better Auth.
+  List<NativeHttpRouteMount> nativeRoutes() {
+    _ensureActive();
+    return _routes
+        .map(
+          (route) => NativeHttpRouteMount(
+            method: route.method,
+            path: _runtimePath(route.path),
+            options: _routeOptions(route),
+            nativeHandle: _nativeInstance.handle,
+            nativeHandlerAddress: DartEdgeAuthNative.handleRequestAddress,
+            nativeFreeResponseAddress: DartEdgeAuthNative.freeResponseAddress,
           ),
         )
         .toList(growable: false);
@@ -75,7 +196,7 @@ final class DartEdgeAuth {
   /// Most applications should not call this directly. It is used by the route
   /// definitions returned from [routes].
   RawResponse handle<TServices>(
-    NativeRouteDefinition route,
+    AuthNativeRouteDescriptor route,
     RequestContext<TServices> ctx,
   ) {
     final params = ctx.req.paramsMap;
@@ -119,40 +240,16 @@ final class DartEdgeAuth {
     );
   }
 
-  NativeRouteDefinition _routeForOperation(String operationId) {
+  AuthNativeRouteDescriptor _routeForOperation(
+    DartEdgeAuthOperation operation,
+  ) {
     _ensureActive();
-    final route = _routesByOperationId[operationId];
-    if (route == null) {
-      final hint = switch (operationId) {
-        final id when id.startsWith('admin_') =>
-          ' Enable the admin plugin with '
-              '`admin: DartEdgeAuthAdminConfig()` in `DartEdgeAuthConfig`.',
-        'sign_up_email' || 'sign_in_email' || 'sign_in_username' =>
-          ' Check `enableEmailPassword` and `enableSignup` in '
-              '`DartEdgeAuthConfig`.',
-        'get_session' ||
-        'get_session_post' ||
-        'sign_out' ||
-        'list_sessions' ||
-        'revoke_session' ||
-        'revoke_sessions' ||
-        'revoke_other_sessions' =>
-          ' Check `enableSessionManagement` in `DartEdgeAuthConfig`.',
-        'forget_password' ||
-        'reset_password' ||
-        'reset_password_token' ||
-        'change_password' ||
-        'set_password' =>
-          ' Check `enablePasswordManagement` in `DartEdgeAuthConfig`.',
-        'list_accounts' || 'unlink_account' =>
-          ' Check `enableAccountManagement` in `DartEdgeAuthConfig`.',
-        _ => '',
-      };
-      throw StateError(
-        'No Better Auth route is registered for operationId "$operationId".$hint',
-      );
-    }
-    return route;
+    return _routeTable.routeForOperation(operation);
+  }
+
+  AuthNativeRouteDescriptor _routeForOperationId(String operationId) {
+    _ensureActive();
+    return _routeTable.routeForOperationId(operationId);
   }
 
   @override
@@ -167,14 +264,10 @@ final class _DartEdgeAuthRoute<TServices>
   _DartEdgeAuthRoute({required this.auth, required this.route});
 
   final DartEdgeAuth auth;
-  final NativeRouteDefinition route;
+  final AuthNativeRouteDescriptor route;
 
   @override
-  RouteOptions get options => RouteOptions(
-    operationId: route.operationId,
-    body: route.acceptsJsonBody ? RequestBody.jsonValue() : null,
-    success: ResponseSpec.json<Object?>(),
-  );
+  RouteOptions get options => _routeOptions(route);
 
   @override
   RawResponse handle(RequestContext<TServices> ctx) {
@@ -186,6 +279,14 @@ final class _DartEdgeAuthRoute<TServices>
     return 'DartEdgeAuthRoute<$TServices>('
         'operationId: ${route.operationId}, jsonBody: ${route.acceptsJsonBody})';
   }
+}
+
+RouteOptions _routeOptions(AuthNativeRouteDescriptor route) {
+  return RouteOptions(
+    operationId: route.operationId,
+    body: route.acceptsJsonBody ? RequestBody.jsonValue() : null,
+    success: ResponseSpec.json<Object?>(),
+  );
 }
 
 Uint8List? _encodeBody(Object? value) => switch (value) {

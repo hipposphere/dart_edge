@@ -1,10 +1,8 @@
 import '../http/http_method.dart';
 import 'http_route_definition.dart';
-import 'route_definition.dart';
 
 /// Binds an HTTP route definition to the endpoint where it is mounted.
-final class HttpRouteMount<TServices, TSuccess>
-    implements RouteDefinition<TServices> {
+final class HttpRouteMount<TServices, TSuccess> {
   const HttpRouteMount({
     required this.method,
     required this.path,
@@ -19,4 +17,10 @@ final class HttpRouteMount<TServices, TSuccess>
 
   /// Reusable HTTP route implementation.
   final HttpRouteDefinition<TServices, TSuccess> route;
+
+  @override
+  String toString() {
+    return 'HttpRouteMount<$TServices, $TSuccess>('
+        'method: ${method.name.toUpperCase()}, path: $path, route: $route)';
+  }
 }

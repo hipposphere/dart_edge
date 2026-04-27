@@ -7,7 +7,7 @@ import 'guard.dart';
 import 'handler_http_route_definition.dart';
 import 'http_route_definition.dart';
 import 'http_route_mount.dart';
-import 'route_definition.dart';
+import 'native_http_route_mount.dart';
 import 'route_options.dart';
 import 'route_path.dart';
 import 'route_registry.dart';
@@ -49,27 +49,63 @@ class Router<TServices> {
     );
   }
 
-  /// Registers one mounted route definition.
-  void register(
-    RouteDefinition<TServices> route, {
+  /// Mounts an independently built [router] under [basePath].
+  ///
+  /// The mounted router keeps the route objects it already registered. This
+  /// applies this router's prefix, tags, and guards on top of the mounted
+  /// router's existing registration metadata.
+  void mountRouter(
+    String basePath,
+    Router<TServices> router, {
+    List<String>? tags,
     List<Guard<TServices>>? guards,
   }) {
-    routeRegistry.register(
+    if (identical(routeRegistry, router.routeRegistry)) {
+      throw ArgumentError.value(
+        router,
+        'router',
+        'Cannot mount a router that already shares this route registry.',
+      );
+    }
+
+    final mountPrefix = joinRoutePath(prefix, basePath);
+    for (final registration in router.routeRegistry.registrations) {
+      routeRegistry.registerMounted(
+        prefix: joinRoutePath(mountPrefix, registration.prefix),
+        tags: [...this.tags, ...?tags, ...registration.tags],
+        guards: [...this.guards, ...?guards, ...registration.guards],
+        registration: registration,
+      );
+    }
+  }
+
+  /// Mounts one explicit HTTP route mount.
+  void mountHttpRoute<TSuccess>(
+    HttpRouteMount<TServices, TSuccess> route, {
+    List<Guard<TServices>>? guards,
+  }) {
+    _registerHttpRouteMount(route, guards: guards);
+  }
+
+  /// Mounts one explicit WebSocket route mount.
+  void mountWebSocketRoute(
+    WebSocketRouteMount<TServices> route, {
+    List<Guard<TServices>>? guards,
+  }) {
+    _registerWebSocketRouteMount(route, guards: guards);
+  }
+
+  /// Mounts one native HTTP route.
+  void mountNativeHttpRoute(
+    NativeHttpRouteMount route, {
+    List<Guard<TServices>>? guards,
+  }) {
+    routeRegistry.registerNativeHttp(
       prefix: prefix,
       tags: tags,
       guards: [...this.guards, ...?guards],
-      route: route,
+      mount: route,
     );
-  }
-
-  /// Registers many mounted route definitions.
-  void registerAll(
-    Iterable<RouteDefinition<TServices>> definitions, {
-    List<Guard<TServices>>? guards,
-  }) {
-    for (final definition in definitions) {
-      register(definition, guards: guards);
-    }
   }
 
   /// Registers an inline `GET` handler.
@@ -289,7 +325,7 @@ class Router<TServices> {
     List<Guard<TServices>>? guards,
     required WebSocketRouteHandler<TServices> onConnect,
   }) {
-    register(
+    mountWebSocketRoute(
       WebSocketRouteMount<TServices>(
         path: path,
         route: HandlerWebSocketRouteDefinition<TServices>(
@@ -309,7 +345,7 @@ class Router<TServices> {
     WebSocketRouteDefinition<TServices> route, {
     List<Guard<TServices>>? guards,
   }) {
-    register(
+    mountWebSocketRoute(
       WebSocketRouteMount<TServices>(path: path, route: route),
       guards: guards,
     );
@@ -341,13 +377,37 @@ class Router<TServices> {
     required HttpRouteDefinition<TServices, TSuccess> route,
     List<Guard<TServices>>? guards,
   }) {
-    register(
+    mountHttpRoute(
       HttpRouteMount<TServices, TSuccess>(
         method: method,
         path: path,
         route: route,
       ),
       guards: guards,
+    );
+  }
+
+  void _registerHttpRouteMount<TSuccess>(
+    HttpRouteMount<TServices, TSuccess> mount, {
+    List<Guard<TServices>>? guards,
+  }) {
+    routeRegistry.registerHttp(
+      prefix: prefix,
+      tags: tags,
+      guards: [...this.guards, ...?guards],
+      mount: mount,
+    );
+  }
+
+  void _registerWebSocketRouteMount(
+    WebSocketRouteMount<TServices> mount, {
+    List<Guard<TServices>>? guards,
+  }) {
+    routeRegistry.registerWebSocket(
+      prefix: prefix,
+      tags: tags,
+      guards: [...this.guards, ...?guards],
+      mount: mount,
     );
   }
 

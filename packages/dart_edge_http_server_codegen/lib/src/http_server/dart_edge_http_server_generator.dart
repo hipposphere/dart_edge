@@ -24,7 +24,7 @@ final class DartEdgeHttpServerLibrarySpec {
   /// Imports for model types referenced by route and codec specs.
   final List<String> additionalImports;
 
-  /// Name of the generated route-definition factory.
+  /// Name of the generated route mounting function.
   final String routesFactoryName;
 
   /// Name of the generated [JsonSchemaRegistry] variable.
@@ -317,11 +317,16 @@ final class DartEdgeHttpServerGenerator {
   Method _routesFactory(DartEdgeHttpServerLibrarySpec spec) {
     return Method((builder) {
       builder
-        ..returns = _type('List', [
-          _type('RouteDefinition', [refer('TServices')]),
-        ])
+        ..returns = refer('void')
         ..name = spec.routesFactoryName
         ..types.add(refer('TServices'))
+        ..requiredParameters.add(
+          Parameter((parameter) {
+            parameter
+              ..type = _type('Router', [refer('TServices')])
+              ..name = 'router';
+          }),
+        )
         ..optionalParameters.addAll(
           spec.routes.map(
             (route) => _namedParameter(
@@ -331,23 +336,32 @@ final class DartEdgeHttpServerGenerator {
             ),
           ),
         )
-        ..body = literalList(
+        ..body = Block.of(
           spec.routes.map(
-            (route) =>
-                _type('HttpRouteMount', [
-                  refer('TServices'),
-                  refer(route.successType),
-                ]).newInstance(const <Expression>[], {
-                  'method': refer('HttpMethod').property(route.method.name),
-                  'path': literalString(route.path),
-                  'route': _type(route.routeClassName, [
+            (route) => refer('router')
+                .property(_routerRouteMethodName(route.method))
+                .call([
+                  literalString(route.path),
+                  _type(route.routeClassName, [
                     refer('TServices'),
                   ]).newInstance([refer(route.resolvedHandlerParameterName)]),
-                }),
+                ])
+                .statement,
           ),
-          _type('RouteDefinition', [refer('TServices')]),
-        ).returned.statement;
+        );
     });
+  }
+
+  String _routerRouteMethodName(HttpMethod method) {
+    return switch (method) {
+      HttpMethod.get => 'routeGet',
+      HttpMethod.post => 'routePost',
+      HttpMethod.put => 'routePut',
+      HttpMethod.patch => 'routePatch',
+      HttpMethod.delete => 'routeDelete',
+      HttpMethod.head => 'routeHead',
+      HttpMethod.options => 'routeOptions',
+    };
   }
 
   Expression _routeOptionsExpression(RouteOptions options) {

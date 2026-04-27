@@ -22,12 +22,11 @@ external Future<UserDto> createUser(
 Future<void> main() async {
   final app = DartEdge<AppServices>(services: AppServices.new);
   app.installSchemaRegistry($generatedSchemas);
-  app.registerAll(
-    $generatedRoutes<AppServices>(
-      createUserRoute: (body, requestId) {
-        return UserDto(id: 'user-1', name: body.name, email: body.email);
-      },
-    ),
+  $generatedRoutes<AppServices>(
+    app,
+    createUserRoute: (body, requestId) {
+      return UserDto(id: 'user-1', name: body.name, email: body.email);
+    },
   );
 
   final openApiJson = app.buildOpenApiDocumentJson();

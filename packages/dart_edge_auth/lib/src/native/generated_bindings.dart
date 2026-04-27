@@ -56,37 +56,23 @@ external int dart_edge_auth_create_with_shared_database(
 @ffi.Native<ffi.Void Function(ffi.Int64)>(isLeaf: true)
 external void dart_edge_auth_dispose(int handle);
 
-@ffi.Native<ffi.Void Function(ffi.Pointer<NativeAuthResponse>)>(isLeaf: true)
+@ffi.Native<ffi.Void Function(ffi.Pointer<NativeHttpResponse>)>(isLeaf: true)
 external void dart_edge_auth_free_response(
-  ffi.Pointer<NativeAuthResponse> value,
+  ffi.Pointer<NativeHttpResponse> value,
 );
 
 @ffi.Native<ffi.Void Function(ffi.Pointer<ffi.Char>)>(isLeaf: true)
 external void dart_edge_auth_free_string(ffi.Pointer<ffi.Char> value);
 
 @ffi.Native<
-  ffi.Pointer<NativeAuthResponse> Function(
+  ffi.Pointer<NativeHttpResponse> Function(
     ffi.Int64,
-    ffi.Int32,
-    ffi.Pointer<ffi.Char>,
-    ffi.IntPtr,
-    ffi.Pointer<imp$1.NativePair>,
-    ffi.IntPtr,
-    ffi.Pointer<imp$1.NativePair>,
-    ffi.Pointer<ffi.Uint8>,
-    ffi.IntPtr,
+    ffi.Pointer<NativeHttpRequest>,
   )
 >()
-external ffi.Pointer<NativeAuthResponse> dart_edge_auth_handle_request(
+external ffi.Pointer<NativeHttpResponse> dart_edge_auth_handle_request(
   int handle,
-  int method,
-  ffi.Pointer<ffi.Char> path,
-  int query_count,
-  ffi.Pointer<imp$1.NativePair> query,
-  int header_count,
-  ffi.Pointer<imp$1.NativePair> headers,
-  ffi.Pointer<ffi.Uint8> body_ptr,
-  int body_len,
+  ffi.Pointer<NativeHttpRequest> request,
 );
 
 @ffi.Native<ffi.Pointer<ffi.Char> Function(ffi.Int64)>()
@@ -98,7 +84,26 @@ external int dart_edge_auth_native_abi_version();
 @ffi.Native<ffi.Pointer<ffi.Char> Function()>()
 external ffi.Pointer<ffi.Char> dart_edge_auth_take_last_error();
 
-final class NativeAuthResponse extends ffi.Struct {
+final class NativeHttpRequest extends ffi.Struct {
+  @ffi.Int32()
+  external int method;
+
+  external ffi.Pointer<ffi.Char> path;
+
+  @ffi.IntPtr()
+  external int query_count;
+
+  external ffi.Pointer<imp$1.NativePair> query;
+
+  @ffi.IntPtr()
+  external int header_count;
+
+  external ffi.Pointer<imp$1.NativePair> headers;
+
+  external imp$1.NativeBytes body;
+}
+
+final class NativeHttpResponse extends ffi.Struct {
   @ffi.Uint16()
   external int status;
 

@@ -69,8 +69,8 @@ final class DartEdgeAuthGuard<TServices> implements Guard<TServices> {
       return GuardResult.deny(_unauthorized(ctx));
     }
 
-    final response = auth.api.callOperationSync(
-      operationId: 'get_session',
+    final response = auth.api.callKnownOperationSync(
+      operation: DartEdgeAuthOperation.getSession,
       headers: headers,
     );
     final identity = _identityFrom(response);

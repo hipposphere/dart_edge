@@ -2,6 +2,7 @@
 resolver = "3"
 members = [
     "crates/dart_edge_core",
+    "crates/dart_edge_http_server_core",
     "crates/dart_edge_sql_core",
 ]
 exclude = [

@@ -162,9 +162,7 @@ void main() {
           isA<StateError>().having(
             (error) => error.message,
             'message',
-            contains(
-              'Enable the admin plugin with `admin: DartEdgeAuthAdminConfig()`',
-            ),
+            contains('Required Better Auth plugin: "admin"'),
           ),
         ),
       );

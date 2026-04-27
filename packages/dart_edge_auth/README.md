@@ -79,9 +79,10 @@ final created = await admin.createUser(
 );
 ```
 
-If `auth.api.admin.*` throws a `StateError` about `admin_*` operations not
-being registered, your `DartEdgeAuthConfig` does not have
-`admin: DartEdgeAuthAdminConfig()` enabled.
+If `auth.api.admin.*` throws a `StateError` that requires the `admin` Better
+Auth plugin, your `DartEdgeAuthConfig` does not have
+`admin: DartEdgeAuthAdminConfig()` enabled. The error also includes the
+operation ids registered by the native auth route table.
 
 ## Shared Native Databases
 

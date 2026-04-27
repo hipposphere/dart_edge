@@ -25,7 +25,7 @@ final class OpenApiDocument {
 
   /// Builds an OpenAPI 3.1 document from compiled routes and schemas.
   Map<String, Object?> toJson({
-    required Iterable<CompiledRoute<dynamic>> routes,
+    required Iterable<CompiledOpenApiRoute> routes,
     JsonSchemaRegistry? schemaRegistry,
   }) {
     final paths = <String, Map<String, Object?>>{};
@@ -76,7 +76,7 @@ final class OpenApiServer {
 }
 
 Map<String, Object?> _buildOperation(
-  CompiledRoute<dynamic> route,
+  CompiledOpenApiRoute route,
   JsonSchemaRegistry? schemaRegistry,
 ) {
   final options = route.options;
@@ -108,7 +108,7 @@ Map<String, Object?> _buildOperation(
 }
 
 List<Map<String, Object?>> _buildPathParameters(
-  CompiledRoute<dynamic> route,
+  CompiledOpenApiRoute route,
   JsonSchemaRegistry? schemaRegistry,
 ) {
   final pathParameters = [

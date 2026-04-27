@@ -125,7 +125,6 @@ final class UserDto {
               isNot(contains('part of')),
               contains('final JsonSchemaRegistry \$generatedSchemas'),
               contains('final RouteOptions createUserRouteOptions'),
-              contains("path: '/users/<id>'"),
               contains(
                 "params: const JsonSchemaRef<Object?>('CreateUserParams')",
               ),
@@ -142,7 +141,9 @@ final class UserDto {
               contains('decoder: UserDto.fromJson'),
               contains('encoder: (value) => value.toJson()'),
               contains('CreateUserRoute<TServices>'),
-              contains('List<RouteDefinition<TServices>> \$generatedRoutes'),
+              contains('void \$generatedRoutes<TServices>('),
+              contains('Router<TServices> router'),
+              contains("router.routePost('/users/<id>'"),
               contains('final class UsersClient'),
               contains('Future<UserDto> createUser({'),
             ]),

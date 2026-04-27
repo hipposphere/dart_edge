@@ -1,6 +1,13 @@
 import 'package:dart_edge_core/dart_edge_core.dart';
 
-final class CompiledRoute<TServices> {
+abstract interface class CompiledOpenApiRoute {
+  HttpMethod get method;
+  RouteOptions get options;
+  String get openApiPath;
+  List<RouteSegment> get patternSegments;
+}
+
+final class CompiledRoute<TServices> implements CompiledOpenApiRoute {
   const CompiledRoute({
     required this.routeId,
     required this.route,
@@ -15,10 +22,14 @@ final class CompiledRoute<TServices> {
   final String routeId;
   final HttpRouteDefinition<TServices, dynamic> route;
   final List<Guard<TServices>> guards;
+  @override
   final HttpMethod method;
+  @override
   final RouteOptions options;
   final String path;
+  @override
   final String openApiPath;
+  @override
   final List<RouteSegment> patternSegments;
 
   static CompiledRoute<TServices>? tryParse<TServices>(
@@ -40,15 +51,15 @@ final class CompiledRoute<TServices> {
       );
     }
     final path = joinRoutePath(registration.prefix, routePath);
-    final patternSegments = _parsePattern(path);
+    final patternSegments = parseRoutePattern(path);
     return CompiledRoute<TServices>(
       routeId: routeId,
       route: route,
       guards: registration.guards,
       method: method,
-      options: _effectiveOptions(registration, options),
+      options: effectiveRouteOptions(registration, options),
       path: path,
-      openApiPath: _openApiPath(patternSegments),
+      openApiPath: openApiPathForSegments(patternSegments),
       patternSegments: patternSegments,
     );
   }
@@ -56,7 +67,7 @@ final class CompiledRoute<TServices> {
   Map<String, Object?> toNativeJson() => {
     'kind': 'http',
     'routeId': routeId,
-    'method': _httpMethodName(method),
+    'method': httpMethodName(method),
     'path': path,
     'operationId': options.operationId!,
     'pathSegments': patternSegments.map((segment) => segment.toJson()).toList(),
@@ -70,7 +81,7 @@ final class CompiledRoute<TServices> {
   };
 }
 
-RouteOptions _effectiveOptions<TServices>(
+RouteOptions effectiveRouteOptions<TServices>(
   RouteRegistration<TServices> registration,
   RouteOptions options,
 ) {
@@ -105,7 +116,7 @@ final class RouteSegment {
   Map<String, Object?> toJson() => {'value': value, 'isParameter': isParameter};
 }
 
-String _httpMethodName(HttpMethod method) => switch (method) {
+String httpMethodName(HttpMethod method) => switch (method) {
   HttpMethod.get => 'GET',
   HttpMethod.post => 'POST',
   HttpMethod.put => 'PUT',
@@ -115,7 +126,7 @@ String _httpMethodName(HttpMethod method) => switch (method) {
   HttpMethod.options => 'OPTIONS',
 };
 
-List<RouteSegment> _parsePattern(String path) {
+List<RouteSegment> parseRoutePattern(String path) {
   if (path == '/') {
     return const <RouteSegment>[];
   }
@@ -133,7 +144,7 @@ List<RouteSegment> _parsePattern(String path) {
       .toList(growable: false);
 }
 
-String _openApiPath(List<RouteSegment> segments) {
+String openApiPathForSegments(List<RouteSegment> segments) {
   if (segments.isEmpty) {
     return '/';
   }

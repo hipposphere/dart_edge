@@ -5,15 +5,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "../../../../crates/dart_edge_core/include/dart_edge_core_ffi.h"
-
-typedef struct NativeAuthResponse {
-  uint16_t status;
-  NativeBytes content_type;
-  intptr_t header_count;
-  const NativePair* headers;
-  NativeBytes body;
-} NativeAuthResponse;
+#include <dart_edge_http_server_core.h>
 
 typedef char* (*dart_edge_auth_shared_execute_pool_fn)(int64_t handle, const char* statement_json);
 typedef char* (*dart_edge_auth_shared_take_last_error_fn)(void);
@@ -34,18 +26,11 @@ void dart_edge_auth_dispose(int64_t handle);
 
 char* dart_edge_auth_list_routes(int64_t handle);
 
-NativeAuthResponse* dart_edge_auth_handle_request(
+NativeHttpResponse* dart_edge_auth_handle_request(
     int64_t handle,
-    int32_t method,
-    const char* path,
-    intptr_t query_count,
-    const NativePair* query,
-    intptr_t header_count,
-    const NativePair* headers,
-    const uint8_t* body_ptr,
-    intptr_t body_len);
+    const NativeHttpRequest* request);
 
-void dart_edge_auth_free_response(NativeAuthResponse* value);
+void dart_edge_auth_free_response(NativeHttpResponse* value);
 
 char* dart_edge_auth_take_last_error(void);
 

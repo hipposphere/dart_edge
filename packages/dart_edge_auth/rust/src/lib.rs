@@ -4,7 +4,6 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicI64, Ordering};
 
 use better_auth::adapters::{DatabaseAdapter, MemoryDatabaseAdapter, SqlxAdapter};
-use better_auth::core_paths;
 use better_auth::plugins::{
     AccountManagementPlugin, AdminPlugin, EmailPasswordPlugin, EmailVerificationPlugin,
     PasswordManagementPlugin, SessionManagementPlugin,
@@ -14,16 +13,22 @@ use better_auth::{
 };
 use better_auth_diesel_sqlite::DieselSqliteAdapter;
 use dart_edge_core::{
-    NativeBytes, NativePair, OwnedBytes, OwnedPair, boxed_pairs_ptr, native_pairs_from_owned,
+    NativePair, OwnedBytes, OwnedPair, boxed_pairs_ptr, native_pairs_from_owned, read_native_bytes,
     read_pairs_map,
 };
+use dart_edge_http_server_core::{
+    NativeHttpMethod, NativeHttpRequest, NativeHttpResponse, native_http_routes_to_json,
+};
 use once_cell::sync::Lazy;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::json;
 use shared_sql_adapter::{SharedSqlCallbacks, SharedSqlDatabaseAdapter, SharedSqlDialect};
 use tokio::runtime::Runtime;
 
+mod routes;
 mod shared_sql_adapter;
+
+use routes::{join_path, normalize_base_path};
 
 const DART_EDGE_AUTH_NATIVE_ABI_VERSION: i32 = 1;
 
@@ -51,17 +56,8 @@ type SharedTakeLastErrorFn = unsafe extern "C" fn() -> *mut c_char;
 type SharedFreeStringFn = unsafe extern "C" fn(value: *mut c_char);
 
 #[repr(C)]
-pub struct NativeAuthResponse {
-    status: u16,
-    content_type: NativeBytes,
-    header_count: isize,
-    headers: *const NativePair,
-    body: NativeBytes,
-}
-
-#[repr(C)]
 struct NativeAuthResponseHandle {
-    response: NativeAuthResponse,
+    response: NativeHttpResponse,
     content_type: OwnedBytes,
     headers: Vec<OwnedPair>,
     header_pairs: Box<[NativePair]>,
@@ -125,15 +121,6 @@ enum NativeDatabaseConfig {
 enum NativeSharedSqlDialect {
     Postgres,
     Sqlite,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct ListedRoute {
-    method: String,
-    path: String,
-    operation_id: String,
-    accepts_json_body: bool,
 }
 
 #[unsafe(no_mangle)]
@@ -246,8 +233,9 @@ pub extern "C" fn dart_edge_auth_list_routes(handle: i64) -> *mut c_char {
         return std::ptr::null_mut();
     };
 
-    let routes = list_routes(instance);
-    let json = match serde_json::to_string(&routes) {
+    let spec = instance.auth.openapi_spec();
+    let routes = routes::list_routes(&spec, &instance.base_path);
+    let json = match native_http_routes_to_json(&routes) {
         Ok(json) => json,
         Err(error) => {
             set_last_error(format!("Failed to encode auth routes: {error}"));
@@ -270,31 +258,30 @@ pub extern "C" fn dart_edge_auth_list_routes(handle: i64) -> *mut c_char {
 #[unsafe(no_mangle)]
 pub extern "C" fn dart_edge_auth_handle_request(
     handle: i64,
-    method: i32,
-    path: *const c_char,
-    query_count: isize,
-    query: *const NativePair,
-    header_count: isize,
-    headers: *const NativePair,
-    body_ptr: *const u8,
-    body_len: isize,
-) -> *mut NativeAuthResponse {
-    let Some(path) = (unsafe { read_c_string(path) }) else {
+    request: *const NativeHttpRequest,
+) -> *mut NativeHttpResponse {
+    let Some(request) = (unsafe { request.as_ref() }) else {
+        set_last_error("Missing auth request.");
+        return std::ptr::null_mut();
+    };
+
+    let Some(path) = (unsafe { read_c_string(request.path) }) else {
         set_last_error("Missing auth request path.");
         return std::ptr::null_mut();
     };
 
-    let method = match decode_method(method) {
-        Some(method) => method,
-        None => {
-            set_last_error(format!("Unsupported auth method code: {method}"));
-            return std::ptr::null_mut();
-        }
+    let Some(native_method) = NativeHttpMethod::from_code(request.method) else {
+        set_last_error(format!(
+            "Unsupported auth request method code: {}",
+            request.method
+        ));
+        return std::ptr::null_mut();
     };
+    let method = decode_method(native_method);
 
-    let query = unsafe { read_pairs_map(query, query_count) };
-    let headers = unsafe { read_pairs_map(headers, header_count) };
-    let body = unsafe { read_bytes(body_ptr, body_len) };
+    let query = unsafe { read_pairs_map(request.query, request.query_count) };
+    let headers = unsafe { read_pairs_map(request.headers, request.header_count) };
+    let body = unsafe { read_native_bytes(request.body) }.map(|body| body.to_vec());
 
     let mut instances = INSTANCES.lock().unwrap();
     let Some(instance) = instances.get_mut(&handle) else {
@@ -323,7 +310,7 @@ pub extern "C" fn dart_edge_auth_handle_request(
         Ok(response) => {
             clear_last_error();
             Box::into_raw(Box::new(NativeAuthResponseHandle::from_response(response)))
-                .cast::<NativeAuthResponse>()
+                .cast::<NativeHttpResponse>()
         }
         Err(error) => {
             set_last_error(error);
@@ -333,7 +320,7 @@ pub extern "C" fn dart_edge_auth_handle_request(
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn dart_edge_auth_free_response(value: *mut NativeAuthResponse) {
+pub extern "C" fn dart_edge_auth_free_response(value: *mut NativeHttpResponse) {
     if value.is_null() {
         return;
     }
@@ -487,71 +474,6 @@ fn build_runtime() -> Result<Runtime, std::io::Error> {
         .build()
 }
 
-fn list_routes(instance: &AuthInstance) -> Vec<ListedRoute> {
-    let mut routes = vec![
-        ListedRoute::new(
-            "GET",
-            join_path(&instance.base_path, core_paths::OK),
-            "ok",
-            false,
-        ),
-        ListedRoute::new(
-            "GET",
-            join_path(&instance.base_path, core_paths::ERROR),
-            "error",
-            false,
-        ),
-        ListedRoute::new(
-            "GET",
-            join_path(&instance.base_path, "/health"),
-            "health",
-            false,
-        ),
-        ListedRoute::new(
-            "GET",
-            join_path(&instance.base_path, core_paths::OPENAPI_SPEC),
-            "openapi_spec",
-            false,
-        ),
-        ListedRoute::new(
-            "POST",
-            join_path(&instance.base_path, core_paths::UPDATE_USER),
-            "update_user",
-            true,
-        ),
-        ListedRoute::new(
-            "POST",
-            join_path(&instance.base_path, core_paths::DELETE_USER),
-            "delete_user_post",
-            true,
-        ),
-        ListedRoute::new(
-            "DELETE",
-            join_path(&instance.base_path, core_paths::DELETE_USER),
-            "delete_user_delete",
-            true,
-        ),
-        ListedRoute::new(
-            "POST",
-            join_path(&instance.base_path, core_paths::CHANGE_EMAIL),
-            "change_email",
-            true,
-        ),
-        ListedRoute::new(
-            "GET",
-            join_path(&instance.base_path, core_paths::DELETE_USER_CALLBACK),
-            "delete_user_callback",
-            false,
-        ),
-    ];
-
-    instance
-        .auth
-        .append_plugin_routes(&mut routes, &instance.base_path);
-
-    routes
-}
-
 impl NativeAuthBackend {
     async fn handle_request(
         &self,
@@ -577,12 +499,12 @@ impl NativeAuthBackend {
         }
     }
 
-    fn append_plugin_routes(&self, routes: &mut Vec<ListedRoute>, base_path: &str) {
+    fn openapi_spec(&self) -> better_auth::OpenApiSpec {
         match self {
-            NativeAuthBackend::Memory(auth) => append_plugin_routes(auth, routes, base_path),
-            NativeAuthBackend::Postgres(auth) => append_plugin_routes(auth, routes, base_path),
-            NativeAuthBackend::Sqlite(auth) => append_plugin_routes(auth, routes, base_path),
-            NativeAuthBackend::Shared(auth) => append_plugin_routes(auth, routes, base_path),
+            NativeAuthBackend::Memory(auth) => auth.openapi_spec(),
+            NativeAuthBackend::Postgres(auth) => auth.openapi_spec(),
+            NativeAuthBackend::Sqlite(auth) => auth.openapi_spec(),
+            NativeAuthBackend::Shared(auth) => auth.openapi_spec(),
         }
     }
 }
@@ -595,23 +517,6 @@ fn native_shared_dialect(value: SharedSqlDialect) -> NativeSharedSqlDialect {
     match value {
         SharedSqlDialect::Postgres => NativeSharedSqlDialect::Postgres,
         SharedSqlDialect::Sqlite => NativeSharedSqlDialect::Sqlite,
-    }
-}
-
-fn append_plugin_routes<DB: DatabaseAdapter>(
-    auth: &BetterAuth<DB>,
-    routes: &mut Vec<ListedRoute>,
-    base_path: &str,
-) {
-    for plugin in auth.plugins() {
-        for route in plugin.routes() {
-            routes.push(ListedRoute {
-                method: http_method_name(&route.method).to_string(),
-                path: join_path(base_path, &route.path),
-                operation_id: route.operation_id,
-                accepts_json_body: accepts_json_body(&route.method),
-            });
-        }
     }
 }
 
@@ -655,17 +560,6 @@ fn default_manage_migrations() -> bool {
     true
 }
 
-impl ListedRoute {
-    fn new(method: &str, path: String, operation_id: &str, accepts_json_body: bool) -> Self {
-        Self {
-            method: method.to_string(),
-            path,
-            operation_id: operation_id.to_string(),
-            accepts_json_body,
-        }
-    }
-}
-
 impl NativeAuthResponseHandle {
     fn from_response(response: better_auth::AuthResponse) -> Self {
         let content_type = response_content_type(&response.headers);
@@ -679,7 +573,7 @@ impl NativeAuthResponseHandle {
         let header_pairs = native_pairs_from_owned(&headers);
         let content_type = OwnedBytes::from_vec(content_type.into_bytes());
 
-        let native = NativeAuthResponse {
+        let native = NativeHttpResponse {
             status: response.status,
             content_type: content_type.as_native(),
             header_count: header_pairs.len() as isize,
@@ -705,75 +599,15 @@ fn response_content_type(headers: &HashMap<String, String>) -> String {
         .unwrap_or_else(|| "application/json; charset=utf-8".to_string())
 }
 
-fn accepts_json_body(method: &HttpMethod) -> bool {
-    matches!(
-        method,
-        HttpMethod::Post | HttpMethod::Put | HttpMethod::Patch | HttpMethod::Delete
-    )
-}
-
-fn http_method_name(method: &HttpMethod) -> &'static str {
+fn decode_method(method: NativeHttpMethod) -> HttpMethod {
     match method {
-        HttpMethod::Get => "GET",
-        HttpMethod::Post => "POST",
-        HttpMethod::Put => "PUT",
-        HttpMethod::Patch => "PATCH",
-        HttpMethod::Delete => "DELETE",
-        HttpMethod::Head => "HEAD",
-        HttpMethod::Options => "OPTIONS",
-    }
-}
-
-fn decode_method(value: i32) -> Option<HttpMethod> {
-    match value {
-        0 => Some(HttpMethod::Get),
-        1 => Some(HttpMethod::Post),
-        2 => Some(HttpMethod::Put),
-        3 => Some(HttpMethod::Patch),
-        4 => Some(HttpMethod::Delete),
-        5 => Some(HttpMethod::Head),
-        6 => Some(HttpMethod::Options),
-        _ => None,
-    }
-}
-
-fn join_path(prefix: &str, path: &str) -> String {
-    let prefix = normalize_base_path(prefix);
-    let path = normalize_relative_path(path);
-
-    if prefix == "/" {
-        return path;
-    }
-    if path == "/" {
-        return prefix;
-    }
-
-    format!("{prefix}{path}")
-}
-
-fn normalize_base_path(value: &str) -> String {
-    let trimmed = value.trim();
-    if trimmed.is_empty() || trimmed == "/" {
-        return "/".to_string();
-    }
-
-    let without_trailing = trimmed.trim_end_matches('/');
-    if without_trailing.starts_with('/') {
-        without_trailing.to_string()
-    } else {
-        format!("/{without_trailing}")
-    }
-}
-
-fn normalize_relative_path(value: &str) -> String {
-    if value.is_empty() || value == "/" {
-        return "/".to_string();
-    }
-
-    if value.starts_with('/') {
-        value.to_string()
-    } else {
-        format!("/{value}")
+        NativeHttpMethod::Get => HttpMethod::Get,
+        NativeHttpMethod::Post => HttpMethod::Post,
+        NativeHttpMethod::Put => HttpMethod::Put,
+        NativeHttpMethod::Patch => HttpMethod::Patch,
+        NativeHttpMethod::Delete => HttpMethod::Delete,
+        NativeHttpMethod::Head => HttpMethod::Head,
+        NativeHttpMethod::Options => HttpMethod::Options,
     }
 }
 
@@ -795,12 +629,4 @@ unsafe fn read_c_string(value: *const c_char) -> Option<String> {
         .to_str()
         .ok()
         .map(ToOwned::to_owned)
-}
-
-unsafe fn read_bytes(ptr: *const u8, len: isize) -> Option<Vec<u8>> {
-    if ptr.is_null() || len <= 0 {
-        return None;
-    }
-
-    Some(unsafe { std::slice::from_raw_parts(ptr, len as usize) }.to_vec())
 }

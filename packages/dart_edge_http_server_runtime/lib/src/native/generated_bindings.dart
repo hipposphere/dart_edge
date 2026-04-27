@@ -158,6 +158,39 @@ external bool dart_edge_http_server_runtime_web_socket_send_text(
   ffi.Pointer<ffi.Char> text,
 );
 
+final class NativeHttpRequest extends ffi.Struct {
+  @ffi.Int32()
+  external int method;
+
+  external ffi.Pointer<ffi.Char> path;
+
+  @ffi.IntPtr()
+  external int query_count;
+
+  external ffi.Pointer<imp$1.NativePair> query;
+
+  @ffi.IntPtr()
+  external int header_count;
+
+  external ffi.Pointer<imp$1.NativePair> headers;
+
+  external imp$1.NativeBytes body;
+}
+
+final class NativeHttpResponse extends ffi.Struct {
+  @ffi.Uint16()
+  external int status;
+
+  external imp$1.NativeBytes content_type;
+
+  @ffi.IntPtr()
+  external int header_count;
+
+  external ffi.Pointer<imp$1.NativePair> headers;
+
+  external imp$1.NativeBytes body;
+}
+
 final class NativeMultipartField extends ffi.Struct {
   external imp$1.NativeBytes name;
 

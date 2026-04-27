@@ -4,7 +4,7 @@ import '../websocket/web_socket_route_mount.dart';
 import 'guard.dart';
 import 'http_route_definition.dart';
 import 'http_route_mount.dart';
-import 'route_definition.dart';
+import 'native_http_route_mount.dart';
 import 'route_path.dart';
 
 /// In-memory route registration table shared across router scopes.
@@ -12,46 +12,75 @@ final class RouteRegistry<TServices> {
   final List<RouteRegistration<TServices>> registrations =
       <RouteRegistration<TServices>>[];
 
-  void register({
+  void registerHttp({
     required String prefix,
     required List<String> tags,
     required List<Guard<TServices>> guards,
-    required RouteDefinition<TServices> route,
+    required HttpRouteMount<TServices, dynamic> mount,
   }) {
-    final normalized = _normalizeRoute(route);
-
     registrations.add(
       RouteRegistration(
         prefix: prefix,
         tags: tags,
         guards: guards,
-        route: normalized.route,
-        httpMethod: normalized.method,
-        httpPath: normalized.path,
+        route: mount.route,
+        httpMethod: mount.method,
+        httpPath: mount.path,
       ),
     );
   }
 
-  ({Object route, HttpMethod? method, String? path}) _normalizeRoute(
-    RouteDefinition<TServices> route,
-  ) {
-    return switch (route) {
-      final HttpRouteMount<TServices, dynamic> mount => (
+  void registerWebSocket({
+    required String prefix,
+    required List<String> tags,
+    required List<Guard<TServices>> guards,
+    required WebSocketRouteMount<TServices> mount,
+  }) {
+    registrations.add(
+      RouteRegistration(
+        prefix: prefix,
+        tags: tags,
+        guards: guards,
         route: mount.route,
-        method: mount.method,
-        path: mount.path,
+        httpPath: mount.path,
       ),
-      final WebSocketRouteMount<TServices> mount => (
-        route: mount.route,
-        method: null,
-        path: mount.path,
+    );
+  }
+
+  void registerNativeHttp({
+    required String prefix,
+    required List<String> tags,
+    required List<Guard<TServices>> guards,
+    required NativeHttpRouteMount mount,
+  }) {
+    registrations.add(
+      RouteRegistration(
+        prefix: prefix,
+        tags: tags,
+        guards: guards,
+        route: mount,
+        httpMethod: mount.method,
+        httpPath: mount.path,
       ),
-      _ => throw ArgumentError.value(
-        route,
-        'route',
-        'Route definitions must be mounted before registration.',
+    );
+  }
+
+  void registerMounted({
+    required String prefix,
+    required List<String> tags,
+    required List<Guard<TServices>> guards,
+    required RouteRegistration<TServices> registration,
+  }) {
+    registrations.add(
+      RouteRegistration(
+        prefix: prefix,
+        tags: tags,
+        guards: guards,
+        route: registration.route,
+        httpMethod: registration.httpMethod,
+        httpPath: registration.httpPath,
       ),
-    };
+    );
   }
 }
 

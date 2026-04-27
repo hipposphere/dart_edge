@@ -91,10 +91,9 @@ void main() {
           source,
           contains('CreateUserInput.fromJson(ctx.req.bodyOrNull)'),
         );
-        expect(
-          source,
-          contains('List<RouteDefinition<TServices>> \$generatedRoutes'),
-        );
+        expect(source, contains('void \$generatedRoutes<TServices>('));
+        expect(source, contains('Router<TServices> router'));
+        expect(source, contains("router.routePost('/users'"));
         expect(source, contains('final class UsersClient'));
         expect(source, contains('Future<UserDto> createUser({'));
         expect(

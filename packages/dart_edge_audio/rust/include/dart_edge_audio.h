@@ -1,7 +1,7 @@
 #ifndef DART_EDGE_AUDIO_H_
 #define DART_EDGE_AUDIO_H_
 
-#include "../../../../crates/dart_edge_core/include/dart_edge_core_ffi.h"
+#include <dart_edge_core_ffi.h>
 #include <stddef.h>
 #include <stdint.h>
 

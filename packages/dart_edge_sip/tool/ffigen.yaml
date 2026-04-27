@@ -4,6 +4,8 @@ output: ../lib/src/native/generated_bindings.dart
 headers:
   entry-points:
     - ../rust/include/dart_edge_sip.h
+compiler-opts:
+  - -I../../crates/dart_edge_core/include
 functions:
   include:
     - dart_edge_sip_.*
