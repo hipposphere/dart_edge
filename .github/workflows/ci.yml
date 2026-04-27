@@ -18,7 +18,7 @@ jobs:
       - name: Set up Dart
         uses: dart-lang/setup-dart@v1
         with:
-          sdk: stable
+          sdk: dev
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
