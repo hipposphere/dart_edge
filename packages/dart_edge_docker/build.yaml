@@ -1,0 +1,11 @@
+builders:
+  docker:
+    import: "package:dart_edge_docker/builder.dart"
+    builder_factories: ["dartEdgeDockerBuilder"]
+    build_extensions:
+      ".dart":
+        - ".dockerfile"
+        - ".dockerignore"
+        - ".docker_build.json"
+    auto_apply: dependents
+    build_to: source

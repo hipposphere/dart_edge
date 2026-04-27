@@ -1,0 +1,19 @@
+name: dart_edge_docker
+description: Build runner helpers for generating AOT Docker images for Dart Edge apps.
+version: 0.2.0
+publish_to: "https://registry.hippolabs.org/pub/internal-pub/"
+repository: https://github.com/flowhorn/dart_edge/tree/main/packages/dart_edge_docker
+
+environment:
+  sdk: ">=3.11.0 <4.0.0"
+
+resolution: workspace
+
+dependencies:
+  analyzer: ^12.1.0
+  build: ^4.0.5
+  path: ^1.9.1
+
+dev_dependencies:
+  build_test: ^3.5.14
+  test: ^1.30.0
