@@ -6,7 +6,7 @@ on:
       dry_run:
         description: Validate crates without publishing.
         type: boolean
-        default: true
+        default: false
       crate:
         description: Shared crate to publish.
         type: choice

@@ -6,7 +6,7 @@ on:
       dry_run:
         description: Validate packages without publishing.
         type: boolean
-        default: true
+        default: false
       package_scope:
         description: Optional Melos package glob, for example dart_edge_http_server.
         required: false
