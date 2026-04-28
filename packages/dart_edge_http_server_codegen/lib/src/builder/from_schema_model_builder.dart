@@ -38,24 +38,27 @@ FromSchemaModelSpec buildFromSchemaModel(
     );
   }
 
-  final schema = jsonSchemaFromDartObject(
+  final sourceSchema = jsonSchemaFromDartObject(
     reader.read('schema').objectValue,
     element: element,
   );
 
-  if (schema is! JsonObjectSchema) {
-    throw InvalidGenerationSourceError(
-      '@FromSchema currently supports object schemas only.',
+  final registryReader = reader.read('registry');
+  JsonSchemaRegistry? registry;
+  if (!registryReader.isNull) {
+    registry = _jsonSchemaRegistryFromDartObject(
+      registryReader.objectValue,
       element: element,
     );
   }
 
-  final registryReader = reader.read('registry');
-  if (!registryReader.isNull) {
-    final registry = _jsonSchemaRegistryFromDartObject(
-      registryReader.objectValue,
-      element: element,
-    );
+  final schema = _resolveRootObjectSchema(
+    sourceSchema,
+    registry: registry,
+    element: element,
+  );
+
+  if (registry != null) {
     _validateSchemaReferences(schema, registry, element);
   }
 
@@ -64,7 +67,7 @@ FromSchemaModelSpec buildFromSchemaModel(
     publicName: publicName,
     backingClassName: '_\$$publicName',
     schema: schema,
-    schemaId: schema.id ?? publicName,
+    schemaId: _schemaIdForModel(sourceSchema, schema, publicName),
   );
 }
 
@@ -147,9 +150,10 @@ JsonSchema jsonSchemaFromDartObject(
 }
 
 String generateFromSchemaModels(List<FromSchemaModelSpec> models) {
-  final buffer = StringBuffer();
+  const ignoreForFile = '// ignore_for_file: unused_element, unused_field\n\n';
+  final buffer = StringBuffer(ignoreForFile);
   for (final model in models) {
-    if (buffer.isNotEmpty) {
+    if (buffer.length > ignoreForFile.length) {
       buffer.writeln();
     }
     _writeModel(buffer, model);
@@ -161,7 +165,9 @@ void _writeModel(StringBuffer buffer, FromSchemaModelSpec model) {
   final fields = _modelFields(model);
 
   buffer
-    ..writeln('final class ${model.backingClassName} {')
+    ..writeln(
+      'final class ${model.backingClassName} implements JsonEncodable {',
+    )
     ..writeln('  const ${model.backingClassName}({');
 
   for (final field in fields) {
@@ -172,9 +178,18 @@ void _writeModel(StringBuffer buffer, FromSchemaModelSpec model) {
   buffer
     ..writeln('  });')
     ..writeln()
+    ..writeln('  static const schemaId = ${_dartString(model.schemaId)};')
+    ..writeln()
+    ..writeln('  static const schemaRef = JsonSchema.ref(schemaId);')
+    ..writeln()
     ..writeln(
-      '  static const schemaRef = '
-      'JsonSchemaRef<${model.publicName}>(${_dartString(model.schemaId)});',
+      '  static RequestBody get requestBody => '
+      'RequestBody.json(schema: schemaRef, decoder: fromJson);',
+    )
+    ..writeln()
+    ..writeln(
+      '  static ResponseSpec response({int status = 200}) => '
+      'ResponseSpec.json(status: status, schema: schemaRef);',
     );
 
   for (final field in fields) {
@@ -185,6 +200,7 @@ void _writeModel(StringBuffer buffer, FromSchemaModelSpec model) {
 
   buffer
     ..writeln()
+    ..writeln('  @override')
     ..writeln('  Map<String, Object?> toJson() => <String, Object?>{');
 
   for (final field in fields) {
@@ -393,6 +409,57 @@ JsonSchemaRegistry _jsonSchemaRegistryFromDartObject(
         jsonSchemaFromDartObject(schema, element: element),
     ],
   );
+}
+
+JsonObjectSchema _resolveRootObjectSchema(
+  JsonSchema schema, {
+  required JsonSchemaRegistry? registry,
+  required Element element,
+}) {
+  if (schema case final JsonObjectSchema objectSchema) {
+    return objectSchema;
+  }
+
+  if (schema case JsonReferenceSchema(:final ref)) {
+    final id = _schemaIdFromReference(ref);
+    if (id == null) {
+      throw InvalidGenerationSourceError(
+        '@FromSchema cannot resolve external or non-component schema '
+        'reference $ref.',
+        element: element,
+      );
+    }
+    final resolvedSchema = registry?.schemaFor(id);
+    if (resolvedSchema == null) {
+      throw InvalidGenerationSourceError(
+        'Schema reference $ref is not present in the supplied registry.',
+        element: element,
+      );
+    }
+    if (resolvedSchema case final JsonObjectSchema objectSchema) {
+      return objectSchema;
+    }
+    throw InvalidGenerationSourceError(
+      '@FromSchema resolved $ref to a non-object schema.',
+      element: element,
+    );
+  }
+
+  throw InvalidGenerationSourceError(
+    '@FromSchema currently supports object schemas only.',
+    element: element,
+  );
+}
+
+String _schemaIdForModel(
+  JsonSchema sourceSchema,
+  JsonObjectSchema resolvedSchema,
+  String publicName,
+) {
+  if (sourceSchema case JsonReferenceSchema(:final ref)) {
+    return _schemaIdFromReference(ref) ?? sourceSchema.id ?? publicName;
+  }
+  return resolvedSchema.id ?? publicName;
 }
 
 void _validateSchemaReferences(

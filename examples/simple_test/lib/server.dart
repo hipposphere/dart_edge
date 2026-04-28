@@ -6,17 +6,20 @@ import 'package:http/http.dart' as http;
 import 'package:simple_test/generated/app_schema.g.dart';
 import 'package:simple_test/src/auth.dart';
 import 'package:simple_test/src/database.dart';
+import 'package:simple_test/src/routes/create_notes_route/route.dart';
 import 'package:simple_test/src/routes/guarded_route.dart';
 
-Future<DartEdge<void>> buildServer() async {
-  final server = DartEdge<void>(
+Future<DartEdge<SqliteDatabase>> buildServer() async {
+  final database = buildDatabase();
+  final server = DartEdge<SqliteDatabase>(
+    services: () => database,
     openApiDocument: OpenApiDocument(
       title: 'Simple Test API',
       version: '1.0.0',
     ),
   );
 
-  final database = buildDatabase();
+  server.installSchemaRegistry(createNotesRouteSchemas);
 
   final migrator = await DartEdgeSqlMigrator.fromFolder(
     pool: database,
@@ -76,6 +79,9 @@ Future<DartEdge<void>> buildServer() async {
       return 'Hello, World!';
     },
   );
+
+  server.routePost('/notes', CreateNotesRoute());
+
   final auth = buildAuth(database);
 
   server.routeGet(

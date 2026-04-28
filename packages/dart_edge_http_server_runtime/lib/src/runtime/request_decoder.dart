@@ -87,5 +87,9 @@ Object? _decodeBody(
     _ => utf8.decode(payload),
   };
 
+  if (body.decoder case final decoder?) {
+    return decoder(decoded);
+  }
+
   return codecs.decodeValueOrRaw(jsonSchemaRouteId(body.schema), decoded);
 }

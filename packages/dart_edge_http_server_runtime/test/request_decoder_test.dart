@@ -101,6 +101,32 @@ void main() {
       expect(input.body<Map<String, Object?>>(), {'name': 'Ada'});
     },
   );
+
+  test('decodes request bodies with route-local body decoder', () async {
+    final input = await decodeRequestInput(
+      TransportRequest(
+        routeId: 'route_0',
+        pathParams: const <String, String>{},
+        query: const <String, String>{},
+        headers: const <String, String>{},
+        bodyBytes: Uint8List.fromList(utf8.encode('{"name":"Ada"}')),
+        bodyKind: TransportRequestBodyKind.json,
+      ),
+      codecs: DartEdgeCodecRegistry.empty,
+      paramsSchemaId: null,
+      querySchemaId: null,
+      headersSchemaId: null,
+      body: RequestBody.json(
+        schema: const JsonSchema.ref('CreateUserInput'),
+        decoder: (value) {
+          final map = _readObject(value);
+          return CreateUserInput(name: map['name']! as String);
+        },
+      ),
+    );
+
+    expect(input.body<CreateUserInput>().name, 'Ada');
+  });
 }
 
 Map<String, Object?> _readObject(Object? value) {

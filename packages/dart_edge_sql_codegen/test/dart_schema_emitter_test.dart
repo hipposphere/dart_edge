@@ -108,16 +108,17 @@ void main() {
       contains('final class UsersUpdate implements JsonEncodable {'),
     );
     expect(usersTable, contains('final class UsersTable extends SqlTable<'));
+    expect(usersTable, contains("static const schemaId = 'UsersRow';"));
     expect(
       usersTable,
-      contains("static const schemaRef = JsonSchemaRef<UsersRow>('UsersRow');"),
+      contains('static const schemaRef = JsonSchema.ref(schemaId);'),
     );
     expect(
       usersTable,
       contains('static const jsonSchema = JsonSchema.object('),
     );
     expect(usersTable, isNot(contains('ref: schemaRef')));
-    expect(usersTable, contains("id: 'UsersRow'"));
+    expect(usersTable, contains('id: schemaId'));
     expect(
       usersTable,
       contains("'created_at': JsonSchema.string(format: 'date-time')"),

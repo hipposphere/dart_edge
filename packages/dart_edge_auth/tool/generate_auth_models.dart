@@ -189,16 +189,34 @@ const _schema = r'''
 
 part of '../dart_edge_auth.dart';
 
-/// Generated SQL model and table descriptors for the Better Auth schema.
+/// Generated model, route result schema, and table descriptors for Better Auth.
 final class DartEdgeAuthSchema {
   const DartEdgeAuthSchema._();
 
   static const users = DartEdgeAuthUsersTable.table;
   static const sessions = DartEdgeAuthSessionsTable.table;
 
-  static const List<JsonSchema> schemas = <JsonSchema>[
+  static const List<JsonSchema> modelSchemas = <JsonSchema>[
     DartEdgeAuthUser.jsonSchema,
     DartEdgeAuthSession.jsonSchema,
+  ];
+
+  static const List<JsonSchema> resultSchemas = <JsonSchema>[
+    DartEdgeAuthSignUpResult.jsonSchema,
+    DartEdgeAuthSignInResult.jsonSchema,
+    DartEdgeAuthSessionResult.jsonSchema,
+    DartEdgeAuthUserResult.jsonSchema,
+    DartEdgeAuthSessionUserResult.jsonSchema,
+    DartEdgeAuthListUsersResult.jsonSchema,
+    DartEdgeAuthListSessionsResult.jsonSchema,
+    DartEdgeAuthStatusResult.jsonSchema,
+    DartEdgeAuthSuccessResult.jsonSchema,
+    DartEdgeAuthPermissionResult.jsonSchema,
+  ];
+
+  static const List<JsonSchema> schemas = <JsonSchema>[
+    ...modelSchemas,
+    ...resultSchemas,
   ];
 
   static const JsonSchemaRegistry jsonSchemas = JsonSchemaRegistry(
@@ -294,12 +312,12 @@ final class DartEdgeAuthUser implements JsonEncodable {
     );
   }
 
-  static const schemaRef = JsonSchemaRef<DartEdgeAuthUser>(
-    'DartEdgeAuthUser',
-  );
+  static const schemaId = 'DartEdgeAuthUser';
+
+  static const schemaRef = JsonSchema.ref(schemaId);
 
   static const jsonSchema = JsonSchema.object(
-    id: 'DartEdgeAuthUser',
+    id: schemaId,
     properties: <String, JsonSchema>{
       'id': JsonSchema.string(),
       'name': JsonSchema.string(nullable: true),
@@ -595,12 +613,12 @@ final class DartEdgeAuthSession implements JsonEncodable {
     );
   }
 
-  static const schemaRef = JsonSchemaRef<DartEdgeAuthSession>(
-    'DartEdgeAuthSession',
-  );
+  static const schemaId = 'DartEdgeAuthSession';
+
+  static const schemaRef = JsonSchema.ref(schemaId);
 
   static const jsonSchema = JsonSchema.object(
-    id: 'DartEdgeAuthSession',
+    id: schemaId,
     properties: <String, JsonSchema>{
       'id': JsonSchema.string(),
       'expiresAt': JsonSchema.string(format: 'date-time'),

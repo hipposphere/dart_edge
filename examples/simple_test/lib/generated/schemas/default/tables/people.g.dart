@@ -21,10 +21,12 @@ final class PeopleRow implements JsonEncodable {
     email: (json['email'] as String),
   );
 
-  static const schemaRef = JsonSchemaRef<PeopleRow>('PeopleRow');
+  static const schemaId = 'PeopleRow';
+
+  static const schemaRef = JsonSchema.ref(schemaId);
 
   static const jsonSchema = JsonSchema.object(
-    id: 'PeopleRow',
+    id: schemaId,
     properties: <String, JsonSchema>{
       'id': JsonSchema.integer(nullable: true),
       'name': JsonSchema.string(),
@@ -82,10 +84,12 @@ final class PeopleInsert implements JsonEncodable {
     email: (json['email'] as String),
   );
 
-  static const schemaRef = JsonSchemaRef<PeopleInsert>('PeopleInsert');
+  static const schemaId = 'PeopleInsert';
+
+  static const schemaRef = JsonSchema.ref(schemaId);
 
   static const jsonSchema = JsonSchema.object(
-    id: 'PeopleInsert',
+    id: schemaId,
     properties: <String, JsonSchema>{
       'id': JsonSchema.integer(nullable: true),
       'name': JsonSchema.string(),
@@ -147,10 +151,12 @@ final class PeopleUpdate implements JsonEncodable {
         : const SqlValue.absent(),
   );
 
-  static const schemaRef = JsonSchemaRef<PeopleUpdate>('PeopleUpdate');
+  static const schemaId = 'PeopleUpdate';
+
+  static const schemaRef = JsonSchema.ref(schemaId);
 
   static const jsonSchema = JsonSchema.object(
-    id: 'PeopleUpdate',
+    id: schemaId,
     properties: <String, JsonSchema>{
       'id': JsonSchema.integer(nullable: true),
       'name': JsonSchema.string(),

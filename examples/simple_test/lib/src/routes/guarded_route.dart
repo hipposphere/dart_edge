@@ -3,8 +3,9 @@ import 'dart:io';
 
 import 'package:dart_edge_auth/dart_edge_auth.dart';
 import 'package:dart_edge_http_server/dart_edge_http_server.dart';
+import 'package:dart_edge_sql/dart_edge_sql.dart';
 
-class GuardedRoute extends HttpRouteDefinition<dynamic, dynamic> {
+final class GuardedRoute extends HttpRouteDefinition<SqliteDatabase, dynamic> {
   @override
   RouteOptions get options => RouteOptions(
     operationId: 'getGuarded',
@@ -13,7 +14,7 @@ class GuardedRoute extends HttpRouteDefinition<dynamic, dynamic> {
   );
 
   @override
-  FutureOr<dynamic> handle(RequestContext<dynamic> ctx) {
+  FutureOr<dynamic> handle(RequestContext<SqliteDatabase> ctx) {
     final authIdentity = ctx.authIdentity;
     if (authIdentity == null) {
       return RawResponse.json(

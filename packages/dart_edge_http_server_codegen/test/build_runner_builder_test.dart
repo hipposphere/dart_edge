@@ -140,10 +140,35 @@ final class JsonSchemaRegistry {
   final List<JsonSchema> schemas;
 }
 
-final class JsonSchemaRef<T> {
-  const JsonSchemaRef(this.id);
+abstract interface class JsonEncodable {
+  Object? toJson();
+}
 
-  final String id;
+typedef RequestBodyDecoder = Object? Function(Object? value);
+
+final class RequestBody {
+  const RequestBody._({this.schema, this.decoder});
+
+  final JsonSchema? schema;
+  final RequestBodyDecoder? decoder;
+
+  static RequestBody json({
+    JsonSchema? schema,
+    RequestBodyDecoder? decoder,
+  }) {
+    return RequestBody._(schema: schema, decoder: decoder);
+  }
+}
+
+final class ResponseSpec {
+  const ResponseSpec._({required this.status, this.schema});
+
+  final int status;
+  final JsonSchema? schema;
+
+  static ResponseSpec json({int status = 200, JsonSchema? schema}) {
+    return ResponseSpec._(status: status, schema: schema);
+  }
 }
 
 final class FromSchema {
@@ -179,8 +204,13 @@ const userSchemas = JsonSchemaRegistry(
   schemas: <JsonSchema>[createUserInputSchema, userDtoSchema],
 );
 
+const createUserBodySchema = JsonSchema.ref('CreateUserInput');
+
 @FromSchema(createUserInputSchema, registry: userSchemas)
 typedef CreateUserInput = _$CreateUserInput;
+
+@FromSchema(createUserBodySchema, registry: userSchemas)
+typedef CreateUserBody = _$CreateUserBody;
 
 @FromSchema(userDtoSchema, registry: userSchemas)
 typedef UserDto = _$UserDto;
@@ -190,25 +220,35 @@ typedef UserDto = _$UserDto;
         outputs: {
           'test_app|lib/models.dart_edge_http_server.g.part': decodedMatches(
             allOf([
-              contains('final class _\$CreateUserInput'),
               contains(
-                'static const schemaRef = '
-                'JsonSchemaRef<CreateUserInput>("CreateUserInput");',
+                'final class _\$CreateUserInput implements JsonEncodable',
               ),
+              contains('static const schemaId = "CreateUserInput";'),
+              contains('static const schemaRef = JsonSchema.ref(schemaId);'),
+              contains('static RequestBody get requestBody =>'),
+              contains(
+                'RequestBody.json(schema: schemaRef, decoder: fromJson);',
+              ),
+              contains('static ResponseSpec response({int status = 200}) =>'),
+              contains('ResponseSpec.json(status: status, schema: schemaRef);'),
               contains('final String name;'),
               contains('final int? age;'),
               contains('final List<String> tags;'),
               contains('final UserDto? bestFriend;'),
+              contains('@override'),
               contains('"name": name'),
               contains('"best_friend": bestFriend?.toJson()'),
               contains('name: json["name"]! as String'),
               contains('age: json["age"] as int?'),
               contains('bestFriend: json["best_friend"] == null'),
               contains(': UserDto.fromJson(json["best_friend"])'),
-              contains('final class _\$UserDto'),
               contains(
-                'static const schemaRef = JsonSchemaRef<UserDto>("UserDto");',
+                'final class _\$CreateUserBody implements JsonEncodable',
               ),
+              contains('static const schemaId = "CreateUserInput";'),
+              contains('final String name;'),
+              contains('final class _\$UserDto implements JsonEncodable'),
+              contains('static const schemaId = "UserDto";'),
               isNot(contains('RouteOptions')),
               isNot(contains('\$generatedRoutes')),
             ]),

@@ -76,30 +76,25 @@ List<Field> _schemaFields({
   required _GeneratedShape shape,
 }) {
   return <Field>[
+    _staticConstField(name: 'schemaId', assignment: literalString(className)),
     _staticConstField(
       name: 'schemaRef',
-      assignment: refer('JsonSchemaRef').constInstance(
-        [literalString(className)],
-        const <String, Expression>{},
-        [refer(className)],
-      ),
+      assignment: refer(
+        'JsonSchema',
+      ).constInstanceNamed('ref', [refer('schemaId')]),
     ),
     _staticConstField(
       name: 'jsonSchema',
-      assignment: _jsonSchemaForTable(table, shape, className),
+      assignment: _jsonSchemaForTable(table, shape),
     ),
   ];
 }
 
-Expression _jsonSchemaForTable(
-  IntrospectedTable table,
-  _GeneratedShape shape,
-  String schemaId,
-) {
+Expression _jsonSchemaForTable(IntrospectedTable table, _GeneratedShape shape) {
   return refer(
     'JsonSchema',
   ).constInstanceNamed('object', const <Expression>[], {
-    'id': literalString(schemaId),
+    'id': refer('schemaId'),
     'properties': literalConstMap(
       {
         for (final column in table.columns)

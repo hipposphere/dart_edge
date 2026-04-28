@@ -19,8 +19,12 @@ final class DartEdgeAuthSignUpResult implements JsonEncodable {
     );
   }
 
+  static const schemaId = 'DartEdgeAuthSignUpResult';
+
+  static const schemaRef = JsonSchema.ref(schemaId);
+
   static const jsonSchema = JsonSchema.object(
-    id: 'DartEdgeAuthSignUpResult',
+    id: schemaId,
     properties: <String, JsonSchema>{
       'token': JsonSchema.string(nullable: true),
       'user': DartEdgeAuthUser.jsonSchema,
@@ -70,8 +74,12 @@ final class DartEdgeAuthSignInResult implements JsonEncodable {
     );
   }
 
+  static const schemaId = 'DartEdgeAuthSignInResult';
+
+  static const schemaRef = JsonSchema.ref(schemaId);
+
   static const jsonSchema = JsonSchema.object(
-    id: 'DartEdgeAuthSignInResult',
+    id: schemaId,
     properties: <String, JsonSchema>{
       'redirect': JsonSchema.boolean(),
       'token': JsonSchema.string(),
@@ -123,8 +131,12 @@ final class DartEdgeAuthSessionResult implements JsonEncodable {
     );
   }
 
+  static const schemaId = 'DartEdgeAuthSessionResult';
+
+  static const schemaRef = JsonSchema.ref(schemaId);
+
   static const jsonSchema = JsonSchema.object(
-    id: 'DartEdgeAuthSessionResult',
+    id: schemaId,
     properties: <String, JsonSchema>{
       'session': DartEdgeAuthSession.jsonSchema,
       'user': DartEdgeAuthUser.jsonSchema,
@@ -161,8 +173,12 @@ final class DartEdgeAuthUserResult implements JsonEncodable {
     );
   }
 
+  static const schemaId = 'DartEdgeAuthUserResult';
+
+  static const schemaRef = JsonSchema.ref(schemaId);
+
   static const jsonSchema = JsonSchema.object(
-    id: 'DartEdgeAuthUserResult',
+    id: schemaId,
     properties: <String, JsonSchema>{'user': DartEdgeAuthUser.jsonSchema},
     required: <String>['user'],
     additionalProperties: false,
@@ -196,8 +212,12 @@ final class DartEdgeAuthSessionUserResult implements JsonEncodable {
     );
   }
 
+  static const schemaId = 'DartEdgeAuthSessionUserResult';
+
+  static const schemaRef = JsonSchema.ref(schemaId);
+
   static const jsonSchema = JsonSchema.object(
-    id: 'DartEdgeAuthSessionUserResult',
+    id: schemaId,
     properties: <String, JsonSchema>{
       'session': DartEdgeAuthSession.jsonSchema,
       'user': DartEdgeAuthUser.jsonSchema,
@@ -245,8 +265,12 @@ final class DartEdgeAuthListUsersResult implements JsonEncodable {
     );
   }
 
+  static const schemaId = 'DartEdgeAuthListUsersResult';
+
+  static const schemaRef = JsonSchema.ref(schemaId);
+
   static const jsonSchema = JsonSchema.object(
-    id: 'DartEdgeAuthListUsersResult',
+    id: schemaId,
     properties: <String, JsonSchema>{
       'users': JsonSchema.array(items: DartEdgeAuthUser.jsonSchema),
       'total': JsonSchema.integer(),
@@ -300,8 +324,12 @@ final class DartEdgeAuthListSessionsResult implements JsonEncodable {
     );
   }
 
+  static const schemaId = 'DartEdgeAuthListSessionsResult';
+
+  static const schemaRef = JsonSchema.ref(schemaId);
+
   static const jsonSchema = JsonSchema.object(
-    id: 'DartEdgeAuthListSessionsResult',
+    id: schemaId,
     properties: <String, JsonSchema>{
       'sessions': JsonSchema.array(items: DartEdgeAuthSession.jsonSchema),
     },
@@ -337,8 +365,12 @@ final class DartEdgeAuthStatusResult implements JsonEncodable {
     );
   }
 
+  static const schemaId = 'DartEdgeAuthStatusResult';
+
+  static const schemaRef = JsonSchema.ref(schemaId);
+
   static const jsonSchema = JsonSchema.object(
-    id: 'DartEdgeAuthStatusResult',
+    id: schemaId,
     properties: <String, JsonSchema>{
       'status': JsonSchema.boolean(),
       'message': JsonSchema.string(nullable: true),
@@ -381,8 +413,12 @@ final class DartEdgeAuthSuccessResult implements JsonEncodable {
     );
   }
 
+  static const schemaId = 'DartEdgeAuthSuccessResult';
+
+  static const schemaRef = JsonSchema.ref(schemaId);
+
   static const jsonSchema = JsonSchema.object(
-    id: 'DartEdgeAuthSuccessResult',
+    id: schemaId,
     properties: <String, JsonSchema>{
       'success': JsonSchema.boolean(),
       'message': JsonSchema.string(nullable: true),
@@ -425,8 +461,12 @@ final class DartEdgeAuthPermissionResult implements JsonEncodable {
     );
   }
 
+  static const schemaId = 'DartEdgeAuthPermissionResult';
+
+  static const schemaRef = JsonSchema.ref(schemaId);
+
   static const jsonSchema = JsonSchema.object(
-    id: 'DartEdgeAuthPermissionResult',
+    id: schemaId,
     properties: <String, JsonSchema>{
       'success': JsonSchema.boolean(),
       'error': JsonSchema.string(nullable: true),

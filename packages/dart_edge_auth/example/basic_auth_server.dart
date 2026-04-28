@@ -12,6 +12,7 @@ Future<void> main() async {
     ),
   );
 
+  app.installSchemaRegistry(DartEdgeAuthSchema.jsonSchemas);
   auth.mount(app);
 
   await app.listen(port: 8080);

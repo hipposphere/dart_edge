@@ -31,10 +31,12 @@ final class NotesRow implements JsonEncodable {
     createdAt: (json['created_at'] as String),
   );
 
-  static const schemaRef = JsonSchemaRef<NotesRow>('NotesRow');
+  static const schemaId = 'NotesRow';
+
+  static const schemaRef = JsonSchema.ref(schemaId);
 
   static const jsonSchema = JsonSchema.object(
-    id: 'NotesRow',
+    id: schemaId,
     properties: <String, JsonSchema>{
       'id': JsonSchema.integer(nullable: true),
       'title': JsonSchema.string(),
@@ -117,10 +119,12 @@ final class NotesInsert implements JsonEncodable {
         : const SqlValue.absent(),
   );
 
-  static const schemaRef = JsonSchemaRef<NotesInsert>('NotesInsert');
+  static const schemaId = 'NotesInsert';
+
+  static const schemaRef = JsonSchema.ref(schemaId);
 
   static const jsonSchema = JsonSchema.object(
-    id: 'NotesInsert',
+    id: schemaId,
     properties: <String, JsonSchema>{
       'id': JsonSchema.integer(nullable: true),
       'title': JsonSchema.string(),
@@ -209,10 +213,12 @@ final class NotesUpdate implements JsonEncodable {
         : const SqlValue.absent(),
   );
 
-  static const schemaRef = JsonSchemaRef<NotesUpdate>('NotesUpdate');
+  static const schemaId = 'NotesUpdate';
+
+  static const schemaRef = JsonSchema.ref(schemaId);
 
   static const jsonSchema = JsonSchema.object(
-    id: 'NotesUpdate',
+    id: schemaId,
     properties: <String, JsonSchema>{
       'id': JsonSchema.integer(nullable: true),
       'title': JsonSchema.string(),

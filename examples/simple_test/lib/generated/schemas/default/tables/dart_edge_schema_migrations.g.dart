@@ -29,12 +29,12 @@ final class DartEdgeSchemaMigrationsRow implements JsonEncodable {
         appliedAt: (json['applied_at'] as String),
       );
 
-  static const schemaRef = JsonSchemaRef<DartEdgeSchemaMigrationsRow>(
-    'DartEdgeSchemaMigrationsRow',
-  );
+  static const schemaId = 'DartEdgeSchemaMigrationsRow';
+
+  static const schemaRef = JsonSchema.ref(schemaId);
 
   static const jsonSchema = JsonSchema.object(
-    id: 'DartEdgeSchemaMigrationsRow',
+    id: schemaId,
     properties: <String, JsonSchema>{
       'version': JsonSchema.string(nullable: true),
       'name': JsonSchema.string(),
@@ -102,12 +102,12 @@ final class DartEdgeSchemaMigrationsInsert implements JsonEncodable {
             : const SqlValue.absent(),
       );
 
-  static const schemaRef = JsonSchemaRef<DartEdgeSchemaMigrationsInsert>(
-    'DartEdgeSchemaMigrationsInsert',
-  );
+  static const schemaId = 'DartEdgeSchemaMigrationsInsert';
+
+  static const schemaRef = JsonSchema.ref(schemaId);
 
   static const jsonSchema = JsonSchema.object(
-    id: 'DartEdgeSchemaMigrationsInsert',
+    id: schemaId,
     properties: <String, JsonSchema>{
       'version': JsonSchema.string(nullable: true),
       'name': JsonSchema.string(),
@@ -175,12 +175,12 @@ final class DartEdgeSchemaMigrationsUpdate implements JsonEncodable {
             : const SqlValue.absent(),
       );
 
-  static const schemaRef = JsonSchemaRef<DartEdgeSchemaMigrationsUpdate>(
-    'DartEdgeSchemaMigrationsUpdate',
-  );
+  static const schemaId = 'DartEdgeSchemaMigrationsUpdate';
+
+  static const schemaRef = JsonSchema.ref(schemaId);
 
   static const jsonSchema = JsonSchema.object(
-    id: 'DartEdgeSchemaMigrationsUpdate',
+    id: schemaId,
     properties: <String, JsonSchema>{
       'version': JsonSchema.string(nullable: true),
       'name': JsonSchema.string(),

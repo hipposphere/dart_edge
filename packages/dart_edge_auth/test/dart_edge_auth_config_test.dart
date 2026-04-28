@@ -87,4 +87,30 @@ void main() {
       'manageMigrations': false,
     });
   });
+
+  test('exposes auth schemas with stable schema ids and refs', () {
+    expect(DartEdgeAuthUser.schemaId, 'DartEdgeAuthUser');
+    expect(DartEdgeAuthUser.schemaRef.toJson(), {r'$ref': 'DartEdgeAuthUser'});
+    expect(DartEdgeAuthUser.jsonSchema.id, DartEdgeAuthUser.schemaId);
+
+    expect(DartEdgeAuthSignUpResult.schemaId, 'DartEdgeAuthSignUpResult');
+    expect(DartEdgeAuthSignUpResult.schemaRef.toJson(), {
+      r'$ref': 'DartEdgeAuthSignUpResult',
+    });
+    expect(
+      DartEdgeAuthSchema.jsonSchemas
+          .schemaFor(DartEdgeAuthSignUpResult.schemaId)
+          ?.id,
+      DartEdgeAuthSignUpResult.schemaId,
+    );
+    expect(
+      DartEdgeAuthSchema.schemas.map((schema) => schema.id),
+      containsAll(<String>[
+        DartEdgeAuthUser.schemaId,
+        DartEdgeAuthSession.schemaId,
+        DartEdgeAuthSignUpResult.schemaId,
+        DartEdgeAuthPermissionResult.schemaId,
+      ]),
+    );
+  });
 }

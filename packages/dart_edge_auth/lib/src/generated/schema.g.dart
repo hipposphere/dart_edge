@@ -3,16 +3,34 @@
 
 part of '../dart_edge_auth.dart';
 
-/// Generated SQL model and table descriptors for the Better Auth schema.
+/// Generated model, route result schema, and table descriptors for Better Auth.
 final class DartEdgeAuthSchema {
   const DartEdgeAuthSchema._();
 
   static const users = DartEdgeAuthUsersTable.table;
   static const sessions = DartEdgeAuthSessionsTable.table;
 
-  static const List<JsonSchema> schemas = <JsonSchema>[
+  static const List<JsonSchema> modelSchemas = <JsonSchema>[
     DartEdgeAuthUser.jsonSchema,
     DartEdgeAuthSession.jsonSchema,
+  ];
+
+  static const List<JsonSchema> resultSchemas = <JsonSchema>[
+    DartEdgeAuthSignUpResult.jsonSchema,
+    DartEdgeAuthSignInResult.jsonSchema,
+    DartEdgeAuthSessionResult.jsonSchema,
+    DartEdgeAuthUserResult.jsonSchema,
+    DartEdgeAuthSessionUserResult.jsonSchema,
+    DartEdgeAuthListUsersResult.jsonSchema,
+    DartEdgeAuthListSessionsResult.jsonSchema,
+    DartEdgeAuthStatusResult.jsonSchema,
+    DartEdgeAuthSuccessResult.jsonSchema,
+    DartEdgeAuthPermissionResult.jsonSchema,
+  ];
+
+  static const List<JsonSchema> schemas = <JsonSchema>[
+    ...modelSchemas,
+    ...resultSchemas,
   ];
 
   static const JsonSchemaRegistry jsonSchemas = JsonSchemaRegistry(

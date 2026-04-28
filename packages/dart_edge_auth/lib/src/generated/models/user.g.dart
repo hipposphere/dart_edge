@@ -84,10 +84,12 @@ final class DartEdgeAuthUser implements JsonEncodable {
     );
   }
 
-  static const schemaRef = JsonSchemaRef<DartEdgeAuthUser>('DartEdgeAuthUser');
+  static const schemaId = 'DartEdgeAuthUser';
+
+  static const schemaRef = JsonSchema.ref(schemaId);
 
   static const jsonSchema = JsonSchema.object(
-    id: 'DartEdgeAuthUser',
+    id: schemaId,
     properties: <String, JsonSchema>{
       'id': JsonSchema.string(),
       'name': JsonSchema.string(nullable: true),
