@@ -116,6 +116,8 @@ void main() {
       usersTable,
       contains('static const jsonSchema = JsonSchema.object('),
     );
+    expect(usersTable, isNot(contains('ref: schemaRef')));
+    expect(usersTable, contains("id: 'UsersRow'"));
     expect(
       usersTable,
       contains("'created_at': JsonSchema.string(format: 'date-time')"),

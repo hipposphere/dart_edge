@@ -1,5 +1,7 @@
 import 'package:dart_edge_core/dart_edge_core.dart';
 
+import 'json_schema_route_id.dart';
+
 abstract interface class CompiledOpenApiRoute {
   HttpMethod get method;
   RouteOptions get options;
@@ -71,12 +73,15 @@ final class CompiledRoute<TServices> implements CompiledOpenApiRoute {
     'path': path,
     'operationId': options.operationId!,
     'pathSegments': patternSegments.map((segment) => segment.toJson()).toList(),
-    'paramsSchemaId': options.params?.id,
-    'querySchemaId': options.query?.id,
-    'headersSchemaId': options.headers?.id,
+    'paramsSchemaId': jsonSchemaRouteId(options.params),
+    'querySchemaId': jsonSchemaRouteId(options.query),
+    'headersSchemaId': jsonSchemaRouteId(options.headers),
     'requestBody': switch (options.body) {
       null => null,
-      final body => {'contentType': body.contentType, 'schemaId': body.ref?.id},
+      final body => {
+        'contentType': body.contentType,
+        'schemaId': jsonSchemaRouteId(body.schema),
+      },
     },
   };
 }

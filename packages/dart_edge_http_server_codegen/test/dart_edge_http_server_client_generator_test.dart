@@ -17,10 +17,10 @@ void main() {
               path: '/users/<id>',
               options: RouteOptions(
                 operationId: 'getUser',
-                params: const JsonSchemaRef<Object?>('UserPath'),
-                query: const JsonSchemaRef<Object?>('GetUserQuery'),
-                success: ResponseSpec.json<Object?>(
-                  ref: const JsonSchemaRef<Object?>('UserDto'),
+                params: const JsonSchema.ref('UserPath'),
+                query: const JsonSchema.ref('GetUserQuery'),
+                success: ResponseSpec.json(
+                  schema: const JsonSchema.ref('UserDto'),
                 ),
               ),
               successType: 'UserDto',

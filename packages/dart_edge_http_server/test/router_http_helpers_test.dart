@@ -21,7 +21,7 @@ void main() {
       '/users/<id>',
       options: RouteOptions(
         body: RequestBody.jsonValue(),
-        success: ResponseSpec.json<Object?>(status: HttpStatus.accepted),
+        success: ResponseSpec.json(status: HttpStatus.accepted),
       ),
       handler: (ctx) {
         final params = ctx.req.params<Map<String, String>>();

@@ -66,9 +66,7 @@ void main() {
         paramsSchemaId: 'UserPath',
         querySchemaId: 'UserQuery',
         headersSchemaId: 'RequestHeaders',
-        body: RequestBody.json<Object?>(
-          ref: const JsonSchemaRef<Object?>('CreateUserInput'),
-        ),
+        body: RequestBody.json(schema: const JsonSchema.ref('CreateUserInput')),
       );
 
       expect(input.params<UserPath>().id, '42');
@@ -94,9 +92,7 @@ void main() {
         paramsSchemaId: 'UserPath',
         querySchemaId: 'UserQuery',
         headersSchemaId: 'RequestHeaders',
-        body: RequestBody.json<Object?>(
-          ref: const JsonSchemaRef<Object?>('CreateUserInput'),
-        ),
+        body: RequestBody.json(schema: const JsonSchema.ref('CreateUserInput')),
       );
 
       expect(input.params<Map<String, String>>(), {'id': '42'});

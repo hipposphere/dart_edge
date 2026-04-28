@@ -48,6 +48,8 @@ void main() {
             contains('final class UsersRow implements JsonEncodable'),
             contains('final class UsersTable extends SqlTable<'),
             contains('static const schemaRef = JsonSchemaRef<UsersRow>'),
+            isNot(contains('ref: schemaRef')),
+            contains("id: 'UsersRow'"),
             contains('static const JsonSchemaRegistry jsonSchemas'),
           ]),
         ),

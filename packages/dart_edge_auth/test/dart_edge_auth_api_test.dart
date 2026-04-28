@@ -19,19 +19,29 @@ void main() {
       password: 'password123',
       name: 'Ada Lovelace',
     );
-    final signupJson = signup.jsonObject;
-    final token = signupJson['token'] as String;
+    final token = signup.token!;
 
-    expect(signup.status, 200);
-    expect(signup.header('set-cookie'), contains('better-auth.session-token='));
+    expect(signup.user.email, 'ada@example.com');
+    expect(
+      signup.response.header('set-cookie'),
+      contains('better-auth.session-token='),
+    );
 
-    final session = await auth.api.withBearerToken(token).getSession();
-    final user = session.jsonObject['user'] as Map<String, Object?>;
-    expect(user['email'], 'ada@example.com');
+    final session = await auth.api.getSession(
+      headers: {HttpHeaders.authorizationHeader: 'Bearer $token'},
+    );
+    expect(session.user.email, 'ada@example.com');
+    expect(session.session.userId, signup.user.id);
+
+    final anonymousSession = await auth.api.tryGetSession();
+    expect(anonymousSession, isNull);
 
     final signOut = await auth.api.withBearerToken(token).signOut();
-    expect(signOut.status, 200);
-    expect(signOut.header('set-cookie'), contains('Expires=Thu, 01 Jan 1970'));
+    expect(signOut.success, isTrue);
+    expect(
+      signOut.response.header('set-cookie'),
+      contains('Expires=Thu, 01 Jan 1970'),
+    );
   });
 
   test('shares one sqlite in-memory database with dart_edge_sql', () async {
@@ -54,13 +64,12 @@ void main() {
       password: 'password123',
       name: 'SQLite User',
     );
-    final token = signup.jsonObject['token'] as String;
+    final token = signup.token!;
 
-    expect(signup.status, 200);
+    expect(signup.user.email, 'sqlite@example.com');
 
     final session = await auth.api.withBearerToken(token).getSession();
-    final user = session.jsonObject['user'] as Map<String, Object?>;
-    expect(user['email'], 'sqlite@example.com');
+    expect(session.user.email, 'sqlite@example.com');
 
     final users = await database.execute(
       sql(
@@ -69,6 +78,13 @@ void main() {
       ),
     );
     expect(users.rows.single['email'], 'sqlite@example.com');
+
+    final typedUsers = await database.builder
+        .selectFrom(DartEdgeAuthSchema.users)
+        .selectAll()
+        .where(DartEdgeAuthUsersTable.email.equals('sqlite@example.com'))
+        .execute();
+    expect(typedUsers.single.email, 'sqlite@example.com');
   });
 
   test('can disable shared sqlite migration management', () async {
@@ -97,7 +113,7 @@ void main() {
       name: 'Manual Migration User',
     );
 
-    expect(signup.status, 200);
+    expect(signup.user.email, 'manual-migration@example.com');
 
     final users = await database.execute(
       sql(
@@ -191,12 +207,12 @@ void main() {
       password: 'password123',
       name: 'Admin User',
     );
-    final adminToken = signup.jsonObject['token'] as String;
+    final adminToken = signup.token!;
 
     final promote = await auth.api
         .withBearerToken(adminToken)
         .updateUser(role: 'admin');
-    expect(promote.jsonObject['status'], isTrue);
+    expect(promote.status, isTrue);
 
     final admin = auth.api.withBearerToken(adminToken).admin;
     final created = await admin.createUser(
@@ -205,16 +221,11 @@ void main() {
       name: 'Grace Hopper',
       role: 'member',
     );
-    final createdUser = created.jsonObject['user'] as Map<String, Object?>;
-    expect(createdUser['email'], 'grace@example.com');
-    expect(createdUser['role'], 'member');
+    expect(created.user.email, 'grace@example.com');
+    expect(created.user.role, 'member');
 
     final listed = await admin.listUsers(limit: 10);
-    final listedUsers = listed.jsonObject['users'] as List<Object?>;
-    final emails = listedUsers
-        .cast<Map<String, Object?>>()
-        .map((user) => user['email'])
-        .toList(growable: false);
+    final emails = listed.users.map((user) => user.email);
     expect(
       emails,
       containsAll(<Object?>['admin@example.com', 'grace@example.com']),

@@ -1,8 +1,8 @@
-/// Stable reference to a JSON Schema definition.
+/// Typed reference to a JSON Schema definition.
 final class JsonSchemaRef<T> {
   const JsonSchemaRef(this.id);
 
-  /// Stable schema identifier.
+  /// Referenced schema identifier.
   final String id;
 
   /// Creates a schema ref using `T.toString()` as its identifier.

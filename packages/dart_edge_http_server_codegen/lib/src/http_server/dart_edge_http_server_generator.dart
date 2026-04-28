@@ -15,7 +15,7 @@ final class DartEdgeHttpServerLibrarySpec {
     this.clientClassName,
   });
 
-  /// Routes generated from annotated source.
+  /// Routes described by normalized source metadata.
   final List<DartEdgeHttpRouteSpec> routes;
 
   /// Shared schema graph used by runtime validation, OpenAPI, and clients.
@@ -381,14 +381,14 @@ final class DartEdgeHttpServerGenerator {
     if (options.deprecated) {
       arguments['deprecated'] = literalBool(true);
     }
-    if (options.params case final ref?) {
-      arguments['params'] = _jsonSchemaRefExpression(ref.id);
+    if (options.params case final schema?) {
+      arguments['params'] = _schemaExpression(schema);
     }
-    if (options.query case final ref?) {
-      arguments['query'] = _jsonSchemaRefExpression(ref.id);
+    if (options.query case final schema?) {
+      arguments['query'] = _schemaExpression(schema);
     }
-    if (options.headers case final ref?) {
-      arguments['headers'] = _jsonSchemaRefExpression(ref.id);
+    if (options.headers case final schema?) {
+      arguments['headers'] = _schemaExpression(schema);
     }
     if (options.body case final body?) {
       arguments['body'] = _requestBodyExpression(body);
@@ -534,24 +534,20 @@ Expression _schemaExpression(JsonSchema schema) {
       },
     ),
     JsonReferenceSchema() => refer('JsonSchema').newInstanceNamed('ref', [
-      literalString(schema.targetRef),
-    ], _schemaCommonArguments(schema, includeRef: false)),
+      literalString(schema.ref),
+    ], _schemaCommonArguments(schema)),
     JsonRawSchema() => refer('JsonSchema').newInstanceNamed(
       'raw',
       [_objectExpression(schema.schema)],
-      {if (schema.ref case final ref?) 'ref': _jsonSchemaRefExpression(ref.id)},
+      {if (schema.id case final id?) 'id': literalString(id)},
     ),
     _ => throw UnsupportedError('Cannot emit schema literal for $schema.'),
   };
 }
 
-Map<String, Expression> _schemaCommonArguments(
-  JsonSchema schema, {
-  bool includeRef = true,
-}) {
-  final ref = schema.ref;
+Map<String, Expression> _schemaCommonArguments(JsonSchema schema) {
   return <String, Expression>{
-    if (includeRef && ref != null) 'ref': _jsonSchemaRefExpression(ref.id),
+    if (schema.id case final id?) 'id': literalString(id),
     if (schema.title case final title?) 'title': literalString(title),
     if (schema.description case final description?)
       'description': literalString(description),
@@ -559,13 +555,12 @@ Map<String, Expression> _schemaCommonArguments(
 }
 
 Expression _requestBodyExpression(RequestBody body) {
-  if (body.ref case final ref?) {
+  if (body.schema case final schema?) {
     if (_isJsonContentType(body.contentType)) {
       return refer('RequestBody').newInstanceNamed(
         'json',
         const <Expression>[],
-        {'ref': _jsonSchemaRefExpression(ref.id)},
-        [refer('Object?')],
+        {'schema': _schemaExpression(schema)},
       );
     }
   } else if (_isJsonContentType(body.contentType)) {
@@ -583,16 +578,13 @@ Expression _requestBodyExpression(RequestBody body) {
 
 Expression _responseSpecExpression(ResponseSpec response) {
   if (_isJsonContentType(response.contentType)) {
-    return refer('ResponseSpec').newInstanceNamed(
-      'json',
-      const <Expression>[],
-      {
-        'status': literalNum(response.status),
-        if (response.ref case final ref?)
-          'ref': _jsonSchemaRefExpression(ref.id),
-      },
-      [refer('Object?')],
-    );
+    return refer(
+      'ResponseSpec',
+    ).newInstanceNamed('json', const <Expression>[], {
+      'status': literalNum(response.status),
+      if (response.schema case final schema?)
+        'schema': _schemaExpression(schema),
+    });
   }
   if (response.contentType == 'text/plain; charset=utf-8') {
     return refer('ResponseSpec').newInstanceNamed(
@@ -623,14 +615,6 @@ Expression _errorResponseExpression(ErrorResponse error) {
     'status': literalNum(error.status),
     if (error.code case final code?) 'code': literalString(code),
   });
-}
-
-Expression _jsonSchemaRefExpression(String id) {
-  return refer('JsonSchemaRef').constInstance(
-    [literalString(id)],
-    const <String, Expression>{},
-    [refer('Object?')],
-  );
 }
 
 Expression _objectExpression(Object? value) {

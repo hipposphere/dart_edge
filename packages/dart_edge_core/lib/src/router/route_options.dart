@@ -1,5 +1,5 @@
 import '../http/error_response.dart';
-import '../http/json_schema_ref.dart';
+import '../http/json_schema.dart';
 import '../http/request_body.dart';
 import '../http/response_set.dart';
 import '../http/response_spec.dart';
@@ -31,14 +31,14 @@ final class RouteOptions {
   /// Whether the route should be marked as deprecated.
   final bool deprecated;
 
-  /// Schema reference for decoded path parameters.
-  final JsonSchemaRef<Object?>? params;
+  /// Schema for decoded path parameters.
+  final JsonSchema? params;
 
-  /// Schema reference for decoded query parameters.
-  final JsonSchemaRef<Object?>? query;
+  /// Schema for decoded query parameters.
+  final JsonSchema? query;
 
-  /// Schema reference for decoded request headers.
-  final JsonSchemaRef<Object?>? headers;
+  /// Schema for decoded request headers.
+  final JsonSchema? headers;
 
   /// Request body contract, if the route accepts a body.
   final RequestBody? body;
@@ -72,7 +72,7 @@ final class RouteOptions {
       query: query,
       headers: headers,
       body: body,
-      success: success ?? ResponseSpec.json<Object?>(),
+      success: success ?? ResponseSpec.json(),
       errors: List<ErrorResponse>.unmodifiable(errors),
     );
   }
@@ -85,8 +85,8 @@ final class RouteOptions {
     final parts = <String>[
       'operationId: ${normalizedOptions.operationId!}',
       if (body case final body?)
-        'body: ${_contentLabel(body.contentType, schemaId: body.ref?.id)}',
-      'success: ${responses.success.status} ${_contentLabel(responses.success.contentType, schemaId: responses.success.ref?.id)}',
+        'body: ${_contentLabel(body.contentType, schema: body.schema)}',
+      'success: ${responses.success.status} ${_contentLabel(responses.success.contentType, schema: responses.success.schema)}',
       if (responses.errors.isNotEmpty)
         'errors: [${responses.errors.map<String>(_errorLabel).join(', ')}]',
       if (normalizedOptions.tags.isNotEmpty) 'tags: ${normalizedOptions.tags}',
@@ -96,11 +96,30 @@ final class RouteOptions {
   }
 }
 
-String _contentLabel(String contentType, {required String? schemaId}) {
-  if (schemaId case final schemaId?) {
+String _contentLabel(String contentType, {required JsonSchema? schema}) {
+  if (_jsonSchemaRouteId(schema) case final schemaId?) {
     return '$contentType<$schemaId>';
   }
   return contentType;
+}
+
+String? _jsonSchemaRouteId(JsonSchema? schema) {
+  return switch (schema) {
+    null => null,
+    JsonReferenceSchema(:final ref) => _schemaIdFromReference(ref),
+    _ => schema.id,
+  };
+}
+
+String? _schemaIdFromReference(String ref) {
+  const componentPrefix = '#/components/schemas/';
+  if (ref.startsWith(componentPrefix)) {
+    return ref.substring(componentPrefix.length);
+  }
+  if (ref.startsWith('#/') || ref.contains('://')) {
+    return null;
+  }
+  return ref;
 }
 
 String _errorLabel(ErrorResponse error) {

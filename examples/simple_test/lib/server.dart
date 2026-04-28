@@ -88,8 +88,8 @@ Future<DartEdge<void>> buildServer() async {
   final password = 'password';
   auth.api
       .signUpEmail(email: email, password: password, name: 'Max Mustermann')
-      .then((response) async {
-        print('User signed up: ${response.jsonBody}');
+      .then((signup) async {
+        print('User signed up: ${signup.user.email}');
 
         final signedIn = await auth.api
             .signInEmail(email: email, password: password)
@@ -100,8 +100,7 @@ Future<DartEdge<void>> buildServer() async {
                   : StateError('Sign-in failed: $error');
             });
 
-        final session = signedIn.jsonBody as Map<String, dynamic>;
-        final token = session['token'] as String;
+        final token = signedIn.token;
 
         final guardedResponse = await http.get(
           Uri.parse('http://0.0.0.0:3100/guarded'),

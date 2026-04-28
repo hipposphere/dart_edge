@@ -20,8 +20,9 @@ final class JsonSchemaRegistry {
   /// Returns the schema registry as a map keyed by schema id.
   Map<String, Map<String, Object?>> asMap() =>
       Map<String, Map<String, Object?>>.fromEntries(
-        schemas
-            .where((schema) => schema.id != null)
-            .map((schema) => MapEntry(schema.id!, schema.toJson())),
+        <MapEntry<String, Map<String, Object?>>>[
+          for (final schema in schemas)
+            if (schema.id case final id?) MapEntry(id, schema.toJson()),
+        ],
       );
 }

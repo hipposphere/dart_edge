@@ -36,36 +36,40 @@ final class DartEdgeAuthAdminApi {
     return DartEdgeAuthAdminApi._(_api.withForwardedFor(ipAddress));
   }
 
-  Future<DartEdgeAuthApiResponse> setRole({
+  Future<DartEdgeAuthUserResult> setRole({
     required String userId,
     required String role,
   }) async {
-    return (await _api.callKnownOperation(
-      operation: DartEdgeAuthOperation.adminSetRole,
-      body: {'userId': userId, 'role': role},
-    )).requireSuccess();
+    return DartEdgeAuthUserResult.fromResponse(
+      await _api.callKnownOperation(
+        operation: DartEdgeAuthOperation.adminSetRole,
+        body: {'userId': userId, 'role': role},
+      ),
+    );
   }
 
-  Future<DartEdgeAuthApiResponse> createUser({
+  Future<DartEdgeAuthUserResult> createUser({
     required String email,
     required String password,
     required String name,
     String? role,
     Object? data,
   }) async {
-    return (await _api.callKnownOperation(
-      operation: DartEdgeAuthOperation.adminCreateUser,
-      body: {
-        'email': email,
-        'password': password,
-        'name': name,
-        if (role case final role?) 'role': role,
-        if (data case final data?) 'data': data,
-      },
-    )).requireSuccess();
+    return DartEdgeAuthUserResult.fromResponse(
+      await _api.callKnownOperation(
+        operation: DartEdgeAuthOperation.adminCreateUser,
+        body: {
+          'email': email,
+          'password': password,
+          'name': name,
+          if (role case final role?) 'role': role,
+          if (data case final data?) 'data': data,
+        },
+      ),
+    );
   }
 
-  Future<DartEdgeAuthApiResponse> listUsers({
+  Future<DartEdgeAuthListUsersResult> listUsers({
     int? limit,
     int? offset,
     String? searchField,
@@ -77,118 +81,141 @@ final class DartEdgeAuthAdminApi {
     Object? filterValue,
     String? filterOperator,
   }) async {
-    return (await _api.callKnownOperation(
-      operation: DartEdgeAuthOperation.adminListUsers,
-      query: {
-        if (limit case final limit?) 'limit': limit,
-        if (offset case final offset?) 'offset': offset,
-        if (searchField case final searchField?) 'searchField': searchField,
-        if (searchValue case final searchValue?) 'searchValue': searchValue,
-        if (searchOperator case final searchOperator?)
-          'searchOperator': searchOperator,
-        if (sortBy case final sortBy?) 'sortBy': sortBy,
-        if (sortDirection case final sortDirection?)
-          'sortDirection': sortDirection,
-        if (filterField case final filterField?) 'filterField': filterField,
-        if (filterValue case final filterValue?) 'filterValue': filterValue,
-        if (filterOperator case final filterOperator?)
-          'filterOperator': filterOperator,
-      },
-    )).requireSuccess();
+    return DartEdgeAuthListUsersResult.fromResponse(
+      await _api.callKnownOperation(
+        operation: DartEdgeAuthOperation.adminListUsers,
+        query: {
+          if (limit case final limit?) 'limit': limit,
+          if (offset case final offset?) 'offset': offset,
+          if (searchField case final searchField?) 'searchField': searchField,
+          if (searchValue case final searchValue?) 'searchValue': searchValue,
+          if (searchOperator case final searchOperator?)
+            'searchOperator': searchOperator,
+          if (sortBy case final sortBy?) 'sortBy': sortBy,
+          if (sortDirection case final sortDirection?)
+            'sortDirection': sortDirection,
+          if (filterField case final filterField?) 'filterField': filterField,
+          if (filterValue case final filterValue?) 'filterValue': filterValue,
+          if (filterOperator case final filterOperator?)
+            'filterOperator': filterOperator,
+        },
+      ),
+    );
   }
 
-  Future<DartEdgeAuthApiResponse> listUserSessions({
+  Future<DartEdgeAuthListSessionsResult> listUserSessions({
     required String userId,
   }) async {
-    return (await _api.callKnownOperation(
-      operation: DartEdgeAuthOperation.adminListUserSessions,
-      body: {'userId': userId},
-    )).requireSuccess();
+    return DartEdgeAuthListSessionsResult.fromResponse(
+      await _api.callKnownOperation(
+        operation: DartEdgeAuthOperation.adminListUserSessions,
+        body: {'userId': userId},
+      ),
+    );
   }
 
-  Future<DartEdgeAuthApiResponse> banUser({
+  Future<DartEdgeAuthUserResult> banUser({
     required String userId,
     String? banReason,
     int? banExpiresIn,
   }) async {
-    return (await _api.callKnownOperation(
-      operation: DartEdgeAuthOperation.adminBanUser,
-      body: {
-        'userId': userId,
-        if (banReason case final banReason?) 'banReason': banReason,
-        if (banExpiresIn case final banExpiresIn?) 'banExpiresIn': banExpiresIn,
-      },
-    )).requireSuccess();
+    return DartEdgeAuthUserResult.fromResponse(
+      await _api.callKnownOperation(
+        operation: DartEdgeAuthOperation.adminBanUser,
+        body: {
+          'userId': userId,
+          if (banReason case final banReason?) 'banReason': banReason,
+          if (banExpiresIn case final banExpiresIn?)
+            'banExpiresIn': banExpiresIn,
+        },
+      ),
+    );
   }
 
-  Future<DartEdgeAuthApiResponse> unbanUser({required String userId}) async {
-    return (await _api.callKnownOperation(
-      operation: DartEdgeAuthOperation.adminUnbanUser,
-      body: {'userId': userId},
-    )).requireSuccess();
+  Future<DartEdgeAuthUserResult> unbanUser({required String userId}) async {
+    return DartEdgeAuthUserResult.fromResponse(
+      await _api.callKnownOperation(
+        operation: DartEdgeAuthOperation.adminUnbanUser,
+        body: {'userId': userId},
+      ),
+    );
   }
 
-  Future<DartEdgeAuthApiResponse> impersonateUser({
+  Future<DartEdgeAuthSessionUserResult> impersonateUser({
     required String userId,
   }) async {
-    return (await _api.callKnownOperation(
-      operation: DartEdgeAuthOperation.adminImpersonateUser,
-      body: {'userId': userId},
-    )).requireSuccess();
+    return DartEdgeAuthSessionUserResult.fromResponse(
+      await _api.callKnownOperation(
+        operation: DartEdgeAuthOperation.adminImpersonateUser,
+        body: {'userId': userId},
+      ),
+    );
   }
 
-  Future<DartEdgeAuthApiResponse> stopImpersonating() async {
-    return (await _api.callKnownOperation(
-      operation: DartEdgeAuthOperation.adminStopImpersonating,
-    )).requireSuccess();
+  Future<DartEdgeAuthSessionUserResult> stopImpersonating() async {
+    return DartEdgeAuthSessionUserResult.fromResponse(
+      await _api.callKnownOperation(
+        operation: DartEdgeAuthOperation.adminStopImpersonating,
+      ),
+    );
   }
 
-  Future<DartEdgeAuthApiResponse> revokeUserSession({
+  Future<DartEdgeAuthSuccessResult> revokeUserSession({
     required String sessionToken,
   }) async {
-    return (await _api.callKnownOperation(
-      operation: DartEdgeAuthOperation.adminRevokeUserSession,
-      body: {'sessionToken': sessionToken},
-    )).requireSuccess();
+    return DartEdgeAuthSuccessResult.fromResponse(
+      await _api.callKnownOperation(
+        operation: DartEdgeAuthOperation.adminRevokeUserSession,
+        body: {'sessionToken': sessionToken},
+      ),
+    );
   }
 
-  Future<DartEdgeAuthApiResponse> revokeUserSessions({
+  Future<DartEdgeAuthSuccessResult> revokeUserSessions({
     required String userId,
   }) async {
-    return (await _api.callKnownOperation(
-      operation: DartEdgeAuthOperation.adminRevokeUserSessions,
-      body: {'userId': userId},
-    )).requireSuccess();
+    return DartEdgeAuthSuccessResult.fromResponse(
+      await _api.callKnownOperation(
+        operation: DartEdgeAuthOperation.adminRevokeUserSessions,
+        body: {'userId': userId},
+      ),
+    );
   }
 
-  Future<DartEdgeAuthApiResponse> removeUser({required String userId}) async {
-    return (await _api.callKnownOperation(
-      operation: DartEdgeAuthOperation.adminRemoveUser,
-      body: {'userId': userId},
-    )).requireSuccess();
+  Future<DartEdgeAuthSuccessResult> removeUser({required String userId}) async {
+    return DartEdgeAuthSuccessResult.fromResponse(
+      await _api.callKnownOperation(
+        operation: DartEdgeAuthOperation.adminRemoveUser,
+        body: {'userId': userId},
+      ),
+    );
   }
 
-  Future<DartEdgeAuthApiResponse> setUserPassword({
+  Future<DartEdgeAuthStatusResult> setUserPassword({
     required String userId,
     required String newPassword,
   }) async {
-    return (await _api.callKnownOperation(
-      operation: DartEdgeAuthOperation.adminSetUserPassword,
-      body: {'userId': userId, 'newPassword': newPassword},
-    )).requireSuccess();
+    return DartEdgeAuthStatusResult.fromResponse(
+      await _api.callKnownOperation(
+        operation: DartEdgeAuthOperation.adminSetUserPassword,
+        body: {'userId': userId, 'newPassword': newPassword},
+      ),
+    );
   }
 
-  Future<DartEdgeAuthApiResponse> hasPermission({
+  Future<DartEdgeAuthPermissionResult> hasPermission({
     Object? permission,
     Object? permissions,
   }) async {
-    return (await _api.callKnownOperation(
-      operation: DartEdgeAuthOperation.adminHasPermission,
-      body: {
-        if (permission case final permission?) 'permission': permission,
-        if (permissions case final permissions?) 'permissions': permissions,
-      },
-    )).requireSuccess();
+    return DartEdgeAuthPermissionResult.fromResponse(
+      await _api.callKnownOperation(
+        operation: DartEdgeAuthOperation.adminHasPermission,
+        body: {
+          if (permission case final permission?) 'permission': permission,
+          if (permissions case final permissions?) 'permissions': permissions,
+        },
+      ),
+    );
   }
 
   @override

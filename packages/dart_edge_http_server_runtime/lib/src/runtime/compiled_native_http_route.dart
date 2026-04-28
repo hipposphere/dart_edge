@@ -1,6 +1,7 @@
 import 'package:dart_edge_core/dart_edge_core.dart';
 
 import 'compiled_route.dart';
+import 'json_schema_route_id.dart';
 
 final class CompiledNativeHttpRoute implements CompiledOpenApiRoute {
   const CompiledNativeHttpRoute({
@@ -11,6 +12,7 @@ final class CompiledNativeHttpRoute implements CompiledOpenApiRoute {
     required this.path,
     required this.openApiPath,
     required this.patternSegments,
+    required this.handlerPatternSegments,
   });
 
   final String routeId;
@@ -24,6 +26,7 @@ final class CompiledNativeHttpRoute implements CompiledOpenApiRoute {
   final String openApiPath;
   @override
   final List<RouteSegment> patternSegments;
+  final List<RouteSegment>? handlerPatternSegments;
 
   static CompiledNativeHttpRoute? tryParse<TServices>(
     RouteRegistration<TServices> registration,
@@ -44,6 +47,7 @@ final class CompiledNativeHttpRoute implements CompiledOpenApiRoute {
 
     final path = joinRoutePath(registration.prefix, routePath);
     final patternSegments = parseRoutePattern(path);
+    final handlerPath = mount.handlerPath;
     return CompiledNativeHttpRoute(
       routeId: routeId,
       mount: mount,
@@ -52,6 +56,9 @@ final class CompiledNativeHttpRoute implements CompiledOpenApiRoute {
       path: path,
       openApiPath: openApiPathForSegments(patternSegments),
       patternSegments: patternSegments,
+      handlerPatternSegments: handlerPath == null
+          ? null
+          : parseRoutePattern(handlerPath),
     );
   }
 
@@ -62,12 +69,19 @@ final class CompiledNativeHttpRoute implements CompiledOpenApiRoute {
     'path': path,
     'operationId': options.operationId!,
     'pathSegments': patternSegments.map((segment) => segment.toJson()).toList(),
-    'paramsSchemaId': options.params?.id,
-    'querySchemaId': options.query?.id,
-    'headersSchemaId': options.headers?.id,
+    if (handlerPatternSegments case final segments?)
+      'handlerPathSegments': segments
+          .map((segment) => segment.toJson())
+          .toList(),
+    'paramsSchemaId': jsonSchemaRouteId(options.params),
+    'querySchemaId': jsonSchemaRouteId(options.query),
+    'headersSchemaId': jsonSchemaRouteId(options.headers),
     'requestBody': switch (options.body) {
       null => null,
-      final body => {'contentType': body.contentType, 'schemaId': body.ref?.id},
+      final body => {
+        'contentType': body.contentType,
+        'schemaId': jsonSchemaRouteId(body.schema),
+      },
     },
     'nativeHandle': mount.nativeHandle,
     'nativeHandlerAddress': mount.nativeHandlerAddress,

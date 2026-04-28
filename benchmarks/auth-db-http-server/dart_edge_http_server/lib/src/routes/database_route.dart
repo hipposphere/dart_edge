@@ -12,7 +12,7 @@ final class DatabaseRoute extends HttpRouteDefinition<Services, Object?> {
   @override
   RouteOptions get options => RouteOptions(
     operationId: 'benchmarkDatabase',
-    success: ResponseSpec.json<Object?>(),
+    success: ResponseSpec.json(),
     errors: [ErrorResponse.unauthorized(code: 'unauthorized')],
   );
 

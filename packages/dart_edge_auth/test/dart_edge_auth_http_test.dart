@@ -168,6 +168,63 @@ void main() {
     );
   });
 
+  test('mounts native better-auth routes below router prefixes', () async {
+    final app = DartEdge<TestServices>(services: TestServices.new);
+    final auth = DartEdgeAuth(
+      const DartEdgeAuthConfig(
+        secret: 'test-secret-key-that-is-at-least-32-characters-long',
+        baseUrl: 'http://localhost:3000',
+      ),
+    );
+    addTearDown(auth.dispose);
+
+    auth.mountNative(app.router('/api', tags: ['auth']));
+
+    final document = app.buildOpenApiDocumentJson();
+    final paths = document['paths']! as Map<String, Object?>;
+    expect(paths.keys, contains('/api/auth/sign-up/email'));
+    expect(paths.keys, isNot(contains('/auth/sign-up/email')));
+
+    final server = await app.listen(port: 0);
+    final client = HttpClient();
+    addTearDown(() async {
+      client.close(force: true);
+      await server.close();
+    });
+
+    final baseUri = Uri.http('127.0.0.1:${server.port}');
+    final signupRequest = await client.postUrl(
+      baseUri.resolve('/api/auth/sign-up/email'),
+    );
+    signupRequest.headers.contentType = ContentType.json;
+    signupRequest.headers.set('origin', 'http://localhost:3000');
+    signupRequest.write(
+      jsonEncode({
+        'email': 'native-prefix@example.com',
+        'password': 'password123',
+        'name': 'Native Prefix User',
+      }),
+    );
+
+    final signupResponse = await signupRequest.close();
+    expect(signupResponse.statusCode, HttpStatus.ok);
+    final signupJson =
+        jsonDecode(await utf8.decoder.bind(signupResponse).join())
+            as Map<String, Object?>;
+    final token = signupJson['token'] as String;
+
+    final sessionRequest = await client.getUrl(
+      baseUri.resolve('/api/auth/get-session'),
+    );
+    sessionRequest.headers.set(
+      HttpHeaders.authorizationHeader,
+      'Bearer $token',
+    );
+    sessionRequest.headers.set('origin', 'http://localhost:3000');
+    final sessionResponse = await sessionRequest.close();
+    expect(sessionResponse.statusCode, HttpStatus.ok);
+  });
+
   test('builds OpenAPI auth paths without duplicating the auth base path', () {
     final app = DartEdge<TestServices>(services: TestServices.new);
     final auth = DartEdgeAuth(

@@ -54,9 +54,29 @@ final signup = await auth.api.signUpEmail(
   name: 'Ada Lovelace',
 );
 
-final token = signup.jsonObject['token'] as String;
+final token = signup.token!;
 final session = await auth.api.withBearerToken(token).getSession();
-final user = session.jsonObject['user'] as Map<String, Object?>;
+final user = session.user;
+```
+
+Typed auth models are generated from the Better Auth SQL schema and exported by
+this package:
+
+```dart
+final users = await database.builder
+    .selectFrom(DartEdgeAuthSchema.users)
+    .selectAll()
+    .where(DartEdgeAuthUsersTable.email.equals('ada@example.com'))
+    .execute();
+
+final typedUser = users.single; // DartEdgeAuthUser
+```
+
+Regenerate the model files after SQL schema changes:
+
+```sh
+cd packages/dart_edge_auth && dart tool/generate_auth_models.dart
+dart format packages/dart_edge_auth/lib/src/generated packages/dart_edge_auth/tool/generate_auth_models.dart
 ```
 
 When you want Better Auth's admin endpoints, enable the upstream admin plugin in

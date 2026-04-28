@@ -61,6 +61,8 @@ Optional:
   Default: `2`. Set to `0` to disable the local startup jingle.
 - `CALLO_ASSISTANT_USER`
   Default: `assistant`
+  Set to `*` to accept any inbound SIP user, which is useful when a carrier
+  trunk sends calls to your phone number instead of `assistant`.
 - `SIP_BIND_HOST`
   Default: `0.0.0.0`
 - `SIP_BIND_PORT`
@@ -69,6 +71,16 @@ Optional:
   Default: `127.0.0.1`
 - `SIP_REALM`
   Default: the `SIP_TEST_HOST` value
+- `SIP_TRUNK_ID`
+  Default: `easybell`
+- `SIP_TRUNK_SERVER_URI`
+  Default: `sip:voip.easybell.de`
+- `SIP_TRUNK_USERNAME`
+  Enables the external SIP trunk when set together with `SIP_TRUNK_PASSWORD`.
+- `SIP_TRUNK_PASSWORD`
+  Enables the external SIP trunk when set together with `SIP_TRUNK_USERNAME`.
+- `SIP_TRUNK_REALM`
+  Default: `voip.easybell.de`
 - `SIP_TEST_ENDPOINT_ID`
   Default: `test-phone`
 - `SIP_TEST_EXTENSION`
@@ -107,6 +119,34 @@ After registration, place a call to:
 
 ```text
 sip:assistant@127.0.0.1
+```
+
+## Connecting An Easybell Trunk
+
+Set the easybell SIP credentials from the customer portal and start the engine:
+
+```sh
+export SIP_TRUNK_USERNAME='YOUR_SIP_USERNAME'
+export SIP_TRUNK_PASSWORD='YOUR_SIP_PASSWORD'
+export SIP_TRUNK_SERVER_URI='sip:voip.easybell.de'
+export SIP_TRUNK_REALM='voip.easybell.de'
+export CALLO_ASSISTANT_USER='*'
+dart run bin/callo_engine.dart --gemini-api-key 'your-api-key'
+```
+
+The resulting SIP config includes:
+
+```dart
+trunks: [
+  SipTrunkConfig(
+    id: 'easybell',
+    direction: SipTrunkDirection.bidirectional,
+    serverUri: 'sip:voip.easybell.de',
+    username: 'YOUR_SIP_USERNAME',
+    password: 'YOUR_SIP_PASSWORD',
+    realm: 'voip.easybell.de',
+  ),
+]
 ```
 
 ## Notes

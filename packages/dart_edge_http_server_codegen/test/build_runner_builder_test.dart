@@ -5,147 +5,212 @@ import 'package:test/test.dart';
 
 void main() {
   group('dartEdgeHttpServerBuilder', () {
-    test('emits a shared part from annotated route functions', () async {
-      final builder = dartEdgeHttpServerBuilder(
-        BuilderOptions(const <String, Object?>{
-          'client_class_name': 'UsersClient',
-        }),
-      );
+    test('emits model classes from FromSchema type aliases', () async {
+      final builder = dartEdgeHttpServerBuilder(BuilderOptions.empty);
 
       await testBuilder(
         builder,
         const <String, String>{
-          'test_app|lib/users.dart': r'''
-part 'users.g.dart';
+          'test_app|lib/models.dart': r'''
+// ignore_for_file: undefined_class
 
-enum HttpMethod { get, post, put, patch, delete, head, options }
+part 'models.g.dart';
 
-final class TypedJsonRoute {
-  const TypedJsonRoute({
-    required this.method,
-    required this.path,
-    required this.operationId,
-    this.summary,
-    this.tags = const <String>[],
-    this.deprecated = false,
+sealed class JsonSchema {
+  const JsonSchema._({
+    this.id,
+    this.title,
+    this.description,
+    this.nullable = false,
   });
 
-  final HttpMethod method;
-  final String path;
-  final String operationId;
-  final String? summary;
-  final List<String> tags;
-  final bool deprecated;
+  const factory JsonSchema.object({
+    String? id,
+    String? title,
+    String? description,
+    bool nullable,
+    Map<String, JsonSchema> properties,
+    List<String> required,
+    bool? additionalProperties,
+  }) = JsonObjectSchema;
+
+  const factory JsonSchema.array({
+    String? id,
+    String? title,
+    String? description,
+    bool nullable,
+    JsonSchema? items,
+  }) = JsonArraySchema;
+
+  const factory JsonSchema.string({
+    String? id,
+    String? title,
+    String? description,
+    bool nullable,
+    String? format,
+  }) = JsonStringSchema;
+
+  const factory JsonSchema.integer({
+    String? id,
+    String? title,
+    String? description,
+    bool nullable,
+    String? format,
+  }) = JsonIntegerSchema;
+
+  const factory JsonSchema.ref(
+    String ref, {
+    String? id,
+    String? title,
+    String? description,
+  }) = JsonReferenceSchema;
+
+  final String? id;
+  final String? title;
+  final String? description;
+  final bool nullable;
 }
 
-final class RouteBody {
-  const RouteBody({this.contentType = 'application/json'});
+final class JsonObjectSchema extends JsonSchema {
+  const JsonObjectSchema({
+    super.id,
+    super.title,
+    super.description,
+    super.nullable = false,
+    this.properties = const <String, JsonSchema>{},
+    this.required = const <String>[],
+    this.additionalProperties,
+  }) : super._();
 
-  final String contentType;
+  final Map<String, JsonSchema> properties;
+  final List<String> required;
+  final bool? additionalProperties;
 }
 
-final class PathParam {
-  const PathParam([this.name]);
+final class JsonArraySchema extends JsonSchema {
+  const JsonArraySchema({
+    super.id,
+    super.title,
+    super.description,
+    super.nullable = false,
+    this.items,
+  }) : super._();
 
-  final String? name;
+  final JsonSchema? items;
 }
 
-final class QueryParam {
-  const QueryParam([this.name]);
+final class JsonStringSchema extends JsonSchema {
+  const JsonStringSchema({
+    super.id,
+    super.title,
+    super.description,
+    super.nullable = false,
+    this.format,
+  }) : super._();
 
-  final String? name;
+  final String? format;
 }
 
-final class HeaderParam {
-  const HeaderParam(this.name);
+final class JsonIntegerSchema extends JsonSchema {
+  const JsonIntegerSchema({
+    super.id,
+    super.title,
+    super.description,
+    super.nullable = false,
+    this.format,
+  }) : super._();
 
-  final String name;
+  final String? format;
 }
 
-final class SuccessResponse {
-  const SuccessResponse({
-    this.status = 200,
-    this.contentType = 'application/json',
-  });
+final class JsonReferenceSchema extends JsonSchema {
+  const JsonReferenceSchema(
+    this.ref, {
+    super.id,
+    super.title,
+    super.description,
+  }) : super._();
 
-  final int status;
-  final String contentType;
+  final String ref;
 }
 
-final class RouteErrorResponse {
-  const RouteErrorResponse(
-    this.status, {
-    this.code,
-    this.contentType = 'application/json',
-  });
+final class JsonSchemaRegistry {
+  const JsonSchemaRegistry({required this.schemas});
 
-  final int status;
-  final String? code;
-  final String contentType;
+  final List<JsonSchema> schemas;
 }
 
-@TypedJsonRoute(
-  method: HttpMethod.post,
-  path: '/users/<id>',
-  operationId: 'createUser',
-  summary: 'Create a user.',
-  tags: <String>['users'],
-)
-@SuccessResponse(status: 201)
-@RouteErrorResponse(409, code: 'email_conflict')
-Future<UserDto> createUser(
-  @PathParam('id') String id,
-  @QueryParam('notify') bool? notify,
-  @HeaderParam('x-request-id') String requestId,
-  @RouteBody() CreateUserInput body,
-) async {
-  return UserDto(id: id, name: body.name, email: body.email);
-}
-
-final class CreateUserInput {
-  const CreateUserInput({required this.name, required this.email});
-
-  final String name;
-  final String email;
-}
-
-final class UserDto {
-  const UserDto({required this.id, required this.name, required this.email});
+final class JsonSchemaRef<T> {
+  const JsonSchemaRef(this.id);
 
   final String id;
-  final String name;
-  final String email;
 }
+
+final class FromSchema {
+  const FromSchema(this.schema, {this.registry});
+
+  final JsonSchema schema;
+  final JsonSchemaRegistry? registry;
+}
+
+const userDtoSchema = JsonSchema.object(
+  id: 'UserDto',
+  properties: <String, JsonSchema>{
+    'id': JsonSchema.string(),
+    'email': JsonSchema.string(format: 'email'),
+  },
+  required: <String>['id', 'email'],
+  additionalProperties: false,
+);
+
+const createUserInputSchema = JsonSchema.object(
+  id: 'CreateUserInput',
+  properties: <String, JsonSchema>{
+    'name': JsonSchema.string(),
+    'age': JsonSchema.integer(),
+    'tags': JsonSchema.array(items: JsonSchema.string()),
+    'best_friend': JsonSchema.ref('UserDto'),
+  },
+  required: <String>['name', 'tags'],
+  additionalProperties: false,
+);
+
+const userSchemas = JsonSchemaRegistry(
+  schemas: <JsonSchema>[createUserInputSchema, userDtoSchema],
+);
+
+@FromSchema(createUserInputSchema, registry: userSchemas)
+typedef CreateUserInput = _$CreateUserInput;
+
+@FromSchema(userDtoSchema, registry: userSchemas)
+typedef UserDto = _$UserDto;
 ''',
         },
-        generateFor: const {'test_app|lib/users.dart'},
+        generateFor: const {'test_app|lib/models.dart'},
         outputs: {
-          'test_app|lib/users.dart_edge_http_server.g.part': decodedMatches(
+          'test_app|lib/models.dart_edge_http_server.g.part': decodedMatches(
             allOf([
-              isNot(contains('part of')),
-              contains('final JsonSchemaRegistry \$generatedSchemas'),
-              contains('final RouteOptions createUserRouteOptions'),
+              contains('final class _\$CreateUserInput'),
               contains(
-                "params: const JsonSchemaRef<Object?>('CreateUserParams')",
+                'static const schemaRef = '
+                'JsonSchemaRef<CreateUserInput>("CreateUserInput");',
               ),
+              contains('final String name;'),
+              contains('final int? age;'),
+              contains('final List<String> tags;'),
+              contains('final UserDto? bestFriend;'),
+              contains('"name": name'),
+              contains('"best_friend": bestFriend?.toJson()'),
+              contains('name: json["name"]! as String'),
+              contains('age: json["age"] as int?'),
+              contains('bestFriend: json["best_friend"] == null'),
+              contains(': UserDto.fromJson(json["best_friend"])'),
+              contains('final class _\$UserDto'),
               contains(
-                "query: const JsonSchemaRef<Object?>('CreateUserQuery')",
+                'static const schemaRef = JsonSchemaRef<UserDto>("UserDto");',
               ),
-              contains(
-                "headers: const JsonSchemaRef<Object?>('CreateUserHeaders')",
-              ),
-              contains("JsonSchemaRef<Object?>('CreateUserInput')"),
-              contains("JsonSchemaRef<Object?>('UserDto')"),
-              isNot(contains('DartEdgeCodecRegistry \$generatedCodecs({')),
-              contains('CreateUserInput.fromJson(ctx.req.bodyOrNull)'),
-              contains('decoder: UserDto.fromJson'),
-              contains('encoder: (value) => value.toJson()'),
-              contains('CreateUserRoute<TServices>'),
-              contains('void \$generatedRoutes<TServices>('),
-              contains('Router<TServices> router'),
-              contains("router.routePost('/users/<id>'"),
-              contains('final class UsersClient'),
-              contains('Future<UserDto> createUser({'),
+              isNot(contains('RouteOptions')),
+              isNot(contains('\$generatedRoutes')),
             ]),
           ),
         },

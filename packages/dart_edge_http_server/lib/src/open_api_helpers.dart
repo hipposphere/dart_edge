@@ -22,7 +22,7 @@ final class OpenApiHelpers {
       options: RouteOptions(
         summary: 'Serve the generated OpenAPI document.',
         tags: <String>['openapi'],
-        success: ResponseSpec.json<Object?>(),
+        success: ResponseSpec.json(),
       ),
       handler: (_) => RawResponse.encoded(
         status: 200,

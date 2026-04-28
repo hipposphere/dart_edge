@@ -86,7 +86,7 @@ List<Field> _schemaFields({
     ),
     _staticConstField(
       name: 'jsonSchema',
-      assignment: _jsonSchemaForTable(table, shape, refer('schemaRef')),
+      assignment: _jsonSchemaForTable(table, shape, className),
     ),
   ];
 }
@@ -94,12 +94,12 @@ List<Field> _schemaFields({
 Expression _jsonSchemaForTable(
   IntrospectedTable table,
   _GeneratedShape shape,
-  Expression ref,
+  String schemaId,
 ) {
   return refer(
     'JsonSchema',
   ).constInstanceNamed('object', const <Expression>[], {
-    'ref': ref,
+    'id': literalString(schemaId),
     'properties': literalConstMap(
       {
         for (final column in table.columns)

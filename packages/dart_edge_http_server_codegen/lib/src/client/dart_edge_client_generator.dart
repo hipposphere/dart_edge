@@ -2,6 +2,8 @@ import 'package:code_builder/code_builder.dart';
 import 'package:dart_edge_http_server_runtime/dart_edge_http_server_runtime.dart';
 import 'package:dart_style/dart_style.dart';
 
+import '../json_schema_route_id.dart';
+
 /// Build-time description of one generated client library.
 final class DartEdgeClientLibrarySpec {
   const DartEdgeClientLibrarySpec({
@@ -157,6 +159,7 @@ final class DartEdgeClientGenerator {
     DartEdgeClientOperation operation,
   ) {
     final options = operation.options;
+    final successSchemaId = jsonSchemaRouteId(options.responses.success.schema);
     final arguments = <String, Expression>{
       'method': refer('HttpMethod').property(operation.method.name),
       'pathTemplate': literalString(operation.path),
@@ -165,48 +168,50 @@ final class DartEdgeClientGenerator {
         <String, Expression>{
           'status': literalNum(options.responses.success.status),
           'contentType': literalString(options.responses.success.contentType),
-          if (options.responses.success.ref case final ref?)
-            'schemaId': literalString(ref.id),
-          if (options.responses.success.ref != null)
+          if (successSchemaId case final schemaId?)
+            'schemaId': literalString(schemaId),
+          if (successSchemaId != null)
             'decoder': refer(operation.successType).property('fromJson'),
         },
         <Reference>[refer(operation.successType)],
       ),
     };
 
-    if (options.params case final ref?) {
+    if (options.params case final schema?) {
       arguments['params'] = _requestValueExpression(
         type: operation.paramsType!,
-        schemaId: ref.id,
+        schemaId: jsonSchemaRouteId(schema),
         value: refer('params'),
         encode: _encoderFor(operation.paramsType!),
       );
     }
-    if (options.query case final ref?) {
+    if (options.query case final schema?) {
       arguments['query'] = _requestValueExpression(
         type: '${operation.queryType}?',
-        schemaId: ref.id,
+        schemaId: jsonSchemaRouteId(schema),
         value: refer('query'),
         encode: _nullableEncoderFor(operation.queryType!),
       );
     }
-    if (options.headers case final ref?) {
+    if (options.headers case final schema?) {
       arguments['headers'] = _requestValueExpression(
         type: '${operation.headersType}?',
-        schemaId: ref.id,
+        schemaId: jsonSchemaRouteId(schema),
         value: refer('headers'),
         encode: _nullableEncoderFor(operation.headersType!),
       );
     }
     if (options.body case final body?) {
-      final bodyEncoder = body.ref == null
+      final bodySchemaId = jsonSchemaRouteId(body.schema);
+      final bodyEncoder = bodySchemaId == null
           ? null
           : _encoderFor(operation.bodyType!);
       arguments['body'] = refer('DartEdgeClientRequestBody').newInstance(
         const <Expression>[],
         <String, Expression>{
           'contentType': literalString(body.contentType),
-          if (body.ref case final ref?) 'schemaId': literalString(ref.id),
+          if (bodySchemaId case final schemaId?)
+            'schemaId': literalString(schemaId),
           'value': refer('body'),
           if (bodyEncoder != null) 'encoder': bodyEncoder,
         },
@@ -220,14 +225,14 @@ final class DartEdgeClientGenerator {
 
 Expression _requestValueExpression({
   required String type,
-  required String schemaId,
+  required String? schemaId,
   required Expression value,
   Expression? encode,
 }) {
   return refer('DartEdgeClientRequestValue').newInstance(
     const <Expression>[],
     <String, Expression>{
-      'schemaId': literalString(schemaId),
+      if (schemaId case final schemaId?) 'schemaId': literalString(schemaId),
       'value': value,
       if (encode != null) 'encoder': encode,
     },

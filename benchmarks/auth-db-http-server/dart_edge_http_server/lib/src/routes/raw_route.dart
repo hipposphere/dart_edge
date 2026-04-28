@@ -10,7 +10,7 @@ final class RawRoute extends HttpRouteDefinition<Services, Object?> {
   @override
   RouteOptions get options => RouteOptions(
     operationId: 'benchmarkRaw',
-    success: ResponseSpec.json<Object?>(),
+    success: ResponseSpec.json(),
     errors: [ErrorResponse.unauthorized(code: 'unauthorized')],
   );
 

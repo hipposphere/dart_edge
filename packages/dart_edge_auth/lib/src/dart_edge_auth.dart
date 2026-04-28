@@ -3,13 +3,19 @@ import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:dart_edge_core/dart_edge_core.dart';
+import 'package:dart_edge_sql/dart_edge_sql.dart';
 
 import 'dart_edge_auth_config.dart';
 import 'native/dart_edge_auth_native.dart';
 
+part 'generated/model_helpers.g.dart';
+part 'generated/schema.g.dart';
+part 'generated/models/session.g.dart';
+part 'generated/models/user.g.dart';
 part 'dart_edge_auth_api_types.dart';
 part 'dart_edge_auth_api.dart';
 part 'dart_edge_auth_admin_api.dart';
+part 'dart_edge_auth_result_types.dart';
 part 'dart_edge_auth_api_response.dart';
 part 'dart_edge_auth_route_table.dart';
 
@@ -133,8 +139,9 @@ final class DartEdgeAuth {
   /// Registers all auth routes on [router].
   ///
   /// The generated routes already include [DartEdgeAuthConfig.basePath]. Mount
-  /// them on the app itself or on a tag-only router. Do not add the same auth
-  /// prefix again, or you will end up with paths like `/auth/auth/...`.
+  /// them on the app itself or below an application/router prefix. Do not add
+  /// the same auth prefix again, or you will end up with paths like
+  /// `/auth/auth/...`.
   void mount<TServices>(Router<TServices> router) {
     for (final route in routes<TServices>()) {
       router.mountHttpRoute(route);
@@ -173,6 +180,7 @@ final class DartEdgeAuth {
           (route) => NativeHttpRouteMount(
             method: route.method,
             path: _runtimePath(route.path),
+            handlerPath: _runtimePath(route.path),
             options: _routeOptions(route),
             nativeHandle: _nativeInstance.handle,
             nativeHandlerAddress: DartEdgeAuthNative.handleRequestAddress,
@@ -285,8 +293,32 @@ RouteOptions _routeOptions(AuthNativeRouteDescriptor route) {
   return RouteOptions(
     operationId: route.operationId,
     body: route.acceptsJsonBody ? RequestBody.jsonValue() : null,
-    success: ResponseSpec.json<Object?>(),
+    success: ResponseSpec.json(schema: _successSchemaFor(route.operationId)),
   );
+}
+
+JsonSchema? _successSchemaFor(String operationId) {
+  return switch (operationId) {
+    'sign_up_email' => DartEdgeAuthSignUpResult.jsonSchema,
+    'sign_in_email' => DartEdgeAuthSignInResult.jsonSchema,
+    'get_session' || 'get_session_post' => DartEdgeAuthSessionResult.jsonSchema,
+    'sign_out' => DartEdgeAuthSuccessResult.jsonSchema,
+    'update_user' || 'change_email' => DartEdgeAuthStatusResult.jsonSchema,
+    'admin_set_role' ||
+    'admin_create_user' ||
+    'admin_ban_user' ||
+    'admin_unban_user' => DartEdgeAuthUserResult.jsonSchema,
+    'admin_list_users' => DartEdgeAuthListUsersResult.jsonSchema,
+    'admin_list_user_sessions' => DartEdgeAuthListSessionsResult.jsonSchema,
+    'admin_impersonate_user' ||
+    'admin_stop_impersonating' => DartEdgeAuthSessionUserResult.jsonSchema,
+    'admin_revoke_user_session' ||
+    'admin_revoke_user_sessions' ||
+    'admin_remove_user' => DartEdgeAuthSuccessResult.jsonSchema,
+    'admin_set_user_password' => DartEdgeAuthStatusResult.jsonSchema,
+    'admin_has_permission' => DartEdgeAuthPermissionResult.jsonSchema,
+    _ => null,
+  };
 }
 
 Uint8List? _encodeBody(Object? value) => switch (value) {

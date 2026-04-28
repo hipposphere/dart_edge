@@ -9,7 +9,7 @@ void main() {
     const registry = JsonSchemaRegistry(
       schemas: <JsonSchema>[
         JsonSchema.object(
-          ref: JsonSchemaRef<Object?>('UsersInsert'),
+          id: 'UsersInsert',
           description: 'Insert payload for users.',
         ),
       ],
@@ -64,7 +64,7 @@ void main() {
     const registry = JsonSchemaRegistry(
       schemas: <JsonSchema>[
         JsonSchema.object(
-          ref: JsonSchemaRef<Object?>('UsersInsert'),
+          id: 'UsersInsert',
           properties: <String, JsonSchema>{'email': JsonSchema.string()},
         ),
       ],
@@ -91,6 +91,35 @@ void main() {
       }),
     );
   });
+
+  test('includes inline route schema ids in the native manifest', () {
+    final app = DartEdge<void>(services: () {});
+    app.get(
+      '/users/<id>',
+      options: RouteOptions(
+        params: const JsonSchema.object(
+          id: 'UserPath',
+          properties: <String, JsonSchema>{'id': JsonSchema.string()},
+        ),
+        query: const JsonSchema.object(
+          id: 'UserQuery',
+          properties: <String, JsonSchema>{'search': JsonSchema.string()},
+        ),
+      ),
+      handler: (_) => const {'ok': true},
+    );
+
+    final compiledRoutes = CompiledRouteTable.fromRegistrations(
+      app.routeRegistry.registrations,
+    );
+    final manifest =
+        jsonDecode(compiledRoutes.nativeManifestJson()) as Map<String, Object?>;
+    final routes = manifest['routes']! as List<Object?>;
+    final route = routes.single as Map<String, Object?>;
+
+    expect(route['paramsSchemaId'], 'UserPath');
+    expect(route['querySchemaId'], 'UserQuery');
+  });
 }
 
 final class _SchemaRoute
@@ -98,8 +127,8 @@ final class _SchemaRoute
   @override
   RouteOptions get options => RouteOptions(
     operationId: 'createUser',
-    body: RequestBody.json<Object?>(ref: JsonSchemaRef<Object?>('UsersInsert')),
-    success: ResponseSpec.json<Object?>(),
+    body: RequestBody.json(schema: const JsonSchema.ref('UsersInsert')),
+    success: ResponseSpec.json(),
   );
 
   @override

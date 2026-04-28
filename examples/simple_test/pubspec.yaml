@@ -9,16 +9,12 @@ environment:
 dependencies:
   dart_edge_http_server:
     hosted: "https://registry.hippolabs.org/pub/internal-pub/"
-    version: ^0.3.0
   dart_edge_auth:
     hosted: "https://registry.hippolabs.org/pub/internal-pub/"
-    version: ^0.3.0
   dart_edge_sql:
     hosted: "https://registry.hippolabs.org/pub/internal-pub/"
-    version: ^0.2.0
   dart_edge_sql_migrator:
     hosted: "https://registry.hippolabs.org/pub/internal-pub/"
-    version: ^0.3.0
   http: ^1.6.0
 
 
@@ -26,7 +22,5 @@ dev_dependencies:
   build_runner: ^2.10.0
   dart_edge_http_server_codegen:
     hosted: "https://registry.hippolabs.org/pub/internal-pub/"
-    version: ^0.3.0
   dart_edge_sql_codegen:
     hosted: "https://registry.hippolabs.org/pub/internal-pub/"
-    version: ^0.3.0

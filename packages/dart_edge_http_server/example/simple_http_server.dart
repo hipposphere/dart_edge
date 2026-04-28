@@ -31,7 +31,9 @@ Future<void> main() async {
     options: RouteOptions(
       operationId: 'healthCheck',
       summary: 'Return a basic health response.',
-      success: ResponseSpec.json(ref: JsonSchemaRef.of<HealthResponse>()),
+      success: ResponseSpec.json(
+        schema: const JsonSchema.ref('HealthResponse'),
+      ),
     ),
     handler: (ctx) {
       ctx.telemetry.addEvent('health.checked');
@@ -43,8 +45,10 @@ Future<void> main() async {
     options: RouteOptions(
       operationId: 'listUsers',
       summary: 'List users with an optional search filter.',
-      query: JsonSchemaRef.of<ListUsersQuery>(),
-      success: ResponseSpec.json(ref: JsonSchemaRef.of<ListUsersResponse>()),
+      query: const JsonSchema.ref('ListUsersQuery'),
+      success: ResponseSpec.json(
+        schema: const JsonSchema.ref('ListUsersResponse'),
+      ),
     ),
     handler: (ctx) async {
       final query = ctx.req.query<ListUsersQuery>();
@@ -57,8 +61,11 @@ Future<void> main() async {
     options: RouteOptions(
       operationId: 'createUser',
       summary: 'Create a new user.',
-      body: RequestBody.json(ref: JsonSchemaRef.of<CreateUserInput>()),
-      success: ResponseSpec.json(status: 201, ref: JsonSchemaRef.of<UserDto>()),
+      body: RequestBody.json(schema: const JsonSchema.ref('CreateUserInput')),
+      success: ResponseSpec.json(
+        status: 201,
+        schema: const JsonSchema.ref('UserDto'),
+      ),
       errors: [ErrorResponse.conflict(code: 'duplicate_email')],
     ),
     handler: (ctx) async {
@@ -172,16 +179,16 @@ final class UserDto implements JsonEncodable {
 final _schemaRegistry = JsonSchemaRegistry(
   schemas: <JsonSchema>[
     JsonSchema.object(
-      ref: JsonSchemaRef<Object?>('HealthResponse'),
+      id: 'HealthResponse',
       properties: <String, JsonSchema>{'status': JsonSchema.string()},
       required: <String>['status'],
     ),
     JsonSchema.object(
-      ref: JsonSchemaRef<Object?>('ListUsersQuery'),
+      id: 'ListUsersQuery',
       properties: <String, JsonSchema>{'search': JsonSchema.string()},
     ),
     JsonSchema.object(
-      ref: JsonSchemaRef<Object?>('CreateUserInput'),
+      id: 'CreateUserInput',
       properties: <String, JsonSchema>{
         'name': JsonSchema.string(),
         'email': JsonSchema.string(format: 'email'),
@@ -189,7 +196,7 @@ final _schemaRegistry = JsonSchemaRegistry(
       required: <String>['name', 'email'],
     ),
     JsonSchema.object(
-      ref: JsonSchemaRef<Object?>('UserDto'),
+      id: 'UserDto',
       properties: <String, JsonSchema>{
         'id': JsonSchema.string(),
         'name': JsonSchema.string(),
@@ -198,7 +205,7 @@ final _schemaRegistry = JsonSchemaRegistry(
       required: <String>['id', 'name', 'email'],
     ),
     JsonSchema.object(
-      ref: JsonSchemaRef<Object?>('ListUsersResponse'),
+      id: 'ListUsersResponse',
       properties: <String, JsonSchema>{
         'items': JsonSchema.array(items: JsonSchema.ref('UserDto')),
       },

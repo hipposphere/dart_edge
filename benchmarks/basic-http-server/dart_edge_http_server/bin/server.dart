@@ -30,7 +30,7 @@ final class JsonRoute
     extends HttpRouteDefinition<BenchmarkServices, Map<String, Object?>> {
   @override
   RouteOptions get options =>
-      RouteOptions(operationId: 'json', success: ResponseSpec.json<Object?>());
+      RouteOptions(operationId: 'json', success: ResponseSpec.json());
 
   @override
   Map<String, Object?> handle(RequestContext<BenchmarkServices> ctx) {
@@ -41,10 +41,8 @@ final class JsonRoute
 final class UserRoute
     extends HttpRouteDefinition<BenchmarkServices, Map<String, Object?>> {
   @override
-  RouteOptions get options => RouteOptions(
-    operationId: 'userById',
-    success: ResponseSpec.json<Object?>(),
-  );
+  RouteOptions get options =>
+      RouteOptions(operationId: 'userById', success: ResponseSpec.json());
 
   @override
   Map<String, Object?> handle(RequestContext<BenchmarkServices> ctx) {
@@ -59,7 +57,7 @@ final class EchoRoute
   RouteOptions get options => RouteOptions(
     operationId: 'echo',
     body: RequestBody.jsonValue(),
-    success: ResponseSpec.json<Object?>(),
+    success: ResponseSpec.json(),
   );
 
   @override

@@ -45,7 +45,7 @@ For local-only development, omit `host:` and the runtime stays bound to
   request and response shape
 - `RequestContext` gives handlers access to services, decoded request values, and
   request-scoped extensions
-- `JsonSchemaRef`, `JsonSchema`, and `JsonSchemaRegistry` connect the
+- `JsonSchema`, including `JsonSchema.ref`, and `JsonSchemaRegistry` connect the
   runtime to generated JSON Schema metadata
 - `RustMiddleware` configures the transport-layer middleware stack
 

@@ -1,67 +1,20 @@
-/// Marks a handler parameter as a path parameter.
+import 'package:dart_edge_http_server_runtime/dart_edge_http_server_runtime.dart';
+
+/// Generates a Dart model type from a const JSON Schema.
 ///
-/// When [name] is omitted, generators can fall back to the Dart parameter name.
-final class PathParam {
-  const PathParam([this.name]);
-
-  /// Overrides the parameter name used in the route contract.
-  final String? name;
-}
-
-/// Marks a handler parameter as a query parameter.
+/// Use this on a type alias whose target is the generated private backing
+/// class, for example:
 ///
-/// When [name] is omitted, generators can fall back to the Dart parameter name.
-final class QueryParam {
-  const QueryParam([this.name]);
+/// ```dart
+/// @FromSchema(createUserInputSchema, registry: userSchemas)
+/// typedef CreateUserInput = _$CreateUserInput;
+/// ```
+final class FromSchema {
+  const FromSchema(this.schema, {this.registry});
 
-  /// Overrides the parameter name used in the route contract.
-  final String? name;
-}
+  /// The schema used to infer the generated Dart model.
+  final JsonSchema schema;
 
-/// Marks a handler parameter as a request header.
-final class HeaderParam {
-  const HeaderParam(this.name);
-
-  /// The HTTP header name to read from the incoming request.
-  final String name;
-}
-
-/// Marks a handler parameter as the decoded request body.
-final class RouteBody {
-  const RouteBody({this.contentType = 'application/json'});
-
-  /// The expected request content type for the body.
-  final String contentType;
-}
-
-/// Declares the success response metadata for a generated route.
-final class SuccessResponse {
-  const SuccessResponse({
-    this.status = 200,
-    this.contentType = 'application/json',
-  });
-
-  /// The HTTP status code emitted on success.
-  final int status;
-
-  /// The response content type emitted on success.
-  final String contentType;
-}
-
-/// Declares one non-success response that a generated route may return.
-final class RouteErrorResponse {
-  const RouteErrorResponse(
-    this.status, {
-    this.code,
-    this.contentType = 'application/json',
-  });
-
-  /// The HTTP status code emitted for this error.
-  final int status;
-
-  /// Optional stable application-level error code.
-  final String? code;
-
-  /// The response content type emitted for this error.
-  final String contentType;
+  /// Optional registry used for resolving schema references.
+  final JsonSchemaRegistry? registry;
 }

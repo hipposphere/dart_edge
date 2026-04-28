@@ -1,6 +1,7 @@
 import 'package:dart_edge_core/dart_edge_core.dart';
 
 import 'compiled_route.dart';
+import 'json_schema_route_id.dart';
 
 /// Application-level OpenAPI metadata and document generation.
 final class OpenApiDocument {
@@ -83,13 +84,13 @@ Map<String, Object?> _buildOperation(
   final parameters = <Map<String, Object?>>[
     ..._buildPathParameters(route, schemaRegistry),
     ..._buildObjectParameters(
-      options.query?.id,
+      options.query,
       'query',
       schemaRegistry,
       requiredByDefault: false,
     ),
     ..._buildObjectParameters(
-      options.headers?.id,
+      options.headers,
       'header',
       schemaRegistry,
       requiredByDefault: false,
@@ -120,33 +121,31 @@ List<Map<String, Object?>> _buildPathParameters(
   }
 
   final properties = _objectSchema(
-    route.options.params?.id,
+    route.options.params,
     schemaRegistry,
   )?.properties;
   return [
     for (final name in pathParameters)
-      {
-        'name': name,
-        'in': 'path',
-        'required': true,
-        'schema': _openApiSchemaObject(
-          (properties?[name] ?? const JsonSchema.string()).toJson(),
-        ),
-      },
+      _buildParameter(
+        name: name,
+        in_: 'path',
+        required: true,
+        schema: properties?[name] ?? const JsonSchema.string(),
+      ),
   ];
 }
 
 List<Map<String, Object?>> _buildObjectParameters(
-  String? schemaId,
+  JsonSchema? objectSchema,
   String location,
   JsonSchemaRegistry? schemaRegistry, {
   required bool requiredByDefault,
 }) {
-  if (schemaId == null) {
+  if (objectSchema == null) {
     return const <Map<String, Object?>>[];
   }
 
-  final schema = _objectSchema(schemaId, schemaRegistry);
+  final schema = _objectSchema(objectSchema, schemaRegistry);
   if (schema == null) {
     return const <Map<String, Object?>>[];
   }
@@ -158,17 +157,17 @@ List<Map<String, Object?>> _buildObjectParameters(
   final requiredFieldNames = schema.required.toSet();
   return [
     for (final entry in schema.properties.entries)
-      {
-        'name': entry.key,
-        'in': location,
-        'required': requiredByDefault || requiredFieldNames.contains(entry.key),
-        'schema': _openApiSchemaObject(entry.value.toJson()),
-      },
+      _buildParameter(
+        name: entry.key,
+        in_: location,
+        required: requiredByDefault || requiredFieldNames.contains(entry.key),
+        schema: entry.value,
+      ),
   ];
 }
 
 Map<String, Object?> _buildRequestBody(RequestBody body) {
-  final schema = _contentSchema(body.contentType, refId: body.ref?.id);
+  final schema = _contentSchema(body.contentType, schema: body.schema);
   return {
     'required': true,
     'content': {
@@ -198,7 +197,7 @@ Map<String, Object?> _buildResponse(
   ResponseSpec spec, {
   required String description,
 }) {
-  final schema = _contentSchema(spec.contentType, refId: spec.ref?.id);
+  final schema = _contentSchema(spec.contentType, schema: spec.schema);
   return {
     'description': description,
     if (schema != null)
@@ -217,9 +216,27 @@ Map<String, Object?> _buildErrorResponse(ErrorResponse response) {
   };
 }
 
-Map<String, Object?>? _contentSchema(String contentType, {String? refId}) {
-  if (refId case final refId?) {
-    return <String, Object?>{r'$ref': '#/components/schemas/$refId'};
+Map<String, Object?> _buildParameter({
+  required String name,
+  required String in_,
+  required bool required,
+  required JsonSchema schema,
+}) {
+  return {
+    'name': name,
+    'in': in_,
+    'required': required,
+    if (schema.description case final description?) 'description': description,
+    'schema': _openApiSchemaObject(schema.toJson()),
+  };
+}
+
+Map<String, Object?>? _contentSchema(
+  String contentType, {
+  required JsonSchema? schema,
+}) {
+  if (schema case final schema?) {
+    return _openApiSchemaObject(schema.toJson());
   }
 
   return switch (_contentTypeEssence(contentType)) {
@@ -230,12 +247,18 @@ Map<String, Object?>? _contentSchema(String contentType, {String? refId}) {
 }
 
 JsonObjectSchema? _objectSchema(
-  String? schemaId,
+  JsonSchema? schema,
   JsonSchemaRegistry? schemaRegistry,
 ) {
-  final schema = schemaId == null ? null : schemaRegistry?.schemaFor(schemaId);
   return switch (schema) {
     final JsonObjectSchema schema => schema,
+    final JsonSchema schema => switch (jsonSchemaRouteId(schema)) {
+      final schemaId? => switch (schemaRegistry?.schemaFor(schemaId)) {
+        final JsonObjectSchema schema => schema,
+        _ => null,
+      },
+      _ => null,
+    },
     _ => null,
   };
 }

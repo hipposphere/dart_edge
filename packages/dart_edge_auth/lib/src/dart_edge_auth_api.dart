@@ -162,42 +162,68 @@ final class DartEdgeAuthApi {
     );
   }
 
-  Future<DartEdgeAuthApiResponse> signUpEmail({
+  Future<DartEdgeAuthSignUpResult> signUpEmail({
     required String email,
     required String password,
     required String name,
   }) async {
-    return (await callKnownOperation(
-      operation: DartEdgeAuthOperation.signUpEmail,
-      body: {'email': email, 'password': password, 'name': name},
-    )).requireSuccess();
+    return DartEdgeAuthSignUpResult.fromResponse(
+      await callKnownOperation(
+        operation: DartEdgeAuthOperation.signUpEmail,
+        body: {'email': email, 'password': password, 'name': name},
+      ),
+    );
   }
 
-  Future<DartEdgeAuthApiResponse> signInEmail({
+  Future<DartEdgeAuthSignInResult> signInEmail({
     required String email,
     required String password,
   }) async {
-    return (await callKnownOperation(
-      operation: DartEdgeAuthOperation.signInEmail,
-      body: {'email': email, 'password': password},
-    )).requireSuccess();
+    return DartEdgeAuthSignInResult.fromResponse(
+      await callKnownOperation(
+        operation: DartEdgeAuthOperation.signInEmail,
+        body: {'email': email, 'password': password},
+      ),
+    );
   }
 
-  Future<DartEdgeAuthApiResponse> getSession({bool post = false}) async {
-    return (await callKnownOperation(
+  Future<DartEdgeAuthSessionResult> getSession({
+    bool post = false,
+    Map<String, String> headers = const <String, String>{},
+  }) async {
+    return DartEdgeAuthSessionResult.fromResponse(
+      await callKnownOperation(
+        operation: post
+            ? DartEdgeAuthOperation.getSessionPost
+            : DartEdgeAuthOperation.getSession,
+        headers: headers,
+      ),
+    );
+  }
+
+  Future<DartEdgeAuthSessionResult?> tryGetSession({
+    bool post = false,
+    Map<String, String> headers = const <String, String>{},
+  }) async {
+    final response = await callKnownOperation(
       operation: post
           ? DartEdgeAuthOperation.getSessionPost
           : DartEdgeAuthOperation.getSession,
-    )).requireSuccess();
+      headers: headers,
+    );
+    if (!response.isSuccess) {
+      return null;
+    }
+    return DartEdgeAuthSessionResult.fromResponse(response);
   }
 
-  Future<DartEdgeAuthApiResponse> signOut() async {
-    return (await callKnownOperation(
-      operation: DartEdgeAuthOperation.signOut,
-    )).requireSuccess();
+  Future<DartEdgeAuthSuccessResult> signOut() async {
+    return DartEdgeAuthSuccessResult.fromResponse(
+      await callKnownOperation(operation: DartEdgeAuthOperation.signOut),
+    );
   }
 
-  Future<DartEdgeAuthApiResponse> updateUser({
+  Future<DartEdgeAuthStatusResult> updateUser({
     String? email,
     String? name,
     String? image,
@@ -206,28 +232,32 @@ final class DartEdgeAuthApi {
     String? role,
     Object? metadata,
   }) async {
-    return (await callKnownOperation(
-      operation: DartEdgeAuthOperation.updateUser,
-      body: {
-        if (email case final email?) 'email': email,
-        if (name case final name?) 'name': name,
-        if (image case final image?) 'image': image,
-        if (username case final username?) 'username': username,
-        if (displayUsername case final displayUsername?)
-          'displayUsername': displayUsername,
-        if (role case final role?) 'role': role,
-        if (metadata case final metadata?) 'metadata': metadata,
-      },
-    )).requireSuccess();
+    return DartEdgeAuthStatusResult.fromResponse(
+      await callKnownOperation(
+        operation: DartEdgeAuthOperation.updateUser,
+        body: {
+          if (email case final email?) 'email': email,
+          if (name case final name?) 'name': name,
+          if (image case final image?) 'image': image,
+          if (username case final username?) 'username': username,
+          if (displayUsername case final displayUsername?)
+            'displayUsername': displayUsername,
+          if (role case final role?) 'role': role,
+          if (metadata case final metadata?) 'metadata': metadata,
+        },
+      ),
+    );
   }
 
-  Future<DartEdgeAuthApiResponse> changeEmail({
+  Future<DartEdgeAuthStatusResult> changeEmail({
     required String newEmail,
   }) async {
-    return (await callKnownOperation(
-      operation: DartEdgeAuthOperation.changeEmail,
-      body: {'newEmail': newEmail},
-    )).requireSuccess();
+    return DartEdgeAuthStatusResult.fromResponse(
+      await callKnownOperation(
+        operation: DartEdgeAuthOperation.changeEmail,
+        body: {'newEmail': newEmail},
+      ),
+    );
   }
 
   _AsyncAuthRequest _requestForCall({

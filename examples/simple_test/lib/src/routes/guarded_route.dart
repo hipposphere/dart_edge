@@ -8,7 +8,7 @@ class GuardedRoute extends HttpRouteDefinition<dynamic, dynamic> {
   @override
   RouteOptions get options => RouteOptions(
     operationId: 'getGuarded',
-    success: ResponseSpec.json<Object?>(),
+    success: ResponseSpec.json(),
     errors: [ErrorResponse.unauthorized(code: 'unauthorized')],
   );
 

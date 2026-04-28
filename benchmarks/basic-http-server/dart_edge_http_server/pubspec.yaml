@@ -11,4 +11,3 @@ resolution: workspace
 dependencies:
   dart_edge_http_server:
     hosted: "https://registry.hippolabs.org/pub/internal-pub/"
-    version: 0.3.0

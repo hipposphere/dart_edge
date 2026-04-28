@@ -9,16 +9,12 @@ environment:
 resolution: workspace
 
 dependencies:
-  dart_edge_auth_db_benchmark_shared: 0.2.0
+  dart_edge_auth_db_benchmark_shared: any
   dart_edge_http_server:
     hosted: "https://registry.hippolabs.org/pub/internal-pub/"
-    version: 0.3.0
   dart_edge_auth:
     hosted: "https://registry.hippolabs.org/pub/internal-pub/"
-    version: 0.3.0
   dart_edge_s3_client:
     hosted: "https://registry.hippolabs.org/pub/internal-pub/"
-    version: 0.3.0
   dart_edge_sql:
     hosted: "https://registry.hippolabs.org/pub/internal-pub/"
-    version: 0.2.0

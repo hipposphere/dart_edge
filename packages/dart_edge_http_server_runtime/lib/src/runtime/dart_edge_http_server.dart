@@ -9,6 +9,7 @@ import '../native/dart_edge_native.dart';
 import 'compiled_route_table.dart';
 import 'dart_edge_codec.dart';
 import 'dart_edge_server.dart';
+import 'json_schema_route_id.dart';
 import 'open_api_document.dart';
 import 'request_decoder.dart';
 import 'response_writer.dart';
@@ -213,9 +214,9 @@ class DartEdge<TServices> extends Router<TServices> {
       request,
       codecs: _codecRegistry,
       nativeRequest: requestLease.nativeRequest,
-      paramsSchemaId: compiledRoute.options.params?.id,
-      querySchemaId: compiledRoute.options.query?.id,
-      headersSchemaId: compiledRoute.options.headers?.id,
+      paramsSchemaId: jsonSchemaRouteId(compiledRoute.options.params),
+      querySchemaId: jsonSchemaRouteId(compiledRoute.options.query),
+      headersSchemaId: jsonSchemaRouteId(compiledRoute.options.headers),
       body: compiledRoute.options.body,
     );
     final ctx = RequestContext<TServices>(

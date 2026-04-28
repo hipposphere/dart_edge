@@ -101,4 +101,82 @@ void main() {
       expect(operation['parameters'], contains(containsPair('name', 'id')));
     },
   );
+
+  test('emits inline route schemas without registered components', () {
+    final app = DartEdge<void>(services: () {});
+    app.post(
+      '/users/:id',
+      options: RouteOptions(
+        summary: 'Update one user.',
+        params: const JsonSchema.object(
+          properties: <String, JsonSchema>{
+            'id': JsonSchema.string(description: 'User identifier.'),
+          },
+          required: <String>['id'],
+        ),
+        query: const JsonSchema.object(
+          properties: <String, JsonSchema>{
+            'notify': JsonSchema.boolean(
+              description: 'Whether to send a notification.',
+            ),
+          },
+        ),
+        body: RequestBody.json(
+          schema: const JsonSchema.object(
+            properties: <String, JsonSchema>{'name': JsonSchema.string()},
+            required: <String>['name'],
+          ),
+        ),
+        success: ResponseSpec.json(
+          schema: const JsonSchema.object(
+            properties: <String, JsonSchema>{'id': JsonSchema.string()},
+            required: <String>['id'],
+          ),
+        ),
+      ),
+      handler: (_) => const {'id': 'user-1'},
+    );
+
+    final document = app.buildOpenApiDocumentJson();
+    expect(document, isNot(contains('components')));
+
+    final paths = document['paths']! as Map<String, Object?>;
+    final userPath = paths['/users/{id}']! as Map<String, Object?>;
+    final operation = userPath['post']! as Map<String, Object?>;
+    final parameters = operation['parameters']! as List<Object?>;
+
+    expect(
+      parameters,
+      contains(
+        allOf(
+          containsPair('name', 'id'),
+          containsPair('in', 'path'),
+          containsPair('description', 'User identifier.'),
+        ),
+      ),
+    );
+    expect(
+      parameters,
+      contains(
+        allOf(
+          containsPair('name', 'notify'),
+          containsPair('in', 'query'),
+          containsPair('description', 'Whether to send a notification.'),
+        ),
+      ),
+    );
+
+    final requestBody = operation['requestBody']! as Map<String, Object?>;
+    final requestContent = requestBody['content']! as Map<String, Object?>;
+    final requestJson =
+        requestContent['application/json']! as Map<String, Object?>;
+    expect(requestJson['schema'], containsPair('required', ['name']));
+
+    final responses = operation['responses']! as Map<String, Object?>;
+    final ok = responses['200']! as Map<String, Object?>;
+    final responseContent = ok['content']! as Map<String, Object?>;
+    final responseJson =
+        responseContent['application/json']! as Map<String, Object?>;
+    expect(responseJson['schema'], containsPair('required', ['id']));
+  });
 }

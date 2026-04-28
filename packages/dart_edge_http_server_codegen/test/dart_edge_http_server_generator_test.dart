@@ -11,13 +11,13 @@ void main() {
           operationId: 'createUser',
           summary: 'Create a user.',
           tags: const <String>['users'],
-          headers: const JsonSchemaRef<Object?>('RequestHeaders'),
-          body: RequestBody.json<Object?>(
-            ref: const JsonSchemaRef<Object?>('CreateUserInput'),
+          headers: const JsonSchema.ref('RequestHeaders'),
+          body: RequestBody.json(
+            schema: const JsonSchema.ref('CreateUserInput'),
           ),
-          success: ResponseSpec.json<Object?>(
+          success: ResponseSpec.json(
             status: 201,
-            ref: const JsonSchemaRef<Object?>('UserDto'),
+            schema: const JsonSchema.ref('UserDto'),
           ),
           errors: const <ErrorResponse>[
             ErrorResponse(status: 409, code: 'email_conflict'),
@@ -30,7 +30,7 @@ void main() {
             additionalImports: const ['package:example/models.dart'],
             schemas: const <JsonSchema>[
               JsonSchema.object(
-                ref: JsonSchemaRef<Object?>('CreateUserInput'),
+                id: 'CreateUserInput',
                 properties: <String, JsonSchema>{
                   'name': JsonSchema.string(),
                   'email': JsonSchema.string(format: 'email'),
@@ -40,7 +40,7 @@ void main() {
                 additionalProperties: false,
               ),
               JsonSchema.object(
-                ref: JsonSchemaRef<Object?>('UserDto'),
+                id: 'UserDto',
                 properties: <String, JsonSchema>{
                   'id': JsonSchema.string(),
                   'name': JsonSchema.string(),
@@ -85,7 +85,7 @@ void main() {
         expect(source, contains('CreateUserRoute(this.handler);'));
         expect(source, contains('final RouteOptions createUserRouteOptions'));
         expect(source, contains("operationId: 'createUser'"));
-        expect(source, contains("JsonSchemaRef<Object?>('CreateUserInput')"));
+        expect(source, contains("id: 'CreateUserInput'"));
         expect(source, isNot(contains('DartEdgeCodecRegistry')));
         expect(
           source,

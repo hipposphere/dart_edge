@@ -1,20 +1,20 @@
-import 'json_schema_ref.dart';
+import 'json_schema.dart';
 
 /// Declares the request body expected by a [RouteOptions].
 final class RequestBody {
-  const RequestBody._({required this.contentType, this.ref});
+  const RequestBody._({required this.contentType, this.schema});
 
   /// Expected request content type.
   final String contentType;
 
-  /// Optional schema reference used to validate or document the body.
-  final JsonSchemaRef<Object?>? ref;
+  /// Optional schema used to validate or document the body.
+  final JsonSchema? schema;
 
-  /// Declares a JSON request body backed by [ref].
-  static RequestBody json<T>({required JsonSchemaRef<T> ref}) {
+  /// Declares a JSON request body backed by [schema].
+  static RequestBody json({JsonSchema? schema}) {
     return RequestBody._(
       contentType: 'application/json; charset=utf-8',
-      ref: ref,
+      schema: schema,
     );
   }
 

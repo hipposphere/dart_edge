@@ -9,6 +9,11 @@ final class CalloEngineConfig {
     required this.testHost,
     required this.realm,
     required this.assistantUser,
+    required this.trunkId,
+    required this.trunkServerUri,
+    required this.trunkUsername,
+    required this.trunkPassword,
+    required this.trunkRealm,
     required this.testEndpointId,
     required this.testExtension,
     required this.testUsername,
@@ -34,6 +39,8 @@ final class CalloEngineConfig {
     final bindPort = _parsePort(env['SIP_BIND_PORT'], fallback: 5060);
     final testHost = env['SIP_TEST_HOST'] ?? '127.0.0.1';
     final testExtension = env['SIP_TEST_EXTENSION'] ?? '1000';
+    final trunkUsername = _firstPresent([env['SIP_TRUNK_USERNAME']]);
+    final trunkPassword = _firstPresent([env['SIP_TRUNK_PASSWORD']]);
     final rtpStartPort = _parsePort(env['SIP_RTP_START_PORT'], fallback: 40000);
     final rtpEndPort = _parsePort(env['SIP_RTP_END_PORT'], fallback: 40100);
     final startupJingleDuration = Duration(
@@ -48,12 +55,24 @@ final class CalloEngineConfig {
       testHost,
     ]);
 
+    if ((trunkUsername == null) != (trunkPassword == null)) {
+      throw StateError(
+        'Set both SIP_TRUNK_USERNAME and SIP_TRUNK_PASSWORD, or leave both '
+        'empty to run without an external SIP trunk.',
+      );
+    }
+
     return CalloEngineConfig(
       bindHost: bindHost,
       bindPort: bindPort,
       testHost: testHost,
       realm: env['SIP_REALM'] ?? testHost,
       assistantUser: env['CALLO_ASSISTANT_USER'] ?? 'assistant',
+      trunkId: env['SIP_TRUNK_ID'] ?? 'easybell',
+      trunkServerUri: env['SIP_TRUNK_SERVER_URI'] ?? 'sip:voip.easybell.de',
+      trunkUsername: trunkUsername,
+      trunkPassword: trunkPassword,
+      trunkRealm: env['SIP_TRUNK_REALM'] ?? 'voip.easybell.de',
       testEndpointId: env['SIP_TEST_ENDPOINT_ID'] ?? 'test-phone',
       testExtension: testExtension,
       testUsername: env['SIP_TEST_USERNAME'] ?? testExtension,
@@ -77,6 +96,11 @@ final class CalloEngineConfig {
   final String testHost;
   final String realm;
   final String assistantUser;
+  final String trunkId;
+  final String trunkServerUri;
+  final String? trunkUsername;
+  final String? trunkPassword;
+  final String trunkRealm;
   final String testEndpointId;
   final String testExtension;
   final String testUsername;
@@ -89,6 +113,26 @@ final class CalloEngineConfig {
   String get directSipUri => 'sip:$assistantUser@$testHost:$bindPort';
 
   String get registeredAssistantUri => 'sip:$assistantUser@$realm';
+
+  bool get hasSipTrunk => trunkUsername != null && trunkPassword != null;
+
+  List<SipTrunkConfig> get sipTrunks {
+    final username = trunkUsername;
+    final password = trunkPassword;
+    if (username == null || password == null) {
+      return const <SipTrunkConfig>[];
+    }
+    return [
+      SipTrunkConfig(
+        id: trunkId,
+        direction: SipTrunkDirection.bidirectional,
+        serverUri: trunkServerUri,
+        username: username,
+        password: password,
+        realm: trunkRealm,
+      ),
+    ];
+  }
 
   SipServerConfig get sipConfig => SipServerConfig(
     serverName: 'callo_engine',
@@ -120,6 +164,7 @@ final class CalloEngineConfig {
       rtpEndPort: rtpEndPort,
       externalAddress: externalAddress,
     ),
+    trunks: sipTrunks,
   );
 }
 

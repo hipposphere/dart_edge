@@ -13,20 +13,26 @@ final class DartEdgeAuthIdentity implements JsonEncodable {
     required this.response,
   });
 
-  /// Raw Better Auth session object.
-  final Map<String, Object?> session;
+  /// Resolved Better Auth session.
+  final DartEdgeAuthSession session;
 
-  /// Raw Better Auth user object.
-  final Map<String, Object?> user;
+  /// Resolved Better Auth user.
+  final DartEdgeAuthUser user;
 
-  /// Original Better Auth API response.
-  final DartEdgeAuthApiResponse response;
+  /// Original typed Better Auth API result.
+  final DartEdgeAuthSessionResult response;
+
+  /// Serialized Better Auth session object.
+  Map<String, Object?> get sessionJson => session.toJson();
+
+  /// Serialized Better Auth user object.
+  Map<String, Object?> get userJson => user.toJson();
 
   /// Resolved user id when present.
-  String? get userId => user['id'] as String?;
+  String get userId => user.id;
 
   /// Resolved user email when present.
-  String? get email => user['email'] as String?;
+  String? get email => user.email;
 
   @override
   Map<String, Object?> toJson() => {'session': session, 'user': user};
@@ -60,7 +66,6 @@ final class DartEdgeAuthGuard<TServices> implements Guard<TServices> {
   Future<GuardResult> authorize(RequestContext<TServices> ctx) async {
     final headers = _headersFor(ctx);
     final authorizationHeader = headers['authorization'];
-    print('AuthGuard: Authorization header: $authorizationHeader');
     final hasBearer =
         authorizationHeader != null &&
         authorizationHeader.startsWith('Bearer ');
@@ -69,11 +74,8 @@ final class DartEdgeAuthGuard<TServices> implements Guard<TServices> {
       return GuardResult.deny(_unauthorized(ctx));
     }
 
-    final response = auth.api.callKnownOperationSync(
-      operation: DartEdgeAuthOperation.getSession,
-      headers: headers,
-    );
-    final identity = _identityFrom(response);
+    final response = await auth.api.tryGetSession(headers: headers);
+    final identity = response == null ? null : _identityFrom(response);
     if (identity == null) {
       return GuardResult.deny(_unauthorized(ctx));
     }
@@ -100,25 +102,10 @@ final class DartEdgeAuthGuard<TServices> implements Guard<TServices> {
     );
   }
 
-  DartEdgeAuthIdentity? _identityFrom(DartEdgeAuthApiResponse response) {
-    if (!response.isSuccess) {
-      return null;
-    }
-
-    final jsonBody = response.jsonBody;
-    if (jsonBody is! Map<String, Object?>) {
-      return null;
-    }
-
-    final session = jsonBody['session'];
-    final user = jsonBody['user'];
-    if (session is! Map<String, Object?> || user is! Map<String, Object?>) {
-      return null;
-    }
-
+  DartEdgeAuthIdentity _identityFrom(DartEdgeAuthSessionResult response) {
     return DartEdgeAuthIdentity(
-      session: session,
-      user: user,
+      session: response.session,
+      user: response.user,
       response: response,
     );
   }

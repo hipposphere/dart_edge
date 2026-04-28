@@ -1,5 +1,3 @@
-import 'json_schema_ref.dart';
-
 enum JsonSchemaType {
   object('object'),
   array('array'),
@@ -16,20 +14,20 @@ enum JsonSchemaType {
 /// Typed JSON Schema model used by route metadata and installed registries.
 sealed class JsonSchema {
   const JsonSchema._({
-    this.ref,
+    this.id,
     this.title,
     this.description,
     this.nullable = false,
   });
 
   const factory JsonSchema.any({
-    JsonSchemaRef<Object?>? ref,
+    String? id,
     String? title,
     String? description,
   }) = JsonAnySchema;
 
   const factory JsonSchema.object({
-    JsonSchemaRef<Object?>? ref,
+    String? id,
     String? title,
     String? description,
     bool nullable,
@@ -39,7 +37,7 @@ sealed class JsonSchema {
   }) = JsonObjectSchema;
 
   const factory JsonSchema.array({
-    JsonSchemaRef<Object?>? ref,
+    String? id,
     String? title,
     String? description,
     bool nullable,
@@ -47,7 +45,7 @@ sealed class JsonSchema {
   }) = JsonArraySchema;
 
   const factory JsonSchema.string({
-    JsonSchemaRef<Object?>? ref,
+    String? id,
     String? title,
     String? description,
     bool nullable,
@@ -55,7 +53,7 @@ sealed class JsonSchema {
   }) = JsonStringSchema;
 
   const factory JsonSchema.integer({
-    JsonSchemaRef<Object?>? ref,
+    String? id,
     String? title,
     String? description,
     bool nullable,
@@ -63,7 +61,7 @@ sealed class JsonSchema {
   }) = JsonIntegerSchema;
 
   const factory JsonSchema.number({
-    JsonSchemaRef<Object?>? ref,
+    String? id,
     String? title,
     String? description,
     bool nullable,
@@ -71,7 +69,7 @@ sealed class JsonSchema {
   }) = JsonNumberSchema;
 
   const factory JsonSchema.boolean({
-    JsonSchemaRef<Object?>? ref,
+    String? id,
     String? title,
     String? description,
     bool nullable,
@@ -79,17 +77,16 @@ sealed class JsonSchema {
 
   const factory JsonSchema.ref(
     String ref, {
+    String? id,
     String? title,
     String? description,
   }) = JsonReferenceSchema;
 
-  const factory JsonSchema.raw(
-    Map<String, Object?> schema, {
-    JsonSchemaRef<Object?>? ref,
-  }) = JsonRawSchema;
+  const factory JsonSchema.raw(Map<String, Object?> schema, {String? id}) =
+      JsonRawSchema;
 
-  /// Optional stable id for top-level installed schemas.
-  final JsonSchemaRef<Object?>? ref;
+  /// Optional JSON Schema `$id`.
+  final String? id;
 
   /// Optional human-readable schema title.
   final String? title;
@@ -99,9 +96,6 @@ sealed class JsonSchema {
 
   /// Whether this schema also allows JSON `null`.
   final bool nullable;
-
-  /// Convenience alias for `ref.id`.
-  String? get id => ref?.id;
 
   /// Serializes this schema into a JSON-compatible map.
   Map<String, Object?> toJson() {
@@ -119,7 +113,7 @@ sealed class JsonSchema {
 abstract base class _JsonTypedSchema extends JsonSchema {
   const _JsonTypedSchema({
     required this.type,
-    super.ref,
+    super.id,
     super.title,
     super.description,
     super.nullable,
@@ -139,7 +133,7 @@ abstract base class _JsonTypedSchema extends JsonSchema {
 }
 
 final class JsonAnySchema extends JsonSchema {
-  const JsonAnySchema({super.ref, super.title, super.description}) : super._();
+  const JsonAnySchema({super.id, super.title, super.description}) : super._();
 
   @override
   Map<String, Object?> toJsonKeywords() => const <String, Object?>{};
@@ -147,7 +141,7 @@ final class JsonAnySchema extends JsonSchema {
 
 final class JsonObjectSchema extends _JsonTypedSchema {
   const JsonObjectSchema({
-    super.ref,
+    super.id,
     super.title,
     super.description,
     super.nullable = false,
@@ -177,7 +171,7 @@ final class JsonObjectSchema extends _JsonTypedSchema {
 
 final class JsonArraySchema extends _JsonTypedSchema {
   const JsonArraySchema({
-    super.ref,
+    super.id,
     super.title,
     super.description,
     super.nullable = false,
@@ -196,7 +190,7 @@ final class JsonArraySchema extends _JsonTypedSchema {
 
 final class JsonStringSchema extends _JsonTypedSchema {
   const JsonStringSchema({
-    super.ref,
+    super.id,
     super.title,
     super.description,
     super.nullable = false,
@@ -213,7 +207,7 @@ final class JsonStringSchema extends _JsonTypedSchema {
 
 final class JsonIntegerSchema extends _JsonTypedSchema {
   const JsonIntegerSchema({
-    super.ref,
+    super.id,
     super.title,
     super.description,
     super.nullable = false,
@@ -230,7 +224,7 @@ final class JsonIntegerSchema extends _JsonTypedSchema {
 
 final class JsonNumberSchema extends _JsonTypedSchema {
   const JsonNumberSchema({
-    super.ref,
+    super.id,
     super.title,
     super.description,
     super.nullable = false,
@@ -247,7 +241,7 @@ final class JsonNumberSchema extends _JsonTypedSchema {
 
 final class JsonBooleanSchema extends _JsonTypedSchema {
   const JsonBooleanSchema({
-    super.ref,
+    super.id,
     super.title,
     super.description,
     super.nullable = false,
@@ -258,21 +252,26 @@ final class JsonBooleanSchema extends _JsonTypedSchema {
 }
 
 final class JsonReferenceSchema extends JsonSchema {
-  const JsonReferenceSchema(this.targetRef, {super.title, super.description})
-    : super._();
+  const JsonReferenceSchema(
+    this.ref, {
+    super.id,
+    super.title,
+    super.description,
+  }) : super._();
 
-  final String targetRef;
+  final String ref;
 
   @override
-  Map<String, Object?> toJsonKeywords() => <String, Object?>{
-    r'$ref': targetRef,
-  };
+  Map<String, Object?> toJsonKeywords() => <String, Object?>{r'$ref': ref};
 }
 
 final class JsonRawSchema extends JsonSchema {
-  const JsonRawSchema(this.schema, {super.ref}) : super._();
+  const JsonRawSchema(this.schema, {super.id}) : super._();
 
   final Map<String, Object?> schema;
+
+  @override
+  String? get id => super.id ?? _stringValue(r'$id');
 
   @override
   String? get title => _stringValue('title');

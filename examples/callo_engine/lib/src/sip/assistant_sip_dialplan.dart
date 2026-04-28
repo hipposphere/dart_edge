@@ -14,7 +14,7 @@ final class AssistantSipDialplan implements SipDialplan {
   @override
   FutureOr<SipDialplanDecision> onInboundInvite(SipInboundInvite invite) {
     final invitedUser = sipUriUser(invite.toUri);
-    if (invitedUser != null && invitedUser != assistantUser) {
+    if (!_acceptsUser(invitedUser)) {
       return const SipDialplanDecision.reject(
         status: 404,
         reason: 'Unknown assistant extension',
@@ -26,6 +26,13 @@ final class AssistantSipDialplan implements SipDialplan {
   @override
   FutureOr<SipDialplanDecision> onOutboundCall(SipOutboundCallRequest request) {
     return SipDialplanDecision.routeToTrunk(trunkId: request.trunkId);
+  }
+
+  bool _acceptsUser(String? invitedUser) {
+    if (invitedUser == null) {
+      return true;
+    }
+    return assistantUser == '*' || invitedUser == assistantUser;
   }
 }
 

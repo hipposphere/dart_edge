@@ -3,7 +3,7 @@ import 'dart:io';
 Future<void> main(List<String> args) async {
   if (args.contains('--help') || args.contains('-h')) {
     stdout.writeln('''
-Runs build_runner for Dart Edge HTTP generated routes.
+Runs build_runner for Dart Edge HTTP code generation.
 
 Usage:
   dart run dart_edge_http_server_codegen:build [build_runner args]

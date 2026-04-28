@@ -34,7 +34,7 @@ final class DartEdgeSchemaMigrationsRow implements JsonEncodable {
   );
 
   static const jsonSchema = JsonSchema.object(
-    ref: schemaRef,
+    id: 'DartEdgeSchemaMigrationsRow',
     properties: <String, JsonSchema>{
       'version': JsonSchema.string(nullable: true),
       'name': JsonSchema.string(),
@@ -107,7 +107,7 @@ final class DartEdgeSchemaMigrationsInsert implements JsonEncodable {
   );
 
   static const jsonSchema = JsonSchema.object(
-    ref: schemaRef,
+    id: 'DartEdgeSchemaMigrationsInsert',
     properties: <String, JsonSchema>{
       'version': JsonSchema.string(nullable: true),
       'name': JsonSchema.string(),
@@ -180,7 +180,7 @@ final class DartEdgeSchemaMigrationsUpdate implements JsonEncodable {
   );
 
   static const jsonSchema = JsonSchema.object(
-    ref: schemaRef,
+    id: 'DartEdgeSchemaMigrationsUpdate',
     properties: <String, JsonSchema>{
       'version': JsonSchema.string(nullable: true),
       'name': JsonSchema.string(),

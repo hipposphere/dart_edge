@@ -12,7 +12,7 @@ final class UploadMultipartRoute
   RouteOptions get options => RouteOptions(
     operationId: 'benchmarkUploadMultipart',
     body: RequestBody.multipartFormData(),
-    success: ResponseSpec.json<Object?>(),
+    success: ResponseSpec.json(),
     errors: [
       ErrorResponse(status: HttpStatus.badRequest, code: 'invalid_upload'),
       ErrorResponse.unauthorized(code: 'unauthorized'),

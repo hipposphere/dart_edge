@@ -381,19 +381,19 @@ This is the normalized reusable route form:
 This should stay the clearest low-level abstraction for advanced routes,
 reusable definitions, and framework-level clarity.
 
-### 3. Generated typed routes
+### 3. Generated schema models and tooling
 
 This is the intended build-time expansion path:
 
-- annotated source
-- generated `RouteOptions`
+- schema-derived Dart model types
 - generated schema refs and registries
-- generated codec registries
-- generated route registries
+- optional tooling that emits normalized route/client artifacts from explicit
+  specs
 - optional generated clients
 
-This mode matters because manual registry wiring is workable today, but it is
-not the best long-term developer experience for larger apps.
+This mode should not force an app-level annotated route syntax. Manual registry
+wiring is workable today, but generated schema types can still remove the most
+repetitive contract plumbing for larger apps.
 
 ## Schema, Codecs, OpenAPI, And Clients
 

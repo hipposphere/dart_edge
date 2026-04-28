@@ -10,5 +10,4 @@ environment:
 dependencies:
   dart_edge_sip:
     hosted: "https://registry.hippolabs.org/pub/internal-pub/"
-    version: ^0.3.0
   googleai_dart: ^6.2.0

@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:dart_edge_core/dart_edge_core.dart';
 
 import 'dart_edge_codec.dart';
+import 'json_schema_route_id.dart';
 import 'native_request.dart';
 import 'transport_request.dart';
 
@@ -86,5 +87,5 @@ Object? _decodeBody(
     _ => utf8.decode(payload),
   };
 
-  return codecs.decodeValueOrRaw(body.ref?.id, decoded);
+  return codecs.decodeValueOrRaw(jsonSchemaRouteId(body.schema), decoded);
 }

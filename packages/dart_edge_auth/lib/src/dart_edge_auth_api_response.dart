@@ -18,13 +18,6 @@ final class DartEdgeAuthApiResponse {
 
   bool get isSuccess => status >= 200 && status < 300;
 
-  DartEdgeAuthApiResponse requireSuccess() {
-    if (isSuccess) {
-      return this;
-    }
-    throw DartEdgeAuthApiException(this);
-  }
-
   Map<String, Object?> get jsonObject => switch (jsonBody) {
     final Map<String, Object?> body => body,
     null => throw StateError('Auth response body is empty.'),

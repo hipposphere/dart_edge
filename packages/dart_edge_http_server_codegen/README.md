@@ -1,38 +1,33 @@
 # dart_edge_http_server_codegen
 
-Build-time annotations and generator-facing APIs for Dart Edge HTTP server
-generation.
+Build-time JSON Schema and generator-facing APIs for Dart Edge HTTP.
 
-This package provides a `build_runner` builder plus the lower-level generator
-APIs behind it. The builder reads annotated Dart libraries and emits
-`*.g.dart` part files containing `RouteOptions` objects, JSON Schema
-registries, runtime codec registry factories, generated route wrappers, and
-optional typed clients.
+This package provides a `build_runner` builder for schema-inferred Dart model
+types plus lower-level generator APIs for tooling that already has normalized
+HTTP route metadata.
 
 ## Core Concepts
 
-- `TypedJsonRoute` declares HTTP metadata for a generated JSON route
-- `PathParam`, `QueryParam`, and `HeaderParam` describe how parameters bind
-- `RouteBody`, `SuccessResponse`, and `RouteErrorResponse` describe payload and
-  response metadata
-- `DartEdgeHttpServerGenerator` emits normalized server artifacts from
-  annotation-derived route specs
+- `FromSchema` generates a Dart model class from a const `JsonSchema`
+- `JsonSchemaRegistry` references can be supplied to validate `$ref` usage
+- `DartEdgeHttpServerGenerator` emits server artifacts from normalized route
+  specs
 - `DartEdgeClientGenerator` emits Dart client classes from normalized route
   metadata
-- `DartEdgeGeneratedClientBase` and the client transport/codec types provide
-  the runtime support surface for generated clients
+- `DartEdgeGeneratedClientBase` and the client transport types provide the
+  runtime support surface for generated clients
 
-## build_runner Usage
+## Schema Model Generation
 
 Add this package and `build_runner` to an app package:
 
 ```yaml
 dev_dependencies:
   build_runner: ^2.14.1
-  dart_edge_http_server_codegen: ^0.2.0
+  dart_edge_http_server_codegen: ^0.3.1
 ```
 
-Annotate top-level route functions and include the generated part:
+Define const schemas and type aliases:
 
 ```dart
 import 'package:dart_edge_http_server_codegen/dart_edge_http_server_codegen.dart';
@@ -40,19 +35,22 @@ import 'package:dart_edge_http_server_runtime/dart_edge_http_server_runtime.dart
 
 part 'users.g.dart';
 
-@TypedJsonRoute(
-  method: HttpMethod.post,
-  path: '/users/<id>',
-  operationId: 'createUser',
-  summary: 'Create a user.',
-)
-Future<UserDto> createUser(
-  @PathParam('id') String id,
-  @RouteBody() CreateUserInput body,
-  @HeaderParam('x-request-id') String? requestId,
-) async {
-  return UserDto(id: id, name: body.name, email: body.email);
-}
+const createUserInputSchema = JsonSchema.object(
+  id: 'CreateUserInput',
+  properties: <String, JsonSchema>{
+    'name': JsonSchema.string(),
+    'email': JsonSchema.string(format: 'email'),
+  },
+  required: <String>['name', 'email'],
+  additionalProperties: false,
+);
+
+const userSchemas = JsonSchemaRegistry(
+  schemas: <JsonSchema>[createUserInputSchema],
+);
+
+@FromSchema(createUserInputSchema, registry: userSchemas)
+typedef CreateUserInput = _$CreateUserInput;
 ```
 
 Run generation:
@@ -61,54 +59,45 @@ Run generation:
 dart run dart_edge_http_server_codegen:build
 ```
 
-The command is a thin wrapper around `build_runner`, so normal build_runner
-flags still work:
+The generated part emits the private backing class used by the public typedef:
 
-```sh
-dart run dart_edge_http_server_codegen:build --delete-conflicting-outputs
-dart run dart_edge_http_server_codegen:build watch
+```dart
+final class _$CreateUserInput {
+  const _$CreateUserInput({required this.name, required this.email});
+
+  static const schemaRef =
+      JsonSchemaRef<CreateUserInput>('CreateUserInput');
+
+  final String name;
+  final String email;
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    'name': name,
+    'email': email,
+  };
+
+  static CreateUserInput fromJson(Object? value) {
+    // ...
+  }
+}
 ```
-
-The generated part exposes:
-
-- `$generatedSchemas`
-- `$generatedCodecs(...)`
-- `$generatedRoutes<TServices>(...)`
-- route options constants such as `createUserRouteOptions`
-
-If a client should be emitted from the same route graph, configure the builder:
-
-```yaml
-targets:
-  $default:
-    builders:
-      dart_edge_http_server_codegen:dart_edge_http_server:
-        options:
-          client_class_name: UsersClient
-```
-
-The current builder supports top-level `@TypedJsonRoute` functions, body
-schemas from class fields, success schemas from return types, and object
-schemas for annotated path/query/header parameters. App code still supplies the
-actual runtime codecs because serialization is application-specific.
 
 ## Server Artifact Generation
 
 `DartEdgeHttpServerGenerator` is intentionally built around normalized specs.
-The `build_runner` builder creates these specs from annotations, while tests and
-custom tooling can construct them directly.
+Custom tooling can construct these specs directly.
 
 ```dart
 final source = const DartEdgeHttpServerGenerator().generate(
   DartEdgeHttpServerLibrarySpec(
     clientClassName: 'UsersClient',
-    schemas: userSchemas,
+    schemas: userSchemas.schemas,
     routes: [
       DartEdgeHttpRouteSpec(
         routeClassName: 'CreateUserRoute',
         method: HttpMethod.post,
-        path: '/users/<id>',
-        contract: createUserRouteOptions,
+        path: '/users',
+        options: createUserRouteOptions,
         successType: 'UserDto',
         bodyType: 'CreateUserInput',
       ),
@@ -117,40 +106,8 @@ final source = const DartEdgeHttpServerGenerator().generate(
 );
 ```
 
-The emitted library includes:
-
-- `RouteOptions` objects
-- generated `HttpRouteDefinition` wrappers
-- a generated function that mounts those wrappers on a `Router`
-- a `JsonSchemaRegistry` with stable ids
-- an optional generated client class
-
 ## Client Generation
 
-`dart_edge_http_server_codegen` also contains the client-generation slice for HTTP
-routes. It is intentionally built around normalized route options plus
-schema-id keyed codecs, not runtime reflection.
-
-```dart
-final source = const DartEdgeClientGenerator().generate(
-  DartEdgeClientLibrarySpec(
-    className: 'UsersClient',
-    operations: [
-      DartEdgeClientOperation(
-        method: HttpMethod.post,
-        path: '/users/<id>',
-        contract: userRouteOptions,
-        successType: 'UserDto',
-        paramsType: 'UserPath',
-        queryType: 'GetUserQuery',
-      ),
-    ],
-  ),
-);
-```
-
-The generated client class extends `DartEdgeGeneratedClientBase` and uses:
-
-- `DartEdgeClientTransport` for outbound HTTP
-- `DartEdgeCodecRegistry` for schema-backed request/response conversion
-- `RouteOptions` metadata for method, path, content type, and status handling
+`dart_edge_http_server_codegen` also contains the client-generation slice for
+HTTP routes. It is intentionally built around normalized route options and
+schema ids, not runtime reflection.

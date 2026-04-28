@@ -34,7 +34,7 @@ final class NotesRow implements JsonEncodable {
   static const schemaRef = JsonSchemaRef<NotesRow>('NotesRow');
 
   static const jsonSchema = JsonSchema.object(
-    ref: schemaRef,
+    id: 'NotesRow',
     properties: <String, JsonSchema>{
       'id': JsonSchema.integer(nullable: true),
       'title': JsonSchema.string(),
@@ -120,7 +120,7 @@ final class NotesInsert implements JsonEncodable {
   static const schemaRef = JsonSchemaRef<NotesInsert>('NotesInsert');
 
   static const jsonSchema = JsonSchema.object(
-    ref: schemaRef,
+    id: 'NotesInsert',
     properties: <String, JsonSchema>{
       'id': JsonSchema.integer(nullable: true),
       'title': JsonSchema.string(),
@@ -212,7 +212,7 @@ final class NotesUpdate implements JsonEncodable {
   static const schemaRef = JsonSchemaRef<NotesUpdate>('NotesUpdate');
 
   static const jsonSchema = JsonSchema.object(
-    ref: schemaRef,
+    id: 'NotesUpdate',
     properties: <String, JsonSchema>{
       'id': JsonSchema.integer(nullable: true),
       'title': JsonSchema.string(),

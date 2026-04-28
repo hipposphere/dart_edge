@@ -350,12 +350,15 @@ void main() {
       guards: [
         HandlerGuard<void>(
           debugName: 'denySocket',
-          handler: (_) => GuardResult.deny(
-            RawResponse.text(
-              status: HttpStatus.forbidden,
-              body: 'socket blocked',
-            ),
-          ),
+          handler: (_) async {
+            await Future<void>.delayed(const Duration(milliseconds: 1));
+            return GuardResult.deny(
+              RawResponse.text(
+                status: HttpStatus.forbidden,
+                body: 'socket blocked',
+              ),
+            );
+          },
         ),
       ],
       onConnect: (_) async {},
@@ -410,6 +413,38 @@ void main() {
     )).close();
     expect(response.statusCode, HttpStatus.unauthorized);
     expect(await utf8.decoder.bind(response).join(), 'blocked');
+  });
+
+  test('awaits async route guards before the handler', () async {
+    final app = DartEdge<void>(services: () {});
+    app.get(
+      '/async-guarded',
+      guards: [
+        HandlerGuard<void>(
+          debugName: 'asyncAllow',
+          handler: (ctx) async {
+            await Future<void>.delayed(const Duration(milliseconds: 1));
+            ctx.put<String>('guarded');
+            return const GuardResult.allow();
+          },
+        ),
+      ],
+      handler: (ctx) => ctx.require<String>(),
+    );
+
+    final server = await app.listen(port: 0);
+    final client = HttpClient();
+
+    addTearDown(() async {
+      client.close(force: true);
+      await server.close();
+    });
+
+    final response = await (await client.getUrl(
+      Uri.http('127.0.0.1:${server.port}', '/async-guarded'),
+    )).close();
+    expect(response.statusCode, HttpStatus.ok);
+    expect(await utf8.decoder.bind(response).join(), '"guarded"');
   });
 
   test('runs inline helper and explicit contract guards', () async {

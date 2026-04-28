@@ -1,0 +1,723 @@
+import 'dart:convert';
+
+import 'package:analyzer/dart/constant/value.dart';
+import 'package:analyzer/dart/element/element.dart';
+import 'package:dart_edge_http_server_runtime/dart_edge_http_server_runtime.dart';
+import 'package:source_gen/source_gen.dart';
+
+/// Build-time description of a model generated from a JSON Schema.
+final class FromSchemaModelSpec {
+  const FromSchemaModelSpec({
+    required this.publicName,
+    required this.backingClassName,
+    required this.schema,
+    required this.schemaId,
+  });
+
+  final String publicName;
+  final String backingClassName;
+  final JsonObjectSchema schema;
+  final String schemaId;
+}
+
+FromSchemaModelSpec buildFromSchemaModel(
+  Element element,
+  ConstantReader reader,
+) {
+  if (element is! TypeAliasElement) {
+    throw InvalidGenerationSourceError(
+      '@FromSchema can only be used on type aliases.',
+      element: element,
+    );
+  }
+
+  if (element.typeParameters.isNotEmpty) {
+    throw InvalidGenerationSourceError(
+      '@FromSchema does not support generic type aliases yet.',
+      element: element,
+    );
+  }
+
+  final schema = jsonSchemaFromDartObject(
+    reader.read('schema').objectValue,
+    element: element,
+  );
+
+  if (schema is! JsonObjectSchema) {
+    throw InvalidGenerationSourceError(
+      '@FromSchema currently supports object schemas only.',
+      element: element,
+    );
+  }
+
+  final registryReader = reader.read('registry');
+  if (!registryReader.isNull) {
+    final registry = _jsonSchemaRegistryFromDartObject(
+      registryReader.objectValue,
+      element: element,
+    );
+    _validateSchemaReferences(schema, registry, element);
+  }
+
+  final publicName = element.displayName;
+  return FromSchemaModelSpec(
+    publicName: publicName,
+    backingClassName: '_\$$publicName',
+    schema: schema,
+    schemaId: schema.id ?? publicName,
+  );
+}
+
+JsonSchema jsonSchemaFromDartObject(
+  DartObject object, {
+  required Element element,
+}) {
+  final typeName = object.type?.element?.name;
+
+  return switch (typeName) {
+    'JsonAnySchema' => JsonSchema.any(
+      id: _stringField(object, 'id'),
+      title: _stringField(object, 'title'),
+      description: _stringField(object, 'description'),
+    ),
+    'JsonObjectSchema' => JsonSchema.object(
+      id: _stringField(object, 'id'),
+      title: _stringField(object, 'title'),
+      description: _stringField(object, 'description'),
+      nullable: _boolField(object, 'nullable') ?? false,
+      properties: _schemaMapField(object, 'properties', element: element),
+      required: _stringListField(object, 'required'),
+      additionalProperties: _boolField(object, 'additionalProperties'),
+    ),
+    'JsonArraySchema' => JsonSchema.array(
+      id: _stringField(object, 'id'),
+      title: _stringField(object, 'title'),
+      description: _stringField(object, 'description'),
+      nullable: _boolField(object, 'nullable') ?? false,
+      items: switch (_field(object, 'items')) {
+        final items? when !items.isNull => jsonSchemaFromDartObject(
+          items,
+          element: element,
+        ),
+        _ => null,
+      },
+    ),
+    'JsonStringSchema' => JsonSchema.string(
+      id: _stringField(object, 'id'),
+      title: _stringField(object, 'title'),
+      description: _stringField(object, 'description'),
+      nullable: _boolField(object, 'nullable') ?? false,
+      format: _stringField(object, 'format'),
+    ),
+    'JsonIntegerSchema' => JsonSchema.integer(
+      id: _stringField(object, 'id'),
+      title: _stringField(object, 'title'),
+      description: _stringField(object, 'description'),
+      nullable: _boolField(object, 'nullable') ?? false,
+      format: _stringField(object, 'format'),
+    ),
+    'JsonNumberSchema' => JsonSchema.number(
+      id: _stringField(object, 'id'),
+      title: _stringField(object, 'title'),
+      description: _stringField(object, 'description'),
+      nullable: _boolField(object, 'nullable') ?? false,
+      format: _stringField(object, 'format'),
+    ),
+    'JsonBooleanSchema' => JsonSchema.boolean(
+      id: _stringField(object, 'id'),
+      title: _stringField(object, 'title'),
+      description: _stringField(object, 'description'),
+      nullable: _boolField(object, 'nullable') ?? false,
+    ),
+    'JsonReferenceSchema' => JsonSchema.ref(
+      _stringField(object, 'ref') ?? '',
+      id: _stringField(object, 'id'),
+      title: _stringField(object, 'title'),
+      description: _stringField(object, 'description'),
+    ),
+    'JsonRawSchema' => JsonSchema.raw(
+      _objectMapField(object, 'schema', element: element),
+      id: _stringField(object, 'id'),
+    ),
+    _ => throw InvalidGenerationSourceError(
+      '@FromSchema expected a const JsonSchema value, got $typeName.',
+      element: element,
+    ),
+  };
+}
+
+String generateFromSchemaModels(List<FromSchemaModelSpec> models) {
+  final buffer = StringBuffer();
+  for (final model in models) {
+    if (buffer.isNotEmpty) {
+      buffer.writeln();
+    }
+    _writeModel(buffer, model);
+  }
+  return buffer.toString();
+}
+
+void _writeModel(StringBuffer buffer, FromSchemaModelSpec model) {
+  final fields = _modelFields(model);
+
+  buffer
+    ..writeln('final class ${model.backingClassName} {')
+    ..writeln('  const ${model.backingClassName}({');
+
+  for (final field in fields) {
+    final required = field.requiredParameter ? 'required ' : '';
+    buffer.writeln('    ${required}this.${field.name},');
+  }
+
+  buffer
+    ..writeln('  });')
+    ..writeln()
+    ..writeln(
+      '  static const schemaRef = '
+      'JsonSchemaRef<${model.publicName}>(${_dartString(model.schemaId)});',
+    );
+
+  for (final field in fields) {
+    buffer
+      ..writeln()
+      ..writeln('  final ${field.dartType} ${field.name};');
+  }
+
+  buffer
+    ..writeln()
+    ..writeln('  Map<String, Object?> toJson() => <String, Object?>{');
+
+  for (final field in fields) {
+    buffer.writeln(
+      '    ${_dartString(field.wireName)}: '
+      '${_encodeValue(field.schema, field.name, nullable: field.nullable)},',
+    );
+  }
+
+  buffer
+    ..writeln('  };')
+    ..writeln()
+    ..writeln('  static ${model.publicName} fromJson(Object? value) {')
+    ..writeln('    final json = value! as Map<String, Object?>;')
+    ..writeln('    return ${model.publicName}(');
+
+  for (final field in fields) {
+    buffer.writeln(
+      '      ${field.name}: '
+      '${_decodeValue(field.schema, "json[${_dartString(field.wireName)}]", nullable: field.nullable)},',
+    );
+  }
+
+  buffer
+    ..writeln('    );')
+    ..writeln('  }')
+    ..writeln('}');
+}
+
+List<_SchemaFieldSpec> _modelFields(FromSchemaModelSpec model) {
+  final fields = <_SchemaFieldSpec>[];
+  final fieldNames = <String>{};
+  final required = model.schema.required.toSet();
+
+  for (final entry in model.schema.properties.entries) {
+    final fieldName = _fieldName(entry.key);
+    if (!fieldNames.add(fieldName)) {
+      throw InvalidGenerationSourceError(
+        'Schema ${model.schemaId} contains duplicate Dart field name '
+        '$fieldName.',
+      );
+    }
+
+    final requiredParameter = required.contains(entry.key);
+    final nullable = !requiredParameter || entry.value.nullable;
+    fields.add(
+      _SchemaFieldSpec(
+        wireName: entry.key,
+        name: fieldName,
+        dartType: _schemaDartType(entry.value, nullable: nullable),
+        schema: entry.value,
+        requiredParameter: requiredParameter,
+        nullable: nullable,
+      ),
+    );
+  }
+
+  return fields;
+}
+
+String _schemaDartType(JsonSchema schema, {required bool nullable}) {
+  final type = switch (schema) {
+    JsonStringSchema() => 'String',
+    JsonIntegerSchema() => 'int',
+    JsonNumberSchema() => 'num',
+    JsonBooleanSchema() => 'bool',
+    JsonArraySchema(:final items) =>
+      'List<${items == null ? 'Object?' : _schemaDartType(items, nullable: items.nullable)}>',
+    JsonReferenceSchema(:final ref) => _typeNameForSchemaRef(ref) ?? 'Object?',
+    JsonObjectSchema() || JsonRawSchema() => 'Map<String, Object?>',
+    JsonAnySchema() => 'Object?',
+    _ => 'Object?',
+  };
+
+  if (!nullable || type.endsWith('?')) {
+    return type;
+  }
+  return '$type?';
+}
+
+String _decodeValue(
+  JsonSchema schema,
+  String source, {
+  required bool nullable,
+}) {
+  return switch (schema) {
+    JsonStringSchema() =>
+      nullable ? '$source as String?' : '$source! as String',
+    JsonIntegerSchema() => nullable ? '$source as int?' : '$source! as int',
+    JsonNumberSchema() => nullable ? '$source as num?' : '$source! as num',
+    JsonBooleanSchema() => nullable ? '$source as bool?' : '$source! as bool',
+    JsonArraySchema(:final items) => _decodeArrayValue(
+      items,
+      source,
+      nullable: nullable,
+    ),
+    JsonReferenceSchema(:final ref) => _decodeReferenceValue(
+      ref,
+      source,
+      nullable: nullable,
+    ),
+    JsonObjectSchema() || JsonRawSchema() =>
+      nullable
+          ? '$source == null ? null : Map<String, Object?>.from($source as Map)'
+          : 'Map<String, Object?>.from($source! as Map)',
+    JsonAnySchema() => source,
+    _ => source,
+  };
+}
+
+String _decodeArrayValue(
+  JsonSchema? items,
+  String source, {
+  required bool nullable,
+}) {
+  final itemExpression = items == null
+      ? 'item'
+      : _decodeValue(items, 'item', nullable: items.nullable);
+
+  if (nullable) {
+    return '($source as List<Object?>?)'
+        '?.map((item) => $itemExpression)'
+        '.toList()';
+  }
+
+  return '($source! as List<Object?>)'
+      '.map((item) => $itemExpression)'
+      '.toList()';
+}
+
+String _decodeReferenceValue(
+  String ref,
+  String source, {
+  required bool nullable,
+}) {
+  final typeName = _typeNameForSchemaRef(ref);
+  if (typeName == null) {
+    return source;
+  }
+
+  if (nullable) {
+    return '$source == null ? null : $typeName.fromJson($source)';
+  }
+  return '$typeName.fromJson($source)';
+}
+
+String _encodeValue(
+  JsonSchema schema,
+  String source, {
+  required bool nullable,
+}) {
+  return switch (schema) {
+    JsonArraySchema(:final items) => _encodeArrayValue(
+      items,
+      source,
+      nullable: nullable,
+    ),
+    JsonReferenceSchema(:final ref) => _encodeReferenceValue(
+      ref,
+      source,
+      nullable: nullable,
+    ),
+    _ => source,
+  };
+}
+
+String _encodeArrayValue(
+  JsonSchema? items,
+  String source, {
+  required bool nullable,
+}) {
+  final itemExpression = items == null
+      ? 'item'
+      : _encodeValue(items, 'item', nullable: items.nullable);
+  final receiver = nullable ? '$source?' : source;
+  return '$receiver.map((item) => $itemExpression).toList()';
+}
+
+String _encodeReferenceValue(
+  String ref,
+  String source, {
+  required bool nullable,
+}) {
+  final typeName = _typeNameForSchemaRef(ref);
+  if (typeName == null) {
+    return source;
+  }
+  return nullable ? '$source?.toJson()' : '$source.toJson()';
+}
+
+JsonSchemaRegistry _jsonSchemaRegistryFromDartObject(
+  DartObject object, {
+  required Element element,
+}) {
+  final schemas = _field(object, 'schemas')?.toListValue();
+  if (schemas == null) {
+    throw InvalidGenerationSourceError(
+      '@FromSchema expected registry to be a const JsonSchemaRegistry.',
+      element: element,
+    );
+  }
+
+  return JsonSchemaRegistry(
+    schemas: [
+      for (final schema in schemas)
+        jsonSchemaFromDartObject(schema, element: element),
+    ],
+  );
+}
+
+void _validateSchemaReferences(
+  JsonSchema schema,
+  JsonSchemaRegistry registry,
+  Element element,
+) {
+  for (final ref in _schemaRefs(schema)) {
+    final id = _schemaIdFromReference(ref);
+    if (id != null && registry.schemaFor(id) == null) {
+      throw InvalidGenerationSourceError(
+        'Schema reference $ref is not present in the supplied registry.',
+        element: element,
+      );
+    }
+  }
+}
+
+Iterable<String> _schemaRefs(JsonSchema schema) sync* {
+  switch (schema) {
+    case JsonObjectSchema(:final properties):
+      for (final property in properties.values) {
+        yield* _schemaRefs(property);
+      }
+    case JsonArraySchema(:final items):
+      if (items != null) {
+        yield* _schemaRefs(items);
+      }
+    case JsonReferenceSchema(:final ref):
+      yield ref;
+    case JsonRawSchema() || JsonAnySchema() || JsonStringSchema():
+    case JsonIntegerSchema() || JsonNumberSchema() || JsonBooleanSchema():
+    case _:
+  }
+}
+
+Map<String, JsonSchema> _schemaMapField(
+  DartObject object,
+  String name, {
+  required Element element,
+}) {
+  final value = _field(object, name);
+  final map = value?.toMapValue();
+  if (map == null) {
+    return const <String, JsonSchema>{};
+  }
+
+  return <String, JsonSchema>{
+    for (final entry in map.entries)
+      _requiredStringObject(entry.key, element: element):
+          jsonSchemaFromDartObject(entry.value!, element: element),
+  };
+}
+
+Map<String, Object?> _objectMapField(
+  DartObject object,
+  String name, {
+  required Element element,
+}) {
+  final map = _field(object, name)?.toMapValue();
+  if (map == null) {
+    return const <String, Object?>{};
+  }
+  return _objectMap(map, element: element);
+}
+
+Map<String, Object?> _objectMap(
+  Map<DartObject?, DartObject?> map, {
+  required Element element,
+}) {
+  return <String, Object?>{
+    for (final entry in map.entries)
+      _requiredStringObject(entry.key, element: element): _objectValue(
+        entry.value,
+        element: element,
+      ),
+  };
+}
+
+Object? _objectValue(DartObject? object, {required Element element}) {
+  if (object == null || object.isNull) {
+    return null;
+  }
+  if (object.toStringValue() case final value?) {
+    return value;
+  }
+  if (object.toBoolValue() case final value?) {
+    return value;
+  }
+  if (object.toIntValue() case final value?) {
+    return value;
+  }
+  if (object.toDoubleValue() case final value?) {
+    return value;
+  }
+  if (object.toListValue() case final values?) {
+    return [for (final value in values) _objectValue(value, element: element)];
+  }
+  if (object.toMapValue() case final map?) {
+    return _objectMap(map, element: element);
+  }
+  throw InvalidGenerationSourceError(
+    'Unsupported raw JSON Schema value ${object.type}.',
+    element: element,
+  );
+}
+
+List<String> _stringListField(DartObject object, String name) {
+  return [
+    for (final value
+        in _field(object, name)?.toListValue() ?? const <DartObject>[])
+      if (value.toStringValue() case final string?) string,
+  ];
+}
+
+String? _stringField(DartObject object, String name) {
+  final value = _field(object, name);
+  if (value == null || value.isNull) {
+    return null;
+  }
+  return value.toStringValue();
+}
+
+bool? _boolField(DartObject object, String name) {
+  final value = _field(object, name);
+  if (value == null || value.isNull) {
+    return null;
+  }
+  return value.toBoolValue();
+}
+
+DartObject? _field(DartObject object, String name) {
+  final field = object.getField(name);
+  if (field != null) {
+    return field;
+  }
+
+  final invocation = object.constructorInvocation;
+  if (invocation == null) {
+    return null;
+  }
+
+  if (invocation.namedArguments[name] case final value?) {
+    return value;
+  }
+
+  if ((name == 'ref' || name == 'schema') &&
+      invocation.positionalArguments.isNotEmpty) {
+    return invocation.positionalArguments.first;
+  }
+
+  return null;
+}
+
+String _requiredStringObject(DartObject? object, {required Element element}) {
+  final value = object?.toStringValue();
+  if (value == null) {
+    throw InvalidGenerationSourceError(
+      'JSON Schema map keys must be strings.',
+      element: element,
+    );
+  }
+  return value;
+}
+
+String? _typeNameForSchemaRef(String ref) {
+  final id = _schemaIdFromReference(ref);
+  if (id == null) {
+    return null;
+  }
+  return _upperCamel(id);
+}
+
+String? _schemaIdFromReference(String ref) {
+  const componentPrefix = '#/components/schemas/';
+  if (ref.startsWith(componentPrefix)) {
+    return ref.substring(componentPrefix.length);
+  }
+  if (ref.startsWith('#/') || ref.contains('://')) {
+    return null;
+  }
+  return ref;
+}
+
+String _fieldName(String wireName) {
+  if (_validIdentifier(wireName) &&
+      !_dartKeywords.contains(wireName) &&
+      !wireName.startsWith('_')) {
+    return wireName;
+  }
+
+  final parts = _identifierParts(wireName);
+  if (parts.isEmpty) {
+    return 'field';
+  }
+
+  final first = parts.first.toLowerCase();
+  final rest = parts.skip(1).map(_capitalize).join();
+  var name = '$first$rest';
+  if (name.isEmpty || RegExp(r'^[0-9]').hasMatch(name)) {
+    name = 'field${_capitalize(name)}';
+  }
+  if (_dartKeywords.contains(name) || name.startsWith('_')) {
+    return '${name}Value';
+  }
+  return name;
+}
+
+String _upperCamel(String value) {
+  if (_validIdentifier(value) &&
+      !_dartKeywords.contains(value) &&
+      RegExp(r'^[A-Z]').hasMatch(value)) {
+    return value;
+  }
+
+  final parts = _identifierParts(value);
+  if (parts.isEmpty) {
+    return 'GeneratedSchema';
+  }
+  return parts.map(_capitalize).join();
+}
+
+List<String> _identifierParts(String value) {
+  return value
+      .split(RegExp(r'[^A-Za-z0-9]+'))
+      .where((part) => part.isNotEmpty)
+      .toList(growable: false);
+}
+
+String _capitalize(String value) {
+  if (value.isEmpty) {
+    return value;
+  }
+  return '${value[0].toUpperCase()}${value.substring(1)}';
+}
+
+bool _validIdentifier(String value) {
+  return RegExp(r'^[A-Za-z$][A-Za-z0-9$]*$').hasMatch(value);
+}
+
+String _dartString(String value) => jsonEncode(value);
+
+final class _SchemaFieldSpec {
+  const _SchemaFieldSpec({
+    required this.wireName,
+    required this.name,
+    required this.dartType,
+    required this.schema,
+    required this.requiredParameter,
+    required this.nullable,
+  });
+
+  final String wireName;
+  final String name;
+  final String dartType;
+  final JsonSchema schema;
+  final bool requiredParameter;
+  final bool nullable;
+}
+
+const _dartKeywords = <String>{
+  'abstract',
+  'as',
+  'assert',
+  'async',
+  'await',
+  'base',
+  'break',
+  'case',
+  'catch',
+  'class',
+  'const',
+  'continue',
+  'covariant',
+  'default',
+  'deferred',
+  'do',
+  'dynamic',
+  'else',
+  'enum',
+  'export',
+  'extends',
+  'extension',
+  'external',
+  'factory',
+  'false',
+  'final',
+  'finally',
+  'for',
+  'Function',
+  'get',
+  'hide',
+  'if',
+  'implements',
+  'import',
+  'in',
+  'interface',
+  'is',
+  'late',
+  'library',
+  'mixin',
+  'new',
+  'null',
+  'on',
+  'operator',
+  'part',
+  'required',
+  'rethrow',
+  'return',
+  'sealed',
+  'set',
+  'show',
+  'static',
+  'super',
+  'switch',
+  'sync',
+  'this',
+  'throw',
+  'true',
+  'try',
+  'typedef',
+  'var',
+  'void',
+  'when',
+  'while',
+  'with',
+  'yield',
+};

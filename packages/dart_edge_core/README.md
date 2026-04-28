@@ -17,8 +17,8 @@ same contract model.
   for transport-agnostic route registration
 - `RouteOptions`, `ResponseSpec`, `RequestBody`, `ErrorResponse`, and
   `HttpMethod` for explicit HTTP contracts
-- `JsonEncodable`, `JsonSchema`, `JsonSchemaRef`, and `JsonSchemaRegistry` for
-  schema-driven request and response metadata
+- `JsonEncodable`, `JsonSchema`, and `JsonSchemaRegistry` for schema-driven
+  request and response metadata
 - `WebSocketOptions`, `WebSocketContext`, and related route definitions for the
   planned WebSocket surface
 
@@ -32,9 +32,9 @@ Future<void> main() async {
 
   router.get<Map<String, String>>(
     '/health',
-    options: const RouteOptions(
+    options: RouteOptions(
       summary: 'Health check',
-      success: ResponseSpec.json<Map<String, String>>(),
+      success: ResponseSpec.json(),
     ),
     handler: (ctx) => {'status': 'ok'},
   );

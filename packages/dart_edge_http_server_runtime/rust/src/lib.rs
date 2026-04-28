@@ -246,6 +246,7 @@ struct RouteManifestEntry {
     route_id: String,
     method: NativeHttpMethod,
     path_segments: Vec<RouteSegmentManifest>,
+    handler_path_segments: Option<Vec<RouteSegmentManifest>>,
     params_schema_id: Option<String>,
     query_schema_id: Option<String>,
     headers_schema_id: Option<String>,
@@ -282,11 +283,12 @@ struct CompiledRoute {
     native_handler: Option<CompiledNativeHttpHandler>,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 struct CompiledNativeHttpHandler {
     handle: i64,
     handler: NativeHttpHandler,
     free_response: NativeHttpFreeResponse,
+    handler_path_segments: Option<Vec<CompiledRouteSegment>>,
 }
 
 #[derive(Clone)]
@@ -986,7 +988,12 @@ async fn handle_native_http_request(
     headers: HashMap<String, String>,
     body: ValidatedBody,
 ) -> Response<Body> {
-    let Some(native_handler) = route_match.native_handler else {
+    let NativeRouteMatch {
+        native_handler,
+        path_params,
+        ..
+    } = route_match;
+    let Some(native_handler) = native_handler else {
         return response(
             StatusCode::INTERNAL_SERVER_ERROR,
             "text/plain; charset=utf-8",
@@ -994,7 +1001,21 @@ async fn handle_native_http_request(
         );
     };
 
-    let path = CString::new(path).unwrap_or_default();
+    let handler_path = match native_handler_path(
+        path,
+        native_handler.handler_path_segments.as_deref(),
+        &path_params,
+    ) {
+        Ok(path) => path,
+        Err(message) => {
+            return response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "text/plain; charset=utf-8",
+                message,
+            );
+        }
+    };
+    let path = CString::new(handler_path).unwrap_or_default();
     let query_pairs = owned_pairs_from_map(query);
     let query_storage = native_pairs_from_owned(&query_pairs);
     let header_pairs = owned_pairs_from_map(headers);
@@ -1055,6 +1076,38 @@ async fn handle_native_http_request(
         &response_headers,
         Body::from(response_body),
     )
+}
+
+fn native_handler_path(
+    public_path: &str,
+    handler_path_segments: Option<&[CompiledRouteSegment]>,
+    path_params: &HashMap<String, String>,
+) -> Result<String, String> {
+    let Some(handler_path_segments) = handler_path_segments else {
+        return Ok(public_path.to_string());
+    };
+
+    if handler_path_segments.is_empty() {
+        return Ok("/".to_string());
+    }
+
+    let mut path = String::new();
+    for segment in handler_path_segments {
+        path.push('/');
+        match segment {
+            CompiledRouteSegment::Literal(value) => path.push_str(value),
+            CompiledRouteSegment::Parameter(name) => {
+                let Some(value) = path_params.get(name) else {
+                    return Err(format!(
+                        "Native route handler path references missing parameter '{name}'."
+                    ));
+                };
+                path.push_str(value);
+            }
+        }
+    }
+
+    Ok(path)
 }
 
 async fn handle_web_socket_request(
@@ -1389,6 +1442,7 @@ fn compile_route(
         }
         RouteTransportKind::WebSocket => None,
     };
+    let handler_path_segments = route.handler_path_segments.map(compile_route_segments);
     let native_handler = match route.kind {
         RouteTransportKind::NativeHttp => {
             let handle = route.native_handle.ok_or_else(|| {
@@ -1414,6 +1468,7 @@ fn compile_route(
                 free_response: unsafe {
                     std::mem::transmute::<usize, NativeHttpFreeResponse>(free_response_address)
                 },
+                handler_path_segments,
             })
         }
         _ => None,
@@ -1423,23 +1478,26 @@ fn compile_route(
         kind: route.kind,
         route_id: route.route_id,
         method: route.method,
-        path_segments: route
-            .path_segments
-            .into_iter()
-            .map(|segment| {
-                if segment.is_parameter {
-                    CompiledRouteSegment::Parameter(segment.value)
-                } else {
-                    CompiledRouteSegment::Literal(segment.value)
-                }
-            })
-            .collect(),
+        path_segments: compile_route_segments(route.path_segments),
         params_schema_id: route.params_schema_id,
         query_schema_id: route.query_schema_id,
         headers_schema_id: route.headers_schema_id,
         request_body,
         native_handler,
     })
+}
+
+fn compile_route_segments(segments: Vec<RouteSegmentManifest>) -> Vec<CompiledRouteSegment> {
+    segments
+        .into_iter()
+        .map(|segment| {
+            if segment.is_parameter {
+                CompiledRouteSegment::Parameter(segment.value)
+            } else {
+                CompiledRouteSegment::Literal(segment.value)
+            }
+        })
+        .collect()
 }
 
 fn ensure_schema_exists(
@@ -1718,7 +1776,7 @@ fn match_route(
                 query_schema_id: route.query_schema_id.clone(),
                 headers_schema_id: route.headers_schema_id.clone(),
                 request_body: route.request_body.clone(),
-                native_handler: route.native_handler,
+                native_handler: route.native_handler.clone(),
             });
         }
     }

@@ -72,6 +72,14 @@ void _printStartupBanner(CalloEngineConfig config) {
   stdout.writeln(
     'Registered endpoint call URI: ${config.registeredAssistantUri}',
   );
+  if (config.hasSipTrunk) {
+    stdout.writeln(
+      'SIP trunk: ${config.trunkId} -> ${config.trunkServerUri} '
+      '(realm ${config.trunkRealm}, user ${config.trunkUsername})',
+    );
+  } else {
+    stdout.writeln('SIP trunk: disabled (set SIP_TRUNK_USERNAME/PASSWORD)');
+  }
   stdout.writeln('Linphone registration settings:');
   stdout.writeln('  Username / User ID: ${config.testUsername}');
   stdout.writeln('  Password: ${config.testPassword}');
@@ -156,6 +164,11 @@ Common environment variables:
   SIP_BIND_PORT
   SIP_TEST_HOST
   SIP_REALM
+  SIP_TRUNK_ID
+  SIP_TRUNK_SERVER_URI
+  SIP_TRUNK_USERNAME
+  SIP_TRUNK_PASSWORD
+  SIP_TRUNK_REALM
   SIP_TEST_USERNAME
   SIP_TEST_PASSWORD
   SIP_RTP_START_PORT

@@ -9,4 +9,4 @@ environment:
 resolution: workspace
 
 dependencies:
-  dart_edge_auth_db_benchmark_shared: 0.2.0
+  dart_edge_auth_db_benchmark_shared: any
