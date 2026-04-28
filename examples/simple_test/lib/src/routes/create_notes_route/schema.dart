@@ -2,14 +2,8 @@ part of 'route.dart';
 
 const createNoteResponseSchema = JsonSchema.object(
   id: 'CreateNoteResponse',
-  properties: <String, JsonSchema>{
-    'id': JsonSchema.integer(nullable: true),
-    'title': JsonSchema.string(),
-    'body': JsonSchema.string(),
-    'owner_id': JsonSchema.integer(),
-    'created_at': JsonSchema.string(),
-  },
-  required: <String>['id', 'title', 'body', 'owner_id', 'created_at'],
+  properties: <String, JsonSchema>{'notes': NotesRow.schemaRef},
+  required: <String>['notes'],
   additionalProperties: false,
 );
 
@@ -20,5 +14,9 @@ const createNotesRouteSchemas = JsonSchemaRegistry(
 @FromSchema(NotesInsert.schemaRef, registry: createNotesRouteSchemas)
 typedef CreateNoteBody = _$CreateNoteBody;
 
-@FromSchema(createNoteResponseSchema, registry: createNotesRouteSchemas)
+@FromSchema(
+  createNoteResponseSchema,
+  registry: createNotesRouteSchemas,
+  refs: [SchemaRefModel(NotesRow)],
+)
 typedef CreateNoteResponse = _$CreateNoteResponse;

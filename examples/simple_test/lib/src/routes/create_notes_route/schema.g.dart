@@ -59,13 +59,7 @@ final class _$CreateNoteBody implements JsonEncodable {
 }
 
 final class _$CreateNoteResponse implements JsonEncodable {
-  const _$CreateNoteResponse({
-    required this.id,
-    required this.title,
-    required this.body,
-    required this.ownerId,
-    required this.createdAt,
-  });
+  const _$CreateNoteResponse({required this.notes});
 
   static const schemaId = "CreateNoteResponse";
 
@@ -77,33 +71,17 @@ final class _$CreateNoteResponse implements JsonEncodable {
   static ResponseSpec response({int status = 200}) =>
       ResponseSpec.json(status: status, schema: schemaRef);
 
-  final int? id;
-
-  final String title;
-
-  final String body;
-
-  final int ownerId;
-
-  final String createdAt;
+  final NotesRow notes;
 
   @override
-  Map<String, Object?> toJson() => <String, Object?>{
-    "id": id,
-    "title": title,
-    "body": body,
-    "owner_id": ownerId,
-    "created_at": createdAt,
-  };
+  Map<String, Object?> toJson() => <String, Object?>{"notes": notes.toJson()};
 
   static CreateNoteResponse fromJson(Object? value) {
     final json = value! as Map<String, Object?>;
     return CreateNoteResponse(
-      id: json["id"] as int?,
-      title: json["title"]! as String,
-      body: json["body"]! as String,
-      ownerId: json["owner_id"]! as int,
-      createdAt: json["created_at"]! as String,
+      notes: NotesRow.fromJson(
+        Map<String, Object?>.from(json["notes"]! as Map),
+      ),
     );
   }
 }

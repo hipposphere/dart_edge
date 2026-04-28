@@ -172,10 +172,31 @@ final class ResponseSpec {
 }
 
 final class FromSchema {
-  const FromSchema(this.schema, {this.registry});
+  const FromSchema(this.schema, {this.registry, this.refs = const []});
 
   final JsonSchema schema;
   final JsonSchemaRegistry? registry;
+  final List<SchemaRefModel> refs;
+}
+
+final class SchemaRefModel {
+  const SchemaRefModel(this.type, {this.schemaId});
+
+  final Type type;
+  final String? schemaId;
+}
+
+final class FriendDto implements JsonEncodable {
+  const FriendDto({required this.id});
+
+  factory FriendDto.fromJson(Map<String, Object?> json) {
+    return FriendDto(id: json['id']! as String);
+  }
+
+  final String id;
+
+  @override
+  Map<String, Object?> toJson() => <String, Object?>{'id': id};
 }
 
 const userDtoSchema = JsonSchema.object(
@@ -188,28 +209,46 @@ const userDtoSchema = JsonSchema.object(
   additionalProperties: false,
 );
 
+const friendDtoSchema = JsonSchema.object(
+  id: 'FriendDto',
+  properties: <String, JsonSchema>{
+    'id': JsonSchema.string(),
+  },
+  required: <String>['id'],
+  additionalProperties: false,
+);
+
 const createUserInputSchema = JsonSchema.object(
   id: 'CreateUserInput',
   properties: <String, JsonSchema>{
     'name': JsonSchema.string(),
     'age': JsonSchema.integer(),
     'tags': JsonSchema.array(items: JsonSchema.string()),
-    'best_friend': JsonSchema.ref('UserDto'),
+    'best_friend': JsonSchema.ref('FriendDto'),
+    'manager': JsonSchema.ref('UserDto'),
   },
   required: <String>['name', 'tags'],
   additionalProperties: false,
 );
 
 const userSchemas = JsonSchemaRegistry(
-  schemas: <JsonSchema>[createUserInputSchema, userDtoSchema],
+  schemas: <JsonSchema>[createUserInputSchema, userDtoSchema, friendDtoSchema],
 );
 
 const createUserBodySchema = JsonSchema.ref('CreateUserInput');
 
-@FromSchema(createUserInputSchema, registry: userSchemas)
+@FromSchema(
+  createUserInputSchema,
+  registry: userSchemas,
+  refs: [SchemaRefModel(FriendDto)],
+)
 typedef CreateUserInput = _$CreateUserInput;
 
-@FromSchema(createUserBodySchema, registry: userSchemas)
+@FromSchema(
+  createUserBodySchema,
+  registry: userSchemas,
+  refs: [SchemaRefModel(FriendDto)],
+)
 typedef CreateUserBody = _$CreateUserBody;
 
 @FromSchema(userDtoSchema, registry: userSchemas)
@@ -234,14 +273,21 @@ typedef UserDto = _$UserDto;
               contains('final String name;'),
               contains('final int? age;'),
               contains('final List<String> tags;'),
-              contains('final UserDto? bestFriend;'),
+              contains('final FriendDto? bestFriend;'),
+              contains('final UserDto? manager;'),
               contains('@override'),
               contains('"name": name'),
               contains('"best_friend": bestFriend?.toJson()'),
+              contains('"manager": manager?.toJson()'),
               contains('name: json["name"]! as String'),
               contains('age: json["age"] as int?'),
               contains('bestFriend: json["best_friend"] == null'),
-              contains(': UserDto.fromJson(json["best_friend"])'),
+              contains(': FriendDto.fromJson('),
+              contains(
+                'Map<String, Object?>.from(json["best_friend"]! as Map),',
+              ),
+              contains('manager: json["manager"] == null'),
+              contains(': UserDto.fromJson(json["manager"])'),
               contains(
                 'final class _\$CreateUserBody implements JsonEncodable',
               ),

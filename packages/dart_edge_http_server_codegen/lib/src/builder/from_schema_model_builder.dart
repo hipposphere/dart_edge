@@ -12,12 +12,14 @@ final class FromSchemaModelSpec {
     required this.backingClassName,
     required this.schema,
     required this.schemaId,
+    required this.refModels,
   });
 
   final String publicName;
   final String backingClassName;
   final JsonObjectSchema schema;
   final String schemaId;
+  final Map<String, SchemaRefModelSpec> refModels;
 }
 
 FromSchemaModelSpec buildFromSchemaModel(
@@ -62,12 +64,19 @@ FromSchemaModelSpec buildFromSchemaModel(
     _validateSchemaReferences(schema, registry, element);
   }
 
+  final refModels = _schemaRefModelsFromDartObject(
+    reader.read('refs').objectValue,
+    registry: registry,
+    element: element,
+  );
+
   final publicName = element.displayName;
   return FromSchemaModelSpec(
     publicName: publicName,
     backingClassName: '_\$$publicName',
     schema: schema,
     schemaId: _schemaIdForModel(sourceSchema, schema, publicName),
+    refModels: refModels,
   );
 }
 
@@ -206,7 +215,7 @@ void _writeModel(StringBuffer buffer, FromSchemaModelSpec model) {
   for (final field in fields) {
     buffer.writeln(
       '    ${_dartString(field.wireName)}: '
-      '${_encodeValue(field.schema, field.name, nullable: field.nullable)},',
+      '${_encodeValue(field.schema, field.name, nullable: field.nullable, refModels: model.refModels)},',
     );
   }
 
@@ -220,7 +229,7 @@ void _writeModel(StringBuffer buffer, FromSchemaModelSpec model) {
   for (final field in fields) {
     buffer.writeln(
       '      ${field.name}: '
-      '${_decodeValue(field.schema, "json[${_dartString(field.wireName)}]", nullable: field.nullable)},',
+      '${_decodeValue(field.schema, "json[${_dartString(field.wireName)}]", nullable: field.nullable, refModels: model.refModels)},',
     );
   }
 
@@ -250,7 +259,11 @@ List<_SchemaFieldSpec> _modelFields(FromSchemaModelSpec model) {
       _SchemaFieldSpec(
         wireName: entry.key,
         name: fieldName,
-        dartType: _schemaDartType(entry.value, nullable: nullable),
+        dartType: _schemaDartType(
+          entry.value,
+          nullable: nullable,
+          refModels: model.refModels,
+        ),
         schema: entry.value,
         requiredParameter: requiredParameter,
         nullable: nullable,
@@ -261,15 +274,22 @@ List<_SchemaFieldSpec> _modelFields(FromSchemaModelSpec model) {
   return fields;
 }
 
-String _schemaDartType(JsonSchema schema, {required bool nullable}) {
+String _schemaDartType(
+  JsonSchema schema, {
+  required bool nullable,
+  required Map<String, SchemaRefModelSpec> refModels,
+}) {
   final type = switch (schema) {
     JsonStringSchema() => 'String',
     JsonIntegerSchema() => 'int',
     JsonNumberSchema() => 'num',
     JsonBooleanSchema() => 'bool',
     JsonArraySchema(:final items) =>
-      'List<${items == null ? 'Object?' : _schemaDartType(items, nullable: items.nullable)}>',
-    JsonReferenceSchema(:final ref) => _typeNameForSchemaRef(ref) ?? 'Object?',
+      'List<${items == null ? 'Object?' : _schemaDartType(items, nullable: items.nullable, refModels: refModels)}>',
+    JsonReferenceSchema(:final ref) =>
+      _refModelForReference(ref, refModels)?.typeName ??
+          _typeNameForSchemaRef(ref) ??
+          'Object?',
     JsonObjectSchema() || JsonRawSchema() => 'Map<String, Object?>',
     JsonAnySchema() => 'Object?',
     _ => 'Object?',
@@ -285,6 +305,7 @@ String _decodeValue(
   JsonSchema schema,
   String source, {
   required bool nullable,
+  required Map<String, SchemaRefModelSpec> refModels,
 }) {
   return switch (schema) {
     JsonStringSchema() =>
@@ -296,11 +317,13 @@ String _decodeValue(
       items,
       source,
       nullable: nullable,
+      refModels: refModels,
     ),
     JsonReferenceSchema(:final ref) => _decodeReferenceValue(
       ref,
       source,
       nullable: nullable,
+      refModels: refModels,
     ),
     JsonObjectSchema() || JsonRawSchema() =>
       nullable
@@ -315,10 +338,16 @@ String _decodeArrayValue(
   JsonSchema? items,
   String source, {
   required bool nullable,
+  required Map<String, SchemaRefModelSpec> refModels,
 }) {
   final itemExpression = items == null
       ? 'item'
-      : _decodeValue(items, 'item', nullable: items.nullable);
+      : _decodeValue(
+          items,
+          'item',
+          nullable: items.nullable,
+          refModels: refModels,
+        );
 
   if (nullable) {
     return '($source as List<Object?>?)'
@@ -335,7 +364,17 @@ String _decodeReferenceValue(
   String ref,
   String source, {
   required bool nullable,
+  required Map<String, SchemaRefModelSpec> refModels,
 }) {
+  final refModel = _refModelForReference(ref, refModels);
+  if (refModel != null) {
+    final value = 'Map<String, Object?>.from($source! as Map)';
+    if (nullable) {
+      return '$source == null ? null : ${refModel.typeName}.fromJson($value)';
+    }
+    return '${refModel.typeName}.fromJson($value)';
+  }
+
   final typeName = _typeNameForSchemaRef(ref);
   if (typeName == null) {
     return source;
@@ -351,17 +390,20 @@ String _encodeValue(
   JsonSchema schema,
   String source, {
   required bool nullable,
+  required Map<String, SchemaRefModelSpec> refModels,
 }) {
   return switch (schema) {
     JsonArraySchema(:final items) => _encodeArrayValue(
       items,
       source,
       nullable: nullable,
+      refModels: refModels,
     ),
     JsonReferenceSchema(:final ref) => _encodeReferenceValue(
       ref,
       source,
       nullable: nullable,
+      refModels: refModels,
     ),
     _ => source,
   };
@@ -371,10 +413,16 @@ String _encodeArrayValue(
   JsonSchema? items,
   String source, {
   required bool nullable,
+  required Map<String, SchemaRefModelSpec> refModels,
 }) {
   final itemExpression = items == null
       ? 'item'
-      : _encodeValue(items, 'item', nullable: items.nullable);
+      : _encodeValue(
+          items,
+          'item',
+          nullable: items.nullable,
+          refModels: refModels,
+        );
   final receiver = nullable ? '$source?' : source;
   return '$receiver.map((item) => $itemExpression).toList()';
 }
@@ -383,8 +431,11 @@ String _encodeReferenceValue(
   String ref,
   String source, {
   required bool nullable,
+  required Map<String, SchemaRefModelSpec> refModels,
 }) {
-  final typeName = _typeNameForSchemaRef(ref);
+  final typeName =
+      _refModelForReference(ref, refModels)?.typeName ??
+      _typeNameForSchemaRef(ref);
   if (typeName == null) {
     return source;
   }
@@ -409,6 +460,74 @@ JsonSchemaRegistry _jsonSchemaRegistryFromDartObject(
         jsonSchemaFromDartObject(schema, element: element),
     ],
   );
+}
+
+Map<String, SchemaRefModelSpec> _schemaRefModelsFromDartObject(
+  DartObject object, {
+  required JsonSchemaRegistry? registry,
+  required Element element,
+}) {
+  if (object.isNull) {
+    return const <String, SchemaRefModelSpec>{};
+  }
+
+  final values = object.toListValue();
+  if (values == null) {
+    throw InvalidGenerationSourceError(
+      '@FromSchema refs must be a const List<SchemaRefModel>.',
+      element: element,
+    );
+  }
+
+  final refModels = <String, SchemaRefModelSpec>{};
+  for (final value in values) {
+    final refModel = _schemaRefModelFromDartObject(
+      value,
+      registry: registry,
+      element: element,
+    );
+    if (refModels.containsKey(refModel.schemaId)) {
+      throw InvalidGenerationSourceError(
+        '@FromSchema refs contains duplicate schema id ${refModel.schemaId}.',
+        element: element,
+      );
+    }
+    refModels[refModel.schemaId] = refModel;
+  }
+  return refModels;
+}
+
+SchemaRefModelSpec _schemaRefModelFromDartObject(
+  DartObject object, {
+  required JsonSchemaRegistry? registry,
+  required Element element,
+}) {
+  final type = _field(object, 'type')?.toTypeValue();
+  final typeName = type?.element?.name;
+  if (typeName == null || typeName.isEmpty) {
+    throw InvalidGenerationSourceError(
+      '@FromSchema refs entries must be const SchemaRefModel(Type) values.',
+      element: element,
+    );
+  }
+
+  final schemaId = _stringField(object, 'schemaId') ?? typeName;
+  if (schemaId.isEmpty) {
+    throw InvalidGenerationSourceError(
+      '@FromSchema refs entries must use non-empty schema ids.',
+      element: element,
+    );
+  }
+
+  if (registry != null && registry.schemaFor(schemaId) == null) {
+    throw InvalidGenerationSourceError(
+      'Schema ref model $typeName points to schema id $schemaId, which is not '
+      'present in the supplied registry.',
+      element: element,
+    );
+  }
+
+  return SchemaRefModelSpec(schemaId: schemaId, typeName: typeName);
 }
 
 JsonObjectSchema _resolveRootObjectSchema(
@@ -606,7 +725,7 @@ DartObject? _field(DartObject object, String name) {
     return value;
   }
 
-  if ((name == 'ref' || name == 'schema') &&
+  if ((name == 'ref' || name == 'schema' || name == 'type') &&
       invocation.positionalArguments.isNotEmpty) {
     return invocation.positionalArguments.first;
   }
@@ -631,6 +750,17 @@ String? _typeNameForSchemaRef(String ref) {
     return null;
   }
   return _upperCamel(id);
+}
+
+SchemaRefModelSpec? _refModelForReference(
+  String ref,
+  Map<String, SchemaRefModelSpec> refModels,
+) {
+  final id = _schemaIdFromReference(ref);
+  if (id == null) {
+    return null;
+  }
+  return refModels[id];
 }
 
 String? _schemaIdFromReference(String ref) {
@@ -718,6 +848,13 @@ final class _SchemaFieldSpec {
   final JsonSchema schema;
   final bool requiredParameter;
   final bool nullable;
+}
+
+final class SchemaRefModelSpec {
+  const SchemaRefModelSpec({required this.schemaId, required this.typeName});
+
+  final String schemaId;
+  final String typeName;
 }
 
 const _dartKeywords = <String>{

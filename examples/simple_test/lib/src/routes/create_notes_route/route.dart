@@ -34,12 +34,6 @@ final class CreateNotesRoute
       throw StateError('Failed to create note.');
     }
 
-    return CreateNoteResponse(
-      id: note.id,
-      title: note.title,
-      body: note.body,
-      ownerId: note.ownerId,
-      createdAt: note.createdAt,
-    );
+    return CreateNoteResponse(notes: note);
   }
 }
