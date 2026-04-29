@@ -43,6 +43,36 @@ void main() {
       expect(source, contains("schemaId: 'UserDto'"));
       expect(source, contains("import 'package:example/models.dart';"));
     });
+
+    test('does not use inline schema ids as serializer targets', () {
+      final source = const DartEdgeClientGenerator().generate(
+        DartEdgeClientLibrarySpec(
+          className: 'UsersClient',
+          operations: [
+            DartEdgeClientOperation(
+              method: HttpMethod.post,
+              path: '/users',
+              options: RouteOptions(
+                operationId: 'createUser',
+                body: RequestBody.json(
+                  schema: const JsonSchema.object(id: 'CreateUserBody'),
+                ),
+                success: ResponseSpec.json(
+                  schema: const JsonSchema.object(id: 'UserDto'),
+                ),
+              ),
+              successType: 'UserDto',
+              bodyType: 'CreateUserBody',
+            ),
+          ],
+        ),
+      );
+
+      expect(source, isNot(contains("schemaId: 'CreateUserBody'")));
+      expect(source, isNot(contains("schemaId: 'UserDto'")));
+      expect(source, isNot(contains('decoder: UserDto.fromJson')));
+      expect(source, isNot(contains('encoder: (value) => value.toJson()')));
+    });
   });
 
   group('DartEdgeGeneratedClientBase', () {

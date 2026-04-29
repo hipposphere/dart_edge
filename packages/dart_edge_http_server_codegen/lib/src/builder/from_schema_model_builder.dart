@@ -13,6 +13,7 @@ final class FromSchemaModelSpec {
     required this.schema,
     required this.schemaId,
     required this.refModels,
+    required this.responseStatus,
   });
 
   final String publicName;
@@ -20,6 +21,7 @@ final class FromSchemaModelSpec {
   final JsonObjectSchema schema;
   final String schemaId;
   final Map<String, SchemaRefModelSpec> refModels;
+  final int responseStatus;
 }
 
 FromSchemaModelSpec buildFromSchemaModel(
@@ -77,6 +79,7 @@ FromSchemaModelSpec buildFromSchemaModel(
     schema: schema,
     schemaId: _schemaIdForModel(sourceSchema, schema, publicName),
     refModels: refModels,
+    responseStatus: reader.peek('responseStatus')?.intValue ?? 200,
   );
 }
 
@@ -191,15 +194,15 @@ void _writeModel(StringBuffer buffer, FromSchemaModelSpec model) {
     ..writeln()
     ..writeln('  static const schemaRef = JsonSchema.ref(schemaId);')
     ..writeln()
-    ..writeln(
-      '  static RequestBody get requestBody => '
-      'RequestBody.json(schema: schemaRef, decoder: fromJson);',
-    )
+    ..writeln('  static const RequestBody requestBody = RequestBody.json(')
+    ..writeln('    schema: schemaRef,')
+    ..writeln('    decoder: fromJson,')
+    ..writeln('  );')
     ..writeln()
-    ..writeln(
-      '  static ResponseSpec response({int status = 200}) => '
-      'ResponseSpec.json(status: status, schema: schemaRef);',
-    );
+    ..writeln('  static const ResponseSpec response = ResponseSpec.json(')
+    ..writeln('    status: ${model.responseStatus},')
+    ..writeln('    schema: schemaRef,')
+    ..writeln('  );');
 
   for (final field in fields) {
     buffer
@@ -768,7 +771,7 @@ String? _schemaIdFromReference(String ref) {
   if (ref.startsWith(componentPrefix)) {
     return ref.substring(componentPrefix.length);
   }
-  if (ref.startsWith('#/') || ref.contains('://')) {
+  if (ref.startsWith('#') || (Uri.tryParse(ref)?.hasScheme ?? false)) {
     return null;
   }
   return ref;

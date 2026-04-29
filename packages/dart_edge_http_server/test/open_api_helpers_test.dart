@@ -179,4 +179,56 @@ void main() {
         responseContent['application/json']! as Map<String, Object?>;
     expect(responseJson['schema'], containsPair('required', ['id']));
   });
+
+  test('resolves OpenAPI object schemas only through explicit refs', () {
+    const registry = JsonSchemaRegistry(
+      schemas: <JsonSchema>[
+        JsonSchema.object(
+          id: 'UserPath',
+          properties: <String, JsonSchema>{
+            'id': JsonSchema.string(description: 'Resolved from registry.'),
+          },
+        ),
+      ],
+    );
+
+    final inlineApp = DartEdge<void>(services: () {});
+    inlineApp.installSchemaRegistry(registry);
+    inlineApp.get(
+      '/users/:id',
+      options: const RouteOptions(params: JsonSchema.object(id: 'UserPath')),
+      handler: (_) => const {'ok': true},
+    );
+
+    final inlineDocument = inlineApp.buildOpenApiDocumentJson();
+    final inlineParameter = _firstPathParameter(inlineDocument, '/users/{id}');
+    expect(inlineParameter, isNot(containsPair('description', anything)));
+    expect(inlineParameter['schema'], {'type': 'string'});
+
+    final referencedApp = DartEdge<void>(services: () {});
+    referencedApp.installSchemaRegistry(registry);
+    referencedApp.get(
+      '/users/:id',
+      options: const RouteOptions(params: JsonSchema.ref('UserPath')),
+      handler: (_) => const {'ok': true},
+    );
+
+    final referencedDocument = referencedApp.buildOpenApiDocumentJson();
+    final referencedParameter = _firstPathParameter(
+      referencedDocument,
+      '/users/{id}',
+    );
+    expect(referencedParameter['description'], 'Resolved from registry.');
+  });
+}
+
+Map<String, Object?> _firstPathParameter(
+  Map<String, Object?> document,
+  String path,
+) {
+  final paths = document['paths']! as Map<String, Object?>;
+  final pathItem = paths[path]! as Map<String, Object?>;
+  final operation = pathItem['get']! as Map<String, Object?>;
+  final parameters = operation['parameters']! as List<Object?>;
+  return parameters.single as Map<String, Object?>;
 }

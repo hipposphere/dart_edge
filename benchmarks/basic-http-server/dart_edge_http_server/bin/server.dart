@@ -56,7 +56,7 @@ final class EchoRoute
   @override
   RouteOptions get options => RouteOptions(
     operationId: 'echo',
-    body: RequestBody.jsonValue(),
+    body: RequestBody.json(),
     success: ResponseSpec.json(),
   );
 

@@ -152,12 +152,10 @@ final class RequestBody {
   final JsonSchema? schema;
   final RequestBodyDecoder? decoder;
 
-  static RequestBody json({
+  const RequestBody.json({
     JsonSchema? schema,
     RequestBodyDecoder? decoder,
-  }) {
-    return RequestBody._(schema: schema, decoder: decoder);
-  }
+  }) : this._(schema: schema, decoder: decoder);
 }
 
 final class ResponseSpec {
@@ -166,17 +164,22 @@ final class ResponseSpec {
   final int status;
   final JsonSchema? schema;
 
-  static ResponseSpec json({int status = 200, JsonSchema? schema}) {
-    return ResponseSpec._(status: status, schema: schema);
-  }
+  const ResponseSpec.json({int status = 200, JsonSchema? schema})
+    : this._(status: status, schema: schema);
 }
 
 final class FromSchema {
-  const FromSchema(this.schema, {this.registry, this.refs = const []});
+  const FromSchema(
+    this.schema, {
+    this.registry,
+    this.refs = const [],
+    this.responseStatus = 200,
+  });
 
   final JsonSchema schema;
   final JsonSchemaRegistry? registry;
   final List<SchemaRefModel> refs;
+  final int responseStatus;
 }
 
 final class SchemaRefModel {
@@ -248,6 +251,7 @@ typedef CreateUserInput = _$CreateUserInput;
   createUserBodySchema,
   registry: userSchemas,
   refs: [SchemaRefModel(FriendDto)],
+  responseStatus: 201,
 )
 typedef CreateUserBody = _$CreateUserBody;
 
@@ -264,12 +268,14 @@ typedef UserDto = _$UserDto;
               ),
               contains('static const schemaId = "CreateUserInput";'),
               contains('static const schemaRef = JsonSchema.ref(schemaId);'),
-              contains('static RequestBody get requestBody =>'),
               contains(
-                'RequestBody.json(schema: schemaRef, decoder: fromJson);',
+                'static const RequestBody requestBody = RequestBody.json(',
               ),
-              contains('static ResponseSpec response({int status = 200}) =>'),
-              contains('ResponseSpec.json(status: status, schema: schemaRef);'),
+              contains('decoder: fromJson,'),
+              contains(
+                'static const ResponseSpec response = ResponseSpec.json(',
+              ),
+              contains('status: 200,'),
               contains('final String name;'),
               contains('final int? age;'),
               contains('final List<String> tags;'),
@@ -292,6 +298,7 @@ typedef UserDto = _$UserDto;
                 'final class _\$CreateUserBody implements JsonEncodable',
               ),
               contains('static const schemaId = "CreateUserInput";'),
+              contains('status: 201,'),
               contains('final String name;'),
               contains('final class _\$UserDto implements JsonEncodable'),
               contains('static const schemaId = "UserDto";'),

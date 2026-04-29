@@ -107,7 +107,7 @@ String? _jsonSchemaRouteId(JsonSchema? schema) {
   return switch (schema) {
     null => null,
     JsonReferenceSchema(:final ref) => _schemaIdFromReference(ref),
-    _ => schema.id,
+    _ => null,
   };
 }
 
@@ -116,7 +116,7 @@ String? _schemaIdFromReference(String ref) {
   if (ref.startsWith(componentPrefix)) {
     return ref.substring(componentPrefix.length);
   }
-  if (ref.startsWith('#/') || ref.contains('://')) {
+  if (ref.startsWith('#') || (Uri.tryParse(ref)?.hasScheme ?? false)) {
     return null;
   }
   return ref;

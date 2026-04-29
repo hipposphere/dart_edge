@@ -9,12 +9,7 @@ part 'schema.g.dart';
 final class CreateNotesRoute
     extends HttpRouteDefinition<SqliteDatabase, CreateNoteResponse> {
   @override
-  RouteOptions get options => RouteOptions(
-    operationId: 'createNote',
-    summary: 'Create a note.',
-    body: CreateNoteBody.requestBody,
-    success: CreateNoteResponse.response(status: 201),
-  );
+  RouteOptions get options => _routeOptions;
 
   @override
   Future<CreateNoteResponse> handle(ctx) async {

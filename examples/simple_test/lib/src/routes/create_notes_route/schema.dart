@@ -20,3 +20,10 @@ typedef CreateNoteBody = _$CreateNoteBody;
   refs: [SchemaRefModel(NotesRow)],
 )
 typedef CreateNoteResponse = _$CreateNoteResponse;
+
+const _routeOptions = RouteOptions(
+  operationId: 'createNote',
+  summary: 'Create a note.',
+  body: CreateNoteBody.requestBody,
+  success: CreateNoteResponse.response,
+);

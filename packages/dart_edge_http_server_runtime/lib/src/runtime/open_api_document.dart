@@ -252,7 +252,7 @@ JsonObjectSchema? _objectSchema(
 ) {
   return switch (schema) {
     final JsonObjectSchema schema => schema,
-    final JsonSchema schema => switch (jsonSchemaRouteId(schema)) {
+    final JsonReferenceSchema schema => switch (jsonSchemaRouteId(schema)) {
       final schemaId? => switch (schemaRegistry?.schemaFor(schemaId)) {
         final JsonObjectSchema schema => schema,
         _ => null,
@@ -301,7 +301,7 @@ Object? _rewriteSchema(Object? value) {
 }
 
 String _rewriteRef(String ref) {
-  if (ref.startsWith('#/')) {
+  if (ref.startsWith('#') || (Uri.tryParse(ref)?.hasScheme ?? false)) {
     return ref;
   }
   return '#/components/schemas/$ref';

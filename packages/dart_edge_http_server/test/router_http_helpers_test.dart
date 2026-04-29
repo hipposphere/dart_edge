@@ -20,7 +20,7 @@ void main() {
     api.put(
       '/users/<id>',
       options: RouteOptions(
-        body: RequestBody.jsonValue(),
+        body: RequestBody.json(),
         success: ResponseSpec.json(status: HttpStatus.accepted),
       ),
       handler: (ctx) {

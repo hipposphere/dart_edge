@@ -14,7 +14,12 @@ import 'package:dart_edge_http_server_runtime/dart_edge_http_server_runtime.dart
 /// typedef CreateUserInput = _$CreateUserInput;
 /// ```
 final class FromSchema {
-  const FromSchema(this.schema, {this.registry, this.refs = const []});
+  const FromSchema(
+    this.schema, {
+    this.registry,
+    this.refs = const [],
+    this.responseStatus = 200,
+  });
 
   /// The schema used to infer the generated Dart model.
   final JsonSchema schema;
@@ -24,6 +29,9 @@ final class FromSchema {
 
   /// Existing Dart model types used when this schema contains `$ref` values.
   final List<SchemaRefModel> refs;
+
+  /// HTTP status used by the generated JSON response specification.
+  final int responseStatus;
 }
 
 /// Binds a JSON Schema `$ref` to an existing Dart model type.

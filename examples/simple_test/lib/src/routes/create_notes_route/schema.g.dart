@@ -21,11 +21,15 @@ final class _$CreateNoteBody implements JsonEncodable {
 
   static const schemaRef = JsonSchema.ref(schemaId);
 
-  static RequestBody get requestBody =>
-      RequestBody.json(schema: schemaRef, decoder: fromJson);
+  static const RequestBody requestBody = RequestBody.json(
+    schema: schemaRef,
+    decoder: fromJson,
+  );
 
-  static ResponseSpec response({int status = 200}) =>
-      ResponseSpec.json(status: status, schema: schemaRef);
+  static const ResponseSpec response = ResponseSpec.json(
+    status: 201,
+    schema: schemaRef,
+  );
 
   final int? id;
 
@@ -65,11 +69,15 @@ final class _$CreateNoteResponse implements JsonEncodable {
 
   static const schemaRef = JsonSchema.ref(schemaId);
 
-  static RequestBody get requestBody =>
-      RequestBody.json(schema: schemaRef, decoder: fromJson);
+  static const RequestBody requestBody = RequestBody.json(
+    schema: schemaRef,
+    decoder: fromJson,
+  );
 
-  static ResponseSpec response({int status = 200}) =>
-      ResponseSpec.json(status: status, schema: schemaRef);
+  static const ResponseSpec response = ResponseSpec.json(
+    status: 201,
+    schema: schemaRef,
+  );
 
   final NotesRow notes;
 

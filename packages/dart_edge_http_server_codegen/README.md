@@ -10,6 +10,8 @@ HTTP route metadata.
 
 - `FromSchema` generates a Dart model class from a const `JsonSchema`
 - `JsonSchemaRegistry` references can be supplied to validate `$ref` usage
+- `FromSchema.responseStatus` controls the generated JSON `ResponseSpec`
+  status, defaulting to `200`
 - `DartEdgeHttpServerGenerator` emits server artifacts from normalized route
   specs
 - `DartEdgeClientGenerator` emits Dart client classes from normalized route
@@ -65,8 +67,19 @@ The generated part emits the private backing class used by the public typedef:
 final class _$CreateUserInput {
   const _$CreateUserInput({required this.name, required this.email});
 
-  static const schemaRef =
-      JsonSchemaRef<CreateUserInput>('CreateUserInput');
+  static const schemaId = 'CreateUserInput';
+
+  static const schemaRef = JsonSchema.ref(schemaId);
+
+  static const RequestBody requestBody = RequestBody.json(
+    schema: schemaRef,
+    decoder: fromJson,
+  );
+
+  static const ResponseSpec response = ResponseSpec.json(
+    status: 200,
+    schema: schemaRef,
+  );
 
   final String name;
   final String email;

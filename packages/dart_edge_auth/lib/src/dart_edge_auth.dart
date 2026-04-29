@@ -292,7 +292,7 @@ final class _DartEdgeAuthRoute<TServices>
 RouteOptions _routeOptions(AuthNativeRouteDescriptor route) {
   return RouteOptions(
     operationId: route.operationId,
-    body: route.acceptsJsonBody ? RequestBody.jsonValue() : null,
+    body: route.acceptsJsonBody ? RequestBody.json() : null,
     success: ResponseSpec.json(schema: _successSchemaFor(route.operationId)),
   );
 }

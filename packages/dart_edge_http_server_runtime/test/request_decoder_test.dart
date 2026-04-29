@@ -127,6 +127,42 @@ void main() {
 
     expect(input.body<CreateUserInput>().name, 'Ada');
   });
+
+  test('does not use inline schema ids as body codec targets', () async {
+    final codecs = DartEdgeCodecRegistry.empty.withCodec<CreateUserInput>(
+      'CreateUserInput',
+      DartEdgeCodec<CreateUserInput>(
+        encode: (value) => {'name': value.name},
+        decode: (value) {
+          final map = _readObject(value);
+          return CreateUserInput(name: map['name']! as String);
+        },
+      ),
+    );
+
+    final input = await decodeRequestInput(
+      TransportRequest(
+        routeId: 'route_0',
+        pathParams: const <String, String>{},
+        query: const <String, String>{},
+        headers: const <String, String>{},
+        bodyBytes: Uint8List.fromList(utf8.encode('{"name":"Ada"}')),
+        bodyKind: TransportRequestBodyKind.json,
+      ),
+      codecs: codecs,
+      paramsSchemaId: null,
+      querySchemaId: null,
+      headersSchemaId: null,
+      body: RequestBody.json(
+        schema: const JsonSchema.object(
+          id: 'CreateUserInput',
+          properties: <String, JsonSchema>{'name': JsonSchema.string()},
+        ),
+      ),
+    );
+
+    expect(input.body<Map<String, Object?>>(), {'name': 'Ada'});
+  });
 }
 
 Map<String, Object?> _readObject(Object? value) {

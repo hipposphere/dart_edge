@@ -18,35 +18,22 @@ final class ResponseSpec {
   final JsonSchema? schema;
 
   /// Creates a JSON response specification.
-  static ResponseSpec json({int status = 200, JsonSchema? schema}) {
-    return ResponseSpec._(
-      status: status,
-      contentType: 'application/json; charset=utf-8',
-      schema: schema,
-    );
-  }
+  const ResponseSpec.json({int status = 200, JsonSchema? schema})
+    : this._(
+        status: status,
+        contentType: 'application/json; charset=utf-8',
+        schema: schema,
+      );
 
   /// Creates a plain-text response specification.
-  static ResponseSpec text({int status = 200}) {
-    return ResponseSpec._(
-      status: status,
-      contentType: 'text/plain; charset=utf-8',
-    );
-  }
+  const ResponseSpec.text({int status = 200})
+    : this._(status: status, contentType: 'text/plain; charset=utf-8');
 
   /// Creates an HTML response specification.
-  static ResponseSpec html({int status = 200}) {
-    return ResponseSpec._(
-      status: status,
-      contentType: 'text/html; charset=utf-8',
-    );
-  }
+  const ResponseSpec.html({int status = 200})
+    : this._(status: status, contentType: 'text/html; charset=utf-8');
 
   /// Creates a server-sent events response specification.
-  static ResponseSpec sse({int status = 200}) {
-    return ResponseSpec._(
-      status: status,
-      contentType: 'text/event-stream; charset=utf-8',
-    );
-  }
+  const ResponseSpec.sse({int status = 200})
+    : this._(status: status, contentType: 'text/event-stream; charset=utf-8');
 }

@@ -34,4 +34,20 @@ void main() {
     expect(schema.id, 'RawUser');
     expect(schema.toJson(), {r'$id': 'RawUser', 'type': 'object'});
   });
+
+  test('route option labels use refs, not inline ids, as schema targets', () {
+    final inline = RouteOptions(
+      operationId: 'inline',
+      body: RequestBody.json(schema: const JsonSchema.object(id: 'UserDto')),
+      success: ResponseSpec.json(),
+    ).toString();
+    final referenced = RouteOptions(
+      operationId: 'referenced',
+      body: RequestBody.json(schema: const JsonSchema.ref('UserDto')),
+      success: ResponseSpec.json(),
+    ).toString();
+
+    expect(inline, isNot(contains('<UserDto>')));
+    expect(referenced, contains('application/json; charset=utf-8<UserDto>'));
+  });
 }

@@ -92,7 +92,7 @@ void main() {
     );
   });
 
-  test('includes inline route schema ids in the native manifest', () {
+  test('does not treat inline route schema ids as native manifest refs', () {
     final app = DartEdge<void>(services: () {});
     app.get(
       '/users/<id>',
@@ -105,6 +105,29 @@ void main() {
           id: 'UserQuery',
           properties: <String, JsonSchema>{'search': JsonSchema.string()},
         ),
+      ),
+      handler: (_) => const {'ok': true},
+    );
+
+    final compiledRoutes = CompiledRouteTable.fromRegistrations(
+      app.routeRegistry.registrations,
+    );
+    final manifest =
+        jsonDecode(compiledRoutes.nativeManifestJson()) as Map<String, Object?>;
+    final routes = manifest['routes']! as List<Object?>;
+    final route = routes.single as Map<String, Object?>;
+
+    expect(route['paramsSchemaId'], isNull);
+    expect(route['querySchemaId'], isNull);
+  });
+
+  test('includes explicit route schema refs in the native manifest', () {
+    final app = DartEdge<void>(services: () {});
+    app.get(
+      '/users/<id>',
+      options: const RouteOptions(
+        params: JsonSchema.ref('UserPath'),
+        query: JsonSchema.ref('UserQuery'),
       ),
       handler: (_) => const {'ok': true},
     );
