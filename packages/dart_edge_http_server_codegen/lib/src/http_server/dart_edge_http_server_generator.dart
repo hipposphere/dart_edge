@@ -551,6 +551,11 @@ Map<String, Expression> _schemaCommonArguments(JsonSchema schema) {
     if (schema.title case final title?) 'title': literalString(title),
     if (schema.description case final description?)
       'description': literalString(description),
+    if (schema.enumValues.isNotEmpty)
+      'enumValues': literalList(
+        schema.enumValues.map(_objectExpression),
+        refer('Object?'),
+      ),
   };
 }
 
@@ -627,10 +632,11 @@ Expression _objectExpression(Object? value) {
       value.map(_objectExpression),
       refer('Object?'),
     ),
-    Map<String, Object?>() => literalMap(
-      value.map(
-        (key, value) => MapEntry(literalString(key), _objectExpression(value)),
-      ),
+    Map() => literalMap(
+      {
+        for (final entry in value.entries)
+          literalString('${entry.key}'): _objectExpression(entry.value),
+      },
       refer('String'),
       refer('Object?'),
     ),

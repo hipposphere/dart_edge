@@ -94,11 +94,13 @@ JsonSchema jsonSchemaFromDartObject(
       id: _stringField(object, 'id'),
       title: _stringField(object, 'title'),
       description: _stringField(object, 'description'),
+      enumValues: _objectListField(object, 'enumValues', element: element),
     ),
     'JsonObjectSchema' => JsonSchema.object(
       id: _stringField(object, 'id'),
       title: _stringField(object, 'title'),
       description: _stringField(object, 'description'),
+      enumValues: _objectListField(object, 'enumValues', element: element),
       nullable: _boolField(object, 'nullable') ?? false,
       properties: _schemaMapField(object, 'properties', element: element),
       required: _stringListField(object, 'required'),
@@ -108,6 +110,7 @@ JsonSchema jsonSchemaFromDartObject(
       id: _stringField(object, 'id'),
       title: _stringField(object, 'title'),
       description: _stringField(object, 'description'),
+      enumValues: _objectListField(object, 'enumValues', element: element),
       nullable: _boolField(object, 'nullable') ?? false,
       items: switch (_field(object, 'items')) {
         final items? when !items.isNull => jsonSchemaFromDartObject(
@@ -121,6 +124,7 @@ JsonSchema jsonSchemaFromDartObject(
       id: _stringField(object, 'id'),
       title: _stringField(object, 'title'),
       description: _stringField(object, 'description'),
+      enumValues: _objectListField(object, 'enumValues', element: element),
       nullable: _boolField(object, 'nullable') ?? false,
       format: _stringField(object, 'format'),
     ),
@@ -128,6 +132,7 @@ JsonSchema jsonSchemaFromDartObject(
       id: _stringField(object, 'id'),
       title: _stringField(object, 'title'),
       description: _stringField(object, 'description'),
+      enumValues: _objectListField(object, 'enumValues', element: element),
       nullable: _boolField(object, 'nullable') ?? false,
       format: _stringField(object, 'format'),
     ),
@@ -135,6 +140,7 @@ JsonSchema jsonSchemaFromDartObject(
       id: _stringField(object, 'id'),
       title: _stringField(object, 'title'),
       description: _stringField(object, 'description'),
+      enumValues: _objectListField(object, 'enumValues', element: element),
       nullable: _boolField(object, 'nullable') ?? false,
       format: _stringField(object, 'format'),
     ),
@@ -142,6 +148,7 @@ JsonSchema jsonSchemaFromDartObject(
       id: _stringField(object, 'id'),
       title: _stringField(object, 'title'),
       description: _stringField(object, 'description'),
+      enumValues: _objectListField(object, 'enumValues', element: element),
       nullable: _boolField(object, 'nullable') ?? false,
     ),
     'JsonReferenceSchema' => JsonSchema.ref(
@@ -149,6 +156,7 @@ JsonSchema jsonSchemaFromDartObject(
       id: _stringField(object, 'id'),
       title: _stringField(object, 'title'),
       description: _stringField(object, 'description'),
+      enumValues: _objectListField(object, 'enumValues', element: element),
     ),
     'JsonRawSchema' => JsonSchema.raw(
       _objectMapField(object, 'schema', element: element),
@@ -646,6 +654,18 @@ Map<String, Object?> _objectMapField(
     return const <String, Object?>{};
   }
   return _objectMap(map, element: element);
+}
+
+List<Object?> _objectListField(
+  DartObject object,
+  String name, {
+  required Element element,
+}) {
+  final values = _field(object, name)?.toListValue();
+  if (values == null) {
+    return const <Object?>[];
+  }
+  return [for (final value in values) _objectValue(value, element: element)];
 }
 
 Map<String, Object?> _objectMap(

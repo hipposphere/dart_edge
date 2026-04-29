@@ -45,6 +45,9 @@ void main() {
                   'id': JsonSchema.string(),
                   'name': JsonSchema.string(),
                   'email': JsonSchema.string(format: 'email'),
+                  'role': JsonSchema.string(
+                    enumValues: <Object?>['admin', 'member'],
+                  ),
                 },
                 required: <String>['id', 'name', 'email'],
                 nullable: false,
@@ -86,6 +89,7 @@ void main() {
         expect(source, contains('final RouteOptions createUserRouteOptions'));
         expect(source, contains("operationId: 'createUser'"));
         expect(source, contains("id: 'CreateUserInput'"));
+        expect(source, contains("enumValues: <Object?>['admin', 'member']"));
         expect(source, isNot(contains('DartEdgeCodecRegistry')));
         expect(
           source,

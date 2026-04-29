@@ -28,11 +28,36 @@ void main() {
     );
   });
 
+  test('serializes enum as JSON Schema enum keyword', () {
+    expect(
+      const JsonSchema.string(
+        enumValues: <Object?>['draft', 'published', null],
+      ).toJson(),
+      {
+        'enum': ['draft', 'published', null],
+        'type': 'string',
+      },
+    );
+  });
+
   test('reads id from raw schemas', () {
     const schema = JsonSchema.raw({r'$id': 'RawUser', 'type': 'object'});
 
     expect(schema.id, 'RawUser');
     expect(schema.toJson(), {r'$id': 'RawUser', 'type': 'object'});
+  });
+
+  test('reads enum from raw schemas', () {
+    const schema = JsonSchema.raw({
+      'type': 'string',
+      'enum': ['draft', 'published'],
+    });
+
+    expect(schema.enumValues, ['draft', 'published']);
+    expect(schema.toJson(), {
+      'type': 'string',
+      'enum': ['draft', 'published'],
+    });
   });
 
   test('route option labels use refs, not inline ids, as schema targets', () {

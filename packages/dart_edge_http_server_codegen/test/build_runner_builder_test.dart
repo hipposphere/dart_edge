@@ -21,6 +21,7 @@ sealed class JsonSchema {
     this.id,
     this.title,
     this.description,
+    this.enumValues = const <Object?>[],
     this.nullable = false,
   });
 
@@ -28,6 +29,7 @@ sealed class JsonSchema {
     String? id,
     String? title,
     String? description,
+    List<Object?> enumValues,
     bool nullable,
     Map<String, JsonSchema> properties,
     List<String> required,
@@ -38,6 +40,7 @@ sealed class JsonSchema {
     String? id,
     String? title,
     String? description,
+    List<Object?> enumValues,
     bool nullable,
     JsonSchema? items,
   }) = JsonArraySchema;
@@ -46,6 +49,7 @@ sealed class JsonSchema {
     String? id,
     String? title,
     String? description,
+    List<Object?> enumValues,
     bool nullable,
     String? format,
   }) = JsonStringSchema;
@@ -54,6 +58,7 @@ sealed class JsonSchema {
     String? id,
     String? title,
     String? description,
+    List<Object?> enumValues,
     bool nullable,
     String? format,
   }) = JsonIntegerSchema;
@@ -63,11 +68,13 @@ sealed class JsonSchema {
     String? id,
     String? title,
     String? description,
+    List<Object?> enumValues,
   }) = JsonReferenceSchema;
 
   final String? id;
   final String? title;
   final String? description;
+  final List<Object?> enumValues;
   final bool nullable;
 }
 
@@ -76,6 +83,7 @@ final class JsonObjectSchema extends JsonSchema {
     super.id,
     super.title,
     super.description,
+    super.enumValues,
     super.nullable = false,
     this.properties = const <String, JsonSchema>{},
     this.required = const <String>[],
@@ -92,6 +100,7 @@ final class JsonArraySchema extends JsonSchema {
     super.id,
     super.title,
     super.description,
+    super.enumValues,
     super.nullable = false,
     this.items,
   }) : super._();
@@ -104,6 +113,7 @@ final class JsonStringSchema extends JsonSchema {
     super.id,
     super.title,
     super.description,
+    super.enumValues,
     super.nullable = false,
     this.format,
   }) : super._();
@@ -116,6 +126,7 @@ final class JsonIntegerSchema extends JsonSchema {
     super.id,
     super.title,
     super.description,
+    super.enumValues,
     super.nullable = false,
     this.format,
   }) : super._();
@@ -129,6 +140,7 @@ final class JsonReferenceSchema extends JsonSchema {
     super.id,
     super.title,
     super.description,
+    super.enumValues,
   }) : super._();
 
   final String ref;
@@ -226,6 +238,7 @@ const createUserInputSchema = JsonSchema.object(
   properties: <String, JsonSchema>{
     'name': JsonSchema.string(),
     'age': JsonSchema.integer(),
+    'status': JsonSchema.string(enumValues: ['draft', 'published']),
     'tags': JsonSchema.array(items: JsonSchema.string()),
     'best_friend': JsonSchema.ref('FriendDto'),
     'manager': JsonSchema.ref('UserDto'),

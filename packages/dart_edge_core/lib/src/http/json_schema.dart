@@ -17,6 +17,7 @@ sealed class JsonSchema {
     this.id,
     this.title,
     this.description,
+    this.enumValues = const <Object?>[],
     this.nullable = false,
   });
 
@@ -24,12 +25,14 @@ sealed class JsonSchema {
     String? id,
     String? title,
     String? description,
+    List<Object?> enumValues,
   }) = JsonAnySchema;
 
   const factory JsonSchema.object({
     String? id,
     String? title,
     String? description,
+    List<Object?> enumValues,
     bool nullable,
     Map<String, JsonSchema> properties,
     List<String> required,
@@ -40,6 +43,7 @@ sealed class JsonSchema {
     String? id,
     String? title,
     String? description,
+    List<Object?> enumValues,
     bool nullable,
     JsonSchema? items,
   }) = JsonArraySchema;
@@ -48,6 +52,7 @@ sealed class JsonSchema {
     String? id,
     String? title,
     String? description,
+    List<Object?> enumValues,
     bool nullable,
     String? format,
   }) = JsonStringSchema;
@@ -56,6 +61,7 @@ sealed class JsonSchema {
     String? id,
     String? title,
     String? description,
+    List<Object?> enumValues,
     bool nullable,
     String? format,
   }) = JsonIntegerSchema;
@@ -64,6 +70,7 @@ sealed class JsonSchema {
     String? id,
     String? title,
     String? description,
+    List<Object?> enumValues,
     bool nullable,
     String? format,
   }) = JsonNumberSchema;
@@ -72,6 +79,7 @@ sealed class JsonSchema {
     String? id,
     String? title,
     String? description,
+    List<Object?> enumValues,
     bool nullable,
   }) = JsonBooleanSchema;
 
@@ -80,6 +88,7 @@ sealed class JsonSchema {
     String? id,
     String? title,
     String? description,
+    List<Object?> enumValues,
   }) = JsonReferenceSchema;
 
   const factory JsonSchema.raw(Map<String, Object?> schema, {String? id}) =
@@ -94,6 +103,9 @@ sealed class JsonSchema {
   /// Optional human-readable schema description.
   final String? description;
 
+  /// Optional set of exact JSON values accepted by this schema.
+  final List<Object?> enumValues;
+
   /// Whether this schema also allows JSON `null`.
   final bool nullable;
 
@@ -103,6 +115,7 @@ sealed class JsonSchema {
       if (id case final id?) r'$id': id,
       if (title case final title?) 'title': title,
       if (description case final description?) 'description': description,
+      if (enumValues.isNotEmpty) 'enum': enumValues.toList(growable: false),
       ...toJsonKeywords(),
     };
   }
@@ -116,6 +129,7 @@ abstract base class _JsonTypedSchema extends JsonSchema {
     super.id,
     super.title,
     super.description,
+    super.enumValues,
     super.nullable,
   }) : super._();
 
@@ -133,7 +147,12 @@ abstract base class _JsonTypedSchema extends JsonSchema {
 }
 
 final class JsonAnySchema extends JsonSchema {
-  const JsonAnySchema({super.id, super.title, super.description}) : super._();
+  const JsonAnySchema({
+    super.id,
+    super.title,
+    super.description,
+    super.enumValues,
+  }) : super._();
 
   @override
   Map<String, Object?> toJsonKeywords() => const <String, Object?>{};
@@ -144,6 +163,7 @@ final class JsonObjectSchema extends _JsonTypedSchema {
     super.id,
     super.title,
     super.description,
+    super.enumValues,
     super.nullable = false,
     this.properties = const <String, JsonSchema>{},
     this.required = const <String>[],
@@ -174,6 +194,7 @@ final class JsonArraySchema extends _JsonTypedSchema {
     super.id,
     super.title,
     super.description,
+    super.enumValues,
     super.nullable = false,
     this.items,
   }) : super(type: JsonSchemaType.array);
@@ -193,6 +214,7 @@ final class JsonStringSchema extends _JsonTypedSchema {
     super.id,
     super.title,
     super.description,
+    super.enumValues,
     super.nullable = false,
     this.format,
   }) : super(type: JsonSchemaType.string);
@@ -210,6 +232,7 @@ final class JsonIntegerSchema extends _JsonTypedSchema {
     super.id,
     super.title,
     super.description,
+    super.enumValues,
     super.nullable = false,
     this.format,
   }) : super(type: JsonSchemaType.integer);
@@ -227,6 +250,7 @@ final class JsonNumberSchema extends _JsonTypedSchema {
     super.id,
     super.title,
     super.description,
+    super.enumValues,
     super.nullable = false,
     this.format,
   }) : super(type: JsonSchemaType.number);
@@ -244,6 +268,7 @@ final class JsonBooleanSchema extends _JsonTypedSchema {
     super.id,
     super.title,
     super.description,
+    super.enumValues,
     super.nullable = false,
   }) : super(type: JsonSchemaType.boolean);
 
@@ -257,6 +282,7 @@ final class JsonReferenceSchema extends JsonSchema {
     super.id,
     super.title,
     super.description,
+    super.enumValues,
   }) : super._();
 
   final String ref;
@@ -278,6 +304,18 @@ final class JsonRawSchema extends JsonSchema {
 
   @override
   String? get description => _stringValue('description');
+
+  @override
+  List<Object?> get enumValues {
+    final values = schema['enum'];
+    if (values is List<Object?>) {
+      return values;
+    }
+    if (values is List) {
+      return List<Object?>.unmodifiable(values);
+    }
+    return const <Object?>[];
+  }
 
   @override
   Map<String, Object?> toJson() {
