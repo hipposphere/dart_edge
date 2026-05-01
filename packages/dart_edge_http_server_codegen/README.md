@@ -1,6 +1,6 @@
 # dart_edge_http_server_codegen
 
-Build-time JSON Schema and generator-facing APIs for Dart Edge HTTP.
+Build-time JSON Schema generation and generator-facing APIs for Dart Edge HTTP.
 
 This package provides a `build_runner` builder for schema-inferred Dart model
 types plus lower-level generator APIs for tooling that already has normalized
@@ -8,7 +8,8 @@ HTTP route metadata.
 
 ## Core Concepts
 
-- `FromSchema` generates a Dart model class from a const `JsonSchema`
+- `FromSchema` generates a Dart model class from a const `JsonSchema` and is
+  exported by `dart_edge_core` and the app-facing `dart_edge_http_server`
 - `JsonSchemaRegistry` references can be supplied to validate `$ref` usage
 - `FromSchema.responseStatus` controls the generated JSON `ResponseSpec`
   status, defaulting to `200`
@@ -21,9 +22,13 @@ HTTP route metadata.
 
 ## Schema Model Generation
 
-Add this package and `build_runner` to an app package:
+Add this package and `build_runner` as development dependencies. The
+annotations are imported from the app-facing server package.
 
 ```yaml
+dependencies:
+  dart_edge_http_server: ^0.3.2
+
 dev_dependencies:
   build_runner: ^2.15.0
   dart_edge_http_server_codegen: ^0.3.3
@@ -32,8 +37,7 @@ dev_dependencies:
 Define const schemas and type aliases:
 
 ```dart
-import 'package:dart_edge_http_server_codegen/dart_edge_http_server_codegen.dart';
-import 'package:dart_edge_http_server_runtime/dart_edge_http_server_runtime.dart';
+import 'package:dart_edge_http_server/dart_edge_http_server.dart';
 
 part 'users.g.dart';
 

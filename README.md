@@ -77,7 +77,7 @@ app-facing helper APIs such as `OpenApiHelpers`.
 - [`packages/dart_edge_http_server_runtime`](packages/dart_edge_http_server_runtime): Rust-backed HTTP
   runtime plus shared route, schema, and context contracts
 - [`packages/dart_edge_http_server_codegen`](packages/dart_edge_http_server_codegen): build-time HTTP route
-  annotations, normalized metadata, generated route artifacts, schema registries,
+  generation, normalized metadata, generated route artifacts, schema registries,
   codec registry skeletons, and generated HTTP client support
 - [`packages/dart_edge_auth`](packages/dart_edge_auth): Better Auth route
   integration for Dart Edge apps
@@ -170,8 +170,9 @@ for targets, scenarios, external dependencies, and methodology.
 - Benchmark packages live under `benchmarks/`.
 - Keep `dart_edge_http_server` as the default app-facing package.
 - Keep helper-only APIs out of `dart_edge_http_server_runtime`.
-- Keep build-time HTTP annotations and generator-facing APIs in
-  `dart_edge_http_server_codegen`.
+- Keep app-facing schema annotations in `dart_edge_core` and export them through
+  `dart_edge_http_server`.
+- Keep generator-facing APIs in `dart_edge_http_server_codegen`.
 
 For lower-level package details, use the package-local READMEs. The root README
 should stay focused on the overall platform, workspace shape, and the default

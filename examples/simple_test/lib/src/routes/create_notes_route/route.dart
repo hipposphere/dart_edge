@@ -1,5 +1,4 @@
 import 'package:dart_edge_http_server/dart_edge_http_server.dart';
-import 'package:dart_edge_http_server_codegen/dart_edge_http_server_codegen.dart';
 import 'package:dart_edge_sql/dart_edge_sql.dart';
 import 'package:simple_test/generated/app_schema.g.dart';
 

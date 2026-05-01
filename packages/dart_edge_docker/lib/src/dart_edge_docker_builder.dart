@@ -126,8 +126,8 @@ bool _isDockerConfigExpression(Expression expression) {
 _DockerConfig _configFromExpression(Expression expression) {
   final args = <String, Expression>{};
   for (final argument in _argumentList(expression).arguments) {
-    if (argument is NamedExpression) {
-      args[argument.name.label.name] = argument.expression;
+    if (argument is NamedArgument) {
+      args[argument.name.lexeme] = argument.argumentExpression;
     }
   }
 

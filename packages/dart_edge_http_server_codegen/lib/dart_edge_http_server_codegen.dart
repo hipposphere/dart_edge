@@ -1,7 +1,7 @@
-/// Build-time annotations and generator-facing APIs for Dart Edge HTTP.
+/// Build-time generator-facing APIs for Dart Edge HTTP.
 ///
-/// Import this library from annotated schema source or from generator-facing
-/// code that emits HTTP server/client artifacts from normalized specs.
+/// App-facing schema annotations are owned by `dart_edge_core` and re-exported
+/// here for compatibility with older imports.
 library dart_edge_http_server_codegen;
 
 export 'src/annotations.dart';
