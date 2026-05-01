@@ -25,8 +25,8 @@ Add this package and `build_runner` to an app package:
 
 ```yaml
 dev_dependencies:
-  build_runner: ^2.14.1
-  dart_edge_http_server_codegen: ^0.3.1
+  build_runner: ^2.15.0
+  dart_edge_http_server_codegen: ^0.3.3
 ```
 
 Define const schemas and type aliases:

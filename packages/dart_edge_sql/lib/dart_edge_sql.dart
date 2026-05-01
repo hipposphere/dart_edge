@@ -13,5 +13,6 @@ export 'src/core/sql_row.dart';
 export 'src/core/sql_schema.dart';
 export 'src/core/sql_statement.dart';
 export 'src/core/sql_value.dart';
+export 'src/drivers/postgres/pglite_endpoint.dart';
 export 'src/drivers/postgres/postgres_pool.dart';
 export 'src/drivers/sqlite/sqlite_database.dart';

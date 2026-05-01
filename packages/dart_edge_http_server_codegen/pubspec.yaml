@@ -10,16 +10,16 @@ environment:
 resolution: workspace
 
 dependencies:
-  analyzer: ^12.1.0
+  analyzer: ^13.0.0
   build: ^4.0.6
   code_builder: ^4.11.1
   dart_edge_http_server_runtime:
     hosted: "https://registry.hippolabs.org/pub/internal-pub/"
     version: ^0.3.1
-  dart_style: ^3.1.8
-  source_gen: ^4.2.2
+  dart_style: ^3.1.9
+  source_gen: ^4.2.3
 
 dev_dependencies:
-  build_runner: ^2.14.1
+  build_runner: ^2.15.0
   build_test: ^3.5.14
   test: ^1.30.0

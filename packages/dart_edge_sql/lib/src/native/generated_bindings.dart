@@ -41,6 +41,12 @@ external int dart_edge_sql_open_postgres_pool(
   ffi.Pointer<ffi.Char> connection_string,
 );
 
+@ffi.Native<ffi.Int64 Function(ffi.Pointer<ffi.Char>, ffi.Int32)>()
+external int dart_edge_sql_open_postgres_pool_with_max_sessions(
+  ffi.Pointer<ffi.Char> connection_string,
+  int max_sessions,
+);
+
 @ffi.Native<ffi.Int64 Function(ffi.Int32)>()
 external int dart_edge_sql_open_sqlite_in_memory_pool(int max_sessions);
 

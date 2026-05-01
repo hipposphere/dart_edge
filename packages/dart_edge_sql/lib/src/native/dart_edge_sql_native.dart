@@ -12,11 +12,15 @@ import 'generated_bindings.dart' as gen;
 abstract final class DartEdgeSqlNative {
   static int get abiVersion => gen.dart_edge_sql_native_abi_version();
 
-  static int openPostgresPool(String connectionString) {
+  static int openPostgresPool(
+    String connectionString, {
+    required int maxSessions,
+  }) {
     final connectionStringPtr = connectionString.toNativeUtf8();
     try {
-      final handle = gen.dart_edge_sql_open_postgres_pool(
+      final handle = gen.dart_edge_sql_open_postgres_pool_with_max_sessions(
         connectionStringPtr.cast<Char>(),
+        maxSessions,
       );
       if (handle <= 0) {
         throw StateError(_takeLastError());

@@ -45,15 +45,28 @@ pub extern "C" fn dart_edge_sql_native_abi_version() -> i32 {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn dart_edge_sql_open_postgres_pool(connection_string: *const c_char) -> i64 {
+    open_postgres_pool(connection_string, 10)
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_sql_open_postgres_pool_with_max_sessions(
+    connection_string: *const c_char,
+    max_sessions: i32,
+) -> i64 {
+    open_postgres_pool(connection_string, max_sessions)
+}
+
+fn open_postgres_pool(connection_string: *const c_char, max_sessions: i32) -> i64 {
     let Some(connection_string) = (unsafe { read_c_string(connection_string) }) else {
         set_last_error("Missing PostgreSQL connection string.");
         return 0;
     };
 
+    let max_sessions = normalize_max_sessions(max_sessions);
     let handle = reserve_handle();
     match RUNTIME.block_on(async {
         PgPoolOptions::new()
-            .max_connections(10)
+            .max_connections(max_sessions)
             .connect(&connection_string)
             .await
     }) {

@@ -9,10 +9,16 @@ final class NativeSqlPoolDelegate implements SqlPool {
   NativeSqlPoolDelegate._({required this.dialect, required int handle})
     : _handle = handle;
 
-  factory NativeSqlPoolDelegate.openPostgres(String connectionString) {
+  factory NativeSqlPoolDelegate.openPostgres(
+    String connectionString, {
+    required int maxSessions,
+  }) {
     return NativeSqlPoolDelegate._(
       dialect: SqlDialect.postgres,
-      handle: DartEdgeSqlNative.openPostgresPool(connectionString),
+      handle: DartEdgeSqlNative.openPostgresPool(
+        connectionString,
+        maxSessions: maxSessions,
+      ),
     );
   }
 
