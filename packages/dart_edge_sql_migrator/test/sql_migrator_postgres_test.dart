@@ -7,7 +7,6 @@ void main() {
     final pool = _RecordingPool(SqlDialect.postgres);
     final migrator = DartEdgeSqlMigrator(
       pool: pool,
-      tableName: 'schema_migrations',
       migrations: [
         SqlMigration(
           version: '0001',
@@ -23,12 +22,18 @@ void main() {
     expect(await migrator.migrateToLatest(), 1);
     expect(await migrator.rollback(), 1);
 
-    expect(pool.executed[0].sql, contains('TIMESTAMPTZ'));
+    const schema = DartEdgeSqlMigrator.defaultPostgresTableSchema;
+    expect(pool.executed[0].sql, 'CREATE SCHEMA IF NOT EXISTS $schema');
+    expect(pool.executed[1].sql, contains('TIMESTAMPTZ'));
+    expect(
+      pool.executed[1].sql,
+      contains('CREATE TABLE IF NOT EXISTS $schema.migrations'),
+    );
     expect(
       pool.executed.any(
         (statement) =>
             statement.sql ==
-            'INSERT INTO schema_migrations (version, name) VALUES (\$1, \$2)',
+            'INSERT INTO $schema.migrations (version, name) VALUES (\$1, \$2)',
       ),
       isTrue,
     );
@@ -36,7 +41,39 @@ void main() {
       pool.executed.any(
         (statement) =>
             statement.sql ==
-            'DELETE FROM schema_migrations WHERE version = \$1',
+            'DELETE FROM $schema.migrations WHERE version = \$1',
+      ),
+      isTrue,
+    );
+  });
+
+  test('uses postgres metadata table schema when configured', () async {
+    final pool = _RecordingPool(SqlDialect.postgres);
+    final migrator = DartEdgeSqlMigrator(
+      pool: pool,
+      tableSchema: 'app_meta',
+      migrations: [
+        SqlMigration(
+          version: '0001',
+          name: 'create_users',
+          up: SqlMigrationPlan.sql(['CREATE TABLE users (id BIGINT)']),
+          down: SqlMigrationPlan.sql(['DROP TABLE users']),
+        ),
+      ],
+    );
+
+    expect(await migrator.migrateToLatest(), 1);
+
+    expect(pool.executed.first.sql, 'CREATE SCHEMA IF NOT EXISTS app_meta');
+    expect(
+      pool.executed[1].sql,
+      contains('CREATE TABLE IF NOT EXISTS app_meta.migrations'),
+    );
+    expect(
+      pool.executed.any(
+        (statement) =>
+            statement.sql ==
+            'INSERT INTO app_meta.migrations (version, name) VALUES (\$1, \$2)',
       ),
       isTrue,
     );

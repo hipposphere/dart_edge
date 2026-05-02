@@ -10,5 +10,6 @@ export 'src/core/dart_edge_sql_migrator.dart';
 export 'src/core/sql_file_migration_source.dart';
 export 'src/core/sql_migration.dart';
 export 'src/core/sql_migration_file_sorting.dart';
+export 'src/core/sql_migration_manifest.dart';
 export 'src/core/sql_migration_plan.dart';
 export 'src/core/sql_migration_status.dart';

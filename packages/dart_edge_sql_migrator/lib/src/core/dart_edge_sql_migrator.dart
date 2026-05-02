@@ -4,6 +4,7 @@ import 'applied_sql_migration.dart';
 import 'sql_file_migration_source.dart';
 import 'sql_migration.dart';
 import 'sql_migration_file_sorting.dart';
+import 'sql_migration_manifest.dart';
 import 'sql_migration_status.dart';
 
 /// Migration manager for SQLite and PostgreSQL databases.
@@ -11,11 +12,18 @@ final class DartEdgeSqlMigrator {
   DartEdgeSqlMigrator({
     required this.pool,
     required Iterable<SqlMigration> migrations,
-    this.tableName = 'dart_edge_schema_migrations',
+    this.tableSchema = defaultPostgresTableSchema,
+    this.tableName = defaultTableName,
   }) : migrations = List<SqlMigration>.unmodifiable(migrations) {
+    _validateSqlIdentifier(tableSchema, 'tableSchema');
     _validateTableName(tableName);
     _validateMigrations(this.migrations);
   }
+
+  /// Default PostgreSQL schema used for the metadata table.
+  static const defaultPostgresTableSchema = 'dart_edge_internal';
+
+  static const defaultTableName = 'migrations';
 
   /// Database pool used to apply migrations.
   final SqlPool pool;
@@ -26,13 +34,19 @@ final class DartEdgeSqlMigrator {
   /// Metadata table used to record applied migrations.
   final String tableName;
 
+  /// PostgreSQL schema used for the metadata table.
+  ///
+  /// SQLite does not support schemas, so this value is ignored for SQLite.
+  final String tableSchema;
+
   /// Creates a migrator by loading migrations from [folder].
   static Future<DartEdgeSqlMigrator> fromFolder({
     required SqlPool pool,
     required String folder,
     SqlMigrationFileSorting sorting =
         const SqlMigrationFileSorting.lexicographic(),
-    String tableName = 'dart_edge_schema_migrations',
+    String tableSchema = defaultPostgresTableSchema,
+    String tableName = defaultTableName,
   }) async {
     final migrations = await SqlFileMigrationSource(
       folder: folder,
@@ -41,6 +55,45 @@ final class DartEdgeSqlMigrator {
     return DartEdgeSqlMigrator(
       pool: pool,
       migrations: migrations,
+      tableSchema: tableSchema,
+      tableName: tableName,
+    );
+  }
+
+  /// Creates a migrator from an already-loaded migration manifest.
+  static Future<DartEdgeSqlMigrator> fromManifest({
+    required SqlPool pool,
+    required SqlMigrationManifest manifest,
+    SqlMigrationFileSorting sorting =
+        const SqlMigrationFileSorting.lexicographic(),
+    String tableSchema = defaultPostgresTableSchema,
+    String tableName = defaultTableName,
+  }) async {
+    return DartEdgeSqlMigrator(
+      pool: pool,
+      migrations: manifest.toMigrations(sorting: sorting),
+      tableSchema: tableSchema,
+      tableName: tableName,
+    );
+  }
+
+  /// Creates a migrator by loading one data asset containing the migration manifest.
+  static Future<DartEdgeSqlMigrator> fromDataAsset({
+    required SqlPool pool,
+    required String assetId,
+    required Future<String> Function(String assetId) loadString,
+    SqlMigrationFileSorting sorting =
+        const SqlMigrationFileSorting.lexicographic(),
+    String tableSchema = defaultPostgresTableSchema,
+    String tableName = defaultTableName,
+  }) async {
+    final manifest = SqlMigrationManifest.fromJsonString(
+      await loadString(assetId),
+    );
+    return DartEdgeSqlMigrator(
+      pool: pool,
+      migrations: manifest.toMigrations(sorting: sorting),
+      tableSchema: tableSchema,
       tableName: tableName,
     );
   }
@@ -145,8 +198,11 @@ final class DartEdgeSqlMigrator {
     return revertedCount;
   }
 
-  Future<void> _ensureMetadataTable(SqlExecutor executor) {
-    return executor.execute(_createMetadataTableStatement(executor.dialect));
+  Future<void> _ensureMetadataTable(SqlExecutor executor) async {
+    if (executor.dialect == SqlDialect.postgres) {
+      await executor.execute(_createMetadataSchemaStatement());
+    }
+    await executor.execute(_createMetadataTableStatement(executor.dialect));
   }
 
   Future<List<AppliedSqlMigration>> _loadAppliedMigrations(
@@ -232,17 +288,22 @@ final class DartEdgeSqlMigrator {
     }
   }
 
+  SqlStatement _createMetadataSchemaStatement() {
+    return sql('CREATE SCHEMA IF NOT EXISTS $tableSchema');
+  }
+
   SqlStatement _createMetadataTableStatement(SqlDialect dialect) {
+    final metadataTable = _metadataTableSql(dialect);
     return switch (dialect) {
       SqlDialect.sqlite => sql('''
-        CREATE TABLE IF NOT EXISTS $tableName (
+        CREATE TABLE IF NOT EXISTS $metadataTable (
           version TEXT PRIMARY KEY,
           name TEXT NOT NULL,
           applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         )
         '''),
       SqlDialect.postgres => sql('''
-        CREATE TABLE IF NOT EXISTS $tableName (
+        CREATE TABLE IF NOT EXISTS $metadataTable (
           version TEXT PRIMARY KEY,
           name TEXT NOT NULL,
           applied_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -252,9 +313,10 @@ final class DartEdgeSqlMigrator {
   }
 
   SqlStatement _selectAppliedMigrationsStatement() {
+    final metadataTable = _metadataTableSql(pool.dialect);
     return sql('''
       SELECT version, name, applied_at
-      FROM $tableName
+      FROM $metadataTable
       ORDER BY applied_at ASC, version ASC
       ''');
   }
@@ -263,13 +325,14 @@ final class DartEdgeSqlMigrator {
     SqlDialect dialect,
     SqlMigration migration,
   ) {
+    final metadataTable = _metadataTableSql(dialect);
     return switch (dialect) {
       SqlDialect.sqlite => SqlStatement.positional(
-        'INSERT INTO $tableName (version, name) VALUES (?, ?)',
+        'INSERT INTO $metadataTable (version, name) VALUES (?, ?)',
         [migration.version, migration.name],
       ),
       SqlDialect.postgres => SqlStatement.positional(
-        'INSERT INTO $tableName (version, name) VALUES (\$1, \$2)',
+        'INSERT INTO $metadataTable (version, name) VALUES (\$1, \$2)',
         [migration.version, migration.name],
       ),
     };
@@ -279,25 +342,37 @@ final class DartEdgeSqlMigrator {
     SqlDialect dialect,
     String version,
   ) {
+    final metadataTable = _metadataTableSql(dialect);
     return switch (dialect) {
       SqlDialect.sqlite => SqlStatement.positional(
-        'DELETE FROM $tableName WHERE version = ?',
+        'DELETE FROM $metadataTable WHERE version = ?',
         [version],
       ),
       SqlDialect.postgres => SqlStatement.positional(
-        'DELETE FROM $tableName WHERE version = \$1',
+        'DELETE FROM $metadataTable WHERE version = \$1',
         [version],
       ),
+    };
+  }
+
+  String _metadataTableSql(SqlDialect dialect) {
+    return switch (dialect) {
+      SqlDialect.postgres => '$tableSchema.$tableName',
+      SqlDialect.sqlite => tableName,
     };
   }
 }
 
 void _validateTableName(String tableName) {
-  if (!_sqlIdentifierPattern.hasMatch(tableName)) {
+  _validateSqlIdentifier(tableName, 'tableName');
+}
+
+void _validateSqlIdentifier(String value, String argumentName) {
+  if (!_sqlIdentifierPattern.hasMatch(value)) {
     throw ArgumentError.value(
-      tableName,
-      'tableName',
-      'Metadata table names must be simple SQL identifiers.',
+      value,
+      argumentName,
+      'Metadata table identifiers must be simple SQL identifiers.',
     );
   }
 }

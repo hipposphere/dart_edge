@@ -76,13 +76,66 @@ and sorts them numerically by version segment rather than as plain strings.
 See [example/file_based_sql_migrations.dart](example/file_based_sql_migrations.dart)
 for a runnable folder-based example.
 
+## Data Asset Migrations
+
+Build hooks can turn the same folder layout into one Dart data asset containing
+the full migration manifest:
+
+```dart
+import 'package:data_assets/data_assets.dart';
+import 'package:dart_edge_sql_migrator/dart_edge_sql_migrator.dart';
+import 'package:hooks/hooks.dart';
+
+void main(List<String> args) async {
+  await build(args, (input, output) async {
+    if (!input.config.buildDataAssets) {
+      return;
+    }
+
+    final manifest = await SqlMigrationManifest.fromFolder(
+      package: input.packageName,
+      folder: input.packageRoot.resolve('db/migrations').toFilePath(),
+      assetNamePrefix: 'db/migrations',
+      sorting: const SqlMigrationFileSorting.flyway(),
+    );
+
+    final manifestFile = input.outputDirectory.resolve(
+      'sql_migrations_manifest.json',
+    );
+    final manifestAsset = await manifest.writeDataAsset(
+      name: 'db/migrations_manifest.json',
+      file: manifestFile,
+    );
+
+    output.assets.data.add(manifestAsset);
+    for (final file in manifest.sourceFiles) {
+      output.dependencies.add(file);
+    }
+  });
+}
+```
+
+At runtime, load that one manifest asset through your Dart data-asset string
+loader:
+
+```dart
+final migrator = await DartEdgeSqlMigrator.fromDataAsset(
+  pool: pool,
+  assetId: 'package:my_app/db/migrations_manifest.json',
+  loadString: loadDataAssetString,
+  sorting: const SqlMigrationFileSorting.flyway(),
+);
+```
+
 ## Main Types
 
 - `DartEdgeSqlMigrator` runs migrations and tracks metadata
 - `SqlMigration` describes one ordered migration
+- `SqlMigrationManifest` describes SQL files embedded in one Dart data asset
 - `SqlMigrationPlan` contains shared and dialect-specific statements
 - `SqlMigrationStatus` reports applied and pending migrations
 
-The migrator records its state in `dart_edge_schema_migrations` by default.
-You can override that with the `tableName:` parameter as long as it remains a
-simple SQL identifier.
+The migrator records its state in `migrations` by default. For PostgreSQL, that
+table is schema-qualified in the default PostgreSQL metadata schema, and the
+schema is created with `CREATE SCHEMA IF NOT EXISTS ...`. You can override
+`tableSchema:` and `tableName:` as long as both remain simple SQL identifiers.

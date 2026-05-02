@@ -225,10 +225,11 @@ Future<List<SqlStatement>> _readStatements(File? file) async {
   }
 
   final source = await file.readAsString();
-  return List<SqlStatement>.unmodifiable(_splitSqlStatements(source));
+  return List<SqlStatement>.unmodifiable(splitSqlMigrationStatements(source));
 }
 
-List<SqlStatement> _splitSqlStatements(String source) {
+/// Splits SQL migration source into executable statements.
+List<SqlStatement> splitSqlMigrationStatements(String source) {
   final statements = <SqlStatement>[];
   final buffer = StringBuffer();
 
