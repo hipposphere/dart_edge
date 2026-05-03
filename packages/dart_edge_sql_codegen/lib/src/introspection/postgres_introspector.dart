@@ -123,29 +123,29 @@ final class PostgresIntrospector implements SqlDatabaseIntrospector {
 
 const String _columnsQuery = '''
 SELECT
-  columns.table_schema AS table_schema,
-  columns.table_name AS table_name,
-  columns.column_name AS column_name,
-  columns.udt_name AS database_type,
-  columns.is_nullable = 'YES' AS is_nullable,
-  columns.column_default IS NOT NULL AS has_default,
-  COALESCE(constraints.constraint_type = 'PRIMARY KEY', FALSE) AS is_primary_key
-FROM information_schema.columns AS columns
-JOIN information_schema.tables AS tables
-  ON tables.table_schema = columns.table_schema
- AND tables.table_name = columns.table_name
-LEFT JOIN information_schema.key_column_usage AS key_usage
-  ON key_usage.table_schema = columns.table_schema
- AND key_usage.table_name = columns.table_name
- AND key_usage.column_name = columns.column_name
-LEFT JOIN information_schema.table_constraints AS constraints
-  ON constraints.table_schema = key_usage.table_schema
- AND constraints.table_name = key_usage.table_name
- AND constraints.constraint_name = key_usage.constraint_name
- AND constraints.constraint_type = 'PRIMARY KEY'
-WHERE tables.table_type = 'BASE TABLE'
-  AND columns.table_schema = @schema
-ORDER BY columns.table_name, columns.ordinal_position
+  namespaces.nspname AS table_schema,
+  table_classes.relname AS table_name,
+  attributes.attname AS column_name,
+  types.typname AS database_type,
+  NOT attributes.attnotnull AS is_nullable,
+  attributes.atthasdef AS has_default,
+  primary_keys.oid IS NOT NULL AS is_primary_key
+FROM pg_catalog.pg_class AS table_classes
+JOIN pg_catalog.pg_namespace AS namespaces
+  ON namespaces.oid = table_classes.relnamespace
+JOIN pg_catalog.pg_attribute AS attributes
+  ON attributes.attrelid = table_classes.oid
+JOIN pg_catalog.pg_type AS types
+  ON types.oid = attributes.atttypid
+LEFT JOIN pg_catalog.pg_constraint AS primary_keys
+  ON primary_keys.conrelid = table_classes.oid
+ AND primary_keys.contype = 'p'
+ AND attributes.attnum = ANY(primary_keys.conkey)
+WHERE table_classes.relkind IN ('r', 'p')
+  AND attributes.attnum > 0
+  AND NOT attributes.attisdropped
+  AND namespaces.nspname = @schema
+ORDER BY table_classes.relname, attributes.attnum
 ''';
 
 String _mapPostgresType(String databaseType) {
