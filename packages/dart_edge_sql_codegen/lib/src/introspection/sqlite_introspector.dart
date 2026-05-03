@@ -100,7 +100,7 @@ SelectedSelectQueryBuilder<SqlRow> _tablesQuery(SqlRawQueryRoot raw) {
       .from('sqlite_master')
       .select(const ['CAST(name AS TEXT) AS table_name'])
       .where(raw.eq('type', 'table'))
-      .where("name NOT LIKE 'sqlite_%'")
+      .where(.raw("name NOT LIKE 'sqlite_%'"))
       .orderBy('name');
 }
 

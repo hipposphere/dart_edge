@@ -51,7 +51,7 @@ final class _SqlSelectCore {
     );
   }
 
-  _SqlSelectCore whereAnd(SqlPredicate predicate) => _copyWith(
+  _SqlSelectCore addWhere(SqlPredicate predicate) => _copyWith(
     where: where == null ? predicate : where!.and(predicate),
     useWhere: true,
   );
@@ -152,12 +152,8 @@ final class SqlRawSelectQueryBuilder {
   }) => SqlRawSelectQueryBuilder._fromCore(_core.leftJoin(table, on: on));
 
   /// Adds [predicate] to the `WHERE` clause with `AND`.
-  SqlRawSelectQueryBuilder where(
-    Object predicate, {
-    Map<String, Object?> parameters = const <String, Object?>{},
-  }) => SqlRawSelectQueryBuilder._fromCore(
-    _core.whereAnd(_normalizePredicate(predicate, parameters: parameters)),
-  );
+  SqlRawSelectQueryBuilder where(SqlPredicate predicate) =>
+      SqlRawSelectQueryBuilder._fromCore(_core.addWhere(predicate));
 
   /// Appends a `GROUP BY` SQL expression.
   SqlRawSelectQueryBuilder groupBy(String sql) =>
@@ -426,15 +422,11 @@ final class SelectedSelectQueryBuilder<TSelection> {
   final _SqlSelection<TSelection> _selection;
 
   /// Adds [predicate] to the `WHERE` clause with `AND`.
-  SelectedSelectQueryBuilder<TSelection> where(
-    Object predicate, {
-    Map<String, Object?> parameters = const <String, Object?>{},
-  }) => SelectedSelectQueryBuilder<TSelection>._(
-    core: _core.whereAnd(
-      _normalizePredicate(predicate, parameters: parameters),
-    ),
-    selection: _selection,
-  );
+  SelectedSelectQueryBuilder<TSelection> where(SqlPredicate predicate) =>
+      SelectedSelectQueryBuilder<TSelection>._(
+        core: _core.addWhere(predicate),
+        selection: _selection,
+      );
 
   /// Appends a `GROUP BY` expression.
   SelectedSelectQueryBuilder<TSelection> groupBy(Object value) =>

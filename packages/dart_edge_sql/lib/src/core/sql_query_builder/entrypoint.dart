@@ -113,14 +113,14 @@ final class SqlRawQueryRoot {
     return condition('$left $operator @value', parameters: {'value': value});
   }
 
-  /// Combines [conditions] with `AND`.
-  SqlPredicate and(Iterable<Object> conditions) {
-    return .and(conditions.map(_normalizePredicate));
+  /// Combines [predicates] with `AND`.
+  SqlPredicate and(Iterable<SqlPredicate> predicates) {
+    return .and(predicates);
   }
 
-  /// Combines [conditions] with `OR`.
-  SqlPredicate or(Iterable<Object> conditions) {
-    return .or(conditions.map(_normalizePredicate));
+  /// Combines [predicates] with `OR`.
+  SqlPredicate or(Iterable<SqlPredicate> predicates) {
+    return .or(predicates);
   }
 
   /// Starts building a raw `SELECT` query from [tableExpression].

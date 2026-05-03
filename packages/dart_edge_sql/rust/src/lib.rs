@@ -7,6 +7,7 @@ use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use dart_edge_sql_core::{SqlColumn, SqlResult, SqlRow, SqlStatement, SqlValue};
 use once_cell::sync::Lazy;
+use serde::Serialize;
 use sqlx::pool::PoolConnection;
 use sqlx::postgres::{PgPool, PgPoolOptions, PgRow};
 use sqlx::sqlite::{SqlitePool, SqlitePoolOptions, SqliteRow};
@@ -572,15 +573,22 @@ fn encode_postgres_row(row: PgRow) -> Result<SqlRow, String> {
     let mut values = Vec::with_capacity(row.len());
     for index in 0..row.len() {
         let column = &row.columns()[index];
+        let column_name = column.name();
+        let type_name = column.type_info().name();
         values.push(SqlColumn {
-            name: column.name().to_string(),
-            value: decode_postgres_value(&row, index, column.type_info().name())?,
+            name: column_name.to_string(),
+            value: decode_postgres_value(&row, index, column_name, type_name)?,
         });
     }
     Ok(SqlRow { values })
 }
 
-fn decode_postgres_value(row: &PgRow, index: usize, type_name: &str) -> Result<SqlValue, String> {
+fn decode_postgres_value(
+    row: &PgRow,
+    index: usize,
+    column_name: &str,
+    type_name: &str,
+) -> Result<SqlValue, String> {
     let value = match type_name {
         "BOOL" => match row.try_get::<Option<bool>, usize>(index) {
             Ok(Some(value)) => SqlValue::Boolean(value),
@@ -601,6 +609,11 @@ fn decode_postgres_value(row: &PgRow, index: usize, type_name: &str) -> Result<S
             Ok(Some(value)) => SqlValue::Integer(value),
             Ok(None) => SqlValue::Null,
             Err(error) => return Err(format!("Failed to decode PostgreSQL int8: {error}")),
+        },
+        "\"CHAR\"" => match row.try_get::<Option<i8>, usize>(index) {
+            Ok(Some(value)) => SqlValue::String(postgres_char_to_string(value)),
+            Ok(None) => SqlValue::Null,
+            Err(error) => return Err(format!("Failed to decode PostgreSQL char: {error}")),
         },
         "FLOAT4" => match row.try_get::<Option<f32>, usize>(index) {
             Ok(Some(value)) => SqlValue::Double(value as f64),
@@ -624,6 +637,50 @@ fn decode_postgres_value(row: &PgRow, index: usize, type_name: &str) -> Result<S
             Ok(None) => SqlValue::Null,
             Err(error) => return Err(format!("Failed to decode PostgreSQL bytea: {error}")),
         },
+        "BOOL[]" => decode_postgres_array::<bool>(row, index, "bool array")?,
+        "INT2[]" => decode_postgres_array::<i16>(row, index, "int2 array")?,
+        "INT4[]" => decode_postgres_array::<i32>(row, index, "int4 array")?,
+        "INT8[]" | "OID[]" => decode_postgres_array::<i64>(row, index, "int8 array")?,
+        "\"CHAR\"[]" => match row.try_get::<Option<Vec<Option<i8>>>, usize>(index) {
+            Ok(Some(value)) => SqlValue::Json(
+                value
+                    .into_iter()
+                    .map(|value| value.map(postgres_char_to_string))
+                    .collect(),
+            ),
+            Ok(None) => SqlValue::Null,
+            Err(error) => return Err(format!("Failed to decode PostgreSQL char array: {error}")),
+        },
+        "FLOAT4[]" => match row.try_get::<Option<Vec<Option<f32>>>, usize>(index) {
+            Ok(Some(value)) => SqlValue::Json(
+                value
+                    .into_iter()
+                    .map(|value| value.map(f64::from))
+                    .collect(),
+            ),
+            Ok(None) => SqlValue::Null,
+            Err(error) => return Err(format!("Failed to decode PostgreSQL float4 array: {error}")),
+        },
+        "FLOAT8[]" => decode_postgres_array::<f64>(row, index, "float8 array")?,
+        "TEXT[]" | "VARCHAR[]" | "CHAR[]" | "NAME[]" | "UUID[]" => {
+            decode_postgres_array::<String>(row, index, "text array")?
+        }
+        "JSON[]" | "JSONB[]" => {
+            match row
+                .try_get::<Option<Vec<Option<sqlx::types::Json<serde_json::Value>>>>, usize>(index)
+            {
+                Ok(Some(value)) => SqlValue::Json(
+                    value
+                        .into_iter()
+                        .map(|value| value.map(|json| json.0))
+                        .collect(),
+                ),
+                Ok(None) => SqlValue::Null,
+                Err(error) => {
+                    return Err(format!("Failed to decode PostgreSQL json array: {error}"));
+                }
+            }
+        }
         _ => {
             if matches!(
                 type_name,
@@ -640,10 +697,10 @@ fn decode_postgres_value(row: &PgRow, index: usize, type_name: &str) -> Result<S
                 match row.try_get::<Option<String>, usize>(index) {
                     Ok(Some(value)) => SqlValue::String(value),
                     Ok(None) => SqlValue::Null,
-                    Err(_) => fallback_postgres_value(row, index)?,
+                    Err(_) => fallback_postgres_value(row, index, column_name, type_name)?,
                 }
             } else {
-                fallback_postgres_value(row, index)?
+                fallback_postgres_value(row, index, column_name, type_name)?
             }
         }
     };
@@ -651,7 +708,35 @@ fn decode_postgres_value(row: &PgRow, index: usize, type_name: &str) -> Result<S
     Ok(value)
 }
 
-fn fallback_postgres_value(row: &PgRow, index: usize) -> Result<SqlValue, String> {
+fn decode_postgres_array<T>(row: &PgRow, index: usize, label: &str) -> Result<SqlValue, String>
+where
+    T: for<'r> sqlx::Decode<'r, Postgres> + sqlx::Type<Postgres> + Serialize,
+    Option<T>: sqlx::postgres::PgHasArrayType,
+{
+    match row.try_get::<Option<Vec<Option<T>>>, usize>(index) {
+        Ok(Some(value)) => Ok(SqlValue::Json(
+            serde_json::to_value(value)
+                .map_err(|error| format!("Failed to encode PostgreSQL {label}: {error}"))?,
+        )),
+        Ok(None) => Ok(SqlValue::Null),
+        Err(error) => Err(format!("Failed to decode PostgreSQL {label}: {error}")),
+    }
+}
+
+fn postgres_char_to_string(value: i8) -> String {
+    if value == 0 {
+        String::new()
+    } else {
+        char::from(value as u8).to_string()
+    }
+}
+
+fn fallback_postgres_value(
+    row: &PgRow,
+    index: usize,
+    column_name: &str,
+    type_name: &str,
+) -> Result<SqlValue, String> {
     if let Ok(value) = row.try_get::<Option<String>, usize>(index) {
         return Ok(value.map_or(SqlValue::Null, SqlValue::String));
     }
@@ -670,7 +755,9 @@ fn fallback_postgres_value(row: &PgRow, index: usize) -> Result<SqlValue, String
         }));
     }
 
-    Err("Unsupported PostgreSQL column type in SQL result.".to_string())
+    Err(format!(
+        "Unsupported PostgreSQL column type in SQL result: column \"{column_name}\" at index {index} has type {type_name}."
+    ))
 }
 
 fn encode_sqlite_rows(rows: Vec<SqliteRow>) -> Result<Vec<SqlRow>, String> {

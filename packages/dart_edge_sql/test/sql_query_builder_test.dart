@@ -266,7 +266,7 @@ void main() {
     final statement = raw
         .from('users', alias: 'u')
         .select(['"u"."id" AS "user_id"'])
-        .where('"u"."id" > @id', parameters: {'id': 0})
+        .where(.raw('"u"."id" > @id', parameters: {'id': 0}))
         .toStatement();
 
     expect(statement.sql, contains('FROM users AS "u"'));
@@ -276,9 +276,11 @@ void main() {
         .from('users', alias: 'u')
         .select(['"u"."id" AS "user_id"'])
         .where(
-          '\'_literal_@id\' = \'_literal_@id\' '
-          '/* @ignored */ AND "u"."id" > @id',
-          parameters: {'id': 0, 'ignored': 1},
+          .raw(
+            '\'_literal_@id\' = \'_literal_@id\' '
+            '/* @ignored */ AND "u"."id" > @id',
+            parameters: {'id': 0, 'ignored': 1},
+          ),
         )
         .toStatement();
 

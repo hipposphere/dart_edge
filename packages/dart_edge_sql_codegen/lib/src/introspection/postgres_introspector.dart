@@ -342,7 +342,7 @@ SelectedSelectQueryBuilder<SqlRow> _columnsQuery(
         on: raw.and([
           raw.eqRef('primary_keys.conrelid', 'table_classes.oid'),
           raw.eq('primary_keys.contype', 'p'),
-          'attributes.attnum = ANY(primary_keys.conkey)',
+          .raw('attributes.attnum = ANY(primary_keys.conkey)'),
         ]),
       )
       .select(const [
@@ -358,7 +358,7 @@ SelectedSelectQueryBuilder<SqlRow> _columnsQuery(
         'pg_catalog.pg_get_expr(defaults.adbin, defaults.adrelid) AS default_expression',
         'primary_keys.oid IS NOT NULL AS is_primary_key',
       ])
-      .where("table_classes.relkind IN ('r', 'p')")
+      .where(.raw("table_classes.relkind IN ('r', 'p')"))
       .where(raw.gt('attributes.attnum', 0))
       .where(raw.isFalse('attributes.attisdropped'))
       .where(schemaPredicate)
@@ -465,7 +465,7 @@ CASE
 END AS expression''',
       ])
       .where(schemaPredicate)
-      .where("constraints.contype IN ('p', 'u', 'f', 'c')")
+      .where(.raw("constraints.contype IN ('p', 'u', 'f', 'c')"))
       .orderBy('namespaces.nspname')
       .orderBy('table_classes.relname')
       .orderBy('constraints.conname');
@@ -522,7 +522,7 @@ END AS routine_kind''',
         "COALESCE(parameters.parameters, '[]'::jsonb) AS parameters",
       ])
       .where(schemaPredicate)
-      .where("procedures.prokind IN ('f', 'p')")
+      .where(.raw("procedures.prokind IN ('f', 'p')"))
       .where(raw.notEq('return_types.typname', 'trigger'))
       .orderBy('procedures.proname');
 }
