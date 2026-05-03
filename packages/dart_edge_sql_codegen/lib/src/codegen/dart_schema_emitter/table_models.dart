@@ -44,7 +44,10 @@ Class _rowClass(IntrospectedTable table) {
             for (final column in table.columns)
               _MapEntrySpec(
                 key: column.name,
-                value: refer(_lowerCamel(column.name)),
+                value: _toDatabaseExpression(
+                  column,
+                  source: refer(_lowerCamel(column.name)),
+                ),
               ),
           ],
         ),
@@ -221,14 +224,13 @@ Class _tableClass(IntrospectedTable table) {
               ..static = true
               ..modifier = FieldModifier.final$
               ..name = _columnFieldName(column.name)
-              ..assignment =
-                  _type('SqlColumn', [
-                    refer(_normalizedValueType(column)),
-                  ]).newInstance(const <Expression>[], {
+              ..assignment = _type('SqlColumn', [_sqlColumnType(column)])
+                  .newInstance(const <Expression>[], {
                     'table': refer('table'),
                     'name': literalString(column.name),
                     'nullable': literalBool(column.nullable),
-                  }).code;
+                  })
+                  .code;
           }),
       ])
       ..methods.addAll([

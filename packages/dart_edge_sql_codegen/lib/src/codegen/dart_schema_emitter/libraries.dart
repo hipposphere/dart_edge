@@ -32,24 +32,44 @@ String _emitSchemaLibrary(_SchemaGroup group) {
         Directive.import(
           'package:dart_edge_http_server_runtime/dart_edge_http_server_runtime.dart',
         ),
-      )
-      ..body.add(_schemaClass(group));
+      );
+    builder.body.add(_schemaClass(group));
 
     for (final table in group.tables) {
       builder.directives.add(
         Directive.import('tables/${_tableFileName(table)}'),
       );
     }
+    if (group.routines.isNotEmpty) {
+      builder.directives.add(
+        Directive.import('routines/${_routineFileName()}'),
+      );
+    }
+    for (final value in group.enums) {
+      builder.directives.add(Directive.import('enums/${_enumFileName(value)}'));
+    }
     for (final table in group.tables) {
       builder.directives.add(
         Directive.export('tables/${_tableFileName(table)}'),
+      );
+    }
+    for (final value in group.enums) {
+      builder.directives.add(Directive.export('enums/${_enumFileName(value)}'));
+    }
+    if (group.routines.isNotEmpty) {
+      builder.directives.add(
+        Directive.export('routines/${_routineFileName()}'),
       );
     }
   });
   return _format(library);
 }
 
-String _emitTableLibrary(IntrospectedTable table) {
+String _emitTableLibrary(
+  IntrospectedTable table,
+  _SchemaGroup group,
+  List<_SchemaGroup> schemaGroups,
+) {
   final library = Library((builder) {
     builder
       ..directives.add(
@@ -59,8 +79,29 @@ String _emitTableLibrary(IntrospectedTable table) {
       )
       ..directives.add(
         Directive.import('package:dart_edge_sql/dart_edge_sql.dart'),
+      );
+    for (final import in _tableEnumImports(table, group, schemaGroups)) {
+      builder.directives.add(Directive.import(import.path));
+    }
+    builder.body.addAll(_tableSpecs(table));
+  });
+  return _format(library);
+}
+
+String _emitEnumLibrary(IntrospectedEnum value) {
+  final library = Library((builder) {
+    builder.body.add(_enumSpec(value));
+  });
+  return _format(library);
+}
+
+String _emitRoutineLibrary(_SchemaGroup group) {
+  final library = Library((builder) {
+    builder
+      ..directives.add(
+        Directive.import('package:dart_edge_sql/dart_edge_sql.dart'),
       )
-      ..body.addAll(_tableSpecs(table));
+      ..body.add(_routinesClass(group));
   });
   return _format(library);
 }
@@ -120,6 +161,13 @@ Class _schemaClass(_SchemaGroup group) {
             assignment: refer(
               '${_upperCamel(table.name)}Table',
             ).property('table'),
+          ),
+        if (group.routines.isNotEmpty)
+          _staticConstField(
+            name: 'routines',
+            assignment: refer(
+              group.routinesClassName,
+            ).constInstanceNamed('_', const []),
           ),
         _staticConstField(
           name: 'schemas',

@@ -65,7 +65,7 @@ DartSchemaEmission emitDartSchema(
   IntrospectedDatabase database, {
   String databaseClassName = 'GeneratedDatabaseSchema',
 }) {
-  final schemaGroups = _groupTablesBySchema(database.tables);
+  final schemaGroups = _groupBySchema(database);
   final entrypointFileName = '${_fileStem(databaseClassName)}.g.dart';
   final files = <DartSchemaEmissionFile>[
     DartSchemaEmissionFile(
@@ -84,6 +84,9 @@ DartSchemaEmission emitDartSchema(
       ..add(schemaFolder)
       ..add('$schemaFolder/tables')
       ..add('$schemaFolder/enums');
+    if (group.routines.isNotEmpty) {
+      directories.add('$schemaFolder/routines');
+    }
 
     files.add(
       DartSchemaEmissionFile(
@@ -96,7 +99,25 @@ DartSchemaEmission emitDartSchema(
       files.add(
         DartSchemaEmissionFile(
           relativePath: '$schemaFolder/tables/${_tableFileName(table)}',
-          contents: _emitTableLibrary(table),
+          contents: _emitTableLibrary(table, group, schemaGroups),
+        ),
+      );
+    }
+
+    for (final value in group.enums) {
+      files.add(
+        DartSchemaEmissionFile(
+          relativePath: '$schemaFolder/enums/${_enumFileName(value)}',
+          contents: _emitEnumLibrary(value),
+        ),
+      );
+    }
+
+    if (group.routines.isNotEmpty) {
+      files.add(
+        DartSchemaEmissionFile(
+          relativePath: '$schemaFolder/routines/${_routineFileName()}',
+          contents: _emitRoutineLibrary(group),
         ),
       );
     }
@@ -114,7 +135,7 @@ String emitDartSchemaLibrary(
   IntrospectedDatabase database, {
   String databaseClassName = 'GeneratedDatabaseSchema',
 }) {
-  final schemaGroups = _groupTablesBySchema(database.tables);
+  final schemaGroups = _groupBySchema(database);
   final library = Library((builder) {
     builder
       ..comments.add('GENERATED CODE - DO NOT MODIFY BY HAND.')
@@ -130,8 +151,14 @@ String emitDartSchemaLibrary(
       ..body.addAll(schemaGroups.map(_schemaClass));
 
     for (final group in schemaGroups) {
+      for (final value in group.enums) {
+        builder.body.add(_enumSpec(value));
+      }
       for (final table in group.tables) {
         builder.body.addAll(_tableSpecs(table));
+      }
+      if (group.routines.isNotEmpty) {
+        builder.body.add(_routinesClass(group));
       }
     }
   });

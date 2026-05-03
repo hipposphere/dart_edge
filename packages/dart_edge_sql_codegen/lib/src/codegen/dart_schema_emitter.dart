@@ -7,7 +7,9 @@ import '../introspection/introspected_database.dart';
 
 part 'dart_schema_emitter/emission.dart';
 part 'dart_schema_emitter/libraries.dart';
+part 'dart_schema_emitter/enum_models.dart';
 part 'dart_schema_emitter/table_models.dart';
+part 'dart_schema_emitter/routine_models.dart';
 part 'dart_schema_emitter/json_mapping.dart';
 part 'dart_schema_emitter/code_builder_helpers.dart';
 part 'dart_schema_emitter/naming.dart';

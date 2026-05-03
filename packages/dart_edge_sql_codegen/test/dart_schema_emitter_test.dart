@@ -206,6 +206,252 @@ void main() {
     );
   });
 
+  test('emits null-aware DateTime JSON encoding for nullable columns', () {
+    const database = IntrospectedDatabase(
+      dialect: SqlCodegenDialect.postgres,
+      tables: [
+        IntrospectedTable(
+          name: 'sessions',
+          schema: 'public',
+          columns: [
+            IntrospectedColumn(
+              name: 'id',
+              databaseType: 'text',
+              dartType: 'String',
+              primaryKey: true,
+            ),
+            IntrospectedColumn(
+              name: 'access_token_expires_at',
+              databaseType: 'timestamptz',
+              dartType: 'DateTime',
+              nullable: true,
+            ),
+          ],
+        ),
+      ],
+    );
+
+    final emission = emitDartSchema(database, databaseClassName: 'AppSchema');
+    final sessionsTable = emission
+        .fileAt('schemas/public/tables/sessions.g.dart')
+        .contents;
+
+    expect(
+      sessionsTable,
+      contains(
+        "'access_token_expires_at': "
+        'accessTokenExpiresAt?.toIso8601String(),',
+      ),
+    );
+    expect(
+      sessionsTable,
+      contains(
+        "'access_token_expires_at': "
+        'accessTokenExpiresAt.value?.toIso8601String(),',
+      ),
+    );
+  });
+
+  test('emits Postgres enum types and enum-aware table models', () {
+    const database = IntrospectedDatabase(
+      dialect: SqlCodegenDialect.postgres,
+      enums: [
+        IntrospectedEnum(
+          name: 'user_status',
+          schema: 'public',
+          values: ['active', 'suspended'],
+        ),
+      ],
+      tables: [
+        IntrospectedTable(
+          name: 'users',
+          schema: 'public',
+          columns: [
+            IntrospectedColumn(
+              name: 'id',
+              databaseType: 'text',
+              dartType: 'String',
+              primaryKey: true,
+            ),
+            IntrospectedColumn(
+              name: 'status',
+              databaseType: 'user_status',
+              dartType: 'UserStatus',
+              enumName: 'user_status',
+              enumSchema: 'public',
+              enumValues: ['active', 'suspended'],
+            ),
+          ],
+        ),
+      ],
+    );
+
+    final emission = emitDartSchema(database, databaseClassName: 'AppSchema');
+    final enumFile = emission.fileAt('schemas/public/enums/user_status.g.dart');
+    final schema = emission.fileAt('schemas/public/schema.g.dart').contents;
+    final usersTable = emission
+        .fileAt('schemas/public/tables/users.g.dart')
+        .contents;
+
+    expect(enumFile.contents, contains('enum UserStatus {'));
+    expect(enumFile.contents, contains("active('active')"));
+    expect(enumFile.contents, contains('static UserStatus fromDatabase'));
+    expect(schema, contains("export 'enums/user_status.g.dart';"));
+    expect(usersTable, contains("import '../enums/user_status.g.dart';"));
+    expect(usersTable, contains('final UserStatus status;'));
+    expect(usersTable, contains("static final status = SqlColumn<String>("));
+    expect(usersTable, contains("status: UserStatus.fromDatabase("));
+    expect(usersTable, contains("'status': status.value,"));
+    expect(
+      usersTable,
+      contains(
+        "'status': JsonSchema.string("
+        "enumValues: <String>['active', 'suspended']",
+      ),
+    );
+  });
+
+  test('imports enum types from another schema when needed', () {
+    const database = IntrospectedDatabase(
+      dialect: SqlCodegenDialect.postgres,
+      enums: [
+        IntrospectedEnum(
+          name: 'order_state',
+          schema: 'catalog',
+          values: ['open', 'closed'],
+        ),
+      ],
+      tables: [
+        IntrospectedTable(
+          name: 'orders',
+          schema: 'sales',
+          columns: [
+            IntrospectedColumn(
+              name: 'state',
+              databaseType: 'order_state',
+              dartType: 'OrderState',
+              enumName: 'order_state',
+              enumSchema: 'catalog',
+              enumValues: ['open', 'closed'],
+            ),
+          ],
+        ),
+      ],
+    );
+
+    final emission = emitDartSchema(database, databaseClassName: 'AppSchema');
+    final ordersTable = emission
+        .fileAt('schemas/sales/tables/orders.g.dart')
+        .contents;
+
+    expect(
+      ordersTable,
+      contains("import '../../catalog/enums/order_state.g.dart';"),
+    );
+  });
+
+  test('emits Postgres routine wrappers by schema', () {
+    const database = IntrospectedDatabase(
+      dialect: SqlCodegenDialect.postgres,
+      tables: [],
+      routines: [
+        IntrospectedRoutine(
+          name: 'find_user',
+          schema: 'public',
+          kind: IntrospectedRoutineKind.function,
+          returnDatabaseType: 'record',
+          returnDartType: 'Object?',
+          returnsSet: true,
+          parameters: [
+            IntrospectedRoutineParameter(
+              name: 'email',
+              databaseType: 'text',
+              dartType: 'String',
+            ),
+          ],
+        ),
+        IntrospectedRoutine(
+          name: 'refresh_stats',
+          schema: 'public',
+          kind: IntrospectedRoutineKind.procedure,
+          returnDatabaseType: 'void',
+          returnDartType: 'Object?',
+          returnsSet: false,
+        ),
+      ],
+    );
+
+    final emission = emitDartSchema(database, databaseClassName: 'AppSchema');
+
+    expect(
+      emission.files.map((file) => file.relativePath),
+      containsAll(<String>[
+        'schemas/public/schema.g.dart',
+        'schemas/public/routines/routines.g.dart',
+      ]),
+    );
+
+    final schema = emission.fileAt('schemas/public/schema.g.dart').contents;
+    final routines = emission
+        .fileAt('schemas/public/routines/routines.g.dart')
+        .contents;
+
+    expect(
+      schema,
+      contains('static const routines = PublicSchemaRoutines._();'),
+    );
+    expect(routines, contains('final class PublicSchemaRoutines {'));
+    expect(routines, contains('Future<SqlResult> findUser('));
+    expect(routines, contains('required String email'));
+    expect(routines, contains('SELECT * FROM "public"."find_user"(@email)'));
+    expect(routines, contains('CALL "public"."refresh_stats"()'));
+  });
+
+  test('keeps routine wrappers isolated by schema', () {
+    const database = IntrospectedDatabase(
+      dialect: SqlCodegenDialect.postgres,
+      tables: [],
+      routines: [
+        IntrospectedRoutine(
+          name: 'refresh',
+          schema: 'public',
+          kind: IntrospectedRoutineKind.procedure,
+          returnDatabaseType: 'void',
+          returnDartType: 'Object?',
+        ),
+        IntrospectedRoutine(
+          name: 'refresh',
+          schema: 'tenant',
+          kind: IntrospectedRoutineKind.procedure,
+          returnDatabaseType: 'void',
+          returnDartType: 'Object?',
+        ),
+      ],
+    );
+
+    final emission = emitDartSchema(database, databaseClassName: 'AppSchema');
+
+    expect(
+      emission.files.map((file) => file.relativePath),
+      containsAll(<String>[
+        'schemas/public/routines/routines.g.dart',
+        'schemas/tenant/routines/routines.g.dart',
+      ]),
+    );
+    expect(
+      emission.fileAt('app_schema.g.dart').contents,
+      contains('static const tenantSchema = TenantSchema.instance;'),
+    );
+    expect(
+      emission.fileAt('schemas/public/routines/routines.g.dart').contents,
+      contains('CALL "public"."refresh"()'),
+    );
+    expect(
+      emission.fileAt('schemas/tenant/routines/routines.g.dart').contents,
+      contains('CALL "tenant"."refresh"()'),
+    );
+  });
+
   test('writeToDirectory clears stale generated files', () {
     const database = IntrospectedDatabase(
       dialect: SqlCodegenDialect.sqlite,

@@ -99,11 +99,17 @@ Parameter _typedParameter(String name, Reference type) {
   });
 }
 
-Parameter _namedParameter(String name, {Reference? type, Code? defaultTo}) {
+Parameter _namedParameter(
+  String name, {
+  Reference? type,
+  Code? defaultTo,
+  bool required = false,
+}) {
   return Parameter((parameter) {
     parameter
       ..name = name
       ..named = true
+      ..required = required
       ..type = type
       ..defaultTo = defaultTo;
   });

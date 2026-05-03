@@ -19,6 +19,7 @@ Future<void> main(List<String> args) async {
 
   final includeTables = _csv(options.value('include'));
   final excludeTables = _csv(options.value('exclude'));
+  final schemas = _csv(options.value('schemas'));
   final introspector = switch ((
     sqlite: options.value('sqlite'),
     postgres: options.value('postgres'),
@@ -30,7 +31,7 @@ Future<void> main(List<String> args) async {
     ),
     (sqlite: null, postgres: final connectionString?) => PostgresIntrospector(
       connectionString: connectionString,
-      schema: options.value('schema') ?? 'public',
+      schemas: schemas,
       includeTables: includeTables,
       excludeTables: excludeTables,
     ),
@@ -144,11 +145,11 @@ Usage:
 Options:
   --out <dir>       Output directory. Defaults to lib/generated.
   --class <name>    Root schema class. Defaults to GeneratedDatabaseSchema.
-  --schema <name>   PostgreSQL schema. Defaults to public.
+  --schemas <csv>   Comma-separated PostgreSQL schemas.
   --include <csv>   Comma-separated table allow-list.
   --exclude <csv>   Comma-separated table block-list.
 
 Examples:
   dart run dart_edge_sql_codegen:schema --sqlite sqlite.db --out lib/generated --class AppSchema
-  dart run dart_edge_sql_codegen:schema --postgres postgres://localhost/app --schema public
+  dart run dart_edge_sql_codegen:schema --postgres postgres://localhost/app --schemas public,tenant
 ''';

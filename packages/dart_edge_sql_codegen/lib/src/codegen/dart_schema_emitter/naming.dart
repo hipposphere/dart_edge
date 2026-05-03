@@ -1,21 +1,45 @@
 part of '../dart_schema_emitter.dart';
 
-List<_SchemaGroup> _groupTablesBySchema(Iterable<IntrospectedTable> tables) {
+List<_SchemaGroup> _groupBySchema(IntrospectedDatabase database) {
   final grouped = <String, List<IntrospectedTable>>{};
-  for (final table in tables) {
+  for (final table in database.tables) {
     final schemaName = _schemaName(table.schema);
     grouped.putIfAbsent(schemaName, () => <IntrospectedTable>[]).add(table);
   }
+  final groupedRoutines = <String, List<IntrospectedRoutine>>{};
+  for (final routine in database.routines) {
+    final schemaName = _schemaName(routine.schema);
+    groupedRoutines
+        .putIfAbsent(schemaName, () => <IntrospectedRoutine>[])
+        .add(routine);
+  }
+  final groupedEnums = <String, List<IntrospectedEnum>>{};
+  for (final value in database.enums) {
+    final schemaName = _schemaName(value.schema);
+    groupedEnums.putIfAbsent(schemaName, () => <IntrospectedEnum>[]).add(value);
+  }
 
-  final schemaNames = grouped.keys.toList(growable: false)..sort();
+  final schemaNames = {
+    ...grouped.keys,
+    ...groupedRoutines.keys,
+    ...groupedEnums.keys,
+  }.toList()..sort();
   return <_SchemaGroup>[
     for (final schemaName in schemaNames)
       _SchemaGroup(
         schemaName: schemaName,
         folderName: _schemaFolderName(schemaName),
         className: _schemaClassName(schemaName),
+        enums: List<IntrospectedEnum>.unmodifiable(
+          (groupedEnums[schemaName] ?? <IntrospectedEnum>[])
+            ..sort((left, right) => left.name.compareTo(right.name)),
+        ),
         tables: List<IntrospectedTable>.unmodifiable(
-          grouped[schemaName]!
+          (grouped[schemaName] ?? <IntrospectedTable>[])
+            ..sort((left, right) => left.name.compareTo(right.name)),
+        ),
+        routines: List<IntrospectedRoutine>.unmodifiable(
+          (groupedRoutines[schemaName] ?? <IntrospectedRoutine>[])
             ..sort((left, right) => left.name.compareTo(right.name)),
         ),
       ),
@@ -52,6 +76,13 @@ Reference _updateFieldType(IntrospectedColumn column) {
   return _type('SqlValue', [
     refer(_nullableType(_normalizedValueType(column), column.nullable)),
   ]);
+}
+
+Reference _sqlColumnType(IntrospectedColumn column) {
+  if (column.enumName != null) {
+    return refer('String');
+  }
+  return refer(_normalizedValueType(column));
 }
 
 bool _isOptionalInsertColumn(IntrospectedColumn column) =>
@@ -107,6 +138,8 @@ String _schemaFolderName(String schemaName) {
 String _tableFileName(IntrospectedTable table) =>
     '${_fileStem(table.name)}.g.dart';
 
+String _routineFileName() => 'routines.g.dart';
+
 String _upperCamel(String value) {
   final parts = value
       .split(RegExp(r'[^A-Za-z0-9]+'))
@@ -135,6 +168,13 @@ String _schemaTableMemberName(String tableName) {
       : memberName;
 }
 
+String _schemaRoutineMemberName(String routineName) {
+  final memberName = _lowerCamel(routineName);
+  return _reservedRoutineMemberNames.contains(memberName)
+      ? '${memberName}Routine'
+      : memberName;
+}
+
 String _schemaClassName(String schemaName) {
   final className = '${_upperCamel(_schemaFolderName(schemaName))}Schema';
   return className.endsWith('SchemaSchema')
@@ -147,6 +187,16 @@ String _columnFieldName(String columnName) {
   return _reservedTableMemberNames.contains(fieldName)
       ? '${fieldName}Column'
       : fieldName;
+}
+
+String _enumClassName(String enumName) => _upperCamel(enumName);
+
+String _enumFileName(IntrospectedEnum value) =>
+    '${_fileStem(value.name)}.g.dart';
+
+String _enumValueName(String value) {
+  final name = _lowerCamel(value);
+  return _reservedEnumValueNames.contains(name) ? '${name}Value' : name;
 }
 
 String _sanitizeIdentifierPart(String value) {
@@ -178,20 +228,28 @@ String _fileStem(String value) {
 
 String _escapeLiteral(String value) => value.replaceAll("'", r"\'");
 
+String _escapeSqlIdentifier(String value) => value.replaceAll('"', '""');
+
 final class _SchemaGroup {
   const _SchemaGroup({
     required this.schemaName,
     required this.folderName,
     required this.className,
+    required this.enums,
     required this.tables,
+    required this.routines,
   });
 
   final String schemaName;
   final String folderName;
   final String className;
+  final List<IntrospectedEnum> enums;
   final List<IntrospectedTable> tables;
+  final List<IntrospectedRoutine> routines;
 
   String get memberName => _lowerCamel(className);
+
+  String get routinesClassName => '${className}Routines';
 }
 
 final class _MapEntrySpec {
@@ -218,9 +276,23 @@ enum _GeneratedShape { row, insert, update }
 
 const _reservedSchemaMemberNames = <String>{
   'instance',
+  'routines',
   'schemas',
   'jsonSchemas',
   'schemaName',
+};
+
+const _reservedRoutineMemberNames = <String>{'parameters', 'schemaName'};
+
+const _reservedRoutineParameterNames = <String>{'executor'};
+
+const _reservedEnumValueNames = <String>{
+  'index',
+  'name',
+  'value',
+  'values',
+  'fromDatabase',
+  'toString',
 };
 
 const _reservedTableMemberNames = <String>{

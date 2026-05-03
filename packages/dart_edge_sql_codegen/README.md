@@ -27,7 +27,7 @@ For PostgreSQL:
 ```shell
 dart run dart_edge_sql_codegen:schema \
   --postgres postgres://localhost/app \
-  --schema public \
+  --schemas public,tenant \
   --out lib/generated \
   --class AppSchema
 ```
@@ -111,6 +111,23 @@ Snapshot JSON uses the same shape as `IntrospectedDatabase.toJson()`:
         }
       ]
     }
+  ],
+  "routines": [
+    {
+      "name": "find_user",
+      "schema": "public",
+      "kind": "function",
+      "returnDatabaseType": "record",
+      "returnDartType": "Object?",
+      "returnsSet": true,
+      "parameters": [
+        {
+          "name": "email",
+          "databaseType": "text",
+          "dartType": "String"
+        }
+      ]
+    }
   ]
 }
 ```
@@ -119,14 +136,18 @@ Snapshot JSON uses the same shape as `IntrospectedDatabase.toJson()`:
 
 - `SqliteIntrospector` and `PostgresIntrospector` read schema metadata through
   `dart_edge_sql`
-- `IntrospectedDatabase`, `IntrospectedTable`, and `IntrospectedColumn`
-  describe the discovered schema
+- `IntrospectedDatabase`, `IntrospectedTable`, `IntrospectedColumn`, and
+  `IntrospectedRoutine` describe the discovered schema
 - `emitDartSchema` turns that description into a `DartSchemaEmission`
 - `emitDartSchemaLibrary` emits the single-library form used by build_runner
 - `DartSchemaEmission.writeToDirectory(...)` replaces stale generated files and
   writes the structured output tree
 - `SqlCodegenConfig` is a configuration object you can reuse from your own
   tooling
+
+For PostgreSQL snapshots, introspected functions and procedures are emitted as
+schema-scoped routine wrappers. The first pass returns `SqlResult` directly,
+while still generating typed Dart parameters and SQL calls for the routine.
 
 The one-shot constructors that accept a SQLite path or PostgreSQL connection
 string still exist, but `fromDatabase(...)` lets you introspect an already-open

@@ -33,6 +33,23 @@ void main() {
           ],
         ),
       ],
+      routines: [
+        IntrospectedRoutine(
+          name: 'find_user',
+          schema: 'public',
+          kind: IntrospectedRoutineKind.function,
+          returnDatabaseType: 'record',
+          returnDartType: 'Object?',
+          returnsSet: true,
+          parameters: [
+            IntrospectedRoutineParameter(
+              name: 'email',
+              databaseType: 'text',
+              dartType: 'String',
+            ),
+          ],
+        ),
+      ],
     );
 
     await testBuilder(
@@ -47,6 +64,8 @@ void main() {
             contains('final class AppSchema'),
             contains('final class UsersRow implements JsonEncodable'),
             contains('final class UsersTable extends SqlTable<'),
+            contains('final class PublicSchemaRoutines'),
+            contains('Future<SqlResult> findUser('),
             contains("static const schemaId = 'UsersRow';"),
             contains('static const schemaRef = JsonSchema.ref(schemaId);'),
             isNot(contains('ref: schemaRef')),

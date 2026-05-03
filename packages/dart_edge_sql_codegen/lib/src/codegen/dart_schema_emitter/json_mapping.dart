@@ -197,6 +197,22 @@ Constructor _fromJsonFactory(
 Expression _rowReadExpression(IntrospectedColumn column) {
   final fieldKey = '\${prefix}${column.name}';
   final type = _normalizedValueType(column);
+  if (column.enumName != null) {
+    final source = column.nullable
+        ? refer('row')
+              .property('readNullable')
+              .call([literalString(fieldKey)], const {}, [refer('String')])
+        : refer('row')
+              .property('read')
+              .call([literalString(fieldKey)], const {}, [refer('String')]);
+    final parsed = refer(type).property('fromDatabase').call([source]);
+    if (!column.nullable) {
+      return parsed;
+    }
+    return CodeExpression(
+      Code('${_code(source)} == null ? null : ${_code(parsed)}'),
+    );
+  }
   if (type == 'Object?') {
     return refer('row')
         .property('read')
@@ -266,6 +282,13 @@ Expression _fromJsonExpression(
     );
   }
 
+  if (column.enumName != null) {
+    final parsed = refer(
+      type,
+    ).property('fromDatabase').call([source.asA(refer('String'))]);
+    return wrapNullable(parsed);
+  }
+
   return switch (type) {
     'int' => wrapNullable(
       source.asA(refer('num')).property('toInt').call(const []),
@@ -309,10 +332,17 @@ Expression _toJsonExpression(
     );
   }
 
+  if (column.enumName != null) {
+    return column.nullable
+        ? CodeExpression(Code('${_code(source)}?.value'))
+        : source.property('value');
+  }
+
   return switch (type) {
-    'DateTime' => wrapNullable(
-      source.property('toIso8601String').call(const []),
-    ),
+    'DateTime' =>
+      column.nullable
+          ? CodeExpression(Code('${_code(source)}?.toIso8601String()'))
+          : source.property('toIso8601String').call(const []),
     'List<int>' => wrapNullable(
       _type('List', [refer('int')]).newInstanceNamed('from', [source]),
     ),
@@ -325,6 +355,17 @@ Expression _toJsonExpression(
 
 Expression _jsonSchemaForColumn(IntrospectedColumn column) {
   final type = _normalizedValueType(column);
+
+  if (column.enumName != null) {
+    return _jsonSchemaFactory(
+      'string',
+      nullable: column.nullable,
+      enumValues: literalConstList(
+        _enumValuesForColumn(column).map(literalString).toList(growable: false),
+        refer('String'),
+      ),
+    );
+  }
 
   if (type == 'Object?') {
     return refer('JsonSchema').constInstanceNamed('any', const []);
@@ -360,11 +401,13 @@ Expression _jsonSchemaFactory(
   required bool nullable,
   String? format,
   Expression? items,
+  Expression? enumValues,
 }) {
   return refer('JsonSchema').constInstanceNamed(kind, const <Expression>[], {
     if (nullable) 'nullable': literalBool(true),
     if (format case final format?) 'format': literalString(format),
     if (items case final items?) 'items': items,
+    if (enumValues case final enumValues?) 'enumValues': enumValues,
   });
 }
 
@@ -403,7 +446,9 @@ _MapEntrySpec _insertMapEntry(
       : refer(fieldName);
   return _MapEntrySpec(
     key: column.name,
-    value: encodeJson ? _toJsonExpression(column, source: source) : source,
+    value: encodeJson
+        ? _toJsonExpression(column, source: source)
+        : _toDatabaseExpression(column, source: source),
     condition: isOptional ? refer(fieldName).property('isPresent') : null,
   );
 }
@@ -416,7 +461,25 @@ _MapEntrySpec _updateMapEntry(
   final source = refer(fieldName).property('value');
   return _MapEntrySpec(
     key: column.name,
-    value: encodeJson ? _toJsonExpression(column, source: source) : source,
+    value: encodeJson
+        ? _toJsonExpression(column, source: source)
+        : _toDatabaseExpression(column, source: source),
     condition: refer(fieldName).property('isPresent'),
   );
+}
+
+Expression _toDatabaseExpression(
+  IntrospectedColumn column, {
+  required Expression source,
+}) {
+  if (column.enumName == null) {
+    return source;
+  }
+  return column.nullable
+      ? CodeExpression(Code('${_code(source)}?.value'))
+      : source.property('value');
+}
+
+List<String> _enumValuesForColumn(IntrospectedColumn column) {
+  return column.enumValues;
 }
