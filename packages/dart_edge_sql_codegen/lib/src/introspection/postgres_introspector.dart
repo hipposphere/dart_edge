@@ -50,21 +50,22 @@ final class PostgresIntrospector implements SqlDatabaseIntrospector {
     };
 
     try {
-      final result = await database.execute(
-        sql(_columnsQuery, parameters: {'schemas': schemas.toList()}),
+      final raw = database.raw;
+      final schemaPredicate = _schemaPredicate(
+        raw,
+        'namespaces.nspname',
+        schemas,
       );
-      final enumsResult = await database.execute(
-        sql(_enumsQuery, parameters: {'schemas': schemas.toList()}),
-      );
-      final constraintsResult = await database.execute(
-        sql(_constraintsQuery, parameters: {'schemas': schemas.toList()}),
-      );
-      final routinesResult = await database.execute(
-        sql(_routinesQuery, parameters: {'schemas': schemas.toList()}),
-      );
+      final rows = await _columnsQuery(raw, schemaPredicate).execute();
+      final enumRows = await _enumsQuery(raw, schemaPredicate).execute();
+      final constraintRows = await _constraintsQuery(
+        raw,
+        schemaPredicate,
+      ).execute();
+      final routineRows = await _routinesQuery(raw, schemaPredicate).execute();
 
       final enums = <IntrospectedEnum>[];
-      for (final row in enumsResult.rows) {
+      for (final row in enumRows) {
         enums.add(
           IntrospectedEnum(
             name: row.read<String>('enum_name'),
@@ -90,7 +91,7 @@ final class PostgresIntrospector implements SqlDatabaseIntrospector {
             ({String schema, String table}),
             List<IntrospectedTableConstraint>
           >{};
-      for (final row in constraintsResult.rows) {
+      for (final row in constraintRows) {
         final tableName = row.read<String>('table_name');
         if (!_shouldIncludeTable(tableName)) {
           continue;
@@ -117,7 +118,7 @@ final class PostgresIntrospector implements SqlDatabaseIntrospector {
 
       final columnsByTable =
           <({String schema, String table}), List<IntrospectedColumn>>{};
-      for (final row in result.rows) {
+      for (final row in rows) {
         final tableName = row.read<String>('table_name');
         if (!_shouldIncludeTable(tableName)) {
           continue;
@@ -183,7 +184,7 @@ final class PostgresIntrospector implements SqlDatabaseIntrospector {
             });
 
       final routines = <IntrospectedRoutine>[];
-      for (final row in routinesResult.rows) {
+      for (final row in routineRows) {
         final databaseType = row.read<String>('return_database_type');
         routines.add(
           IntrospectedRoutine(
@@ -281,6 +282,15 @@ Set<String> _normalizeSchemas(Set<String> schemas) {
   return Set<String>.unmodifiable(normalized);
 }
 
+SqlPredicate _schemaPredicate(
+  SqlRawQueryRoot raw,
+  String expression,
+  Set<String> schemas,
+) {
+  final predicates = [for (final schema in schemas) raw.eq(expression, schema)];
+  return predicates.length == 1 ? predicates.single : .or(predicates);
+}
+
 IntrospectedRoutineParameter _routineParameterFromJson(
   Map<String, Object?> json,
 ) {
@@ -292,118 +302,194 @@ IntrospectedRoutineParameter _routineParameterFromJson(
   );
 }
 
-const String _columnsQuery = '''
-SELECT
-  namespaces.nspname AS table_schema,
-  table_classes.relname AS table_name,
-  attributes.attname AS column_name,
-  types.typname AS database_type,
-  type_namespaces.nspname AS type_schema,
-  types.typname AS type_name,
-  types.typtype AS type_kind,
-  NOT attributes.attnotnull AS is_nullable,
-  attributes.atthasdef AS has_default,
-  pg_catalog.pg_get_expr(defaults.adbin, defaults.adrelid) AS default_expression,
-  primary_keys.oid IS NOT NULL AS is_primary_key
-FROM pg_catalog.pg_class AS table_classes
-JOIN pg_catalog.pg_namespace AS namespaces
-  ON namespaces.oid = table_classes.relnamespace
-JOIN pg_catalog.pg_attribute AS attributes
-  ON attributes.attrelid = table_classes.oid
-JOIN pg_catalog.pg_type AS types
-  ON types.oid = attributes.atttypid
-JOIN pg_catalog.pg_namespace AS type_namespaces
-  ON type_namespaces.oid = types.typnamespace
-LEFT JOIN pg_catalog.pg_attrdef AS defaults
-  ON defaults.adrelid = table_classes.oid
- AND defaults.adnum = attributes.attnum
-LEFT JOIN pg_catalog.pg_constraint AS primary_keys
-  ON primary_keys.conrelid = table_classes.oid
- AND primary_keys.contype = 'p'
- AND attributes.attnum = ANY(primary_keys.conkey)
-WHERE table_classes.relkind IN ('r', 'p')
-  AND attributes.attnum > 0
-  AND NOT attributes.attisdropped
-  AND namespaces.nspname = ANY(@schemas)
-ORDER BY table_classes.relname, attributes.attnum
-''';
+SelectedSelectQueryBuilder<SqlRow> _columnsQuery(
+  SqlRawQueryRoot raw,
+  SqlPredicate schemaPredicate,
+) {
+  return raw
+      .from('pg_catalog.pg_class', alias: 'table_classes')
+      .innerJoin(
+        'pg_catalog.pg_namespace',
+        alias: 'namespaces',
+        on: raw.eqRef('namespaces.oid', 'table_classes.relnamespace'),
+      )
+      .innerJoin(
+        'pg_catalog.pg_attribute',
+        alias: 'attributes',
+        on: raw.eqRef('attributes.attrelid', 'table_classes.oid'),
+      )
+      .innerJoin(
+        'pg_catalog.pg_type',
+        alias: 'types',
+        on: raw.eqRef('types.oid', 'attributes.atttypid'),
+      )
+      .innerJoin(
+        'pg_catalog.pg_namespace',
+        alias: 'type_namespaces',
+        on: raw.eqRef('type_namespaces.oid', 'types.typnamespace'),
+      )
+      .leftJoin(
+        'pg_catalog.pg_attrdef',
+        alias: 'defaults',
+        on: raw.and([
+          raw.eqRef('defaults.adrelid', 'table_classes.oid'),
+          raw.eqRef('defaults.adnum', 'attributes.attnum'),
+        ]),
+      )
+      .leftJoin(
+        'pg_catalog.pg_constraint',
+        alias: 'primary_keys',
+        on: raw.and([
+          raw.eqRef('primary_keys.conrelid', 'table_classes.oid'),
+          raw.eq('primary_keys.contype', 'p'),
+          'attributes.attnum = ANY(primary_keys.conkey)',
+        ]),
+      )
+      .select(const [
+        'namespaces.nspname AS table_schema',
+        'table_classes.relname AS table_name',
+        'attributes.attname AS column_name',
+        'types.typname AS database_type',
+        'type_namespaces.nspname AS type_schema',
+        'types.typname AS type_name',
+        'types.typtype AS type_kind',
+        'NOT attributes.attnotnull AS is_nullable',
+        'attributes.atthasdef AS has_default',
+        'pg_catalog.pg_get_expr(defaults.adbin, defaults.adrelid) AS default_expression',
+        'primary_keys.oid IS NOT NULL AS is_primary_key',
+      ])
+      .where("table_classes.relkind IN ('r', 'p')")
+      .where(raw.gt('attributes.attnum', 0))
+      .where(raw.isFalse('attributes.attisdropped'))
+      .where(schemaPredicate)
+      .orderBy('table_classes.relname')
+      .orderBy('attributes.attnum');
+}
 
-const String _enumsQuery = '''
-SELECT
-  namespaces.nspname AS enum_schema,
-  types.typname AS enum_name,
-  array_agg(enum_values.enumlabel ORDER BY enum_values.enumsortorder) AS enum_values
-FROM pg_catalog.pg_type AS types
-JOIN pg_catalog.pg_namespace AS namespaces
-  ON namespaces.oid = types.typnamespace
-JOIN pg_catalog.pg_enum AS enum_values
-  ON enum_values.enumtypid = types.oid
-WHERE types.typtype = 'e'
-  AND namespaces.nspname = ANY(@schemas)
-GROUP BY namespaces.nspname, types.typname
-ORDER BY namespaces.nspname, types.typname
-''';
+SelectedSelectQueryBuilder<SqlRow> _enumsQuery(
+  SqlRawQueryRoot raw,
+  SqlPredicate schemaPredicate,
+) {
+  return raw
+      .from('pg_catalog.pg_type', alias: 'types')
+      .innerJoin(
+        'pg_catalog.pg_namespace',
+        alias: 'namespaces',
+        on: raw.eqRef('namespaces.oid', 'types.typnamespace'),
+      )
+      .innerJoin(
+        'pg_catalog.pg_enum',
+        alias: 'enum_values',
+        on: raw.eqRef('enum_values.enumtypid', 'types.oid'),
+      )
+      .select(const [
+        'namespaces.nspname AS enum_schema',
+        'types.typname AS enum_name',
+        'array_agg(enum_values.enumlabel ORDER BY enum_values.enumsortorder) AS enum_values',
+      ])
+      .where(raw.eq('types.typtype', 'e'))
+      .where(schemaPredicate)
+      .groupBy('namespaces.nspname')
+      .groupBy('types.typname')
+      .orderBy('namespaces.nspname')
+      .orderBy('types.typname');
+}
 
-const String _constraintsQuery = '''
-SELECT
-  namespaces.nspname AS table_schema,
-  table_classes.relname AS table_name,
-  constraints.conname AS constraint_name,
-  constraints.contype AS constraint_type,
-  COALESCE(local_columns.columns, ARRAY[]::text[]) AS columns,
-  referenced_namespaces.nspname AS referenced_schema,
-  referenced_classes.relname AS referenced_table,
-  COALESCE(referenced_columns.columns, ARRAY[]::text[]) AS referenced_columns,
-  CASE
-    WHEN constraints.contype = 'c'
-      THEN pg_catalog.pg_get_constraintdef(constraints.oid, true)
-    ELSE NULL
-  END AS expression
-FROM pg_catalog.pg_constraint AS constraints
-JOIN pg_catalog.pg_class AS table_classes
-  ON table_classes.oid = constraints.conrelid
-JOIN pg_catalog.pg_namespace AS namespaces
-  ON namespaces.oid = table_classes.relnamespace
-LEFT JOIN pg_catalog.pg_class AS referenced_classes
-  ON referenced_classes.oid = constraints.confrelid
-LEFT JOIN pg_catalog.pg_namespace AS referenced_namespaces
-  ON referenced_namespaces.oid = referenced_classes.relnamespace
-LEFT JOIN LATERAL (
+SelectedSelectQueryBuilder<SqlRow> _constraintsQuery(
+  SqlRawQueryRoot raw,
+  SqlPredicate schemaPredicate,
+) {
+  return raw
+      .from('pg_catalog.pg_constraint', alias: 'constraints')
+      .innerJoin(
+        'pg_catalog.pg_class',
+        alias: 'table_classes',
+        on: raw.eqRef('table_classes.oid', 'constraints.conrelid'),
+      )
+      .innerJoin(
+        'pg_catalog.pg_namespace',
+        alias: 'namespaces',
+        on: raw.eqRef('namespaces.oid', 'table_classes.relnamespace'),
+      )
+      .leftJoin(
+        'pg_catalog.pg_class',
+        alias: 'referenced_classes',
+        on: raw.eqRef('referenced_classes.oid', 'constraints.confrelid'),
+      )
+      .leftJoin(
+        'pg_catalog.pg_namespace',
+        alias: 'referenced_namespaces',
+        on: raw.eqRef(
+          'referenced_namespaces.oid',
+          'referenced_classes.relnamespace',
+        ),
+      )
+      .leftJoin(
+        '''
+LATERAL (
   SELECT array_agg(attributes.attname ORDER BY keys.ordinality) AS columns
   FROM unnest(constraints.conkey) WITH ORDINALITY AS keys(attnum, ordinality)
   JOIN pg_catalog.pg_attribute AS attributes
     ON attributes.attrelid = constraints.conrelid
    AND attributes.attnum = keys.attnum
-) AS local_columns ON TRUE
-LEFT JOIN LATERAL (
+)''',
+        alias: 'local_columns',
+        on: 'TRUE',
+      )
+      .leftJoin(
+        '''
+LATERAL (
   SELECT array_agg(attributes.attname ORDER BY keys.ordinality) AS columns
   FROM unnest(constraints.confkey) WITH ORDINALITY AS keys(attnum, ordinality)
   JOIN pg_catalog.pg_attribute AS attributes
     ON attributes.attrelid = constraints.confrelid
    AND attributes.attnum = keys.attnum
-) AS referenced_columns ON TRUE
-WHERE namespaces.nspname = ANY(@schemas)
-  AND constraints.contype IN ('p', 'u', 'f', 'c')
-ORDER BY namespaces.nspname, table_classes.relname, constraints.conname
-''';
+)''',
+        alias: 'referenced_columns',
+        on: 'TRUE',
+      )
+      .select(const [
+        'namespaces.nspname AS table_schema',
+        'table_classes.relname AS table_name',
+        'constraints.conname AS constraint_name',
+        'constraints.contype AS constraint_type',
+        'COALESCE(local_columns.columns, ARRAY[]::text[]) AS columns',
+        'referenced_namespaces.nspname AS referenced_schema',
+        'referenced_classes.relname AS referenced_table',
+        'COALESCE(referenced_columns.columns, ARRAY[]::text[]) AS referenced_columns',
+        '''
+CASE
+  WHEN constraints.contype = 'c'
+    THEN pg_catalog.pg_get_constraintdef(constraints.oid, true)
+  ELSE NULL
+END AS expression''',
+      ])
+      .where(schemaPredicate)
+      .where("constraints.contype IN ('p', 'u', 'f', 'c')")
+      .orderBy('namespaces.nspname')
+      .orderBy('table_classes.relname')
+      .orderBy('constraints.conname');
+}
 
-const String _routinesQuery = '''
-SELECT
-  namespaces.nspname AS routine_schema,
-  procedures.proname AS routine_name,
-  CASE procedures.prokind
-    WHEN 'p' THEN 'procedure'
-    ELSE 'function'
-  END AS routine_kind,
-  return_types.typname AS return_database_type,
-  procedures.proretset AS returns_set,
-  COALESCE(parameters.parameters, '[]'::jsonb) AS parameters
-FROM pg_catalog.pg_proc AS procedures
-JOIN pg_catalog.pg_namespace AS namespaces
-  ON namespaces.oid = procedures.pronamespace
-JOIN pg_catalog.pg_type AS return_types
-  ON return_types.oid = procedures.prorettype
-LEFT JOIN LATERAL (
+SelectedSelectQueryBuilder<SqlRow> _routinesQuery(
+  SqlRawQueryRoot raw,
+  SqlPredicate schemaPredicate,
+) {
+  return raw
+      .from('pg_catalog.pg_proc', alias: 'procedures')
+      .innerJoin(
+        'pg_catalog.pg_namespace',
+        alias: 'namespaces',
+        on: raw.eqRef('namespaces.oid', 'procedures.pronamespace'),
+      )
+      .innerJoin(
+        'pg_catalog.pg_type',
+        alias: 'return_types',
+        on: raw.eqRef('return_types.oid', 'procedures.prorettype'),
+      )
+      .leftJoin(
+        '''
+LATERAL (
   SELECT jsonb_agg(
     jsonb_build_object(
       'name',
@@ -419,12 +505,27 @@ LEFT JOIN LATERAL (
   FROM generate_series(0, procedures.pronargs - 1) AS arguments(position)
   JOIN pg_catalog.pg_type AS argument_types
     ON argument_types.oid = procedures.proargtypes[arguments.position]
-) AS parameters ON TRUE
-WHERE namespaces.nspname = ANY(@schemas)
-  AND procedures.prokind IN ('f', 'p')
-  AND return_types.typname <> 'trigger'
-ORDER BY procedures.proname
-''';
+)''',
+        alias: 'parameters',
+        on: 'TRUE',
+      )
+      .select(const [
+        'namespaces.nspname AS routine_schema',
+        'procedures.proname AS routine_name',
+        '''
+CASE procedures.prokind
+  WHEN 'p' THEN 'procedure'
+  ELSE 'function'
+END AS routine_kind''',
+        'return_types.typname AS return_database_type',
+        'procedures.proretset AS returns_set',
+        "COALESCE(parameters.parameters, '[]'::jsonb) AS parameters",
+      ])
+      .where(schemaPredicate)
+      .where("procedures.prokind IN ('f', 'p')")
+      .where(raw.notEq('return_types.typname', 'trigger'))
+      .orderBy('procedures.proname');
+}
 
 String _mapPostgresType(String databaseType) {
   final normalized = databaseType.toLowerCase();

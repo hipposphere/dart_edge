@@ -127,6 +127,58 @@ void main() {
     await session.closed.timeout(const Duration(seconds: 1));
     expect(session.isClosed, isTrue);
   });
+
+  test('can add, update, and remove trunks after runtime start', () async {
+    final sip = DartEdgeSip(
+      config: const SipServerConfig(
+        engine: PjsipEngineConfig(maxCalls: 4, maxConferencePorts: 32),
+        transports: [SipTransportBinding.udp(host: '127.0.0.1', port: 5162)],
+      ),
+    );
+    addTearDown(sip.dispose);
+
+    await sip.start();
+    await sip.addTrunk(
+      const SipTrunkConfig(
+        id: 'carrier-b',
+        direction: SipTrunkDirection.bidirectional,
+        serverUri: 'sip:example.com',
+      ),
+    );
+    expect(sip.trunks.map((trunk) => trunk.id), ['carrier-b']);
+
+    final call = await sip.originateCall(
+      const SipOutboundCallRequest(
+        trunkId: 'carrier-b',
+        fromUri: 'sip:1000@pbx.example.com',
+        toUri: 'sip:2000@example.com',
+      ),
+    );
+    await call.hangup();
+
+    await sip.updateTrunk(
+      'carrier-b',
+      const SipTrunkConfig(
+        id: 'carrier-c',
+        direction: SipTrunkDirection.outbound,
+        serverUri: 'sip:example.net',
+      ),
+    );
+    expect(sip.trunks.map((trunk) => trunk.id), ['carrier-c']);
+    await sip.removeTrunk('carrier-c');
+    expect(sip.trunks, isEmpty);
+
+    await expectLater(
+      sip.originateCall(
+        const SipOutboundCallRequest(
+          trunkId: 'carrier-c',
+          fromUri: 'sip:1000@pbx.example.com',
+          toUri: 'sip:2000@example.com',
+        ),
+      ),
+      throwsStateError,
+    );
+  });
 }
 
 final class _TestMediaApp implements SipMediaApp {

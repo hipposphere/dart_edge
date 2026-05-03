@@ -16,6 +16,14 @@ final class _SqlCompiler {
   }
 
   void writeTable(SqlTable<dynamic, dynamic, dynamic> table) {
+    if (table case final SqlRawTable rawTable) {
+      write(rawTable.tableExpression);
+      if (rawTable.alias case final alias?) {
+        write(' AS ');
+        writeIdentifier(alias);
+      }
+      return;
+    }
     if (table.schema case final String schemaName) {
       writeIdentifier(schemaName);
       write('.');
@@ -24,7 +32,11 @@ final class _SqlCompiler {
   }
 
   void writeColumn(SqlColumn<dynamic> column) {
-    writeTable(column.table);
+    if (column.table case final SqlRawTable rawTable) {
+      writeIdentifier(rawTable.alias ?? rawTable.tableExpression);
+    } else {
+      writeTable(column.table);
+    }
     write('.');
     writeIdentifier(column.name);
   }
@@ -41,6 +53,8 @@ final class _SqlCompiler {
 
   void writePredicate(SqlPredicate predicate) {
     switch (predicate) {
+      case _SqlRawPredicate():
+        writeRaw(predicate.sql, predicate.parameters);
       case _SqlComparisonPredicate():
         writeColumn(predicate.left.asObjectColumn);
         write(' ${predicate.operator} ');
@@ -77,6 +91,132 @@ final class _SqlCompiler {
     }
   }
 
+  void writeProjection(_SelectedProjection projection) {
+    if (projection.column case final column?) {
+      writeColumn(column);
+    } else if (projection.expression case final expression?) {
+      writeRaw(expression.sql, expression.parameters);
+    } else if (projection.rawSql case final rawSql?) {
+      write(rawSql);
+    }
+    if (projection.alias case final alias?) {
+      write(' AS ');
+      writeIdentifier(alias);
+    }
+  }
+
+  void writeSelectable(Object value) {
+    switch (value) {
+      case final SqlColumn<dynamic> column:
+        writeColumn(column);
+      case final SqlRawExpression<dynamic> expression:
+        writeRaw(expression.sql, expression.parameters);
+      case final String rawSql:
+        write(rawSql);
+      default:
+        throw ArgumentError.value(
+          value,
+          'value',
+          'Expected String, SqlColumn, or SqlRawExpression.',
+        );
+    }
+  }
+
+  void writeRaw(String sql, Map<String, Object?> parameters) {
+    if (parameters.isEmpty) {
+      write(sql);
+      return;
+    }
+    var index = 0;
+    while (index < sql.length) {
+      final char = sql[index];
+      if (char == "'") {
+        index = _writeQuoted(sql, index, "'");
+      } else if (char == '"') {
+        index = _writeQuoted(sql, index, '"');
+      } else if (_startsWith(sql, index, '--')) {
+        index = _writeLineComment(sql, index);
+      } else if (_startsWith(sql, index, '/*')) {
+        index = _writeBlockComment(sql, index);
+      } else if (char == '@' && _isIdentifierStart(_peek(sql, index + 1))) {
+        index = _writeRawPlaceholder(sql, index, parameters);
+      } else {
+        write(char);
+        index += 1;
+      }
+    }
+  }
+
+  int _writeQuoted(String sql, int start, String quote) {
+    write(quote);
+    var index = start + 1;
+    while (index < sql.length) {
+      final char = sql[index];
+      write(char);
+      index += 1;
+      if (char == quote) {
+        if (_peek(sql, index) == quote) {
+          write(quote);
+          index += 1;
+          continue;
+        }
+        break;
+      }
+    }
+    return index;
+  }
+
+  int _writeLineComment(String sql, int start) {
+    var index = start;
+    while (index < sql.length) {
+      final char = sql[index];
+      write(char);
+      index += 1;
+      if (char == '\n') {
+        break;
+      }
+    }
+    return index;
+  }
+
+  int _writeBlockComment(String sql, int start) {
+    var index = start;
+    while (index < sql.length) {
+      final char = sql[index];
+      write(char);
+      index += 1;
+      if (char == '*' && _peek(sql, index) == '/') {
+        write('/');
+        index += 1;
+        break;
+      }
+    }
+    return index;
+  }
+
+  int _writeRawPlaceholder(
+    String sql,
+    int start,
+    Map<String, Object?> parameters,
+  ) {
+    var end = start + 2;
+    while (_isIdentifierPart(_peek(sql, end))) {
+      end += 1;
+    }
+    final name = sql.substring(start + 1, end);
+    if (!parameters.containsKey(name)) {
+      write(sql.substring(start, end));
+      return end;
+    }
+    final parameterName = 'p${++_parameterIndex}';
+    _parameters[parameterName] = parameters[name];
+    write(switch (dialect) {
+      SqlDialect.sqlite => ':$parameterName',
+      SqlDialect.postgres => '@$parameterName',
+    });
+    return end;
+  }
+
   void writeJoined<T>(
     Iterable<T> values, {
     required String separator,
@@ -103,16 +243,114 @@ final class _SqlCompiler {
   }
 }
 
-SqlSelectedColumn<dynamic> _normalizeSelectedColumn(Object value) {
+bool _startsWith(String value, int index, String pattern) {
+  return index + pattern.length <= value.length &&
+      value.substring(index, index + pattern.length) == pattern;
+}
+
+String? _peek(String value, int index) {
+  if (index < 0 || index >= value.length) {
+    return null;
+  }
+  return value[index];
+}
+
+bool _isIdentifierStart(String? char) {
+  if (char == null) {
+    return false;
+  }
+  final code = char.codeUnitAt(0);
+  return code == 95 ||
+      (code >= 65 && code <= 90) ||
+      (code >= 97 && code <= 122);
+}
+
+bool _isIdentifierPart(String? char) {
+  if (char == null) {
+    return false;
+  }
+  final code = char.codeUnitAt(0);
+  return _isIdentifierStart(char) || (code >= 48 && code <= 57);
+}
+
+_SelectedProjection _normalizeProjection(Object value) {
   return switch (value) {
-    final SqlSelectedColumn<dynamic> selected => selected,
-    final SqlColumn<dynamic> column => SqlSelectedColumn<dynamic>(
-      column: column,
+    final SqlSelectedExpression<dynamic> selected => _SelectedProjection(
+      expression: selected.expression,
+      alias: selected.alias,
+    ),
+    final SqlRawExpression<dynamic> expression => _SelectedProjection(
+      expression: expression,
+    ),
+    final String rawSql => _SelectedProjection(rawSql: rawSql),
+    final SqlSelectedColumn<dynamic> selected => _SelectedProjection(
+      column: selected.column.asObjectColumn,
+      alias: selected.alias ?? _aliasFor(selected.column),
+    ),
+    final SqlColumn<dynamic> column => _SelectedProjection(
+      column: column.asObjectColumn,
+      alias: _aliasFor(column),
     ),
     final Object invalid => throw ArgumentError.value(
       invalid,
       'columns',
-      'select() accepts SqlColumn or SqlSelectedColumn values only.',
+      'select() accepts String, SqlRawExpression, SqlSelectedExpression, '
+          'SqlColumn, or SqlSelectedColumn values only.',
+    ),
+  };
+}
+
+SqlPredicate _normalizePredicate(
+  Object value, {
+  Map<String, Object?> parameters = const <String, Object?>{},
+}) {
+  return switch (value) {
+    final SqlPredicate predicate when parameters.isEmpty => predicate,
+    final SqlPredicate _ => throw ArgumentError.value(
+      parameters,
+      'parameters',
+      'Parameters can only be passed with raw SQL string predicates.',
+    ),
+    final String rawSql => SqlPredicate.raw(rawSql, parameters: parameters),
+    final Object invalid => throw ArgumentError.value(
+      invalid,
+      'value',
+      'Expected String or SqlPredicate.',
+    ),
+  };
+}
+
+Object _normalizeSelectable(Object value) {
+  return switch (value) {
+    final String rawSql => rawSql,
+    final SqlRawExpression<dynamic> expression => expression,
+    final SqlColumn<dynamic> column => column.asObjectColumn,
+    final Object invalid => throw ArgumentError.value(
+      invalid,
+      'value',
+      'Expected String, SqlRawExpression, or SqlColumn.',
+    ),
+  };
+}
+
+SqlOrderBy _normalizeOrderBy(Object value, {required bool descending}) {
+  return switch (value) {
+    final String rawSql => SqlOrderBy(
+      expression: SqlRawExpression<dynamic>(rawSql),
+      descending: descending,
+    ),
+    final SqlRawExpression<dynamic> expression => SqlOrderBy(
+      expression: expression,
+      descending: descending,
+    ),
+    final SqlColumn<dynamic> column => SqlOrderBy(
+      column: column.asObjectColumn,
+      descending: descending,
+    ),
+    final Object invalid => throw ArgumentError.value(
+      invalid,
+      'value',
+      'Expected String, SqlRawExpression, or SqlColumn.',
     ),
   };
 }
@@ -185,10 +423,17 @@ final class _TableSelection2<
 }
 
 final class _SelectedProjection {
-  const _SelectedProjection({required this.column, required this.alias});
+  const _SelectedProjection({
+    this.column,
+    this.expression,
+    this.rawSql,
+    this.alias,
+  }) : assert(column != null || expression != null || rawSql != null);
 
-  final SqlColumn<dynamic> column;
-  final String alias;
+  final SqlColumn<dynamic>? column;
+  final SqlRawExpression<dynamic>? expression;
+  final String? rawSql;
+  final String? alias;
 }
 
 enum _SqlJoinType {
@@ -206,6 +451,14 @@ final class _SqlJoin {
   final _SqlJoinType type;
   final SqlTable<dynamic, dynamic, dynamic> table;
   final SqlPredicate on;
+}
+
+final class _SqlRawPredicate extends SqlPredicate {
+  _SqlRawPredicate(this.sql, {Map<String, Object?>? parameters})
+    : parameters = parameters ?? const <String, Object?>{};
+
+  final String sql;
+  final Map<String, Object?> parameters;
 }
 
 final class _SqlComparisonPredicate extends SqlPredicate {

@@ -1,6 +1,6 @@
 name: dart_edge_sql
 description: Thin typed SQL layer and driver adapters for Dart Edge.
-version: 0.3.0
+version: 0.3.1
 publish_to: "https://registry.hippolabs.org/pub/internal-pub/"
 repository: https://github.com/flowhorn/dart_edge/tree/main/packages/dart_edge_sql
 

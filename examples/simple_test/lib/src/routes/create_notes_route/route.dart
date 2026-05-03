@@ -13,7 +13,7 @@ final class CreateNotesRoute
   @override
   Future<CreateNoteResponse> handle(ctx) async {
     final body = ctx.req.body<CreateNoteBody>();
-    final note = await ctx.services.builder
+    final note = await ctx.services.typed
         .insertInto(NotesTable.table)
         .values(
           NotesInsert(
@@ -22,7 +22,7 @@ final class CreateNotesRoute
             ownerId: body.ownerId,
           ),
         )
-        .executeReturningFirstTable();
+        .executeReturningFirstOrNull();
 
     if (note == null) {
       throw StateError('Failed to create note.');

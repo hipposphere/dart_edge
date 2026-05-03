@@ -136,6 +136,32 @@ struct NativeMediaAppPayload {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct NativeTrunkPayload {
+    trunk: NativeSipTrunkConfig,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct NativeUpdateTrunkPayload {
+    trunk_id: String,
+    trunk: NativeSipTrunkConfig,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct NativeTrunkIdPayload {
+    trunk_id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct NativeTrunkRegistrationPayload {
+    trunk_id: String,
+    enabled: bool,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct NativeSipServerConfig {
     server_name: String,
     engine: NativeSipEngineConfig,
@@ -195,7 +221,7 @@ struct NativeSipEndpointConfig {
     allow_registrations: bool,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct NativeSipTrunkConfig {
     id: String,
@@ -357,6 +383,80 @@ impl PjsipRuntime {
     }
 
     fn add_trunk(&mut self, trunk: &NativeSipTrunkConfig) -> Result<(), String> {
+        self.with_trunk_binding(
+            trunk,
+            |runtime, trunk, error, error_len| unsafe {
+                dart_edge_sip_bridge_add_trunk(runtime, trunk, error, error_len)
+            },
+            "Failed to add SIP trunk.",
+        )
+    }
+
+    fn update_trunk(&mut self, trunk_id: &str, trunk: &NativeSipTrunkConfig) -> Result<(), String> {
+        let trunk_id = c_string(trunk_id)?;
+        self.with_trunk_binding(
+            trunk,
+            |runtime, trunk, error, error_len| unsafe {
+                dart_edge_sip_bridge_update_trunk(
+                    runtime,
+                    trunk_id.as_ptr(),
+                    trunk,
+                    error,
+                    error_len,
+                )
+            },
+            "Failed to update SIP trunk.",
+        )
+    }
+
+    fn remove_trunk(&mut self, trunk_id: &str) -> Result<(), String> {
+        let trunk_id = c_string(trunk_id)?;
+        let mut error = ErrorBuffer::new();
+        let ok = unsafe {
+            dart_edge_sip_bridge_remove_trunk(
+                self.raw.as_ptr(),
+                trunk_id.as_ptr(),
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if ok {
+            Ok(())
+        } else {
+            Err(error.message("Failed to remove SIP trunk."))
+        }
+    }
+
+    fn set_trunk_registration(&mut self, trunk_id: &str, enabled: bool) -> Result<(), String> {
+        let trunk_id = c_string(trunk_id)?;
+        let mut error = ErrorBuffer::new();
+        let ok = unsafe {
+            dart_edge_sip_bridge_set_trunk_registration(
+                self.raw.as_ptr(),
+                trunk_id.as_ptr(),
+                enabled,
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if ok {
+            Ok(())
+        } else {
+            Err(error.message("Failed to change SIP trunk registration."))
+        }
+    }
+
+    fn with_trunk_binding(
+        &mut self,
+        trunk: &NativeSipTrunkConfig,
+        command: impl FnOnce(
+            *mut dart_edge_sip_bridge_runtime,
+            *const dart_edge_sip_bridge_trunk_config,
+            *mut c_char,
+            usize,
+        ) -> bool,
+        context: &str,
+    ) -> Result<(), String> {
         let id = c_string(&trunk.id)?;
         let server_uri = c_string(&trunk.server_uri)?;
         let username = optional_c_string(trunk.username.as_deref())?;
@@ -383,18 +483,11 @@ impl PjsipRuntime {
             },
         };
 
-        let ok = unsafe {
-            dart_edge_sip_bridge_add_trunk(
-                self.raw.as_ptr(),
-                &binding,
-                error.as_mut_ptr(),
-                error.len(),
-            )
-        };
+        let ok = command(self.raw.as_ptr(), &binding, error.as_mut_ptr(), error.len());
         if ok {
             Ok(())
         } else {
-            Err(error.message("Failed to add SIP trunk."))
+            Err(error.message(context))
         }
     }
 
@@ -1155,6 +1248,67 @@ pub extern "C" fn dart_edge_sip_issue_command(
             "ok": true,
             "endpoints": runtime.registered_endpoints(),
         })),
+        "addTrunk" => parse_payload::<NativeTrunkPayload>(payload)
+            .and_then(|payload| {
+                validate_trunk_config(&payload.trunk)?;
+                if server
+                    .config
+                    .trunks
+                    .iter()
+                    .any(|trunk| trunk.id == payload.trunk.id)
+                {
+                    return Err(format!("Duplicate SIP trunk ID '{}'.", payload.trunk.id));
+                }
+                runtime.add_trunk(&payload.trunk)?;
+                server.config.trunks.push(payload.trunk);
+                Ok(())
+            })
+            .map(|()| json!({ "ok": true })),
+        "updateTrunk" => parse_payload::<NativeUpdateTrunkPayload>(payload)
+            .and_then(|payload| {
+                validate_trunk_config(&payload.trunk)?;
+                let Some(index) = server
+                    .config
+                    .trunks
+                    .iter()
+                    .position(|trunk| trunk.id == payload.trunk_id)
+                else {
+                    return Err(format!("Unknown SIP trunk '{}'.", payload.trunk_id));
+                };
+                if server
+                    .config
+                    .trunks
+                    .iter()
+                    .enumerate()
+                    .any(|(other_index, trunk)| {
+                        other_index != index && trunk.id == payload.trunk.id
+                    })
+                {
+                    return Err(format!("Duplicate SIP trunk ID '{}'.", payload.trunk.id));
+                }
+                runtime.update_trunk(&payload.trunk_id, &payload.trunk)?;
+                server.config.trunks[index] = payload.trunk;
+                Ok(())
+            })
+            .map(|()| json!({ "ok": true })),
+        "removeTrunk" => parse_payload::<NativeTrunkIdPayload>(payload)
+            .and_then(|payload| {
+                let Some(index) = server
+                    .config
+                    .trunks
+                    .iter()
+                    .position(|trunk| trunk.id == payload.trunk_id)
+                else {
+                    return Err(format!("Unknown SIP trunk '{}'.", payload.trunk_id));
+                };
+                runtime.remove_trunk(&payload.trunk_id)?;
+                server.config.trunks.remove(index);
+                Ok(())
+            })
+            .map(|()| json!({ "ok": true })),
+        "setTrunkRegistration" => parse_payload::<NativeTrunkRegistrationPayload>(payload)
+            .and_then(|payload| runtime.set_trunk_registration(&payload.trunk_id, payload.enabled))
+            .map(|()| json!({ "ok": true })),
         "answer" => parse_payload::<NativeStatusPayload>(payload)
             .and_then(|payload| runtime.answer_call(required_session_id(session_id)?, &payload))
             .map(|()| json!({ "ok": true })),
@@ -1503,9 +1657,7 @@ fn validate_config(config: &NativeSipServerConfig) -> Result<(), String> {
         if !trunk_ids.insert(trunk.id.clone()) {
             return Err(format!("Duplicate SIP trunk ID '{}'.", trunk.id));
         }
-        if trunk.server_uri.is_empty() {
-            return Err(format!("SIP trunk '{}' requires a serverUri.", trunk.id));
-        }
+        validate_trunk_config(trunk)?;
     }
 
     let mut endpoint_ids = HashSet::new();
@@ -1557,6 +1709,22 @@ fn validate_config(config: &NativeSipServerConfig) -> Result<(), String> {
     }
 
     Ok(())
+}
+
+fn validate_trunk_config(trunk: &NativeSipTrunkConfig) -> Result<(), String> {
+    if trunk.id.is_empty() {
+        return Err("SIP trunk requires a non-empty id.".to_string());
+    }
+    if trunk.server_uri.is_empty() {
+        return Err(format!("SIP trunk '{}' requires a serverUri.", trunk.id));
+    }
+    match trunk.direction.as_str() {
+        "inbound" | "outbound" | "bidirectional" => Ok(()),
+        value => Err(format!(
+            "Unsupported SIP trunk direction '{}' for trunk '{}'.",
+            value, trunk.id
+        )),
+    }
 }
 
 fn parse_payload<T>(payload: Option<Value>) -> Result<T, String>
@@ -1994,6 +2162,29 @@ unsafe extern "C" {
     fn dart_edge_sip_bridge_add_trunk(
         runtime: *mut dart_edge_sip_bridge_runtime,
         trunk: *const dart_edge_sip_bridge_trunk_config,
+        error: *mut c_char,
+        error_len: usize,
+    ) -> bool;
+
+    fn dart_edge_sip_bridge_update_trunk(
+        runtime: *mut dart_edge_sip_bridge_runtime,
+        trunk_id: *const c_char,
+        trunk: *const dart_edge_sip_bridge_trunk_config,
+        error: *mut c_char,
+        error_len: usize,
+    ) -> bool;
+
+    fn dart_edge_sip_bridge_remove_trunk(
+        runtime: *mut dart_edge_sip_bridge_runtime,
+        trunk_id: *const c_char,
+        error: *mut c_char,
+        error_len: usize,
+    ) -> bool;
+
+    fn dart_edge_sip_bridge_set_trunk_registration(
+        runtime: *mut dart_edge_sip_bridge_runtime,
+        trunk_id: *const c_char,
+        enabled: bool,
         error: *mut c_char,
         error_len: usize,
     ) -> bool;

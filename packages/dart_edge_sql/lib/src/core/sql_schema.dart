@@ -61,3 +61,38 @@ final class SqlColumn<TValue> {
   /// Reinterprets this column as `SqlColumn<Object?>`.
   SqlColumn<Object?> get asObjectColumn => this as SqlColumn<Object?>;
 }
+
+/// Lightweight table descriptor for system catalogs and ad hoc query inputs.
+final class SqlRawTable
+    extends SqlTable<SqlRow, Map<String, Object?>, Map<String, Object?>> {
+  const SqlRawTable(this.tableExpression, {this.alias});
+
+  /// Raw SQL table expression, such as `pg_catalog.pg_class`.
+  final String tableExpression;
+
+  /// Optional table alias.
+  final String? alias;
+
+  @override
+  String get name => alias ?? tableExpression;
+
+  @override
+  String? get schema => null;
+
+  @override
+  List<SqlColumn<Object?>> get columns => const <SqlColumn<Object?>>[];
+
+  /// Creates a column descriptor attached to this raw table expression.
+  SqlColumn<TValue> column<TValue>(String name, {bool nullable = false}) {
+    return SqlColumn<TValue>(table: this, name: name, nullable: nullable);
+  }
+
+  @override
+  SqlRow mapRow(SqlRow row, {String prefix = ''}) => row;
+
+  @override
+  Map<String, Object?> encodeInsert(Map<String, Object?> value) => value;
+
+  @override
+  Map<String, Object?> encodeUpdate(Map<String, Object?> value) => value;
+}

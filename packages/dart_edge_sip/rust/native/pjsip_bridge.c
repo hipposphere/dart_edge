@@ -841,6 +841,80 @@ static dart_edge_sip_bridge_trunk_entry* find_trunk(
   return NULL;
 }
 
+static size_t find_trunk_index(
+    dart_edge_sip_bridge_runtime* runtime,
+    const char* trunk_id) {
+  if (runtime == NULL || trunk_id == NULL) {
+    return SIZE_MAX;
+  }
+
+  for (size_t index = 0; index < runtime->trunk_count; index += 1) {
+    if (runtime->trunks[index].id != NULL &&
+        strcmp(runtime->trunks[index].id, trunk_id) == 0) {
+      return index;
+    }
+  }
+  return SIZE_MAX;
+}
+
+static void free_trunk_entry(dart_edge_sip_bridge_trunk_entry* trunk) {
+  if (trunk == NULL) {
+    return;
+  }
+
+  free(trunk->id);
+  free(trunk->server_uri);
+  free(trunk->username);
+  free(trunk->password);
+  free(trunk->realm);
+  memset(trunk, 0, sizeof(*trunk));
+  trunk->acc_id = PJSUA_INVALID_ID;
+}
+
+static bool copy_trunk_config(
+    dart_edge_sip_bridge_trunk_entry* entry,
+    const dart_edge_sip_bridge_trunk_config* trunk,
+    char* error,
+    size_t error_len) {
+  if (entry == NULL || trunk == NULL) {
+    store_error(error, error_len, "Missing SIP trunk config.");
+    return false;
+  }
+
+  memset(entry, 0, sizeof(*entry));
+  entry->id = duplicate_string(trunk->id);
+  entry->server_uri = duplicate_string(trunk->server_uri);
+  entry->username = duplicate_string(trunk->username);
+  entry->password = duplicate_string(trunk->password);
+  entry->realm = duplicate_string(trunk->realm);
+  entry->direction = trunk->direction;
+  entry->acc_id = PJSUA_INVALID_ID;
+
+  if (entry->id == NULL || entry->server_uri == NULL) {
+    free_trunk_entry(entry);
+    store_error(error, error_len, "Failed to allocate SIP trunk config.");
+    return false;
+  }
+  return true;
+}
+
+static bool remove_trunk_account(
+    dart_edge_sip_bridge_trunk_entry* trunk,
+    char* error,
+    size_t error_len) {
+  if (trunk == NULL || trunk->acc_id == PJSUA_INVALID_ID) {
+    return true;
+  }
+
+  pj_status_t status = pjsua_acc_del(trunk->acc_id);
+  if (status != PJ_SUCCESS) {
+    store_status_error(error, error_len, "Failed to remove SIP trunk account", status);
+    return false;
+  }
+  trunk->acc_id = PJSUA_INVALID_ID;
+  return true;
+}
+
 static bool pj_str_equals_cstr(pj_str_t value, const char* expected) {
   if (expected == NULL) {
     return false;
@@ -1833,11 +1907,7 @@ void dart_edge_sip_bridge_runtime_destroy(dart_edge_sip_bridge_runtime* runtime)
     free(runtime->transports[index].tls_profile);
   }
   for (size_t index = 0; index < runtime->trunk_count; index += 1) {
-    free(runtime->trunks[index].id);
-    free(runtime->trunks[index].server_uri);
-    free(runtime->trunks[index].username);
-    free(runtime->trunks[index].password);
-    free(runtime->trunks[index].realm);
+    free_trunk_entry(&runtime->trunks[index]);
   }
   for (size_t index = 0; index < runtime->endpoint_count; index += 1) {
     free(runtime->endpoints[index].id);
@@ -1900,8 +1970,8 @@ bool dart_edge_sip_bridge_add_trunk(
     store_error(error, error_len, "Missing SIP trunk config.");
     return false;
   }
-  if (runtime->started) {
-    store_error(error, error_len, "Cannot add trunk after runtime start.");
+  if (find_trunk(runtime, trunk->id) != NULL) {
+    store_error(error, error_len, "Duplicate SIP trunk ID.");
     return false;
   }
   if (runtime->trunk_count >= PJSUA_MAX_ACC - 1) {
@@ -1910,14 +1980,124 @@ bool dart_edge_sip_bridge_add_trunk(
   }
 
   dart_edge_sip_bridge_trunk_entry* entry = &runtime->trunks[runtime->trunk_count];
-  entry->id = duplicate_string(trunk->id);
-  entry->server_uri = duplicate_string(trunk->server_uri);
-  entry->username = duplicate_string(trunk->username);
-  entry->password = duplicate_string(trunk->password);
-  entry->realm = duplicate_string(trunk->realm);
-  entry->direction = trunk->direction;
-  entry->acc_id = PJSUA_INVALID_ID;
+  if (!copy_trunk_config(entry, trunk, error, error_len)) {
+    return false;
+  }
   runtime->trunk_count += 1;
+
+  if (runtime->started && !add_trunk_account(runtime, entry, error, error_len)) {
+    runtime->trunk_count -= 1;
+    free_trunk_entry(entry);
+    return false;
+  }
+  return true;
+}
+
+bool dart_edge_sip_bridge_update_trunk(
+    dart_edge_sip_bridge_runtime* runtime,
+    const char* trunk_id,
+    const dart_edge_sip_bridge_trunk_config* trunk,
+    char* error,
+    size_t error_len) {
+  if (runtime == NULL || trunk_id == NULL || trunk == NULL) {
+    store_error(error, error_len, "Missing SIP trunk config.");
+    return false;
+  }
+
+  size_t index = find_trunk_index(runtime, trunk_id);
+  if (index == SIZE_MAX) {
+    store_error(error, error_len, "Unknown SIP trunk.");
+    return false;
+  }
+  if (trunk->id != NULL && strcmp(trunk->id, trunk_id) != 0) {
+    dart_edge_sip_bridge_trunk_entry* existing = find_trunk(runtime, trunk->id);
+    if (existing != NULL && existing != &runtime->trunks[index]) {
+      store_error(error, error_len, "Duplicate SIP trunk ID.");
+      return false;
+    }
+  }
+
+  dart_edge_sip_bridge_trunk_entry replacement;
+  if (!copy_trunk_config(&replacement, trunk, error, error_len)) {
+    return false;
+  }
+
+  dart_edge_sip_bridge_trunk_entry* entry = &runtime->trunks[index];
+  if (runtime->started && !remove_trunk_account(entry, error, error_len)) {
+    free_trunk_entry(&replacement);
+    return false;
+  }
+  free_trunk_entry(entry);
+  *entry = replacement;
+
+  if (runtime->started && !add_trunk_account(runtime, entry, error, error_len)) {
+    return false;
+  }
+  return true;
+}
+
+bool dart_edge_sip_bridge_remove_trunk(
+    dart_edge_sip_bridge_runtime* runtime,
+    const char* trunk_id,
+    char* error,
+    size_t error_len) {
+  if (runtime == NULL || trunk_id == NULL) {
+    store_error(error, error_len, "Missing SIP trunk ID.");
+    return false;
+  }
+
+  size_t index = find_trunk_index(runtime, trunk_id);
+  if (index == SIZE_MAX) {
+    store_error(error, error_len, "Unknown SIP trunk.");
+    return false;
+  }
+
+  dart_edge_sip_bridge_trunk_entry* entry = &runtime->trunks[index];
+  if (runtime->started && !remove_trunk_account(entry, error, error_len)) {
+    return false;
+  }
+  free_trunk_entry(entry);
+  for (size_t current = index + 1; current < runtime->trunk_count; current += 1) {
+    runtime->trunks[current - 1] = runtime->trunks[current];
+  }
+  runtime->trunk_count -= 1;
+  memset(&runtime->trunks[runtime->trunk_count], 0, sizeof(runtime->trunks[0]));
+  runtime->trunks[runtime->trunk_count].acc_id = PJSUA_INVALID_ID;
+  return true;
+}
+
+bool dart_edge_sip_bridge_set_trunk_registration(
+    dart_edge_sip_bridge_runtime* runtime,
+    const char* trunk_id,
+    bool enabled,
+    char* error,
+    size_t error_len) {
+  if (runtime == NULL || trunk_id == NULL) {
+    store_error(error, error_len, "Missing SIP trunk ID.");
+    return false;
+  }
+  if (!runtime->started) {
+    store_error(error, error_len, "Cannot change trunk registration before runtime start.");
+    return false;
+  }
+
+  dart_edge_sip_bridge_trunk_entry* trunk = find_trunk(runtime, trunk_id);
+  if (trunk == NULL) {
+    store_error(error, error_len, "Unknown SIP trunk.");
+    return false;
+  }
+  if (trunk->acc_id == PJSUA_INVALID_ID) {
+    store_error(error, error_len, "SIP trunk has no registered account.");
+    return false;
+  }
+
+  pj_status_t status = pjsua_acc_set_registration(
+      trunk->acc_id,
+      enabled ? PJ_TRUE : PJ_FALSE);
+  if (status != PJ_SUCCESS) {
+    store_status_error(error, error_len, "Failed to change SIP trunk registration", status);
+    return false;
+  }
   return true;
 }
 

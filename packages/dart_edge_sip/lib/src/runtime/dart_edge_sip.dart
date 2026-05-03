@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import '../config/sip_server_config.dart';
+import '../config/sip_trunk_config.dart';
 import '../dialplan/sip_dialplan.dart';
 import '../events/sip_events.dart';
 import '../media/sip_audio.dart';
@@ -20,12 +21,14 @@ final class DartEdgeSip {
        _dialplan = dialplan,
        _mediaApps = List<SipMediaApp>.unmodifiable(mediaApps),
        _mediaAppsById = _indexMediaApps(mediaApps),
+       _trunks = List<SipTrunkConfig>.of(config.trunks),
        _eventPollInterval = eventPollInterval;
 
   final SipServerConfig _config;
   final SipDialplan? _dialplan;
   final List<SipMediaApp> _mediaApps;
   final Map<String, SipMediaApp> _mediaAppsById;
+  final List<SipTrunkConfig> _trunks;
   final Duration _eventPollInterval;
   final StreamController<SipEvent> _events =
       StreamController<SipEvent>.broadcast();
@@ -46,6 +49,8 @@ final class DartEdgeSip {
   SipDialplan? get dialplan => _dialplan;
 
   List<SipMediaApp> get mediaApps => _mediaApps;
+
+  List<SipTrunkConfig> get trunks => List<SipTrunkConfig>.unmodifiable(_trunks);
 
   bool get isStarted => _started;
 
@@ -70,6 +75,55 @@ final class DartEdgeSip {
   Stream<SipVoicemailEvent> get voicemailEvents => _events.stream
       .where((event) => event is SipVoicemailEvent)
       .cast<SipVoicemailEvent>();
+
+  Future<void> addTrunk(SipTrunkConfig trunk) async {
+    _ensureStarted();
+
+    DartEdgeSipNative.issueCommand(_handle!, {
+      'kind': 'addTrunk',
+      'payload': {'trunk': trunk.toJson()},
+    });
+    _trunks.add(trunk);
+    await _drainEvents();
+  }
+
+  Future<void> updateTrunk(String trunkId, SipTrunkConfig trunk) async {
+    _ensureStarted();
+
+    DartEdgeSipNative.issueCommand(_handle!, {
+      'kind': 'updateTrunk',
+      'payload': {'trunkId': trunkId, 'trunk': trunk.toJson()},
+    });
+    final index = _trunks.indexWhere((trunk) => trunk.id == trunkId);
+    if (index >= 0) {
+      _trunks[index] = trunk;
+    }
+    await _drainEvents();
+  }
+
+  Future<void> removeTrunk(String trunkId) async {
+    _ensureStarted();
+
+    DartEdgeSipNative.issueCommand(_handle!, {
+      'kind': 'removeTrunk',
+      'payload': {'trunkId': trunkId},
+    });
+    _trunks.removeWhere((trunk) => trunk.id == trunkId);
+    await _drainEvents();
+  }
+
+  Future<void> setTrunkRegistration(
+    String trunkId, {
+    required bool enabled,
+  }) async {
+    _ensureStarted();
+
+    DartEdgeSipNative.issueCommand(_handle!, {
+      'kind': 'setTrunkRegistration',
+      'payload': {'trunkId': trunkId, 'enabled': enabled},
+    });
+    await _drainEvents();
+  }
 
   Future<void> start() async {
     _ensureNotDisposed();

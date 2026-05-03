@@ -79,8 +79,8 @@ void main() {
     );
     expect(users.rows.single['email'], 'sqlite@example.com');
 
-    final typedUsers = await database.builder
-        .selectFrom(DartEdgeAuthSchema.users)
+    final typedUsers = await database.typed
+        .from(DartEdgeAuthSchema.users)
         .selectAll()
         .where(DartEdgeAuthUsersTable.email.equals('sqlite@example.com'))
         .execute();

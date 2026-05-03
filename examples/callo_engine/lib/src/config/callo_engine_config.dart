@@ -6,18 +6,12 @@ final class CalloEngineConfig {
   const CalloEngineConfig({
     required this.bindHost,
     required this.bindPort,
-    required this.testHost,
-    required this.realm,
     required this.assistantUser,
     required this.trunkId,
     required this.trunkServerUri,
     required this.trunkUsername,
     required this.trunkPassword,
     required this.trunkRealm,
-    required this.testEndpointId,
-    required this.testExtension,
-    required this.testUsername,
-    required this.testPassword,
     required this.rtpStartPort,
     required this.rtpEndPort,
     required this.externalAddress,
@@ -37,8 +31,6 @@ final class CalloEngineConfig {
 
     final bindHost = env['SIP_BIND_HOST'] ?? '0.0.0.0';
     final bindPort = _parsePort(env['SIP_BIND_PORT'], fallback: 5060);
-    final testHost = env['SIP_TEST_HOST'] ?? '127.0.0.1';
-    final testExtension = env['SIP_TEST_EXTENSION'] ?? '1000';
     final trunkUsername = _firstPresent([env['SIP_TRUNK_USERNAME']]);
     final trunkPassword = _firstPresent([env['SIP_TRUNK_PASSWORD']]);
     final rtpStartPort = _parsePort(env['SIP_RTP_START_PORT'], fallback: 40000);
@@ -52,31 +44,25 @@ final class CalloEngineConfig {
     );
     final externalAddress = _firstPresent([
       env['SIP_EXTERNAL_ADDRESS'],
-      testHost,
+      env['SIP_PUBLIC_ADDRESS'],
     ]);
 
-    if ((trunkUsername == null) != (trunkPassword == null)) {
+    if (trunkUsername == null || trunkPassword == null) {
       throw StateError(
-        'Set both SIP_TRUNK_USERNAME and SIP_TRUNK_PASSWORD, or leave both '
-        'empty to run without an external SIP trunk.',
+        'Missing SIP trunk credentials. Set SIP_TRUNK_USERNAME and '
+        'SIP_TRUNK_PASSWORD so Callo Engine can register with the trunk.',
       );
     }
 
     return CalloEngineConfig(
       bindHost: bindHost,
       bindPort: bindPort,
-      testHost: testHost,
-      realm: env['SIP_REALM'] ?? testHost,
       assistantUser: env['CALLO_ASSISTANT_USER'] ?? 'assistant',
       trunkId: env['SIP_TRUNK_ID'] ?? 'easybell',
       trunkServerUri: env['SIP_TRUNK_SERVER_URI'] ?? 'sip:voip.easybell.de',
       trunkUsername: trunkUsername,
       trunkPassword: trunkPassword,
       trunkRealm: env['SIP_TRUNK_REALM'] ?? 'voip.easybell.de',
-      testEndpointId: env['SIP_TEST_ENDPOINT_ID'] ?? 'test-phone',
-      testExtension: testExtension,
-      testUsername: env['SIP_TEST_USERNAME'] ?? testExtension,
-      testPassword: env['SIP_TEST_PASSWORD'] ?? 'change-me',
       rtpStartPort: rtpStartPort,
       rtpEndPort: rtpEndPort,
       externalAddress: externalAddress,
@@ -93,42 +79,25 @@ final class CalloEngineConfig {
 
   final String bindHost;
   final int bindPort;
-  final String testHost;
-  final String realm;
   final String assistantUser;
   final String trunkId;
   final String trunkServerUri;
-  final String? trunkUsername;
-  final String? trunkPassword;
+  final String trunkUsername;
+  final String trunkPassword;
   final String trunkRealm;
-  final String testEndpointId;
-  final String testExtension;
-  final String testUsername;
-  final String testPassword;
   final int rtpStartPort;
   final int rtpEndPort;
   final String? externalAddress;
   final GeminiLiveConfig gemini;
 
-  String get directSipUri => 'sip:$assistantUser@$testHost:$bindPort';
-
-  String get registeredAssistantUri => 'sip:$assistantUser@$realm';
-
-  bool get hasSipTrunk => trunkUsername != null && trunkPassword != null;
-
   List<SipTrunkConfig> get sipTrunks {
-    final username = trunkUsername;
-    final password = trunkPassword;
-    if (username == null || password == null) {
-      return const <SipTrunkConfig>[];
-    }
     return [
       SipTrunkConfig(
         id: trunkId,
         direction: SipTrunkDirection.bidirectional,
         serverUri: trunkServerUri,
-        username: username,
-        password: password,
+        username: trunkUsername,
+        password: trunkPassword,
         realm: trunkRealm,
       ),
     ];
@@ -148,23 +117,21 @@ final class CalloEngineConfig {
       SipTransportBinding.udp(host: bindHost, port: bindPort),
       SipTransportBinding.tcp(host: bindHost, port: bindPort),
     ],
-    realms: [SipRealmConfig(domain: realm, realm: realm)],
-    endpoints: [
-      SipEndpointConfig(
-        id: testEndpointId,
-        extension: testExtension,
-        username: testUsername,
-        password: testPassword,
-        realm: realm,
-        displayName: 'Callo test phone',
-      ),
-    ],
     media: SipMediaConfig(
       rtpStartPort: rtpStartPort,
       rtpEndPort: rtpEndPort,
       externalAddress: externalAddress,
     ),
     trunks: sipTrunks,
+    features: const SipFeatureFlags(
+      registrar: false,
+      authentication: false,
+      bridging: true,
+      transfers: false,
+      ivr: false,
+      recording: false,
+      voicemail: false,
+    ),
   );
 }
 

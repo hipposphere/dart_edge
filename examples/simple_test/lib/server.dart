@@ -27,14 +27,14 @@ Future<DartEdge<SqliteDatabase>> buildServer() async {
   );
   await migrator.migrateToLatest();
 
-  final owner = await database.builder
+  final owner = await database.typed
       .insertInto(PeopleTable.table)
       .values(
         const PeopleInsert(name: 'Ada Lovelace', email: 'ada@example.com'),
       )
-      .executeReturningFirstTable();
+      .executeReturningFirstOrNull();
 
-  final result = await database.builder
+  final result = await database.typed
       .insertInto(NotesTable.table)
       .values(
         NotesInsert(
@@ -43,12 +43,12 @@ Future<DartEdge<SqliteDatabase>> buildServer() async {
           ownerId: owner!.id!,
         ),
       )
-      .executeReturningFirstTable();
+      .executeReturningFirstOrNull();
 
   print('Inserted note with ID: ${result?.id}');
 
-  final results = await database.builder
-      .selectFrom(NotesTable.table)
+  final results = await database.typed
+      .from(NotesTable.table)
       .innerJoin(
         PeopleTable.table,
         on: NotesTable.ownerId.equalsColumn(PeopleTable.id),

@@ -1,7 +1,7 @@
 # Callo Engine
 
-Callo Engine is an example SIP audio engine that answers inbound SIP calls and
-bridges the call audio to Gemini Live.
+Callo Engine is an example SIP audio engine that registers with a SIP trunk,
+answers inbound trunk calls, and bridges the call audio to Gemini Live.
 
 The package is intentionally small:
 
@@ -17,7 +17,7 @@ The package is intentionally small:
 
 - `pjproject` installed and visible through `pkg-config`
 - a Gemini API key with Live API access
-- a SIP softphone such as Linphone Desktop
+- SIP trunk credentials from a carrier or PBX
 
 ## Start
 
@@ -25,6 +25,8 @@ From the package directory:
 
 ```sh
 cd examples/callo_engine
+export SIP_TRUNK_USERNAME='your-sip-username'
+export SIP_TRUNK_PASSWORD='your-sip-password'
 dart run bin/callo_engine.dart --gemini-api-key 'your-api-key'
 ```
 
@@ -33,14 +35,20 @@ Or use the environment:
 ```sh
 cd examples/callo_engine
 export GEMINI_API_KEY='your-api-key'
+export SIP_TRUNK_USERNAME='your-sip-username'
+export SIP_TRUNK_PASSWORD='your-sip-password'
 dart run bin/callo_engine.dart
 ```
 
-The engine prints the direct SIP URI and the local registrar settings on
-startup. With defaults, call:
+The engine creates a local SIP listener and registers the configured trunk
+account. Inbound calls delivered by the trunk are routed to the Gemini Live
+assistant media app.
 
-```text
-sip:assistant@127.0.0.1:5060
+With `just` installed, fill in `.env` and run:
+
+```sh
+cd examples/callo_engine
+just run
 ```
 
 ## Configuration
@@ -48,6 +56,8 @@ sip:assistant@127.0.0.1:5060
 Required:
 
 - `GEMINI_API_KEY`, unless `--gemini-api-key` is passed
+- `SIP_TRUNK_USERNAME`
+- `SIP_TRUNK_PASSWORD`
 
 Optional:
 
@@ -67,63 +77,25 @@ Optional:
   Default: `0.0.0.0`
 - `SIP_BIND_PORT`
   Default: `5060`
-- `SIP_TEST_HOST`
-  Default: `127.0.0.1`
-- `SIP_REALM`
-  Default: the `SIP_TEST_HOST` value
+- `SIP_PUBLIC_ADDRESS`
+  Fallback advertised SIP/RTP address when `SIP_EXTERNAL_ADDRESS` is not set.
 - `SIP_TRUNK_ID`
   Default: `easybell`
 - `SIP_TRUNK_SERVER_URI`
   Default: `sip:voip.easybell.de`
-- `SIP_TRUNK_USERNAME`
-  Enables the external SIP trunk when set together with `SIP_TRUNK_PASSWORD`.
-- `SIP_TRUNK_PASSWORD`
-  Enables the external SIP trunk when set together with `SIP_TRUNK_USERNAME`.
 - `SIP_TRUNK_REALM`
   Default: `voip.easybell.de`
-- `SIP_TEST_ENDPOINT_ID`
-  Default: `test-phone`
-- `SIP_TEST_EXTENSION`
-  Default: `1000`
-- `SIP_TEST_USERNAME`
-  Default: the `SIP_TEST_EXTENSION` value
-- `SIP_TEST_PASSWORD`
-  Default: `change-me`
 - `SIP_RTP_START_PORT`
   Default: `40000`
 - `SIP_RTP_END_PORT`
   Default: `40100`
 - `SIP_EXTERNAL_ADDRESS`
-  Useful when the softphone is on another machine and RTP must advertise a
-  reachable host or IP.
+  Useful when the trunk requires SDP/RTP to advertise a reachable public host
+  or IP.
 
-## Calling From A Softphone
+## Connecting A SIP Trunk
 
-Direct SIP call:
-
-```text
-sip:assistant@127.0.0.1:5060
-```
-
-Local registrar defaults:
-
-```text
-Username / User ID: 1000
-Password: change-me
-Domain / Realm: 127.0.0.1
-Proxy / Registrar / Server: sip:127.0.0.1:5060
-Transport: UDP
-```
-
-After registration, place a call to:
-
-```text
-sip:assistant@127.0.0.1
-```
-
-## Connecting An Easybell Trunk
-
-Set the easybell SIP credentials from the customer portal and start the engine:
+Set the SIP credentials from the carrier portal and start the engine:
 
 ```sh
 export SIP_TRUNK_USERNAME='YOUR_SIP_USERNAME'
@@ -133,6 +105,10 @@ export SIP_TRUNK_REALM='voip.easybell.de'
 export CALLO_ASSISTANT_USER='*'
 dart run bin/callo_engine.dart --gemini-api-key 'your-api-key'
 ```
+
+Use `CALLO_ASSISTANT_USER='*'` when the carrier sends the called number in the
+request URI. Keep the default `assistant` only when the trunk delivers INVITEs
+to `sip:assistant@...`.
 
 The resulting SIP config includes:
 
@@ -149,11 +125,18 @@ trunks: [
 ]
 ```
 
+It also disables the built-in registrar and local endpoint authentication:
+
+```dart
+features: SipFeatureFlags(
+  registrar: false,
+  authentication: false,
+)
+```
+
 ## Notes
 
-- The default registrar credentials are for local testing only.
-- If the softphone runs on another machine, set `SIP_TEST_HOST` to the host
-  callers use and set `SIP_EXTERNAL_ADDRESS` when RTP needs a LAN or public
-  address.
+- The example is trunk-first and does not host a local SIP registrar.
+- Set `SIP_EXTERNAL_ADDRESS` when RTP needs a LAN or public address in SDP.
 - The bridge sends SIP audio to Gemini as `16 kHz` PCM and downsamples Gemini
   `24 kHz` PCM audio to the SIP assistant format.

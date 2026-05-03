@@ -30,7 +30,7 @@ final class InsertQueryBuilder<TRow, TInsert, TUpdate> {
   Future<SqlResult> execute() => _executor.execute(_compileInsert(this));
 
   /// Executes the insert and maps the returned rows back into table rows.
-  Future<List<TRow>> executeReturningTable() async {
+  Future<List<TRow>> executeReturningAll() async {
     final statement = _compileInsert(
       this,
       returning: _TableSelection<TRow, TInsert, TUpdate>(_table),
@@ -42,8 +42,8 @@ final class InsertQueryBuilder<TRow, TInsert, TUpdate> {
   }
 
   /// Executes the insert and returns the first inserted row, if any.
-  Future<TRow?> executeReturningFirstTable() async {
-    final rows = await executeReturningTable();
+  Future<TRow?> executeReturningFirstOrNull() async {
+    final rows = await executeReturningAll();
     return rows.isEmpty ? null : rows.first;
   }
 }
@@ -62,16 +62,8 @@ final class DeleteQueryBuilder<TRow, TInsert, TUpdate> {
   final SqlTable<TRow, TInsert, TUpdate> _table;
   final SqlPredicate? _where;
 
-  /// Replaces the current `WHERE` clause with [predicate].
+  /// Adds [predicate] to the `WHERE` clause with `AND`.
   DeleteQueryBuilder<TRow, TInsert, TUpdate> where(SqlPredicate predicate) =>
-      DeleteQueryBuilder._(
-        executor: _executor,
-        table: _table,
-        where: predicate,
-      );
-
-  /// Adds [predicate] to the current `WHERE` clause with `AND`.
-  DeleteQueryBuilder<TRow, TInsert, TUpdate> andWhere(SqlPredicate predicate) =>
       DeleteQueryBuilder._(
         executor: _executor,
         table: _table,
@@ -82,7 +74,7 @@ final class DeleteQueryBuilder<TRow, TInsert, TUpdate> {
   Future<SqlResult> execute() => _executor.execute(_compileDelete(this));
 
   /// Executes the delete and maps the returned rows back into table rows.
-  Future<List<TRow>> executeReturningTable() async {
+  Future<List<TRow>> executeReturningAll() async {
     final statement = _compileDelete(
       this,
       returning: _TableSelection<TRow, TInsert, TUpdate>(_table),
@@ -94,8 +86,8 @@ final class DeleteQueryBuilder<TRow, TInsert, TUpdate> {
   }
 
   /// Executes the delete and returns the first deleted row, if any.
-  Future<TRow?> executeReturningFirstTable() async {
-    final rows = await executeReturningTable();
+  Future<TRow?> executeReturningFirstOrNull() async {
+    final rows = await executeReturningAll();
     return rows.isEmpty ? null : rows.first;
   }
 }
@@ -128,17 +120,8 @@ final class UpdateQueryBuilder<TRow, TInsert, TUpdate> {
         where: _where,
       );
 
-  /// Replaces the current `WHERE` clause with [predicate].
+  /// Adds [predicate] to the `WHERE` clause with `AND`.
   UpdateQueryBuilder<TRow, TInsert, TUpdate> where(SqlPredicate predicate) =>
-      UpdateQueryBuilder._(
-        executor: _executor,
-        table: _table,
-        values: _values,
-        where: predicate,
-      );
-
-  /// Adds [predicate] to the current `WHERE` clause with `AND`.
-  UpdateQueryBuilder<TRow, TInsert, TUpdate> andWhere(SqlPredicate predicate) =>
       UpdateQueryBuilder._(
         executor: _executor,
         table: _table,
@@ -150,7 +133,7 @@ final class UpdateQueryBuilder<TRow, TInsert, TUpdate> {
   Future<SqlResult> execute() => _executor.execute(_compileUpdate(this));
 
   /// Executes the update and maps the returned rows back into table rows.
-  Future<List<TRow>> executeReturningTable() async {
+  Future<List<TRow>> executeReturningAll() async {
     final statement = _compileUpdate(
       this,
       returning: _TableSelection<TRow, TInsert, TUpdate>(_table),
@@ -162,33 +145,29 @@ final class UpdateQueryBuilder<TRow, TInsert, TUpdate> {
   }
 
   /// Executes the update and returns the first updated row, if any.
-  Future<TRow?> executeReturningFirstTable() async {
-    final rows = await executeReturningTable();
+  Future<TRow?> executeReturningFirstOrNull() async {
+    final rows = await executeReturningAll();
     return rows.isEmpty ? null : rows.first;
   }
 }
 
 SqlStatement _compileSelect(
-  SelectQueryBuilder<dynamic, dynamic, dynamic> query,
+  _SqlSelectCore query,
   List<_SelectedProjection> projections,
 ) {
-  final compiler = _SqlCompiler(query._executor.dialect);
+  final compiler = _SqlCompiler(query.executor.dialect);
   compiler.write('SELECT ');
-  if (query._distinct) {
+  if (query.distinct) {
     compiler.write('DISTINCT ');
   }
   compiler.writeJoined(
     projections,
     separator: ', ',
-    writeElement: (projection) {
-      compiler.writeColumn(projection.column);
-      compiler.write(' AS ');
-      compiler.writeIdentifier(projection.alias);
-    },
+    writeElement: compiler.writeProjection,
   );
   compiler.write(' FROM ');
-  compiler.writeTable(query._from);
-  for (final join in query._joins) {
+  compiler.writeTable(query.from);
+  for (final join in query.joins) {
     compiler.write(' ');
     compiler.write(join.type.keyword);
     compiler.write(' ');
@@ -196,38 +175,53 @@ SqlStatement _compileSelect(
     compiler.write(' ON ');
     compiler.writePredicate(join.on);
   }
-  final where = query._where;
+  final where = query.where;
   if (where != null) {
     compiler.write(' WHERE ');
     compiler.writePredicate(where);
   }
-  if (query._orderBy.isNotEmpty) {
+  if (query.groupBy.isNotEmpty) {
+    compiler.write(' GROUP BY ');
+    compiler.writeJoined(
+      query.groupBy,
+      separator: ', ',
+      writeElement: compiler.writeSelectable,
+    );
+  }
+  final having = query.having;
+  if (having != null) {
+    compiler.write(' HAVING ');
+    compiler.writePredicate(having);
+  }
+  if (query.orderBy.isNotEmpty) {
     compiler.write(' ORDER BY ');
     compiler.writeJoined(
-      query._orderBy,
+      query.orderBy,
       separator: ', ',
       writeElement: (order) {
-        compiler.writeColumn(order.column);
+        if (order.column case final column?) {
+          compiler.writeColumn(column);
+        } else if (order.expression case final expression?) {
+          compiler.writeRaw(expression.sql, expression.parameters);
+        }
         compiler.write(order.descending ? ' DESC' : ' ASC');
       },
     );
   }
-  if (query._limit case final int limit) {
+  if (query.limit case final int limit) {
     compiler.write(' LIMIT $limit');
   }
-  if (query._offset case final int offset) {
+  if (query.offset case final int offset) {
     compiler.write(' OFFSET $offset');
   }
   return compiler.toStatement();
 }
 
-SqlStatement _compileExists(
-  SelectQueryBuilder<dynamic, dynamic, dynamic> query,
-) {
-  final compiler = _SqlCompiler(query._executor.dialect);
+SqlStatement _compileExists(_SqlSelectCore query) {
+  final compiler = _SqlCompiler(query.executor.dialect);
   compiler.write('SELECT 1 FROM ');
-  compiler.writeTable(query._from);
-  for (final join in query._joins) {
+  compiler.writeTable(query.from);
+  for (final join in query.joins) {
     compiler.write(' ');
     compiler.write(join.type.keyword);
     compiler.write(' ');
@@ -235,29 +229,80 @@ SqlStatement _compileExists(
     compiler.write(' ON ');
     compiler.writePredicate(join.on);
   }
-  final where = query._where;
+  final where = query.where;
   if (where != null) {
     compiler.write(' WHERE ');
     compiler.writePredicate(where);
   }
-  if (query._orderBy.isNotEmpty) {
+  if (query.groupBy.isNotEmpty) {
+    compiler.write(' GROUP BY ');
+    compiler.writeJoined(
+      query.groupBy,
+      separator: ', ',
+      writeElement: compiler.writeSelectable,
+    );
+  }
+  final having = query.having;
+  if (having != null) {
+    compiler.write(' HAVING ');
+    compiler.writePredicate(having);
+  }
+  if (query.orderBy.isNotEmpty) {
     compiler.write(' ORDER BY ');
     compiler.writeJoined(
-      query._orderBy,
+      query.orderBy,
       separator: ', ',
       writeElement: (order) {
-        compiler.writeColumn(order.column);
+        if (order.column case final column?) {
+          compiler.writeColumn(column);
+        } else if (order.expression case final expression?) {
+          compiler.writeRaw(expression.sql, expression.parameters);
+        }
         compiler.write(order.descending ? ' DESC' : ' ASC');
       },
     );
   }
-  if (query._limit case final int limit) {
+  if (query.limit case final int limit) {
     compiler.write(' LIMIT $limit');
   } else {
     compiler.write(' LIMIT 1');
   }
-  if (query._offset case final int offset) {
+  if (query.offset case final int offset) {
     compiler.write(' OFFSET $offset');
+  }
+  return compiler.toStatement();
+}
+
+SqlStatement _compileCount(_SqlSelectCore query) {
+  final compiler = _SqlCompiler(query.executor.dialect);
+  compiler.write('SELECT COUNT(*) AS ');
+  compiler.writeIdentifier('count');
+  compiler.write(' FROM ');
+  compiler.writeTable(query.from);
+  for (final join in query.joins) {
+    compiler.write(' ');
+    compiler.write(join.type.keyword);
+    compiler.write(' ');
+    compiler.writeTable(join.table);
+    compiler.write(' ON ');
+    compiler.writePredicate(join.on);
+  }
+  final where = query.where;
+  if (where != null) {
+    compiler.write(' WHERE ');
+    compiler.writePredicate(where);
+  }
+  if (query.groupBy.isNotEmpty || query.having != null) {
+    final inner = _compileSelect(query, [
+      const _SelectedProjection(
+        expression: SqlRawExpression<int>('1'),
+        alias: 'value',
+      ),
+    ]);
+    return SqlStatement.named(
+      'SELECT COUNT(*) AS "count" FROM (${inner.sql}) AS "count_source"',
+      inner.namedParameters ?? const <String, Object?>{},
+    );
   }
   return compiler.toStatement();
 }
@@ -316,11 +361,7 @@ SqlStatement _compileInsert(
     compiler.writeJoined(
       returning.projections,
       separator: ', ',
-      writeElement: (projection) {
-        compiler.writeColumn(projection.column);
-        compiler.write(' AS ');
-        compiler.writeIdentifier(projection.alias);
-      },
+      writeElement: compiler.writeProjection,
     );
   }
   return compiler.toStatement();
@@ -361,11 +402,7 @@ SqlStatement _compileUpdate(
     compiler.writeJoined(
       returning.projections,
       separator: ', ',
-      writeElement: (projection) {
-        compiler.writeColumn(projection.column);
-        compiler.write(' AS ');
-        compiler.writeIdentifier(projection.alias);
-      },
+      writeElement: compiler.writeProjection,
     );
   }
   return compiler.toStatement();
@@ -387,11 +424,7 @@ SqlStatement _compileDelete(
     compiler.writeJoined(
       returning.projections,
       separator: ', ',
-      writeElement: (projection) {
-        compiler.writeColumn(projection.column);
-        compiler.write(' AS ');
-        compiler.writeIdentifier(projection.alias);
-      },
+      writeElement: compiler.writeProjection,
     );
   }
   return compiler.toStatement();

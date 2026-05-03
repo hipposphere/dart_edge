@@ -43,36 +43,18 @@ final class SqliteIntrospector implements SqlDatabaseIntrospector {
     };
 
     try {
-      final tableRows = await database.execute(
-        sql('''
-        SELECT CAST(name AS TEXT) AS table_name
-        FROM sqlite_master
-        WHERE type = 'table'
-          AND name NOT LIKE 'sqlite_%'
-        ORDER BY name
-        '''),
-      );
+      final raw = database.raw;
+      final tableRows = await _tablesQuery(raw).execute();
 
       final tables = <IntrospectedTable>[];
-      for (final row in tableRows.rows) {
+      for (final row in tableRows) {
         final tableName = row.read<String>('table_name');
         if (!_shouldIncludeTable(tableName)) {
           continue;
         }
 
-        final pragmaRows = await database.execute(
-          sql('''
-          SELECT
-            CAST("name" AS TEXT) AS column_name,
-            CAST("type" AS TEXT) AS database_type,
-            CAST("notnull" AS INTEGER) AS is_not_null,
-            CAST(dflt_value IS NOT NULL AS INTEGER) AS has_default,
-            CAST("pk" AS INTEGER) AS is_primary_key
-          FROM pragma_table_info(${_quoteString(tableName)})
-          ORDER BY cid
-          '''),
-        );
-        final columns = pragmaRows.rows
+        final pragmaRows = await _columnsQuery(raw, tableName).execute();
+        final columns = pragmaRows
             .map(
               (pragmaRow) => IntrospectedColumn(
                 name: pragmaRow.read<String>('column_name'),
@@ -111,6 +93,31 @@ final class SqliteIntrospector implements SqlDatabaseIntrospector {
     }
     return includeTables.contains(tableName);
   }
+}
+
+SelectedSelectQueryBuilder<SqlRow> _tablesQuery(SqlRawQueryRoot raw) {
+  return raw
+      .from('sqlite_master')
+      .select(const ['CAST(name AS TEXT) AS table_name'])
+      .where(raw.eq('type', 'table'))
+      .where("name NOT LIKE 'sqlite_%'")
+      .orderBy('name');
+}
+
+SelectedSelectQueryBuilder<SqlRow> _columnsQuery(
+  SqlRawQueryRoot raw,
+  String tableName,
+) {
+  return raw
+      .from('pragma_table_info(${_quoteString(tableName)})')
+      .select(const [
+        'CAST("name" AS TEXT) AS column_name',
+        'CAST("type" AS TEXT) AS database_type',
+        'CAST("notnull" AS INTEGER) AS is_not_null',
+        'CAST(dflt_value IS NOT NULL AS INTEGER) AS has_default',
+        'CAST("pk" AS INTEGER) AS is_primary_key',
+      ])
+      .orderBy('cid');
 }
 
 String _quoteString(String value) {

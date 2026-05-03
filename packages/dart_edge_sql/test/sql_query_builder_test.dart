@@ -14,8 +14,8 @@ void main() {
     await _createSchema(pool);
     await _seedData(pool);
 
-    final users = await pool.builder
-        .selectFrom(UsersTable.table)
+    final users = await pool.typed
+        .from(UsersTable.table)
         .selectAll()
         .orderBy(UsersTable.id)
         .execute();
@@ -23,8 +23,8 @@ void main() {
     expect(users, hasLength(2));
     expect(users.first.email, 'ada@example.com');
 
-    final rawAllRows = await pool.builder
-        .selectFrom(UsersTable.table)
+    final rawAllRows = await pool.typed
+        .from(UsersTable.table)
         .innerJoin(
           PostsTable.table,
           on: UsersTable.id.equalsColumn(PostsTable.userId),
@@ -37,8 +37,8 @@ void main() {
     expect(rawAllRows.first.read<String>('users__email'), 'ada@example.com');
     expect(rawAllRows.first.read<String>('posts__title'), 'Analytical Engine');
 
-    final rawRows = await pool.builder
-        .selectFrom(UsersTable.table)
+    final rawRows = await pool.typed
+        .from(UsersTable.table)
         .innerJoin(
           PostsTable.table,
           on: UsersTable.id.equalsColumn(PostsTable.userId),
@@ -51,8 +51,8 @@ void main() {
     expect(rawRows.first.read<String>('users__email'), 'ada@example.com');
     expect(rawRows.first.read<String>('posts__title'), 'Analytical Engine');
 
-    final joinedRows = await pool.builder
-        .selectFrom(UsersTable.table)
+    final joinedRows = await pool.typed
+        .from(UsersTable.table)
         .innerJoin(
           PostsTable.table,
           on: UsersTable.id.equalsColumn(PostsTable.userId),
@@ -71,7 +71,7 @@ void main() {
     () async {
       await _createSchema(pool);
 
-      final inserted = await pool.builder
+      final inserted = await pool.typed
           .insertInto(UsersTable.table)
           .values(
             const UsersInsert(
@@ -79,39 +79,39 @@ void main() {
               displayName: 'Grace Hopper',
             ),
           )
-          .executeReturningFirstTable();
+          .executeReturningFirstOrNull();
 
       expect(inserted, isNotNull);
       expect(inserted!.id, greaterThan(0));
       expect(inserted.displayName, 'Grace Hopper');
 
-      await pool.builder
+      await pool.typed
           .updateTable(UsersTable.table)
           .set(const UsersUpdate(displayName: SqlValue<String?>(null)))
           .where(UsersTable.id.equals(inserted.id))
           .execute();
 
-      final updated = await pool.builder
-          .selectFrom(UsersTable.table)
+      final updated = await pool.typed
+          .from(UsersTable.table)
           .selectAll()
           .where(UsersTable.id.equals(inserted.id))
-          .executeTakeSingle();
+          .executeSingle();
 
       expect(updated.displayName, isNull);
     },
   );
 
-  test('deletes rows through builder.deleteFrom', () async {
+  test('deletes rows through typed deleteFrom', () async {
     await _createSchema(pool);
     await _seedData(pool);
 
-    await pool.builder
+    await pool.typed
         .deleteFrom(UsersTable.table)
         .where(UsersTable.email.equals('alan@example.com'))
         .execute();
 
-    final remaining = await pool.builder
-        .selectFrom(UsersTable.table)
+    final remaining = await pool.typed
+        .from(UsersTable.table)
         .selectAll()
         .orderBy(UsersTable.id)
         .execute();
@@ -124,17 +124,167 @@ void main() {
     await _createSchema(pool);
     await _seedData(pool);
 
-    final hasAda = await pool.builder
-        .selectFrom(UsersTable.table)
+    final hasAda = await pool.typed
+        .from(UsersTable.table)
         .where(UsersTable.email.equals('ada@example.com'))
         .executeExists();
-    final hasGrace = await pool.builder
-        .selectFrom(UsersTable.table)
+    final hasGrace = await pool.typed
+        .from(UsersTable.table)
         .where(UsersTable.email.equals('grace@example.com'))
         .executeExists();
 
     expect(hasAda, isTrue);
     expect(hasGrace, isFalse);
+
+    final userCount = await pool.typed.from(UsersTable.table).executeCount();
+    final adaCount = await pool.typed
+        .from(UsersTable.table)
+        .where(UsersTable.email.equals('ada@example.com'))
+        .executeCount();
+
+    expect(userCount, 2);
+    expect(adaCount, 1);
+  });
+
+  test('chains where clauses with AND', () async {
+    await _createSchema(pool);
+    await _seedData(pool);
+
+    final statement = pool.typed
+        .from(UsersTable.table)
+        .where(UsersTable.email.equals('ada@example.com'))
+        .where(UsersTable.id.greaterThan(0))
+        .selectAll()
+        .toStatement();
+    final rows = await pool.typed
+        .from(UsersTable.table)
+        .where(UsersTable.email.equals('ada@example.com'))
+        .where(UsersTable.id.greaterThan(0))
+        .selectAll()
+        .execute();
+
+    expect(statement.sql, contains(' AND '));
+    expect(rows, hasLength(1));
+    expect(rows.single.email, 'ada@example.com');
+  });
+
+  test('combines predicate lists with AND and OR', () async {
+    await _createSchema(pool);
+    await _seedData(pool);
+
+    final activeAda = await pool.typed
+        .from(UsersTable.table)
+        .where(
+          .and([
+            UsersTable.email.equals('ada@example.com'),
+            UsersTable.id.greaterThan(0),
+          ]),
+        )
+        .selectAll()
+        .executeSingle();
+    final adaOrAlan = await pool.typed
+        .from(UsersTable.table)
+        .where(
+          .or([
+            UsersTable.email.equals('ada@example.com'),
+            UsersTable.email.equals('alan@example.com'),
+          ]),
+        )
+        .orderBy(UsersTable.email)
+        .selectAll()
+        .execute();
+
+    expect(activeAda.email, 'ada@example.com');
+    expect(adaOrAlan.map((user) => user.email), [
+      'ada@example.com',
+      'alan@example.com',
+    ]);
+  });
+
+  test('supports raw SQL strings, expressions, and predicates', () async {
+    await _createSchema(pool);
+    await _seedData(pool);
+
+    final raw = pool.raw;
+    final rows = await raw
+        .from('users', alias: 'u')
+        .leftJoin(
+          'posts',
+          alias: 'p',
+          on: raw.eqRef('"p"."user_id"', '"u"."id"'),
+        )
+        .select([
+          '"u"."id" AS "user_id"',
+          '"u"."email" AS "email"',
+          'lower("u"."email") AS "lower_email"',
+        ])
+        .distinct()
+        .where(raw.eq('"u"."email"', 'ada@example.com'))
+        .where(raw.gt('"u"."id"', 0))
+        .orderBy('"u"."id"')
+        .execute();
+
+    expect(rows, hasLength(1));
+    expect(rows.single.read<int>('user_id'), greaterThan(0));
+    expect(rows.single.read<String>('email'), 'ada@example.com');
+    expect(rows.single.read<String>('lower_email'), 'ada@example.com');
+
+    final grouped = await raw
+        .from('users', alias: 'u')
+        .leftJoin(
+          'posts',
+          alias: 'p',
+          on: raw.eqRef('"p"."user_id"', '"u"."id"'),
+        )
+        .select(['"u"."email" AS "email"', 'COUNT("p"."id") AS "post_count"'])
+        .groupBy('"u"."email"')
+        .having('COUNT("p"."id") > @minimum', parameters: {'minimum': 1})
+        .orderBy('"u"."email"')
+        .execute();
+
+    expect(grouped, hasLength(1));
+    expect(grouped.single.read<String>('email'), 'ada@example.com');
+    expect(grouped.single.read<int>('post_count'), 2);
+
+    final rawOrRows = await raw
+        .from('users', alias: 'u')
+        .select(['"u"."email" AS "email"'])
+        .where(
+          raw.or([
+            raw.eq('"u"."email"', 'ada@example.com'),
+            raw.eq('"u"."email"', 'alan@example.com'),
+          ]),
+        )
+        .orderBy('"u"."email"')
+        .execute();
+
+    expect(rawOrRows.map((row) => row.read<String>('email')), [
+      'ada@example.com',
+      'alan@example.com',
+    ]);
+
+    final statement = raw
+        .from('users', alias: 'u')
+        .select(['"u"."id" AS "user_id"'])
+        .where('"u"."id" > @id', parameters: {'id': 0})
+        .toStatement();
+
+    expect(statement.sql, contains('FROM users AS "u"'));
+    expect(statement.namedParameters, {'p1': 0});
+
+    final escapedStatement = raw
+        .from('users', alias: 'u')
+        .select(['"u"."id" AS "user_id"'])
+        .where(
+          '\'_literal_@id\' = \'_literal_@id\' '
+          '/* @ignored */ AND "u"."id" > @id',
+          parameters: {'id': 0, 'ignored': 1},
+        )
+        .toStatement();
+
+    expect(escapedStatement.sql, contains("'_literal_@id'"));
+    expect(escapedStatement.sql, contains('/* @ignored */'));
+    expect(escapedStatement.namedParameters, {'p1': 0});
   });
 
   test('formats SqlValue for debugging', () {
@@ -166,7 +316,7 @@ Future<void> _createSchema(SqlExecutor db) async {
 }
 
 Future<void> _seedData(SqlExecutor db) async {
-  final ada = await db.builder
+  final ada = await db.typed
       .insertInto(UsersTable.table)
       .values(
         const UsersInsert(
@@ -174,8 +324,8 @@ Future<void> _seedData(SqlExecutor db) async {
           displayName: 'Ada Lovelace',
         ),
       )
-      .executeReturningFirstTable();
-  final alan = await db.builder
+      .executeReturningFirstOrNull();
+  final alan = await db.typed
       .insertInto(UsersTable.table)
       .values(
         const UsersInsert(
@@ -183,9 +333,9 @@ Future<void> _seedData(SqlExecutor db) async {
           displayName: 'Alan Turing',
         ),
       )
-      .executeReturningFirstTable();
+      .executeReturningFirstOrNull();
 
-  await db.builder.insertInto(PostsTable.table).valuesAll([
+  await db.typed.insertInto(PostsTable.table).valuesAll([
     PostsInsert(userId: ada!.id, title: 'Analytical Engine'),
     PostsInsert(userId: ada.id, title: 'Notes'),
     PostsInsert(userId: alan!.id, title: 'Computing Machinery'),

@@ -159,6 +159,26 @@ bool dart_edge_sip_bridge_add_trunk(
     char* error,
     size_t error_len);
 
+bool dart_edge_sip_bridge_update_trunk(
+    dart_edge_sip_bridge_runtime* runtime,
+    const char* trunk_id,
+    const dart_edge_sip_bridge_trunk_config* trunk,
+    char* error,
+    size_t error_len);
+
+bool dart_edge_sip_bridge_remove_trunk(
+    dart_edge_sip_bridge_runtime* runtime,
+    const char* trunk_id,
+    char* error,
+    size_t error_len);
+
+bool dart_edge_sip_bridge_set_trunk_registration(
+    dart_edge_sip_bridge_runtime* runtime,
+    const char* trunk_id,
+    bool enabled,
+    char* error,
+    size_t error_len);
+
 bool dart_edge_sip_bridge_add_endpoint(
     dart_edge_sip_bridge_runtime* runtime,
     const dart_edge_sip_bridge_endpoint_config* endpoint,

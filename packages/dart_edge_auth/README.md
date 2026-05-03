@@ -63,8 +63,8 @@ Typed auth models are generated from the Better Auth SQL schema and exported by
 this package:
 
 ```dart
-final users = await database.builder
-    .selectFrom(DartEdgeAuthSchema.users)
+final users = await database.typed
+    .from(DartEdgeAuthSchema.users)
     .selectAll()
     .where(DartEdgeAuthUsersTable.email.equals('ada@example.com'))
     .execute();

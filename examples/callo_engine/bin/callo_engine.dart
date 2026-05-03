@@ -57,40 +57,28 @@ Future<void> main(List<String> arguments) async {
 }
 
 void _printStartupBanner(CalloEngineConfig config) {
-  stdout.writeln('Callo Engine is listening.');
+  stdout.writeln('Callo Engine is connected to the SIP trunk.');
   stdout.writeln('Model: ${config.gemini.model}');
   stdout.writeln('Voice: ${config.gemini.voiceName}');
-  stdout.writeln('Direct SIP test URI: ${config.directSipUri}');
   stdout.writeln(
-    'Registrar: ${config.testHost}:${config.bindPort} '
-    '(realm ${config.realm})',
-  );
-  stdout.writeln('Advertised SIP/RTP address: ${config.externalAddress}');
-  stdout.writeln(
-    'Test endpoint: ${config.testUsername} / ${config.testPassword}',
+    'SIP trunk: ${config.trunkId} -> ${config.trunkServerUri} '
+    '(realm ${config.trunkRealm}, user ${config.trunkUsername})',
   );
   stdout.writeln(
-    'Registered endpoint call URI: ${config.registeredAssistantUri}',
-  );
-  if (config.hasSipTrunk) {
-    stdout.writeln(
-      'SIP trunk: ${config.trunkId} -> ${config.trunkServerUri} '
-      '(realm ${config.trunkRealm}, user ${config.trunkUsername})',
-    );
-  } else {
-    stdout.writeln('SIP trunk: disabled (set SIP_TRUNK_USERNAME/PASSWORD)');
-  }
-  stdout.writeln('Linphone registration settings:');
-  stdout.writeln('  Username / User ID: ${config.testUsername}');
-  stdout.writeln('  Password: ${config.testPassword}');
-  stdout.writeln('  Domain / Realm: ${config.realm}');
-  stdout.writeln(
-    '  SIP address / Identity: sip:${config.testUsername}@${config.realm}',
+    'Local SIP listener: ${config.bindHost}:${config.bindPort} '
+    '(registrar disabled)',
   );
   stdout.writeln(
-    '  Proxy / Registrar / Server: sip:${config.testHost}:${config.bindPort}',
+    'Advertised SIP/RTP address: '
+    '${config.externalAddress ?? 'auto/PJSIP default'}',
   );
-  stdout.writeln('  Transport: UDP');
+  stdout.writeln(
+    'Inbound calls from the trunk route to assistant user '
+    '${config.assistantUser}.',
+  );
+  stdout.writeln(
+    'Set CALLO_ASSISTANT_USER=* if the trunk delivers calls to phone numbers.',
+  );
   stdout.writeln('RTP port range: ${config.rtpStartPort}-${config.rtpEndPort}');
   stdout.writeln(
     'Startup jingle: ${config.gemini.startupJingleDuration.inSeconds}s',
@@ -147,7 +135,10 @@ Start:
   dart run bin/callo_engine.dart --gemini-api-key YOUR_KEY
 
 Environment alternative:
-  GEMINI_API_KEY=YOUR_KEY dart run bin/callo_engine.dart
+  GEMINI_API_KEY=YOUR_KEY \
+  SIP_TRUNK_USERNAME=YOUR_SIP_USERNAME \
+  SIP_TRUNK_PASSWORD=YOUR_SIP_PASSWORD \
+  dart run bin/callo_engine.dart
 
 Options:
   --gemini-api-key, --api-key  Gemini API key used for Live API sessions.
@@ -162,15 +153,12 @@ Common environment variables:
   CALLO_ASSISTANT_USER
   SIP_BIND_HOST
   SIP_BIND_PORT
-  SIP_TEST_HOST
-  SIP_REALM
+  SIP_PUBLIC_ADDRESS
   SIP_TRUNK_ID
   SIP_TRUNK_SERVER_URI
   SIP_TRUNK_USERNAME
   SIP_TRUNK_PASSWORD
   SIP_TRUNK_REALM
-  SIP_TEST_USERNAME
-  SIP_TEST_PASSWORD
   SIP_RTP_START_PORT
   SIP_RTP_END_PORT
   SIP_EXTERNAL_ADDRESS

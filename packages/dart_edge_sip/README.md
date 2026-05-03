@@ -179,6 +179,39 @@ Inbound dialplans can now return `SipDialplanDecision.routeToEndpoint(...)` or
 `SipDialplanDecision.routeToTrunk(...)`. The native runtime creates the routed
 outbound leg and bridges media once both legs are established.
 
+## Dynamic Trunks
+
+Trunks can be configured at startup through `SipServerConfig.trunks` or managed
+after `start()` with the trunk-focused runtime API:
+
+```dart
+await sip.addTrunk(
+  const SipTrunkConfig(
+    id: 'carrier-b',
+    direction: SipTrunkDirection.bidirectional,
+    serverUri: 'sip:carrier-b.example.net',
+  ),
+);
+
+await sip.updateTrunk(
+  'carrier-b',
+  const SipTrunkConfig(
+    id: 'carrier-b',
+    direction: SipTrunkDirection.outbound,
+    serverUri: 'sip:backup-carrier.example.net',
+  ),
+);
+
+await sip.setTrunkRegistration('carrier-b', enabled: false);
+await sip.removeTrunk('carrier-b');
+```
+
+Use `sip.trunks` to inspect the current runtime trunk definitions.
+
+PJSIP accounts remain an implementation detail of the native runtime. A trunk
+with registration credentials is backed by a PJSUA account; a trunk without
+credentials routes through the default local account.
+
 For a full inbound voice-assistant package that attaches Gemini Live realtime
 audio to a SIP call, see [`examples/callo_engine`](../../examples/callo_engine).
 

@@ -10,10 +10,16 @@ It currently ships native PostgreSQL and SQLite pool implementations.
 
 - `SqlPool` and `SqlSession` represent the execution surface
 - `SqlTable`, `SqlColumn`, and model classes describe your schema in Dart
-- `database.builder` keeps typed query building separate from raw `execute(...)`
-- `selectFrom`, `insertInto`, `deleteFrom`, and `updateTable` live on that
-  builder facade
+- `database.typed` composes generated-table queries
+- `database.raw` composes catalog and ad hoc raw SQL queries
+- `from`, `insertInto`, `deleteFrom`, and `updateTable` live on the typed
+  query root
 - `executeExists()` checks whether a query yields any rows without loading them
+- `SqlPredicate.and([...])` and `SqlPredicate.or([...])` compose grouped
+  predicates explicitly; in typed contexts Dart dot shorthand allows
+  `.and([...])` and `.or([...])`
+- `database.raw.eq(...)`, `gt(...)`, `lt(...)`, and `eqRef(...)` cover common
+  raw SQL comparisons without hand-writing placeholders
 - `SqlStatement` and `sql()` cover raw SQL when you want full control
 
 ## Example
@@ -29,14 +35,14 @@ Future<void> main() async {
   );
 
   await pool
-      .builder
+      .typed
       .insertInto(UsersTable.table)
       .values(const UsersInsert(email: 'ada@example.com'))
       .execute();
 
   final users = await pool
-      .builder
-      .selectFrom(UsersTable.table)
+      .typed
+      .from(UsersTable.table)
       .selectAll()
       .execute();
 
@@ -47,3 +53,19 @@ Future<void> main() async {
 
 See [test/sql_query_builder_test.dart](test/sql_query_builder_test.dart) for a
 more complete example with joins, inserts, and updates.
+
+Raw query usage is intended for catalog queries, temporary tables, and other
+SQL table expressions that do not have generated descriptors:
+
+```dart
+final raw = pool.raw;
+
+final rows = await raw
+    .from('users', alias: 'u')
+    .select([
+      '"u"."id" AS "id"',
+      'lower("u"."email") AS "email"',
+    ])
+    .where(raw.eq('"u"."email"', 'ada@example.com'))
+    .execute();
+```
