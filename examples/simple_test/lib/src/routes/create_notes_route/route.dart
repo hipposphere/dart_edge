@@ -6,7 +6,7 @@ part 'schema.dart';
 part 'schema.g.dart';
 
 final class CreateNotesRoute
-    extends HttpRouteDefinition<SqliteDatabase, CreateNoteResponse> {
+    extends HttpRouteDefinition<PostgresPool, CreateNoteResponse> {
   @override
   RouteOptions get options => _routeOptions;
 

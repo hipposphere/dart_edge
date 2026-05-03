@@ -11,7 +11,7 @@ final class NotesRow implements JsonEncodable {
   });
 
   factory NotesRow.fromSqlRow(SqlRow row, {String prefix = ''}) => NotesRow(
-    id: row.readNullable<int>('${prefix}id'),
+    id: row.read<int>('${prefix}id'),
     title: row.read<String>('${prefix}title'),
     body: row.read<String>('${prefix}body'),
     ownerId: row.read<int>('${prefix}owner_id'),
@@ -24,7 +24,7 @@ final class NotesRow implements JsonEncodable {
   }) => NotesRow.fromSqlRow(SqlRow(columns), prefix: prefix);
 
   factory NotesRow.fromJson(Map<String, Object?> json) => NotesRow(
-    id: json['id'] == null ? null : (json['id'] as num).toInt(),
+    id: (json['id'] as num).toInt(),
     title: (json['title'] as String),
     body: (json['body'] as String),
     ownerId: (json['owner_id'] as num).toInt(),
@@ -38,7 +38,7 @@ final class NotesRow implements JsonEncodable {
   static const jsonSchema = JsonSchema.object(
     id: schemaId,
     properties: <String, JsonSchema>{
-      'id': JsonSchema.integer(nullable: true),
+      'id': JsonSchema.integer(),
       'title': JsonSchema.string(),
       'body': JsonSchema.string(),
       'owner_id': JsonSchema.integer(),
@@ -48,7 +48,7 @@ final class NotesRow implements JsonEncodable {
     additionalProperties: false,
   );
 
-  final int? id;
+  final int id;
 
   final String title;
 
@@ -59,14 +59,14 @@ final class NotesRow implements JsonEncodable {
   final String createdAt;
 
   NotesRow copyWith({
-    SqlValue<int?>? id,
+    int? id,
     String? title,
     String? body,
     int? ownerId,
     String? createdAt,
   }) {
     return NotesRow(
-      id: id == null || !id.isPresent ? this.id : id.value,
+      id: id ?? this.id,
       title: title ?? this.title,
       body: body ?? this.body,
       ownerId: ownerId ?? this.ownerId,
@@ -107,9 +107,7 @@ final class NotesInsert implements JsonEncodable {
 
   factory NotesInsert.fromJson(Map<String, Object?> json) => NotesInsert(
     id: json.containsKey('id')
-        ? SqlValue<int?>(
-            json['id'] == null ? null : (json['id'] as num).toInt(),
-          )
+        ? SqlValue<int>((json['id'] as num).toInt())
         : const SqlValue.absent(),
     title: (json['title'] as String),
     body: (json['body'] as String),
@@ -126,7 +124,7 @@ final class NotesInsert implements JsonEncodable {
   static const jsonSchema = JsonSchema.object(
     id: schemaId,
     properties: <String, JsonSchema>{
-      'id': JsonSchema.integer(nullable: true),
+      'id': JsonSchema.integer(),
       'title': JsonSchema.string(),
       'body': JsonSchema.string(),
       'owner_id': JsonSchema.integer(),
@@ -136,7 +134,7 @@ final class NotesInsert implements JsonEncodable {
     additionalProperties: false,
   );
 
-  final SqlValue<int?> id;
+  final SqlValue<int> id;
 
   final String title;
 
@@ -147,7 +145,7 @@ final class NotesInsert implements JsonEncodable {
   final SqlValue<String> createdAt;
 
   NotesInsert copyWith({
-    SqlValue<int?>? id,
+    SqlValue<int>? id,
     String? title,
     String? body,
     int? ownerId,
@@ -195,9 +193,7 @@ final class NotesUpdate implements JsonEncodable {
 
   factory NotesUpdate.fromJson(Map<String, Object?> json) => NotesUpdate(
     id: json.containsKey('id')
-        ? SqlValue<int?>(
-            json['id'] == null ? null : (json['id'] as num).toInt(),
-          )
+        ? SqlValue<int>((json['id'] as num).toInt())
         : const SqlValue.absent(),
     title: json.containsKey('title')
         ? SqlValue<String>((json['title'] as String))
@@ -220,7 +216,7 @@ final class NotesUpdate implements JsonEncodable {
   static const jsonSchema = JsonSchema.object(
     id: schemaId,
     properties: <String, JsonSchema>{
-      'id': JsonSchema.integer(nullable: true),
+      'id': JsonSchema.integer(),
       'title': JsonSchema.string(),
       'body': JsonSchema.string(),
       'owner_id': JsonSchema.integer(),
@@ -230,7 +226,7 @@ final class NotesUpdate implements JsonEncodable {
     additionalProperties: false,
   );
 
-  final SqlValue<int?> id;
+  final SqlValue<int> id;
 
   final SqlValue<String> title;
 
@@ -241,7 +237,7 @@ final class NotesUpdate implements JsonEncodable {
   final SqlValue<String> createdAt;
 
   NotesUpdate copyWith({
-    SqlValue<int?>? id,
+    SqlValue<int>? id,
     SqlValue<String>? title,
     SqlValue<String>? body,
     SqlValue<int>? ownerId,
@@ -283,7 +279,7 @@ final class NotesTable extends SqlTable<NotesRow, NotesInsert, NotesUpdate> {
 
   static const table = NotesTable._();
 
-  static final id = SqlColumn<int>(table: table, name: 'id', nullable: true);
+  static final id = SqlColumn<int>(table: table, name: 'id', nullable: false);
 
   static final title = SqlColumn<String>(
     table: table,
@@ -313,7 +309,7 @@ final class NotesTable extends SqlTable<NotesRow, NotesInsert, NotesUpdate> {
   String get name => 'notes';
 
   @override
-  String? get schema => null;
+  String? get schema => 'public';
 
   @override
   List<SqlColumn<Object?>> get columns => <SqlColumn<Object?>>[

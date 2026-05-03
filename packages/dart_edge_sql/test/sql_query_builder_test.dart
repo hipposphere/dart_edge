@@ -1,4 +1,5 @@
 import 'package:dart_edge_sql/dart_edge_sql.dart';
+import 'package:dart_edge_sql/src/drivers/shared/compiled_sql_statement.dart';
 import 'package:test/test.dart';
 
 void main() {
@@ -293,6 +294,25 @@ void main() {
     expect(const SqlValue<int>.absent().toString(), 'SqlValue.absent()');
     expect(const SqlValue<int>(42).toString(), 'SqlValue(42)');
   });
+
+  test(
+    'compiles named parameters without treating PostgreSQL casts as names',
+    () {
+      final statement = compileSqlStatement(
+        SqlDialect.postgres,
+        SqlStatement.named(
+          "SELECT @value::text AS value, ARRAY[]::text[] AS empty_text",
+          {'value': 1},
+        ),
+      );
+
+      expect(
+        statement.sql,
+        r'SELECT $1::text AS value, ARRAY[]::text[] AS empty_text',
+      );
+      expect(statement.positionalParameters, [1]);
+    },
+  );
 }
 
 Future<void> _createSchema(SqlExecutor db) async {

@@ -127,7 +127,9 @@ SqlStatement compileSqlStatement(SqlDialect dialect, SqlStatement statement) {
   if (marker != ':' && marker != '@' && marker != r'$') {
     return null;
   }
-  if (marker == ':' && index + 1 < source.length && source[index + 1] == ':') {
+  if (marker == ':' &&
+      ((index + 1 < source.length && source[index + 1] == ':') ||
+          (index > 0 && source[index - 1] == ':'))) {
     return null;
   }
   if (marker == r'$' &&

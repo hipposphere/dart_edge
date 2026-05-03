@@ -9,9 +9,9 @@ import 'package:simple_test/src/database.dart';
 import 'package:simple_test/src/routes/create_notes_route/route.dart';
 import 'package:simple_test/src/routes/guarded_route.dart';
 
-Future<DartEdge<SqliteDatabase>> buildServer() async {
+Future<DartEdge<PostgresPool>> buildServer() async {
   final database = buildDatabase();
-  final server = DartEdge<SqliteDatabase>(
+  final server = DartEdge<PostgresPool>(
     services: () => database,
     openApiDocument: OpenApiDocument(
       title: 'Simple Test API',

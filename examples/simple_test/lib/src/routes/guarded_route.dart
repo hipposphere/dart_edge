@@ -5,7 +5,7 @@ import 'package:dart_edge_auth/dart_edge_auth.dart';
 import 'package:dart_edge_http_server/dart_edge_http_server.dart';
 import 'package:dart_edge_sql/dart_edge_sql.dart';
 
-final class GuardedRoute extends HttpRouteDefinition<SqliteDatabase, dynamic> {
+final class GuardedRoute extends HttpRouteDefinition<PostgresPool, dynamic> {
   @override
   RouteOptions get options => RouteOptions(
     operationId: 'getGuarded',
@@ -14,7 +14,7 @@ final class GuardedRoute extends HttpRouteDefinition<SqliteDatabase, dynamic> {
   );
 
   @override
-  FutureOr<dynamic> handle(RequestContext<SqliteDatabase> ctx) {
+  FutureOr<dynamic> handle(RequestContext<PostgresPool> ctx) {
     final authIdentity = ctx.authIdentity;
     if (authIdentity == null) {
       return RawResponse.json(

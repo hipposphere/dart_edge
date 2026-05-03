@@ -11,7 +11,7 @@ Future<void> main() async {
   );
   await migrator.migrateToLatest();
 
-  final schema = await SqliteIntrospector.fromDatabase(database).introspect();
+  final schema = await PostgresIntrospector.fromDatabase(database).introspect();
   final emission = emitDartSchema(schema, databaseClassName: 'AppSchema');
   emission.writeToDirectory('lib/generated');
   await database.close();

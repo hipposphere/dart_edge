@@ -5,7 +5,7 @@ final class PeopleRow implements JsonEncodable {
   const PeopleRow({required this.id, required this.name, required this.email});
 
   factory PeopleRow.fromSqlRow(SqlRow row, {String prefix = ''}) => PeopleRow(
-    id: row.readNullable<int>('${prefix}id'),
+    id: row.read<int>('${prefix}id'),
     name: row.read<String>('${prefix}name'),
     email: row.read<String>('${prefix}email'),
   );
@@ -16,7 +16,7 @@ final class PeopleRow implements JsonEncodable {
   }) => PeopleRow.fromSqlRow(SqlRow(columns), prefix: prefix);
 
   factory PeopleRow.fromJson(Map<String, Object?> json) => PeopleRow(
-    id: json['id'] == null ? null : (json['id'] as num).toInt(),
+    id: (json['id'] as num).toInt(),
     name: (json['name'] as String),
     email: (json['email'] as String),
   );
@@ -28,7 +28,7 @@ final class PeopleRow implements JsonEncodable {
   static const jsonSchema = JsonSchema.object(
     id: schemaId,
     properties: <String, JsonSchema>{
-      'id': JsonSchema.integer(nullable: true),
+      'id': JsonSchema.integer(),
       'name': JsonSchema.string(),
       'email': JsonSchema.string(),
     },
@@ -36,15 +36,15 @@ final class PeopleRow implements JsonEncodable {
     additionalProperties: false,
   );
 
-  final int? id;
+  final int id;
 
   final String name;
 
   final String email;
 
-  PeopleRow copyWith({SqlValue<int?>? id, String? name, String? email}) {
+  PeopleRow copyWith({int? id, String? name, String? email}) {
     return PeopleRow(
-      id: id == null || !id.isPresent ? this.id : id.value,
+      id: id ?? this.id,
       name: name ?? this.name,
       email: email ?? this.email,
     );
@@ -76,9 +76,7 @@ final class PeopleInsert implements JsonEncodable {
 
   factory PeopleInsert.fromJson(Map<String, Object?> json) => PeopleInsert(
     id: json.containsKey('id')
-        ? SqlValue<int?>(
-            json['id'] == null ? null : (json['id'] as num).toInt(),
-          )
+        ? SqlValue<int>((json['id'] as num).toInt())
         : const SqlValue.absent(),
     name: (json['name'] as String),
     email: (json['email'] as String),
@@ -91,7 +89,7 @@ final class PeopleInsert implements JsonEncodable {
   static const jsonSchema = JsonSchema.object(
     id: schemaId,
     properties: <String, JsonSchema>{
-      'id': JsonSchema.integer(nullable: true),
+      'id': JsonSchema.integer(),
       'name': JsonSchema.string(),
       'email': JsonSchema.string(),
     },
@@ -99,13 +97,13 @@ final class PeopleInsert implements JsonEncodable {
     additionalProperties: false,
   );
 
-  final SqlValue<int?> id;
+  final SqlValue<int> id;
 
   final String name;
 
   final String email;
 
-  PeopleInsert copyWith({SqlValue<int?>? id, String? name, String? email}) {
+  PeopleInsert copyWith({SqlValue<int>? id, String? name, String? email}) {
     return PeopleInsert(
       id: id ?? this.id,
       name: name ?? this.name,
@@ -139,9 +137,7 @@ final class PeopleUpdate implements JsonEncodable {
 
   factory PeopleUpdate.fromJson(Map<String, Object?> json) => PeopleUpdate(
     id: json.containsKey('id')
-        ? SqlValue<int?>(
-            json['id'] == null ? null : (json['id'] as num).toInt(),
-          )
+        ? SqlValue<int>((json['id'] as num).toInt())
         : const SqlValue.absent(),
     name: json.containsKey('name')
         ? SqlValue<String>((json['name'] as String))
@@ -158,7 +154,7 @@ final class PeopleUpdate implements JsonEncodable {
   static const jsonSchema = JsonSchema.object(
     id: schemaId,
     properties: <String, JsonSchema>{
-      'id': JsonSchema.integer(nullable: true),
+      'id': JsonSchema.integer(),
       'name': JsonSchema.string(),
       'email': JsonSchema.string(),
     },
@@ -166,14 +162,14 @@ final class PeopleUpdate implements JsonEncodable {
     additionalProperties: false,
   );
 
-  final SqlValue<int?> id;
+  final SqlValue<int> id;
 
   final SqlValue<String> name;
 
   final SqlValue<String> email;
 
   PeopleUpdate copyWith({
-    SqlValue<int?>? id,
+    SqlValue<int>? id,
     SqlValue<String>? name,
     SqlValue<String>? email,
   }) {
@@ -207,7 +203,7 @@ final class PeopleTable
 
   static const table = PeopleTable._();
 
-  static final id = SqlColumn<int>(table: table, name: 'id', nullable: true);
+  static final id = SqlColumn<int>(table: table, name: 'id', nullable: false);
 
   static final nameColumn = SqlColumn<String>(
     table: table,
@@ -225,7 +221,7 @@ final class PeopleTable
   String get name => 'people';
 
   @override
-  String? get schema => null;
+  String? get schema => 'public';
 
   @override
   List<SqlColumn<Object?>> get columns => <SqlColumn<Object?>>[
