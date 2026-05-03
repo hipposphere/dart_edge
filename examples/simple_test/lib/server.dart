@@ -40,7 +40,7 @@ Future<DartEdge<PostgresPool>> buildServer() async {
         NotesInsert(
           title: 'First note',
           body: 'This is the body of the first note.',
-          ownerId: owner!.id!,
+          ownerId: owner!.id,
         ),
       )
       .executeReturningFirstOrNull();
