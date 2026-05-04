@@ -46,10 +46,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target.triple }}
-
       - name: Resolve package version
         id: artifact
         shell: bash
@@ -57,6 +53,7 @@ jobs:
           set -euo pipefail
           package="${{ inputs.package }}"
           version="$(sed -nE 's/^version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' "packages/$package/rust/Cargo.toml")"
+          toolchain="$(sed -nE 's/^channel[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' "packages/$package/rust/rust-toolchain.toml")"
           os="${{ matrix.target.os }}"
           arch="${{ matrix.target.arch }}"
           triple="${{ matrix.target.triple }}"
@@ -69,12 +66,54 @@ jobs:
 
           artifact="${package}-${version}-${os}-${arch}-${library}"
           echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "toolchain=$toolchain" >> "$GITHUB_OUTPUT"
           echo "tag=$package-native-v$version" >> "$GITHUB_OUTPUT"
           echo "library=$library" >> "$GITHUB_OUTPUT"
           echo "name=$artifact" >> "$GITHUB_OUTPUT"
           echo "source=.dart_tool/native-assets/$package/$triple/release/$library" >> "$GITHUB_OUTPUT"
 
+      - name: Check prebuilt support
+        id: support
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${{ inputs.package }}" in
+            dart_edge_sip)
+              echo "supported=false" >> "$GITHUB_OUTPUT"
+              echo "Skipping ${{ inputs.package }}: this package still requires external native dependencies that are not vendored in CI."
+              ;;
+            *)
+              echo "supported=true" >> "$GITHUB_OUTPUT"
+              ;;
+          esac
+
+      - name: Install Rust toolchain
+        if: ${{ steps.support.outputs.supported == 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install "${{ steps.artifact.outputs.toolchain }}" \
+            --profile minimal \
+            --target "${{ matrix.target.triple }}"
+
+      - name: Install Linux native dependencies
+        if: ${{ steps.support.outputs.supported == 'true' && matrix.target.os == 'linux' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+
+          case "${{ inputs.package }}" in
+            dart_edge_bluetooth_server)
+              sudo apt-get install -y pkg-config libdbus-1-dev
+              ;;
+            *)
+              sudo apt-get install -y pkg-config
+              ;;
+          esac
+
       - name: Check release artifact
+        if: ${{ steps.support.outputs.supported == 'true' }}
         id: existing
         env:
           GH_TOKEN: ${{ github.token }}
@@ -93,13 +132,13 @@ jobs:
           fi
 
       - name: Build native library
-        if: ${{ steps.existing.outputs.exists != 'true' }}
+        if: ${{ steps.support.outputs.supported == 'true' && steps.existing.outputs.exists != 'true' }}
         shell: bash
         run: |
           set -euo pipefail
           package="${{ inputs.package }}"
           triple="${{ matrix.target.triple }}"
-          cargo build \
+          rustup run "${{ steps.artifact.outputs.toolchain }}" cargo build \
             --release \
             --manifest-path "packages/$package/rust/Cargo.toml" \
             --package "$package" \
@@ -107,7 +146,7 @@ jobs:
             --target-dir ".dart_tool/native-assets/$package"
 
       - name: Stage artifact
-        if: ${{ steps.existing.outputs.exists != 'true' }}
+        if: ${{ steps.support.outputs.supported == 'true' && steps.existing.outputs.exists != 'true' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -116,7 +155,7 @@ jobs:
           shasum -a 256 "artifacts/${{ steps.artifact.outputs.name }}" > "artifacts/${{ steps.artifact.outputs.name }}.sha256"
 
       - name: Upload release artifact
-        if: ${{ steps.existing.outputs.exists != 'true' }}
+        if: ${{ steps.support.outputs.supported == 'true' && steps.existing.outputs.exists != 'true' }}
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.artifact.outputs.tag }}

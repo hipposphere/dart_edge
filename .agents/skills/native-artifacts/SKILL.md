@@ -47,3 +47,12 @@ binary versions.
 - `macos-arm64`
 
 Other targets intentionally fall back to local Rust source builds.
+
+## Package Support Notes
+
+- `dart_edge_bluetooth_server` needs `pkg-config` and `libdbus-1-dev` on Linux
+  CI runners.
+- CI must read `packages/<package>/rust/rust-toolchain.toml` and run Cargo via
+  `rustup run <channel>`; `dart_edge_sql_pglite` currently requires Rust 1.92.
+- `dart_edge_sip` is source-build-only until `pjproject` is vendored or
+  installed in the native asset workflow.

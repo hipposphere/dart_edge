@@ -71,6 +71,10 @@ final class DartEdgePrebuiltRustBuilder {
     final packageRoot = Directory.fromUri(input.packageRoot);
     final nativeVersion = await _readCargoPackageVersion(packageRoot);
     final packageName = input.packageName;
+    if (!_hasPrebuiltPackage(packageName)) {
+      return false;
+    }
+
     final linkMode = _linkMode(codeConfig);
     if (linkMode is! DynamicLoadingBundled) {
       return false;
@@ -259,6 +263,13 @@ final class DartEdgePrebuiltRustBuilder {
       (OS.linux, Architecture.x64) => true,
       (OS.macOS, Architecture.arm64) => true,
       _ => false,
+    };
+  }
+
+  bool _hasPrebuiltPackage(String packageName) {
+    return switch (packageName) {
+      'dart_edge_sip' => false,
+      _ => true,
     };
   }
 
