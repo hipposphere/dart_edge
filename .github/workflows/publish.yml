@@ -19,8 +19,31 @@ env:
   PUB_REGISTRY_URL: "https://registry.hippolabs.org/pub/internal-pub/"
 
 jobs:
+  native_assets:
+    name: Build native assets
+    if: ${{ !inputs.dry_run }}
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - dart_edge_audio
+          - dart_edge_auth
+          - dart_edge_bluetooth_server
+          - dart_edge_http_server_runtime
+          - dart_edge_s3_client
+          - dart_edge_sip
+          - dart_edge_sql
+          - dart_edge_sql_pglite
+    uses: ./.github/workflows/native-assets.yml
+    permissions:
+      contents: write
+    with:
+      package: ${{ matrix.package }}
+
   publish:
     name: Publish to internal pub registry
+    needs: native_assets
+    if: ${{ always() && !cancelled() && (inputs.dry_run || needs.native_assets.result == 'success' || needs.native_assets.result == 'skipped') }}
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository

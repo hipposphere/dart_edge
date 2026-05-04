@@ -1,0 +1,126 @@
+name: Native assets
+
+on:
+  workflow_call:
+    inputs:
+      package:
+        description: Package to build native assets for
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      package:
+        description: Package to build native assets for
+        required: true
+        type: choice
+        options:
+          - dart_edge_audio
+          - dart_edge_auth
+          - dart_edge_bluetooth_server
+          - dart_edge_http_server_runtime
+          - dart_edge_s3_client
+          - dart_edge_sip
+          - dart_edge_sql
+          - dart_edge_sql_pglite
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: ${{ matrix.target.os }}-${{ matrix.target.arch }}
+    runs-on: ${{ matrix.target.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - os: linux
+            arch: x64
+            triple: x86_64-unknown-linux-gnu
+            runner: ubuntu-latest
+          - os: macos
+            arch: arm64
+            triple: aarch64-apple-darwin
+            runner: macos-14
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target.triple }}
+
+      - name: Resolve package version
+        id: artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          package="${{ inputs.package }}"
+          version="$(sed -nE 's/^version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' "packages/$package/rust/Cargo.toml")"
+          os="${{ matrix.target.os }}"
+          arch="${{ matrix.target.arch }}"
+          triple="${{ matrix.target.triple }}"
+
+          case "$os" in
+            linux) library="lib${package}.so" ;;
+            macos) library="lib${package}.dylib" ;;
+            *) echo "unsupported OS: $os" >&2; exit 1 ;;
+          esac
+
+          artifact="${package}-${version}-${os}-${arch}-${library}"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$package-native-v$version" >> "$GITHUB_OUTPUT"
+          echo "library=$library" >> "$GITHUB_OUTPUT"
+          echo "name=$artifact" >> "$GITHUB_OUTPUT"
+          echo "source=.dart_tool/native-assets/$package/$triple/release/$library" >> "$GITHUB_OUTPUT"
+
+      - name: Check release artifact
+        id: existing
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${{ steps.artifact.outputs.tag }}"
+          artifact="${{ steps.artifact.outputs.name }}"
+          if gh release view "$tag" --json assets --jq '.assets[].name' \
+            | grep -Fx "$artifact" >/dev/null && \
+            gh release view "$tag" --json assets --jq '.assets[].name' \
+            | grep -Fx "$artifact.sha256" >/dev/null; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build native library
+        if: ${{ steps.existing.outputs.exists != 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          package="${{ inputs.package }}"
+          triple="${{ matrix.target.triple }}"
+          cargo build \
+            --release \
+            --manifest-path "packages/$package/rust/Cargo.toml" \
+            --package "$package" \
+            --target "$triple" \
+            --target-dir ".dart_tool/native-assets/$package"
+
+      - name: Stage artifact
+        if: ${{ steps.existing.outputs.exists != 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          cp "${{ steps.artifact.outputs.source }}" "artifacts/${{ steps.artifact.outputs.name }}"
+          shasum -a 256 "artifacts/${{ steps.artifact.outputs.name }}" > "artifacts/${{ steps.artifact.outputs.name }}.sha256"
+
+      - name: Upload release artifact
+        if: ${{ steps.existing.outputs.exists != 'true' }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.artifact.outputs.tag }}
+          name: ${{ steps.artifact.outputs.tag }}
+          files: |
+            artifacts/${{ steps.artifact.outputs.name }}
+            artifacts/${{ steps.artifact.outputs.name }}.sha256

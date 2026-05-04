@@ -1,6 +1,6 @@
 import 'package:code_assets/code_assets.dart';
+import 'package:dart_edge_native_assets/dart_edge_native_assets.dart';
 import 'package:hooks/hooks.dart';
-import 'package:native_toolchain_rust/native_toolchain_rust.dart';
 
 Future<void> main(List<String> args) async {
   await build(args, (input, output) async {
@@ -10,7 +10,7 @@ Future<void> main(List<String> args) async {
 
     final packageName = input.packageName;
 
-    await RustBuilder(
+    await DartEdgePrebuiltRustBuilder(
       assetName: '$packageName.dart',
       cratePath: 'rust',
     ).run(input: input, output: output);

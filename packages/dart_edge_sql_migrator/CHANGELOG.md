@@ -1,3 +1,7 @@
+## 0.3.5
+
+- Update `dart_edge_sql` constraint for prebuilt native asset support.
+
 ## 0.3.2
 
 - Default migration metadata table name to `migrations`.

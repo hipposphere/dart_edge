@@ -1,0 +1,4 @@
+interface:
+  display_name: "Native Artifacts"
+  short_description: "Check Dart Edge native artifact versioning."
+  default_prompt: "Check native artifact versioning before publishing."

@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 description = "Shared FFI primitives for Dart Edge native crates."
 license = "MIT"
-repository = "https://github.com/flowhorn/dart_edge"
+repository = "https://github.com/hipposphere/dart_edge"
 readme = "README.md"
 keywords = ["dart-edge", "ffi", "native-assets"]
 

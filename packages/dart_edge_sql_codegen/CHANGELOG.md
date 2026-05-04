@@ -1,3 +1,7 @@
+## 0.3.7
+
+- Update `dart_edge_sql` constraint for prebuilt native asset support.
+
 ## 0.3.0
 
 - Declare internal Dart Edge dependencies with the internal hosted registry.

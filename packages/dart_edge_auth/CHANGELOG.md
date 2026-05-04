@@ -1,3 +1,9 @@
+## 0.3.6
+
+- Use prebuilt Linux and macOS native assets when available, with Rust source
+  build fallback.
+- Update Dart Edge native package constraints.
+
 ## 0.3.0
 
 - Declare internal Dart Edge dependencies with the internal hosted registry.

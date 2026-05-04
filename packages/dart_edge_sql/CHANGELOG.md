@@ -1,3 +1,8 @@
+## 0.3.5
+
+- Use prebuilt Linux and macOS native assets when available, with Rust source
+  build fallback.
+
 ## 0.3.0
 
 - Add PGlite endpoint support for `PostgresPool.pglite`.

@@ -1,8 +1,8 @@
 name: dart_edge_bluetooth_server
 description: Standalone Bluetooth GATT server package for Dart Edge.
-version: 0.2.0
+version: 0.2.1
 publish_to: "https://registry.hippolabs.org/pub/internal-pub/"
-repository: https://github.com/flowhorn/dart_edge/tree/main/packages/dart_edge_bluetooth_server
+repository: https://github.com/hipposphere/dart_edge/tree/main/packages/dart_edge_bluetooth_server
 
 environment:
   sdk: ">=3.11.0 <4.0.0"
@@ -11,6 +11,9 @@ resolution: workspace
 
 dependencies:
   code_assets: ^1.0.0
+  dart_edge_native_assets:
+    hosted: "https://registry.hippolabs.org/pub/internal-pub/"
+    version: ^0.1.0
   ffi: ^2.2.0
   hooks: ^1.0.3
   native_toolchain_rust: ^1.0.4
