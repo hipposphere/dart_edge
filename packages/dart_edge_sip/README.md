@@ -89,7 +89,7 @@ curl -fsSL "https://github.com/pjsip/pjproject/archive/refs/tags/$version.tar.gz
   -o "pjproject-$version.tar.gz"
 tar -xzf "pjproject-$version.tar.gz"
 cd "pjproject-$version"
-touch pjlib/include/pj/config_site.h
+cp pjlib/include/pj/config_site_sample.h pjlib/include/pj/config_site.h
 ./configure --prefix=/usr/local
 make dep
 make
@@ -101,7 +101,8 @@ pkg-config --cflags --libs libpjproject
 
 For CI jobs that only need to compile `dart_edge_sip` without linking PJSIP,
 the native asset workflow downloads pjproject sources, runs `./configure` to
-generate headers, and provides a temporary header-only `libpjproject.pc`.
+generate platform headers, copies the PJSIP public include trees into a
+temporary include prefix, and provides a header-only `libpjproject.pc`.
 
 
 If `pkg-config` cannot find `libpjproject`, set `PKG_CONFIG_PATH` to the

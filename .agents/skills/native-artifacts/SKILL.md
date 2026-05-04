@@ -57,9 +57,9 @@ Other targets intentionally fall back to local Rust source builds.
   `rustup run <channel>`; `dart_edge_sql_pglite` currently requires Rust 1.92.
 - `dart_edge_sip` requires installed PJSIP headers for compilation and shared
   PJSIP libraries at runtime; it never bundles or directly links PJSIP.
-- Linux CI prepares PJSIP headers from the pjproject source release and writes a
-  temporary header-only `libpjproject.pc` instead of installing
-  `libpjproject-dev`.
+- Linux CI prepares PJSIP headers from the pjproject source release, copies the
+  public include trees into a temporary include prefix, and writes a
+  header-only `libpjproject.pc` instead of installing `libpjproject-dev`.
 - For unlinked SIP prebuilts, projects can set
   `DART_EDGE_SIP_PJPROJECT_LIBRARIES` to a semicolon-separated list of shared
   PJSIP library paths when the platform loader cannot find them by name.

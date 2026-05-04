@@ -112,6 +112,7 @@ jobs:
           prefix="$RUNNER_TEMP/pjproject-headers"
           source="$RUNNER_TEMP/pjproject-$version"
           archive="$RUNNER_TEMP/pjproject-$version.tar.gz"
+          include="$prefix/include"
 
           curl -fsSL \
             "https://github.com/pjsip/pjproject/archive/refs/tags/$version.tar.gz" \
@@ -129,17 +130,25 @@ jobs:
               --disable-v4l2 \
               --disable-libwebrtc
           )
-          touch "$source/pjlib/include/pj/config_site.h"
+
+          mkdir -p "$include"
+          cp -R "$source/pjlib/include/." "$include/"
+          cp -R "$source/pjlib-util/include/." "$include/"
+          cp -R "$source/pjnath/include/." "$include/"
+          cp -R "$source/pjmedia/include/." "$include/"
+          cp -R "$source/pjsip/include/." "$include/"
+          cp "$source/pjlib/include/pj/config_site_sample.h" \
+            "$include/pj/config_site.h"
 
           mkdir -p "$prefix/lib/pkgconfig"
           cat > "$prefix/lib/pkgconfig/libpjproject.pc" <<EOF
           prefix=$prefix
-          includedir=$source
+          includedir=\${prefix}/include
 
           Name: libpjproject
           Description: PJSIP headers for unlinked dart_edge_sip native builds
           Version: $version
-          Cflags: -I\${includedir}/pjlib/include -I\${includedir}/pjlib-util/include -I\${includedir}/pjnath/include -I\${includedir}/pjmedia/include -I\${includedir}/pjsip/include
+          Cflags: -DPJ_AUTOCONF=1 -I\${includedir}
           Libs:
           EOF
 
