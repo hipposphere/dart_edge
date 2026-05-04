@@ -11,6 +11,7 @@ use serde::Serialize;
 use sqlx::pool::PoolConnection;
 use sqlx::postgres::{PgPool, PgPoolOptions, PgRow};
 use sqlx::sqlite::{SqlitePool, SqlitePoolOptions, SqliteRow};
+use sqlx::types::chrono::{DateTime, Utc};
 use sqlx::{Column, Postgres, Row, Sqlite, TypeInfo};
 use tokio::runtime::{Builder, Runtime};
 
@@ -636,6 +637,11 @@ fn decode_postgres_value(
             Ok(Some(value)) => SqlValue::Bytes(BASE64.encode(value)),
             Ok(None) => SqlValue::Null,
             Err(error) => return Err(format!("Failed to decode PostgreSQL bytea: {error}")),
+        },
+        "TIMESTAMPTZ" => match row.try_get::<Option<DateTime<Utc>>, usize>(index) {
+            Ok(Some(value)) => SqlValue::DateTime(value.to_rfc3339()),
+            Ok(None) => SqlValue::Null,
+            Err(error) => return Err(format!("Failed to decode PostgreSQL timestamptz: {error}")),
         },
         "BOOL[]" => decode_postgres_array::<bool>(row, index, "bool array")?,
         "INT2[]" => decode_postgres_array::<i16>(row, index, "int2 array")?,
