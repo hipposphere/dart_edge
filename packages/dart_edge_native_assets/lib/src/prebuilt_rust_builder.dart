@@ -261,6 +261,7 @@ final class DartEdgePrebuiltRustBuilder {
   bool _hasPrebuiltTarget(OS targetOS, Architecture targetArchitecture) {
     return switch ((targetOS, targetArchitecture)) {
       (OS.linux, Architecture.x64) => true,
+      (OS.linux, Architecture.arm64) => true,
       (OS.macOS, Architecture.arm64) => true,
       _ => false,
     };
@@ -268,7 +269,6 @@ final class DartEdgePrebuiltRustBuilder {
 
   bool _hasPrebuiltPackage(String packageName) {
     return switch (packageName) {
-      'dart_edge_sip' => false,
       _ => true,
     };
   }

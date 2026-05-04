@@ -1,3 +1,8 @@
+## 0.3.7
+
+- Publish Linux arm64 native artifacts.
+- Update Dart Edge native package constraints.
+
 ## 0.3.6
 
 - Use prebuilt Linux and macOS native assets when available, with Rust source

@@ -1,3 +1,7 @@
+## 0.3.6
+
+- Update `dart_edge_sql` constraint for Linux arm64 native artifacts.
+
 ## 0.3.5
 
 - Update `dart_edge_sql` constraint for prebuilt native asset support.

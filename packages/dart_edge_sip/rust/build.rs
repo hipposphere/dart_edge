@@ -8,22 +8,13 @@ fn main() {
 
     let pjproject = pkg_config::Config::new()
         .cargo_metadata(false)
-        .statik(true)
         .probe("libpjproject")
         .expect(
             "dart_edge_sip requires pjproject via pkg-config. Install pjproject \
              and ensure `pkg-config --cflags --libs libpjproject` succeeds.",
         );
-    let openssl = pkg_config::Config::new()
-        .cargo_metadata(false)
-        .probe("openssl")
-        .expect(
-            "dart_edge_sip requires OpenSSL development libraries. Ensure \
-             `pkg-config --libs openssl` succeeds.",
-        );
+    emit_late_pjproject_lookup_args();
 
-    emit_links(&pjproject);
-    emit_links(&openssl);
     let mut build = cc::Build::new();
     build.file("native/pjsip_bridge.c");
     build.include("native");
@@ -46,20 +37,11 @@ fn main() {
     build.compile("dart_edge_sip_pjsip_bridge");
 }
 
-fn emit_links(library: &pkg_config::Library) {
-    for link_path in &library.link_paths {
-        println!("cargo:rustc-link-search=native={}", link_path.display());
-    }
-    for framework_path in &library.framework_paths {
-        println!(
-            "cargo:rustc-link-search=framework={}",
-            framework_path.display()
-        );
-    }
-    for lib in &library.libs {
-        println!("cargo:rustc-link-lib={lib}");
-    }
-    for framework in &library.frameworks {
-        println!("cargo:rustc-link-lib=framework={framework}");
+fn emit_late_pjproject_lookup_args() {
+    let target = env::var("TARGET").unwrap_or_default();
+    if target.contains("apple") {
+        println!("cargo:rustc-link-arg-cdylib=-Wl,-undefined,dynamic_lookup");
+    } else if target.contains("linux") {
+        println!("cargo:rustc-link-arg-cdylib=-Wl,--allow-shlib-undefined");
     }
 }

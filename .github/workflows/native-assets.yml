@@ -38,6 +38,10 @@ jobs:
             arch: x64
             triple: x86_64-unknown-linux-gnu
             runner: ubuntu-latest
+          - os: linux
+            arch: arm64
+            triple: aarch64-unknown-linux-gnu
+            runner: ubuntu-24.04-arm
           - os: macos
             arch: arm64
             triple: aarch64-apple-darwin
@@ -72,23 +76,7 @@ jobs:
           echo "name=$artifact" >> "$GITHUB_OUTPUT"
           echo "source=.dart_tool/native-assets/$package/$triple/release/$library" >> "$GITHUB_OUTPUT"
 
-      - name: Check prebuilt support
-        id: support
-        shell: bash
-        run: |
-          set -euo pipefail
-          case "${{ inputs.package }}" in
-            dart_edge_sip)
-              echo "supported=false" >> "$GITHUB_OUTPUT"
-              echo "Skipping ${{ inputs.package }}: this package still requires external native dependencies that are not vendored in CI."
-              ;;
-            *)
-              echo "supported=true" >> "$GITHUB_OUTPUT"
-              ;;
-          esac
-
       - name: Install Rust toolchain
-        if: ${{ steps.support.outputs.supported == 'true' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -97,7 +85,7 @@ jobs:
             --target "${{ matrix.target.triple }}"
 
       - name: Install Linux native dependencies
-        if: ${{ steps.support.outputs.supported == 'true' && matrix.target.os == 'linux' }}
+        if: ${{ matrix.target.os == 'linux' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -107,13 +95,22 @@ jobs:
             dart_edge_bluetooth_server)
               sudo apt-get install -y pkg-config libdbus-1-dev
               ;;
+            dart_edge_sip)
+              sudo apt-get install -y pkg-config libpjproject-dev
+              ;;
             *)
               sudo apt-get install -y pkg-config
               ;;
           esac
 
+      - name: Install macOS native dependencies
+        if: ${{ matrix.target.os == 'macos' && inputs.package == 'dart_edge_sip' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          brew install pkg-config pjproject
+
       - name: Check release artifact
-        if: ${{ steps.support.outputs.supported == 'true' }}
         id: existing
         env:
           GH_TOKEN: ${{ github.token }}
@@ -132,7 +129,7 @@ jobs:
           fi
 
       - name: Build native library
-        if: ${{ steps.support.outputs.supported == 'true' && steps.existing.outputs.exists != 'true' }}
+        if: ${{ steps.existing.outputs.exists != 'true' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -146,7 +143,7 @@ jobs:
             --target-dir ".dart_tool/native-assets/$package"
 
       - name: Stage artifact
-        if: ${{ steps.support.outputs.supported == 'true' && steps.existing.outputs.exists != 'true' }}
+        if: ${{ steps.existing.outputs.exists != 'true' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -155,7 +152,7 @@ jobs:
           shasum -a 256 "artifacts/${{ steps.artifact.outputs.name }}" > "artifacts/${{ steps.artifact.outputs.name }}.sha256"
 
       - name: Upload release artifact
-        if: ${{ steps.support.outputs.supported == 'true' && steps.existing.outputs.exists != 'true' }}
+        if: ${{ steps.existing.outputs.exists != 'true' }}
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.artifact.outputs.tag }}

@@ -1,3 +1,8 @@
+## 0.4.4
+
+- Add Linux arm64 native artifact publishing.
+- Build prebuilt SIP artifacts without directly linking or bundling PJSIP.
+
 ## 0.4.3
 
 - Use prebuilt Linux and macOS native assets when available, with Rust source

@@ -39,17 +39,54 @@ Why not a pure-Rust runtime yet:
 
 Operational notes:
 
-- the native bridge requires `pjproject` to be installed and discoverable
-  through `pkg-config`
+- `pjproject` is required; prebuilt `dart_edge_sip` artifacts do not bundle or
+  directly link PJSIP, so PJSIP must be installed and loadable by the host
+  process
+- source builds require `pjproject` headers discoverable through `pkg-config`,
+  but still do not directly link PJSIP
 - the default `PjsipEngineConfig` values are sized for a stock `pjproject`
   build, which commonly compiles with `PJSUA_MAX_CALLS=4`
 - larger production deployments should ship a custom `pjproject` build with
   higher `PJSUA_*` limits
+- set `DART_EDGE_SIP_PJPROJECT_LIBRARIES` to a semicolon-separated list of
+  shared PJSIP library paths if the platform loader cannot find them by name
 
 Licensing note:
 
 - PJSIP is dual-licensed GPL/commercial, so production rollout must choose a
   licensing path deliberately
+
+## Installing PJSIP
+
+`dart_edge_sip` needs `pjproject` on the machine that builds or runs the SIP
+runtime.
+
+macOS with Homebrew:
+
+```bash
+brew install pkg-config pjproject
+pkg-config --cflags --libs libpjproject
+```
+
+Ubuntu or Debian:
+
+```bash
+sudo apt update
+sudo apt install pkg-config libpjproject-dev
+pkg-config --cflags --libs libpjproject
+```
+
+
+If `pkg-config` cannot find `libpjproject`, set `PKG_CONFIG_PATH` to the
+directory containing `libpjproject.pc`. For example:
+
+```bash
+export PKG_CONFIG_PATH="/opt/homebrew/opt/pjproject/lib/pkgconfig:$PKG_CONFIG_PATH"
+```
+
+`dart_edge_sip` artifacts intentionally do not bundle or directly link PJSIP.
+If the runtime loader cannot find shared PJSIP libraries, provide them through
+`DART_EDGE_SIP_PJPROJECT_LIBRARIES`.
 
 ## V1 Intent
 

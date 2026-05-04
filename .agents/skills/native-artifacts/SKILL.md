@@ -44,6 +44,7 @@ binary versions.
 ## Supported Prebuilt Targets
 
 - `linux-x64`
+- `linux-arm64`
 - `macos-arm64`
 
 Other targets intentionally fall back to local Rust source builds.
@@ -54,5 +55,8 @@ Other targets intentionally fall back to local Rust source builds.
   CI runners.
 - CI must read `packages/<package>/rust/rust-toolchain.toml` and run Cargo via
   `rustup run <channel>`; `dart_edge_sql_pglite` currently requires Rust 1.92.
-- `dart_edge_sip` is source-build-only until `pjproject` is vendored or
-  installed in the native asset workflow.
+- `dart_edge_sip` requires installed PJSIP headers for compilation and shared
+  PJSIP libraries at runtime; it never bundles or directly links PJSIP.
+- For unlinked SIP prebuilts, projects can set
+  `DART_EDGE_SIP_PJPROJECT_LIBRARIES` to a semicolon-separated list of shared
+  PJSIP library paths when the platform loader cannot find them by name.

@@ -44,6 +44,8 @@ static NEXT_HANDLE: AtomicI64 = AtomicI64::new(1);
 static SERVERS: Lazy<Mutex<HashMap<i64, NativeSipServer>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
 static LAST_ERROR: Lazy<Mutex<Option<CString>>> = Lazy::new(|| Mutex::new(None));
+static PJPROJECT_LOAD_RESULT: Lazy<Mutex<Option<Result<(), String>>>> =
+    Lazy::new(|| Mutex::new(None));
 
 struct NativeSipServer {
     config: NativeSipServerConfig,
@@ -276,6 +278,8 @@ unsafe impl Send for PjsipRuntime {}
 
 impl PjsipRuntime {
     fn from_config(config: &NativeSipServerConfig) -> Result<Self, String> {
+        ensure_pjproject_loaded()?;
+
         let mut error = ErrorBuffer::new();
 
         let user_agent = c_string(&config.engine.user_agent)?;
@@ -1092,6 +1096,101 @@ impl PjsipRuntime {
             Err(error.message(context))
         }
     }
+}
+
+fn ensure_pjproject_loaded() -> Result<(), String> {
+    let mut state = PJPROJECT_LOAD_RESULT
+        .lock()
+        .map_err(|_| "Failed to lock PJSIP loader state.".to_string())?;
+    if let Some(result) = state.as_ref() {
+        return result.clone();
+    }
+
+    let result = load_pjproject_libraries();
+    *state = Some(result.clone());
+    result
+}
+
+fn load_pjproject_libraries() -> Result<(), String> {
+    let libraries = pjproject_library_candidates();
+    let mut loaded = Vec::new();
+    let mut errors = Vec::new();
+
+    for library in libraries {
+        let path = CString::new(library.as_str())
+            .map_err(|_| format!("Invalid PJSIP library path '{library}'."))?;
+        let handle = unsafe { libc::dlopen(path.as_ptr(), libc::RTLD_LAZY | libc::RTLD_GLOBAL) };
+        if handle.is_null() {
+            errors.push(format!("{library}: {}", dlerror_message()));
+        } else {
+            loaded.push(handle as usize);
+        }
+    }
+
+    if symbol_is_loaded("pjsua_create") && symbol_is_loaded("pj_str") {
+        std::mem::forget(loaded);
+        return Ok(());
+    }
+
+    Err(format!(
+        "PJSIP shared libraries are required by dart_edge_sip. Install pjproject \
+         shared libraries or set DART_EDGE_SIP_PJPROJECT_LIBRARIES to a \
+         semicolon-separated list of library paths. Tried: {}",
+        errors.join("; ")
+    ))
+}
+
+fn pjproject_library_candidates() -> Vec<String> {
+    if let Ok(value) = std::env::var("DART_EDGE_SIP_PJPROJECT_LIBRARIES") {
+        let libraries = value
+            .split(';')
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned)
+            .collect::<Vec<_>>();
+        if !libraries.is_empty() {
+            return libraries;
+        }
+    }
+
+    let extension = if cfg!(target_os = "macos") {
+        "dylib"
+    } else {
+        "so"
+    };
+    [
+        "pjsua2",
+        "pjsua",
+        "pjsip-ua",
+        "pjsip-simple",
+        "pjsip",
+        "pjmedia-codec",
+        "pjmedia-videodev",
+        "pjmedia-audiodev",
+        "pjmedia",
+        "pjnath",
+        "pjlib-util",
+        "pj",
+    ]
+    .into_iter()
+    .map(|name| format!("lib{name}.{extension}"))
+    .collect()
+}
+
+fn symbol_is_loaded(symbol: &str) -> bool {
+    let symbol = CString::new(symbol).expect("static symbol name");
+    let pointer = unsafe { libc::dlsym(libc::RTLD_DEFAULT, symbol.as_ptr()) };
+    !pointer.is_null()
+}
+
+fn dlerror_message() -> String {
+    let error = unsafe { libc::dlerror() };
+    if error.is_null() {
+        return "unknown dlopen error".to_string();
+    }
+    unsafe { CStr::from_ptr(error) }
+        .to_string_lossy()
+        .into_owned()
 }
 
 impl Drop for PjsipRuntime {

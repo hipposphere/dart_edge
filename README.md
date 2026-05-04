@@ -26,7 +26,8 @@ Requirements:
 - Rust toolchain when working on native-backed packages such as
   `dart_edge_http_server_runtime`, `dart_edge_auth`, `dart_edge_sql`,
   `dart_edge_audio`, `dart_edge_s3_client`, or `dart_edge_sip`
-- `pjproject` plus `pkg-config` when building `dart_edge_sip`
+- `pjproject` is required by `dart_edge_sip`; source builds also need
+  `pkg-config` so the native bridge can find PJSIP headers
 
 Resolve the workspace:
 

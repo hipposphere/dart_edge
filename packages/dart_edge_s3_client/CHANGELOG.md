@@ -1,3 +1,7 @@
+## 0.3.5
+
+- Publish Linux arm64 native artifacts.
+
 ## 0.3.4
 
 - Use prebuilt Linux and macOS native assets when available, with Rust source
