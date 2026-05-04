@@ -27,4 +27,17 @@ void main() {
     expect(object.toJson()['bucket'], 'uploads');
     expect(object.toJson()['versionId'], 'v1');
   });
+
+  test('serializes S3-compatible endpoint config without region', () {
+    const config = S3ClientConfig(
+      endpoint: 'http://127.0.0.1:9000',
+      accessKeyId: 'key',
+      secretAccessKey: 'secret',
+      forcePathStyle: true,
+      allowHttp: true,
+    );
+
+    expect(config.toJson(), isNot(contains('region')));
+    expect(config.toJson()['endpoint'], 'http://127.0.0.1:9000');
+  });
 }

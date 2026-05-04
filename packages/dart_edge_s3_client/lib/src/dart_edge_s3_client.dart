@@ -218,7 +218,7 @@ final class DartEdgeS3Client {
 }
 
 void _validateConfig(S3ClientConfig config) {
-  if (config.region.isEmpty) {
+  if (config.region != null && config.region!.isEmpty) {
     throw ArgumentError.value(
       config.region,
       'config.region',

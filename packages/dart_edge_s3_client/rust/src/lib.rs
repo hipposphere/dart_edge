@@ -35,7 +35,7 @@ pub struct NativeS3BytesResult {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct NativeS3ClientConfig {
-    region: String,
+    region: Option<String>,
     endpoint: Option<String>,
     access_key_id: Option<String>,
     secret_access_key: Option<String>,
@@ -335,8 +335,10 @@ pub extern "C" fn dart_edge_s3_client_free_string(value: *mut c_char) {
 async fn build_client(config: NativeS3ClientConfig) -> Result<Client, String> {
     validate_client_config(&config)?;
 
-    let mut loader = aws_config::defaults(BehaviorVersion::latest())
-        .region(Region::new(config.region.clone()));
+    let mut loader = aws_config::defaults(BehaviorVersion::latest());
+    if let Some(region) = config.region.as_ref() {
+        loader = loader.region(Region::new(region.clone()));
+    }
 
     if let (Some(access_key_id), Some(secret_access_key)) =
         (config.access_key_id.clone(), config.secret_access_key.clone())
@@ -521,7 +523,7 @@ fn client_for_handle(handle: i64) -> Option<Client> {
 }
 
 fn validate_client_config(config: &NativeS3ClientConfig) -> Result<(), String> {
-    if config.region.trim().is_empty() {
+    if config.region.as_ref().is_some_and(|region| region.trim().is_empty()) {
         return Err("S3 client region must not be empty.".to_string());
     }
 

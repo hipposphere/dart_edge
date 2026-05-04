@@ -5,7 +5,6 @@ import 'package:dart_edge_s3_client/dart_edge_s3_client.dart';
 Future<void> main() async {
   final client = await DartEdgeS3Client.open(
     const S3ClientConfig(
-      region: 'us-east-1',
       endpoint: 'http://127.0.0.1:9000',
       accessKeyId: 'minioadmin',
       secretAccessKey: 'minioadmin',

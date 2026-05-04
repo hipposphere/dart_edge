@@ -5,7 +5,7 @@ Native-backed S3 client for Dart Edge.
 This package wraps a bundled Rust S3 client and supports both metadata-only
 operations and native byte transfer for uploads and downloads. It is intended
 for server-side Dart applications that need to talk to AWS S3 or compatible
-endpoints such as MinIO and Cloudflare R2.
+endpoints such as RustFS, MinIO, and Cloudflare R2.
 
 ## Quick Start
 
@@ -15,7 +15,6 @@ import 'package:dart_edge_s3_client/dart_edge_s3_client.dart';
 Future<void> main() async {
   final client = await DartEdgeS3Client.open(
     const S3ClientConfig(
-      region: 'us-east-1',
       endpoint: 'http://127.0.0.1:9000',
       accessKeyId: 'minioadmin',
       secretAccessKey: 'minioadmin',
@@ -48,8 +47,7 @@ Future<void> main() async {
 ## Main Types
 
 - `DartEdgeS3Client` owns one native client handle
-- `S3ClientConfig` configures the region, credentials, and optional custom
-  endpoint
+- `S3ClientConfig` configures optional region, credentials, and custom endpoint
 - `S3PutObjectBytesRequest` uploads in-memory bytes through the native bytes
   path
 - `S3ObjectRef` identifies one object for `get`, `head`, and `delete`

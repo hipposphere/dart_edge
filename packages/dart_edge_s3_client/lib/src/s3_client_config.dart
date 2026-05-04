@@ -1,7 +1,7 @@
 /// Configuration for creating a native-backed S3 client.
 final class S3ClientConfig {
   const S3ClientConfig({
-    required this.region,
+    this.region,
     this.endpoint,
     this.accessKeyId,
     this.secretAccessKey,
@@ -10,7 +10,7 @@ final class S3ClientConfig {
     this.allowHttp = false,
   });
 
-  final String region;
+  final String? region;
   final String? endpoint;
   final String? accessKeyId;
   final String? secretAccessKey;
@@ -20,7 +20,7 @@ final class S3ClientConfig {
 
   Map<String, Object?> toJson() {
     return {
-      'region': region,
+      if (region != null) 'region': region,
       'endpoint': endpoint,
       'accessKeyId': accessKeyId,
       'secretAccessKey': secretAccessKey,
