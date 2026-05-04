@@ -129,6 +129,7 @@ jobs:
               --disable-v4l2 \
               --disable-libwebrtc
           )
+          touch "$source/pjlib/include/pj/config_site.h"
 
           mkdir -p "$prefix/lib/pkgconfig"
           cat > "$prefix/lib/pkgconfig/libpjproject.pc" <<EOF

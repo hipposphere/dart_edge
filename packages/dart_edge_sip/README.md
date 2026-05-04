@@ -89,6 +89,7 @@ curl -fsSL "https://github.com/pjsip/pjproject/archive/refs/tags/$version.tar.gz
   -o "pjproject-$version.tar.gz"
 tar -xzf "pjproject-$version.tar.gz"
 cd "pjproject-$version"
+touch pjlib/include/pj/config_site.h
 ./configure --prefix=/usr/local
 make dep
 make
