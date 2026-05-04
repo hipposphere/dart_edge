@@ -38,8 +38,9 @@ binary versions.
 3. If the script reports unchanged Cargo versions, bump the relevant
    `packages/<package>/rust/Cargo.toml` versions before publishing.
 4. After bumping native versions, let `.github/workflows/native-assets.yml`
-   build the missing release assets. The workflow skips target artifacts that
-   already exist for the same Cargo version.
+   build the missing release assets. The workflow first resolves the missing
+   target artifacts and only starts matrix runners for targets that are absent
+   from the release.
 
 ## Supported Prebuilt Targets
 
@@ -63,3 +64,6 @@ Other targets intentionally fall back to local Rust source builds.
 - For unlinked SIP prebuilts, projects can set
   `DART_EDGE_SIP_PJPROJECT_LIBRARIES` to a semicolon-separated list of shared
   PJSIP library paths when the platform loader cannot find them by name.
+- The publish workflow resolves the native package matrix from `package_scope`
+  before calling the native-assets workflow; non-native scopes skip native
+  asset jobs.

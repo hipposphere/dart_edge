@@ -19,21 +19,52 @@ env:
   PUB_REGISTRY_URL: "https://registry.hippolabs.org/pub/internal-pub/"
 
 jobs:
+  native_package_matrix:
+    name: Resolve native package scope
+    if: ${{ !inputs.dry_run }}
+    runs-on: ubuntu-latest
+    outputs:
+      packages: ${{ steps.packages.outputs.packages }}
+    steps:
+      - name: Resolve native packages
+        id: packages
+        env:
+          PACKAGE_SCOPE: ${{ inputs.package_scope }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          native_packages=(
+            dart_edge_audio
+            dart_edge_auth
+            dart_edge_bluetooth_server
+            dart_edge_http_server_runtime
+            dart_edge_s3_client
+            dart_edge_sip
+            dart_edge_sql
+            dart_edge_sql_pglite
+          )
+
+          selected_file="$RUNNER_TEMP/native-packages.jsonl"
+          : > "$selected_file"
+
+          for package in "${native_packages[@]}"; do
+            if [[ -n "$PACKAGE_SCOPE" && "$package" != $PACKAGE_SCOPE ]]; then
+              continue
+            fi
+            jq -cn --arg package "$package" '$package' >> "$selected_file"
+          done
+
+          packages="$(jq -cs '.' "$selected_file")"
+          echo "packages=$packages" >> "$GITHUB_OUTPUT"
+
   native_assets:
     name: Build native assets
-    if: ${{ !inputs.dry_run }}
+    needs: native_package_matrix
+    if: ${{ !inputs.dry_run && needs.native_package_matrix.outputs.packages != '[]' }}
     strategy:
       fail-fast: false
       matrix:
-        package:
-          - dart_edge_audio
-          - dart_edge_auth
-          - dart_edge_bluetooth_server
-          - dart_edge_http_server_runtime
-          - dart_edge_s3_client
-          - dart_edge_sip
-          - dart_edge_sql
-          - dart_edge_sql_pglite
+        package: ${{ fromJson(needs.native_package_matrix.outputs.packages) }}
     uses: ./.github/workflows/native-assets.yml
     permissions:
       contents: write
@@ -42,7 +73,9 @@ jobs:
 
   publish:
     name: Publish to internal pub registry
-    needs: native_assets
+    needs:
+      - native_package_matrix
+      - native_assets
     if: ${{ always() && !cancelled() && (inputs.dry_run || needs.native_assets.result == 'success' || needs.native_assets.result == 'skipped') }}
     runs-on: ubuntu-latest
     steps:
