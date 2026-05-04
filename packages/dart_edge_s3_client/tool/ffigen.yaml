@@ -16,11 +16,22 @@ functions:
     include:
       - dart_edge_s3_client_dispose
       - dart_edge_s3_client_free_bytes_result
-      - dart_edge_s3_client_free_string
+      - dart_edge_s3_client_free_create_result
+      - dart_edge_s3_client_free_delete_object_result
+      - dart_edge_s3_client_free_object_metadata
+      - dart_edge_s3_client_free_put_object_result
       - dart_edge_s3_client_native_abi_version
 structs:
   include:
+    - NativeS3ClientConfig
+    - NativeS3CreateResult
     - NativeS3BytesResult
+    - NativeS3DeleteObjectResult
+    - NativeS3ObjectMetadata
+    - NativeS3ObjectRef
+    - NativeS3PutObjectRequest
+    - NativeS3PutObjectResult
+    - NativeS3StringPair
 exclude-all-by-default: true
 sort: true
 use-supported-typedefs: true

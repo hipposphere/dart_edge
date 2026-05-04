@@ -10,13 +10,23 @@ library;
 import 'dart:ffi' as ffi;
 import 'package:dart_edge_core/ffi.dart' as imp$1;
 
-@ffi.Native<ffi.Int64 Function(ffi.Pointer<ffi.Char>)>()
-external int dart_edge_s3_client_create(ffi.Pointer<ffi.Char> config_json);
+@ffi.Native<
+  ffi.Pointer<NativeS3CreateResult> Function(ffi.Pointer<NativeS3ClientConfig>)
+>()
+external ffi.Pointer<NativeS3CreateResult> dart_edge_s3_client_create(
+  ffi.Pointer<NativeS3ClientConfig> config,
+);
 
-@ffi.Native<ffi.Pointer<ffi.Char> Function(ffi.Int64, ffi.Pointer<ffi.Char>)>()
-external ffi.Pointer<ffi.Char> dart_edge_s3_client_delete_object(
+@ffi.Native<
+  ffi.Pointer<NativeS3DeleteObjectResult> Function(
+    ffi.Int64,
+    ffi.Pointer<NativeS3ObjectRef>,
+  )
+>()
+external ffi.Pointer<NativeS3DeleteObjectResult>
+dart_edge_s3_client_delete_object(
   int handle,
-  ffi.Pointer<ffi.Char> request_json,
+  ffi.Pointer<NativeS3ObjectRef> request,
 );
 
 @ffi.Native<ffi.Void Function(ffi.Int64)>(isLeaf: true)
@@ -27,46 +37,195 @@ external void dart_edge_s3_client_free_bytes_result(
   ffi.Pointer<NativeS3BytesResult> value,
 );
 
-@ffi.Native<ffi.Void Function(ffi.Pointer<ffi.Char>)>(isLeaf: true)
-external void dart_edge_s3_client_free_string(ffi.Pointer<ffi.Char> value);
+@ffi.Native<ffi.Void Function(ffi.Pointer<NativeS3CreateResult>)>(isLeaf: true)
+external void dart_edge_s3_client_free_create_result(
+  ffi.Pointer<NativeS3CreateResult> value,
+);
+
+@ffi.Native<ffi.Void Function(ffi.Pointer<NativeS3DeleteObjectResult>)>(
+  isLeaf: true,
+)
+external void dart_edge_s3_client_free_delete_object_result(
+  ffi.Pointer<NativeS3DeleteObjectResult> value,
+);
+
+@ffi.Native<ffi.Void Function(ffi.Pointer<NativeS3ObjectMetadata>)>(
+  isLeaf: true,
+)
+external void dart_edge_s3_client_free_object_metadata(
+  ffi.Pointer<NativeS3ObjectMetadata> value,
+);
+
+@ffi.Native<ffi.Void Function(ffi.Pointer<NativeS3PutObjectResult>)>(
+  isLeaf: true,
+)
+external void dart_edge_s3_client_free_put_object_result(
+  ffi.Pointer<NativeS3PutObjectResult> value,
+);
 
 @ffi.Native<
-  ffi.Pointer<NativeS3BytesResult> Function(ffi.Int64, ffi.Pointer<ffi.Char>)
+  ffi.Pointer<NativeS3BytesResult> Function(
+    ffi.Int64,
+    ffi.Pointer<NativeS3ObjectRef>,
+  )
 >()
 external ffi.Pointer<NativeS3BytesResult> dart_edge_s3_client_get_object_bytes(
   int handle,
-  ffi.Pointer<ffi.Char> request_json,
+  ffi.Pointer<NativeS3ObjectRef> request,
 );
 
-@ffi.Native<ffi.Pointer<ffi.Char> Function(ffi.Int64, ffi.Pointer<ffi.Char>)>()
-external ffi.Pointer<ffi.Char> dart_edge_s3_client_head_object(
+@ffi.Native<
+  ffi.Pointer<NativeS3ObjectMetadata> Function(
+    ffi.Int64,
+    ffi.Pointer<NativeS3ObjectRef>,
+  )
+>()
+external ffi.Pointer<NativeS3ObjectMetadata> dart_edge_s3_client_head_object(
   int handle,
-  ffi.Pointer<ffi.Char> request_json,
+  ffi.Pointer<NativeS3ObjectRef> request,
 );
 
 @ffi.Native<ffi.Int32 Function()>(isLeaf: true)
 external int dart_edge_s3_client_native_abi_version();
 
 @ffi.Native<
-  ffi.Pointer<ffi.Char> Function(
+  ffi.Pointer<NativeS3PutObjectResult> Function(
     ffi.Int64,
-    ffi.Pointer<ffi.Char>,
+    ffi.Pointer<NativeS3PutObjectRequest>,
     ffi.Pointer<ffi.Uint8>,
     ffi.IntPtr,
   )
 >()
-external ffi.Pointer<ffi.Char> dart_edge_s3_client_put_object_bytes(
+external ffi.Pointer<NativeS3PutObjectResult>
+dart_edge_s3_client_put_object_bytes(
   int handle,
-  ffi.Pointer<ffi.Char> request_json,
+  ffi.Pointer<NativeS3PutObjectRequest> request,
   ffi.Pointer<ffi.Uint8> bytes_ptr,
   int bytes_len,
 );
 
-@ffi.Native<ffi.Pointer<ffi.Char> Function()>()
-external ffi.Pointer<ffi.Char> dart_edge_s3_client_take_last_error();
-
 final class NativeS3BytesResult extends ffi.Struct {
   external imp$1.NativeOwnedBytes bytes;
 
-  external ffi.Pointer<ffi.Char> result_json;
+  external NativeS3ObjectMetadata metadata;
+
+  external ffi.Pointer<ffi.Char> error;
+}
+
+final class NativeS3ClientConfig extends ffi.Struct {
+  external ffi.Pointer<ffi.Char> region;
+
+  external ffi.Pointer<ffi.Char> endpoint;
+
+  external ffi.Pointer<ffi.Char> access_key_id;
+
+  external ffi.Pointer<ffi.Char> secret_access_key;
+
+  external ffi.Pointer<ffi.Char> session_token;
+
+  @ffi.Bool()
+  external bool force_path_style;
+
+  @ffi.Bool()
+  external bool allow_http;
+}
+
+final class NativeS3CreateResult extends ffi.Struct {
+  @ffi.Int64()
+  external int handle;
+
+  external ffi.Pointer<ffi.Char> error;
+}
+
+final class NativeS3DeleteObjectResult extends ffi.Struct {
+  external ffi.Pointer<ffi.Char> bucket;
+
+  external ffi.Pointer<ffi.Char> key;
+
+  @ffi.Bool()
+  external bool has_delete_marker;
+
+  @ffi.Bool()
+  external bool delete_marker;
+
+  external ffi.Pointer<ffi.Char> version_id;
+
+  external ffi.Pointer<ffi.Char> error;
+}
+
+final class NativeS3ObjectMetadata extends ffi.Struct {
+  external ffi.Pointer<ffi.Char> bucket;
+
+  external ffi.Pointer<ffi.Char> key;
+
+  external ffi.Pointer<ffi.Char> version_id;
+
+  external ffi.Pointer<ffi.Char> e_tag;
+
+  external ffi.Pointer<ffi.Char> content_type;
+
+  @ffi.Int64()
+  external int content_length;
+
+  external ffi.Pointer<ffi.Char> cache_control;
+
+  external ffi.Pointer<ffi.Char> content_disposition;
+
+  external ffi.Pointer<ffi.Char> content_encoding;
+
+  external ffi.Pointer<ffi.Char> content_language;
+
+  external ffi.Pointer<NativeS3StringPair> metadata;
+
+  @ffi.IntPtr()
+  external int metadata_len;
+
+  external ffi.Pointer<ffi.Char> error;
+}
+
+final class NativeS3ObjectRef extends ffi.Struct {
+  external ffi.Pointer<ffi.Char> bucket;
+
+  external ffi.Pointer<ffi.Char> key;
+
+  external ffi.Pointer<ffi.Char> version_id;
+}
+
+final class NativeS3PutObjectRequest extends ffi.Struct {
+  external ffi.Pointer<ffi.Char> bucket;
+
+  external ffi.Pointer<ffi.Char> key;
+
+  external ffi.Pointer<ffi.Char> content_type;
+
+  external ffi.Pointer<ffi.Char> cache_control;
+
+  external ffi.Pointer<ffi.Char> content_disposition;
+
+  external ffi.Pointer<ffi.Char> content_encoding;
+
+  external ffi.Pointer<ffi.Char> content_language;
+
+  external ffi.Pointer<NativeS3StringPair> metadata;
+
+  @ffi.IntPtr()
+  external int metadata_len;
+}
+
+final class NativeS3PutObjectResult extends ffi.Struct {
+  external ffi.Pointer<ffi.Char> bucket;
+
+  external ffi.Pointer<ffi.Char> key;
+
+  external ffi.Pointer<ffi.Char> e_tag;
+
+  external ffi.Pointer<ffi.Char> version_id;
+
+  external ffi.Pointer<ffi.Char> error;
+}
+
+final class NativeS3StringPair extends ffi.Struct {
+  external ffi.Pointer<ffi.Char> key;
+
+  external ffi.Pointer<ffi.Char> value;
 }

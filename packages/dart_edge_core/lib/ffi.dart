@@ -9,8 +9,12 @@ export 'src/ffi/generated_bindings.dart'
     show NativeBytes, NativeOwnedBytes, NativePair;
 export 'src/ffi/native_value_helpers.dart'
     show
+        NativeAllocations,
         NativeStringPair,
+        NativeStringPairs,
         copyNativeOwnedBytes,
         copyNativePairs,
         decodeNativeUtf8,
-        maybeCopyNativeBytes;
+        maybeCopyNativeBytes,
+        optionalNativeString,
+        requiredNativeString;
