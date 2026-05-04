@@ -136,6 +136,10 @@ void main() {
     expect(usersTable, contains("if (id.isPresent) 'id': id.value,"));
     expect(
       usersTable,
+      contains("'created_at': createdAt.value?.toIso8601String(),"),
+    );
+    expect(
+      usersTable,
       contains(
         "'UsersRow(id: \$id, email: \$email, displayName: \$displayName, createdAt: \$createdAt)'",
       ),

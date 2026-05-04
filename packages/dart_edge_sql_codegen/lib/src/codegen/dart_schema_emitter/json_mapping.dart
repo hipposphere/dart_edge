@@ -320,11 +320,13 @@ Expression _fromJsonExpression(
 Expression _toJsonExpression(
   IntrospectedColumn column, {
   required Expression source,
+  bool sourceNullable = false,
 }) {
   final type = _normalizedValueType(column);
+  final valueNullable = column.nullable || sourceNullable;
 
   Expression wrapNullable(Expression expression) {
-    if (!column.nullable) {
+    if (!valueNullable) {
       return expression;
     }
     return CodeExpression(
@@ -333,14 +335,14 @@ Expression _toJsonExpression(
   }
 
   if (column.enumName != null) {
-    return column.nullable
+    return valueNullable
         ? CodeExpression(Code('${_code(source)}?.value'))
         : source.property('value');
   }
 
   return switch (type) {
     'DateTime' =>
-      column.nullable
+      valueNullable
           ? CodeExpression(Code('${_code(source)}?.toIso8601String()'))
           : source.property('toIso8601String').call(const []),
     'List<int>' => wrapNullable(
@@ -447,7 +449,7 @@ _MapEntrySpec _insertMapEntry(
   return _MapEntrySpec(
     key: column.name,
     value: encodeJson
-        ? _toJsonExpression(column, source: source)
+        ? _toJsonExpression(column, source: source, sourceNullable: isOptional)
         : _toDatabaseExpression(column, source: source),
     condition: isOptional ? refer(fieldName).property('isPresent') : null,
   );
@@ -462,7 +464,7 @@ _MapEntrySpec _updateMapEntry(
   return _MapEntrySpec(
     key: column.name,
     value: encodeJson
-        ? _toJsonExpression(column, source: source)
+        ? _toJsonExpression(column, source: source, sourceNullable: true)
         : _toDatabaseExpression(column, source: source),
     condition: refer(fieldName).property('isPresent'),
   );
