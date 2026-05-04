@@ -68,13 +68,39 @@ brew install pkg-config pjproject
 pkg-config --cflags --libs libpjproject
 ```
 
-Ubuntu or Debian:
+Ubuntu or Debian, when your distribution provides PJSIP packages:
 
 ```bash
 sudo apt update
 sudo apt install pkg-config libpjproject-dev
 pkg-config --cflags --libs libpjproject
 ```
+
+Some Ubuntu environments, including GitHub Actions runners, do not provide
+`libpjproject-dev` in the default repositories. In that case install PJSIP from
+source:
+
+```bash
+sudo apt update
+sudo apt install build-essential curl pkg-config
+
+version="2.16"
+curl -fsSL "https://github.com/pjsip/pjproject/archive/refs/tags/$version.tar.gz" \
+  -o "pjproject-$version.tar.gz"
+tar -xzf "pjproject-$version.tar.gz"
+cd "pjproject-$version"
+./configure --prefix=/usr/local
+make dep
+make
+sudo make install
+sudo ldconfig
+
+pkg-config --cflags --libs libpjproject
+```
+
+For CI jobs that only need to compile `dart_edge_sip` without linking PJSIP,
+the native asset workflow downloads pjproject sources, runs `./configure` to
+generate headers, and provides a temporary header-only `libpjproject.pc`.
 
 
 If `pkg-config` cannot find `libpjproject`, set `PKG_CONFIG_PATH` to the

@@ -96,12 +96,55 @@ jobs:
               sudo apt-get install -y pkg-config libdbus-1-dev
               ;;
             dart_edge_sip)
-              sudo apt-get install -y pkg-config libpjproject-dev
+              sudo apt-get install -y pkg-config curl build-essential
               ;;
             *)
               sudo apt-get install -y pkg-config
               ;;
           esac
+
+      - name: Prepare Linux PJSIP headers
+        if: ${{ matrix.target.os == 'linux' && inputs.package == 'dart_edge_sip' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="2.16"
+          prefix="$RUNNER_TEMP/pjproject-headers"
+          source="$RUNNER_TEMP/pjproject-$version"
+          archive="$RUNNER_TEMP/pjproject-$version.tar.gz"
+
+          curl -fsSL \
+            "https://github.com/pjsip/pjproject/archive/refs/tags/$version.tar.gz" \
+            -o "$archive"
+          mkdir -p "$source"
+          tar -xzf "$archive" --strip-components=1 -C "$source"
+
+          (
+            cd "$source"
+            ./configure \
+              --prefix="$prefix" \
+              --disable-sound \
+              --disable-video \
+              --disable-ffmpeg \
+              --disable-v4l2 \
+              --disable-libwebrtc
+          )
+
+          mkdir -p "$prefix/lib/pkgconfig"
+          cat > "$prefix/lib/pkgconfig/libpjproject.pc" <<EOF
+          prefix=$prefix
+          includedir=$source
+
+          Name: libpjproject
+          Description: PJSIP headers for unlinked dart_edge_sip native builds
+          Version: $version
+          Cflags: -I\${includedir}/pjlib/include -I\${includedir}/pjlib-util/include -I\${includedir}/pjnath/include -I\${includedir}/pjmedia/include -I\${includedir}/pjsip/include
+          Libs:
+          EOF
+
+          export PKG_CONFIG_PATH="$prefix/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
+          echo "PKG_CONFIG_PATH=$PKG_CONFIG_PATH" >> "$GITHUB_ENV"
+          pkg-config --cflags libpjproject
 
       - name: Install macOS native dependencies
         if: ${{ matrix.target.os == 'macos' && inputs.package == 'dart_edge_sip' }}
