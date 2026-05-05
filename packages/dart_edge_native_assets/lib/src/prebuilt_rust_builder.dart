@@ -118,11 +118,11 @@ final class DartEdgePrebuiltRustBuilder {
     final outputFile = File('${outputDirectory.path}/$artifactName');
     await cachedArtifact.copy(outputFile.path);
 
-    output.dependencies.addAll([
-      packageRoot.uri.resolve('$cratePath/Cargo.toml'),
-      cachedArtifact.uri,
-      cachedChecksum.uri,
-    ]);
+    // The downloaded prebuilt files live in a build cache and may be created
+    // during this hook invocation, especially in clean Docker builds. Declaring
+    // them as dependencies makes the hooks runner see its own writes as
+    // "modified during build", so only package inputs belong here.
+    output.dependencies.add(packageRoot.uri.resolve('$cratePath/Cargo.toml'));
     output.assets.code.add(
       CodeAsset(
         package: packageName,

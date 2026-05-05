@@ -1,3 +1,8 @@
+## 0.3.9
+
+- Bump the native artifact version to 0.1.2 for rebuilt prebuilts.
+- Require `dart_edge_native_assets` 0.1.2 and `dart_edge_sql` 0.3.8.
+
 ## 0.3.7
 
 - Publish Linux arm64 native artifacts.

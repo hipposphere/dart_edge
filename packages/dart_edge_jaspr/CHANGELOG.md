@@ -1,3 +1,7 @@
+## 0.3.2
+
+- Update development constraint for rebuilt HTTP runtime native artifacts.
+
 ## 0.3.0
 
 - Declare internal Dart Edge dependencies with the internal hosted registry.

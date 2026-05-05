@@ -1,3 +1,7 @@
+## 0.3.8
+
+- Update `dart_edge_http_server_runtime` constraint for rebuilt native artifacts.
+
 ## 0.3.7
 
 - Update `dart_edge_http_server_runtime` constraint for Linux arm64 native
