@@ -11,6 +11,9 @@ resolution: workspace
 
 dependencies:
   code_assets: ^1.0.0
+  dart_edge_bluetooth_protocol:
+    hosted: "https://registry.hippolabs.org/pub/internal-pub/"
+    version: ^0.1.0
   dart_edge_native_assets:
     hosted: "https://registry.hippolabs.org/pub/internal-pub/"
     version: ^0.1.2

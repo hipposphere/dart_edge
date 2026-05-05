@@ -1,4 +1,5 @@
-import '../gatt/bluetooth_gatt_application.dart';
+import 'package:dart_edge_bluetooth_protocol/dart_edge_bluetooth_protocol.dart';
+
 import 'bluetooth_advertisement_config.dart';
 
 final class BluetoothServerConfig {

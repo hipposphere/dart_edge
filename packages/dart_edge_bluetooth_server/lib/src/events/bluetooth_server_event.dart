@@ -1,6 +1,6 @@
 import 'dart:typed_data';
 
-import '../gatt/bluetooth_gatt_path.dart';
+import 'package:dart_edge_bluetooth_protocol/dart_edge_bluetooth_protocol.dart';
 
 enum BluetoothLinkType {
   le,

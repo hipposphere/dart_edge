@@ -1,9 +1,10 @@
 import 'dart:async';
 import 'dart:typed_data';
 
+import 'package:dart_edge_bluetooth_protocol/dart_edge_bluetooth_protocol.dart';
+
 import '../config/bluetooth_server_config.dart';
 import '../events/bluetooth_server_event.dart';
-import '../gatt/bluetooth_gatt_path.dart';
 import '../native/dart_edge_bluetooth_server_native.dart';
 
 final class DartEdgeBluetoothServer {
