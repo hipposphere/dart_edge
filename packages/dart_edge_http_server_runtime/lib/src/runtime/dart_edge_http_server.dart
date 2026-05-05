@@ -116,6 +116,7 @@ class DartEdge<TServices> extends Router<TServices> {
       routesJson: compiledRoutes.nativeManifestJson(
         schemaRegistry: _schemaRegistry,
       ),
+      middlewaresJson: _middlewaresJson(middlewares),
       onTransportEvent: (eventKind, eventId) async {
         await _handleTransportEvent(eventKind, eventId, compiledRoutes);
       },
@@ -538,6 +539,7 @@ final class _RustTransportSession {
     required int requestedPort,
     required int workers,
     required String routesJson,
+    required String middlewaresJson,
     required Future<void> Function(int eventKind, int eventId) onTransportEvent,
   }) async {
     late final NativeCallable<_NativeTransportEvent> callback;
@@ -554,6 +556,7 @@ final class _RustTransportSession {
       requestedPort,
       workers: workers,
       routesJson: routesJson,
+      middlewaresJson: middlewaresJson,
       callback: callback.nativeFunction,
     );
     if (port <= 0) {
@@ -572,6 +575,41 @@ final class _RustTransportSession {
     DartEdgeNative.stopServer();
     callback.close();
   }
+}
+
+String _middlewaresJson(List<RustMiddleware> middlewares) {
+  return jsonEncode({
+    'middlewares': middlewares.map(_middlewareJson).toList(growable: false),
+  });
+}
+
+Map<String, Object?> _middlewareJson(RustMiddleware middleware) {
+  return {
+    'name': middleware.name,
+    if (middleware.configuration case final configuration?)
+      'configuration': _middlewareConfigurationJson(configuration),
+  };
+}
+
+Map<String, Object?> _middlewareConfigurationJson(
+  RustMiddlewareConfiguration configuration,
+) {
+  return switch (configuration) {
+    RustCorsMiddlewareConfiguration() => {
+      'allowOrigins': configuration.allowOrigins,
+      'allowHeaders': configuration.allowHeaders,
+    },
+    RustTracingMiddlewareConfiguration() => {
+      if (configuration.openTelemetry case final openTelemetry?)
+        'openTelemetry': {
+          'serviceName': openTelemetry.serviceName,
+          'endpoint': openTelemetry.endpoint,
+        },
+    },
+    RustBodyLimitMiddlewareConfiguration() => {
+      'maxBytes': configuration.maxBytes,
+    },
+  };
 }
 
 final class _ActiveWebSocketSession {

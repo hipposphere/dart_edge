@@ -9,7 +9,7 @@ use axum::body::{Body, Bytes};
 use axum::extract::FromRequestParts;
 use axum::extract::Request;
 use axum::extract::ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade, close_code};
-use axum::http::{HeaderMap, HeaderName, HeaderValue, Response, StatusCode, header};
+use axum::http::{HeaderMap, HeaderName, HeaderValue, Method, Response, StatusCode, header};
 use axum::response::IntoResponse;
 use axum::routing::any;
 use dart_edge_core::{
@@ -24,8 +24,9 @@ use once_cell::sync::Lazy;
 use serde::Deserialize;
 use tokio::net::TcpListener;
 use tokio::sync::{mpsc, oneshot};
+use tower_http::cors::{Any, CorsLayer};
 
-const DART_EDGE_HTTP_SERVER_RUNTIME_NATIVE_ABI_VERSION: i32 = 10;
+const DART_EDGE_HTTP_SERVER_RUNTIME_NATIVE_ABI_VERSION: i32 = 11;
 
 type TransportEventCallback = extern "C" fn(i32, i64);
 
@@ -369,6 +370,28 @@ struct CompiledManifest {
     schemas: HashMap<String, jsonschema::Validator>,
 }
 
+#[derive(Deserialize)]
+struct MiddlewareManifest {
+    #[serde(default)]
+    middlewares: Vec<MiddlewareManifestEntry>,
+}
+
+#[derive(Deserialize)]
+struct MiddlewareManifestEntry {
+    name: String,
+    #[serde(default)]
+    configuration: serde_json::Value,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CorsMiddlewareConfiguration {
+    #[serde(default)]
+    allow_origins: Vec<String>,
+    #[serde(default)]
+    allow_headers: Vec<String>,
+}
+
 #[repr(i32)]
 #[derive(Clone, Copy)]
 enum TransportEventKind {
@@ -389,6 +412,7 @@ pub extern "C" fn dart_edge_http_server_runtime_start_server(
     port: i64,
     worker_count: i64,
     routes_json: *const c_char,
+    middlewares_json: *const c_char,
     callback: TransportEventCallback,
 ) -> i64 {
     let Some(host) = (unsafe { read_c_string(host) }) else {
@@ -397,11 +421,21 @@ pub extern "C" fn dart_edge_http_server_runtime_start_server(
     let Some(routes_json) = (unsafe { read_c_string(routes_json) }) else {
         return -1;
     };
+    let Some(middlewares_json) = (unsafe { read_c_string(middlewares_json) }) else {
+        return -1;
+    };
 
     let compiled_manifest = match compile_manifest(&routes_json) {
         Ok(manifest) => manifest,
         Err(error) => {
             eprintln!("dart_edge_http_server_runtime route manifest parse failed: {error}");
+            return -1;
+        }
+    };
+    let cors_layer = match compile_cors_layer(&middlewares_json) {
+        Ok(layer) => layer,
+        Err(error) => {
+            eprintln!("dart_edge_http_server_runtime middleware manifest parse failed: {error}");
             return -1;
         }
     };
@@ -448,7 +482,10 @@ pub extern "C" fn dart_edge_http_server_runtime_start_server(
             };
             let _ = ready_tx.send(Ok(local_port));
 
-            let app = Router::new().fallback(any(handle_request));
+            let mut app = Router::new().fallback(any(handle_request));
+            if let Some(cors_layer) = cors_layer {
+                app = app.layer(cors_layer);
+            }
             let server = axum::serve(listener, app).with_graceful_shutdown(async move {
                 let _ = shutdown_rx.await;
             });
@@ -1399,6 +1436,75 @@ fn compile_manifest(routes_json: &str) -> Result<CompiledManifest, String> {
         .collect::<Result<Vec<_>, _>>()?;
 
     Ok(CompiledManifest { routes, schemas })
+}
+
+fn compile_cors_layer(middlewares_json: &str) -> Result<Option<CorsLayer>, String> {
+    let manifest: MiddlewareManifest =
+        serde_json::from_str(middlewares_json).map_err(|error| error.to_string())?;
+
+    for middleware in manifest.middlewares {
+        if middleware.name != "cors" {
+            continue;
+        }
+
+        let configuration: CorsMiddlewareConfiguration =
+            serde_json::from_value(middleware.configuration).map_err(|error| error.to_string())?;
+        return Ok(Some(cors_layer(configuration)?));
+    }
+
+    Ok(None)
+}
+
+fn cors_layer(configuration: CorsMiddlewareConfiguration) -> Result<CorsLayer, String> {
+    let mut layer = CorsLayer::new().allow_methods([
+        Method::GET,
+        Method::POST,
+        Method::PUT,
+        Method::PATCH,
+        Method::DELETE,
+        Method::HEAD,
+        Method::OPTIONS,
+    ]);
+
+    layer = if configuration.allow_origins.is_empty()
+        || configuration
+            .allow_origins
+            .iter()
+            .any(|origin| origin == "*")
+    {
+        layer.allow_origin(Any)
+    } else {
+        let origins = configuration
+            .allow_origins
+            .iter()
+            .map(|origin| {
+                HeaderValue::from_str(origin)
+                    .map_err(|error| format!("Invalid CORS origin '{origin}': {error}"))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        layer.allow_origin(origins)
+    };
+
+    layer = if configuration.allow_headers.is_empty()
+        || configuration
+            .allow_headers
+            .iter()
+            .any(|header| header == "*")
+    {
+        layer.allow_headers(Any)
+    } else {
+        let headers = configuration
+            .allow_headers
+            .iter()
+            .map(|header| {
+                HeaderName::try_from(header.as_str())
+                    .map_err(|error| format!("Invalid CORS header '{header}': {error}"))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        layer.allow_headers(headers)
+    };
+
+    Ok(layer)
 }
 
 fn compile_schemas(

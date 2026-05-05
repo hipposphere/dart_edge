@@ -43,7 +43,7 @@ abstract final class DartEdgeNative {
       gen.dart_edge_http_server_runtime_native_abi_version();
 
   /// Whether the current process can load the bundled runtime asset.
-  static bool get hasBundledRuntime => abiVersion >= 10;
+  static bool get hasBundledRuntime => abiVersion >= 11;
 
   /// Starts the native HTTP server.
   static int startServer(
@@ -51,10 +51,12 @@ abstract final class DartEdgeNative {
     int port, {
     required int workers,
     required String routesJson,
+    required String middlewaresJson,
     required Pointer<NativeFunction<_NativeTransportEvent>> callback,
   }) {
     final hostPtr = host.toNativeUtf8();
     final routesJsonPtr = routesJson.toNativeUtf8();
+    final middlewaresJsonPtr = middlewaresJson.toNativeUtf8();
 
     try {
       return gen.dart_edge_http_server_runtime_start_server(
@@ -62,11 +64,13 @@ abstract final class DartEdgeNative {
         port,
         workers,
         routesJsonPtr.cast<Char>(),
+        middlewaresJsonPtr.cast<Char>(),
         callback,
       );
     } finally {
       calloc.free(hostPtr);
       calloc.free(routesJsonPtr);
+      calloc.free(middlewaresJsonPtr);
     }
   }
 

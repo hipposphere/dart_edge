@@ -101,6 +101,7 @@ external bool dart_edge_http_server_runtime_send_sse_chunk(
     ffi.Int64,
     ffi.Int64,
     ffi.Pointer<ffi.Char>,
+    ffi.Pointer<ffi.Char>,
     dart_edge_http_server_runtime_transport_event_callback_t,
   )
 >()
@@ -109,6 +110,7 @@ external int dart_edge_http_server_runtime_start_server(
   int port,
   int worker_count,
   ffi.Pointer<ffi.Char> routes_json,
+  ffi.Pointer<ffi.Char> middlewares_json,
   dart_edge_http_server_runtime_transport_event_callback_t callback,
 );
 

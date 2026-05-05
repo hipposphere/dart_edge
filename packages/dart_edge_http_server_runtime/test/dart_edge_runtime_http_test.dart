@@ -55,6 +55,83 @@ void main() {
     expect(body, containsPair('status', 'ok'));
   });
 
+  test('handles CORS preflight and adds CORS headers to responses', () async {
+    final app = DartEdge<void>(
+      services: () {},
+      middlewares: [
+        RustMiddleware.cors(
+          allowOrigins: const ['http://localhost:5173'],
+          allowHeaders: const ['content-type', 'authorization'],
+        ),
+      ],
+    );
+    app.post('/users', handler: (_) => const {'status': 'created'});
+
+    final server = await app.listen(port: 0);
+    final client = HttpClient();
+
+    addTearDown(() async {
+      client.close(force: true);
+      await server.close();
+    });
+
+    final preflightRequest = await client.openUrl(
+      'OPTIONS',
+      Uri.http('127.0.0.1:${server.port}', '/users'),
+    );
+    preflightRequest.headers
+      ..set('origin', 'http://localhost:5173')
+      ..set(HttpHeaders.accessControlRequestMethodHeader, 'POST')
+      ..set(
+        HttpHeaders.accessControlRequestHeadersHeader,
+        'content-type, authorization',
+      );
+    final preflightResponse = await preflightRequest.close();
+
+    expect(preflightResponse.statusCode, HttpStatus.ok);
+    expect(
+      preflightResponse.headers.value(
+        HttpHeaders.accessControlAllowOriginHeader,
+      ),
+      'http://localhost:5173',
+    );
+    expect(
+      preflightResponse.headers.value(
+        HttpHeaders.accessControlAllowMethodsHeader,
+      ),
+      contains('POST'),
+    );
+    expect(
+      preflightResponse.headers.value(
+        HttpHeaders.accessControlAllowMethodsHeader,
+      ),
+      contains('OPTIONS'),
+    );
+    expect(
+      _csvHeaderValues(
+        preflightResponse.headers.value(
+          HttpHeaders.accessControlAllowHeadersHeader,
+        ),
+      ),
+      containsAll(['content-type', 'authorization']),
+    );
+
+    final postRequest = await client.postUrl(
+      Uri.http('127.0.0.1:${server.port}', '/users'),
+    );
+    postRequest.headers
+      ..set('origin', 'http://localhost:5173')
+      ..contentType = ContentType.json;
+    postRequest.write('{}');
+    final postResponse = await postRequest.close();
+
+    expect(postResponse.statusCode, HttpStatus.ok);
+    expect(
+      postResponse.headers.value(HttpHeaders.accessControlAllowOriginHeader),
+      'http://localhost:5173',
+    );
+  });
+
   test('supports ctx.req and ctx.res overrides with a returned body', () async {
     final app = DartEdge<void>(services: () {});
     app.get(
@@ -495,6 +572,15 @@ void main() {
     expect(contractResponse.statusCode, HttpStatus.forbidden);
     expect(await utf8.decoder.bind(contractResponse).join(), 'contract');
   });
+}
+
+List<String> _csvHeaderValues(String? value) {
+  return value
+          ?.split(',')
+          .map((part) => part.trim().toLowerCase())
+          .where((part) => part.isNotEmpty)
+          .toList(growable: false) ??
+      const <String>[];
 }
 
 final class _GuardedContractRoute extends HttpRouteDefinition<void, String> {

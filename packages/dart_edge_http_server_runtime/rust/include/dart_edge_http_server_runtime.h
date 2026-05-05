@@ -68,6 +68,7 @@ int64_t dart_edge_http_server_runtime_start_server(
     int64_t port,
     int64_t worker_count,
     const char* routes_json,
+    const char* middlewares_json,
     dart_edge_http_server_runtime_transport_event_callback_t callback);
 
 void dart_edge_http_server_runtime_stop_server(void);
