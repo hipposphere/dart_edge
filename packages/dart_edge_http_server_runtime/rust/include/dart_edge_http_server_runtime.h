@@ -39,6 +39,7 @@ typedef struct NativeWebSocketConnection {
 
 typedef struct NativeWebSocketMessage {
   int64_t session_id;
+  uint8_t kind;
   NativeBytes body;
 } NativeWebSocketMessage;
 
@@ -115,6 +116,10 @@ void dart_edge_http_server_runtime_free_web_socket_message(
 bool dart_edge_http_server_runtime_web_socket_send_text(
     int64_t session_id,
     const char* text);
+
+bool dart_edge_http_server_runtime_web_socket_send_binary(
+    int64_t session_id,
+    NativeBytes body);
 
 bool dart_edge_http_server_runtime_web_socket_close(
     int64_t session_id,

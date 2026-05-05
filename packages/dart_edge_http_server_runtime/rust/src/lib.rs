@@ -106,6 +106,7 @@ pub struct NativeWebSocketConnection {
 #[repr(C)]
 pub struct NativeWebSocketMessage {
     session_id: i64,
+    kind: u8,
     body: NativeBytes,
 }
 
@@ -212,11 +213,19 @@ struct WebSocketConnection {
 
 struct WebSocketIncomingMessage {
     session_id: i64,
-    text: String,
+    kind: WebSocketMessageKind,
+    body: Vec<u8>,
+}
+
+#[derive(Clone, Copy)]
+enum WebSocketMessageKind {
+    Text = 1,
+    Binary = 2,
 }
 
 enum WebSocketCommand {
     SendText(String),
+    SendBinary(Vec<u8>),
     Close {
         code: Option<u16>,
         reason: Option<String>,
@@ -782,6 +791,27 @@ pub extern "C" fn dart_edge_http_server_runtime_web_socket_send_text(
 }
 
 #[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_http_server_runtime_web_socket_send_binary(
+    session_id: i64,
+    body: NativeBytes,
+) -> bool {
+    let Some(body) = (unsafe { read_native_bytes(body) }) else {
+        return false;
+    };
+    let command_tx = {
+        let sessions = WEB_SOCKET_SESSIONS.lock().unwrap();
+        let Some(session) = sessions.get(&session_id) else {
+            return false;
+        };
+        session.command_tx.clone()
+    };
+
+    command_tx
+        .send(WebSocketCommand::SendBinary(body.to_vec()))
+        .is_ok()
+}
+
+#[unsafe(no_mangle)]
 pub extern "C" fn dart_edge_http_server_runtime_web_socket_close(
     session_id: i64,
     code: i32,
@@ -1248,30 +1278,22 @@ async fn handle_web_socket_session(
                             session_id,
                             WebSocketIncomingMessage {
                                 session_id,
-                                text: text.to_string(),
+                                kind: WebSocketMessageKind::Text,
+                                body: text.as_str().as_bytes().to_vec(),
                             },
                         );
                         notify_transport_event(TransportEventKind::WebSocketMessageReady, session_id);
                     }
                     Some(Ok(Message::Binary(bytes))) => {
-                        match String::from_utf8(bytes.to_vec()) {
-                            Ok(text) => {
-                                push_web_socket_message(
-                                    session_id,
-                                    WebSocketIncomingMessage { session_id, text },
-                                );
-                                notify_transport_event(TransportEventKind::WebSocketMessageReady, session_id);
-                            }
-                            Err(_) => {
-                                let _ = try_send_web_socket_close(
-                                    &mut socket,
-                                    Some(close_code::UNSUPPORTED),
-                                    Some("Binary WebSocket frames must be UTF-8 JSON.".to_string()),
-                                )
-                                .await;
-                                break;
-                            }
-                        }
+                        push_web_socket_message(
+                            session_id,
+                            WebSocketIncomingMessage {
+                                session_id,
+                                kind: WebSocketMessageKind::Binary,
+                                body: bytes.to_vec(),
+                            },
+                        );
+                        notify_transport_event(TransportEventKind::WebSocketMessageReady, session_id);
                     }
                     Some(Ok(Message::Close(_))) | None => break,
                     Some(Ok(Message::Ping(_))) | Some(Ok(Message::Pong(_))) => {}
@@ -1282,6 +1304,11 @@ async fn handle_web_socket_session(
                 match command {
                     Some(WebSocketCommand::SendText(text)) => {
                         if socket.send(Message::Text(text.into())).await.is_err() {
+                            break;
+                        }
+                    }
+                    Some(WebSocketCommand::SendBinary(body)) => {
+                        if socket.send(Message::Binary(body.into())).await.is_err() {
                             break;
                         }
                     }
@@ -1714,9 +1741,10 @@ impl NativeWebSocketConnectionHandle {
 
 impl NativeWebSocketMessageHandle {
     fn from_message(message: WebSocketIncomingMessage) -> Self {
-        let body = OwnedBytes::from_string(message.text);
+        let body = OwnedBytes::from_vec(message.body);
         let native_message = NativeWebSocketMessage {
             session_id: message.session_id,
+            kind: message.kind as u8,
             body: body.as_native(),
         };
 

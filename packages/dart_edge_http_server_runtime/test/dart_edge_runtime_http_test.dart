@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:dart_edge_http_server_runtime/dart_edge_http_server_runtime.dart';
 import 'package:test/test.dart';
@@ -418,6 +419,54 @@ void main() {
       'roomId': 'alpha',
       'echo': 'hello',
     });
+  });
+
+  test('websocket routes can exchange text and binary frames', () async {
+    final app = DartEdge<void>(services: () {});
+    app.websocket(
+      '/audio',
+      onConnect: (socket) async {
+        await socket.sendText('ready');
+
+        await for (final frame in socket.messages.frames()) {
+          switch (frame.kind) {
+            case WebSocketMessageKind.text:
+              await socket.sendText('text:${frame.text}');
+            case WebSocketMessageKind.binary:
+              await socket.sendBinary([
+                frame.bytes.length,
+                ...frame.bytes.reversed,
+              ]);
+              await socket.close();
+          }
+        }
+      },
+    );
+
+    final server = await app.listen(port: 0);
+    final socket = await WebSocket.connect(
+      'ws://127.0.0.1:${server.port}/audio',
+    );
+    final messages = StreamIterator<dynamic>(socket);
+
+    addTearDown(() async {
+      await messages.cancel();
+      await socket.close();
+      await server.close();
+    });
+
+    expect(await messages.moveNext(), isTrue);
+    expect(messages.current, 'ready');
+
+    socket.add('hello');
+
+    expect(await messages.moveNext(), isTrue);
+    expect(messages.current, 'text:hello');
+
+    socket.add(Uint8List.fromList([1, 2, 3, 4]));
+
+    expect(await messages.moveNext(), isTrue);
+    expect(messages.current, [4, 4, 3, 2, 1]);
   });
 
   test('websocket guards can reject the upgrade handshake', () async {

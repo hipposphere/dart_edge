@@ -154,6 +154,12 @@ external bool dart_edge_http_server_runtime_web_socket_close(
   ffi.Pointer<ffi.Char> reason,
 );
 
+@ffi.Native<ffi.Bool Function(ffi.Int64, imp$1.NativeBytes)>()
+external bool dart_edge_http_server_runtime_web_socket_send_binary(
+  int session_id,
+  imp$1.NativeBytes body,
+);
+
 @ffi.Native<ffi.Bool Function(ffi.Int64, ffi.Pointer<ffi.Char>)>()
 external bool dart_edge_http_server_runtime_web_socket_send_text(
   int session_id,
@@ -276,6 +282,9 @@ final class NativeWebSocketConnection extends ffi.Struct {
 final class NativeWebSocketMessage extends ffi.Struct {
   @ffi.Int64()
   external int session_id;
+
+  @ffi.Uint8()
+  external int kind;
 
   external imp$1.NativeBytes body;
 }

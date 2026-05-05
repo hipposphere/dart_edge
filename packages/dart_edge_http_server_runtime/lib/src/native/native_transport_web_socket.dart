@@ -1,4 +1,5 @@
 import 'dart:ffi';
+import 'dart:typed_data';
 
 import 'package:dart_edge_core/ffi.dart' as core_ffi;
 
@@ -23,11 +24,18 @@ final class NativeWebSocketConnection {
 }
 
 final class NativeWebSocketMessage {
-  const NativeWebSocketMessage({required this.sessionId, required this.text});
+  const NativeWebSocketMessage({
+    required this.sessionId,
+    required this.kind,
+    required this.body,
+  });
 
   final int sessionId;
-  final String text;
+  final NativeWebSocketMessageKind kind;
+  final Uint8List body;
 }
+
+enum NativeWebSocketMessageKind { text, binary }
 
 NativeWebSocketConnection decodeNativeWebSocketConnection(
   Pointer<gen.NativeWebSocketConnection> connectionPtr,
@@ -52,7 +60,12 @@ NativeWebSocketMessage decodeNativeWebSocketMessage(
   final message = messagePtr.ref;
   return NativeWebSocketMessage(
     sessionId: message.session_id,
-    text: core_ffi.decodeNativeUtf8(message.body),
+    kind: switch (message.kind) {
+      1 => NativeWebSocketMessageKind.text,
+      2 => NativeWebSocketMessageKind.binary,
+      _ => throw StateError('Unknown WebSocket message kind ${message.kind}.'),
+    },
+    body: core_ffi.maybeCopyNativeBytes(message.body) ?? Uint8List(0),
   );
 }
 

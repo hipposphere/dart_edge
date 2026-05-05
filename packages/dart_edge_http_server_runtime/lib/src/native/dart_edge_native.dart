@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:ffi';
+import 'dart:typed_data';
 
 import 'package:dart_edge_core/dart_edge_core.dart';
 import 'package:dart_edge_core/ffi.dart' as core_ffi;
@@ -220,6 +221,26 @@ abstract final class DartEdgeNative {
       );
     } finally {
       calloc.free(textPtr);
+    }
+  }
+
+  /// Sends a binary frame over an active WebSocket session.
+  static bool webSocketSendBinary(int sessionId, List<int> body) {
+    final bytes = Uint8List.fromList(body);
+    final bodyPtr = calloc<Uint8>(bytes.length);
+    final nativeBytesPtr = calloc<core_ffi.NativeBytes>();
+    try {
+      bodyPtr.asTypedList(bytes.length).setAll(0, bytes);
+      nativeBytesPtr.ref
+        ..ptr = bodyPtr
+        ..len = bytes.length;
+      return gen.dart_edge_http_server_runtime_web_socket_send_binary(
+        sessionId,
+        nativeBytesPtr.ref,
+      );
+    } finally {
+      calloc.free(nativeBytesPtr);
+      calloc.free(bodyPtr);
     }
   }
 

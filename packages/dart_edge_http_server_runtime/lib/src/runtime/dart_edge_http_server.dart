@@ -6,6 +6,7 @@ import 'dart:io';
 import 'package:dart_edge_core/dart_edge_core.dart';
 
 import '../native/dart_edge_native.dart';
+import '../native/native_transport_web_socket.dart';
 import 'compiled_route_table.dart';
 import 'dart_edge_codec.dart';
 import 'dart_edge_server.dart';
@@ -350,16 +351,34 @@ class DartEdge<TServices> extends Router<TServices> {
           ),
         );
 
-    final activeSession = _ActiveWebSocketSession(StreamController<String>());
+    final activeSession = _ActiveWebSocketSession(
+      StreamController<WebSocketMessage>(),
+    );
     _activeWebSocketSessions[sessionId] = activeSession;
 
     final socket = WebSocketContext<TServices>.fromRequest(
       request: requestContext,
       messages: IncomingWebSocketMessages(activeSession.messages.stream),
+      sendText: (value) async {
+        if (!DartEdgeNative.webSocketSendText(sessionId, value)) {
+          throw StateError(
+            'Failed to send WebSocket text frame for $sessionId.',
+          );
+        }
+      },
+      sendBinary: (value) async {
+        if (!DartEdgeNative.webSocketSendBinary(sessionId, value)) {
+          throw StateError(
+            'Failed to send WebSocket binary frame for $sessionId.',
+          );
+        }
+      },
       sendJson: (value) async {
         final encoded = jsonEncode(_normalizeWebSocketJson(value));
         if (!DartEdgeNative.webSocketSendText(sessionId, encoded)) {
-          throw StateError('Failed to send WebSocket frame for $sessionId.');
+          throw StateError(
+            'Failed to send WebSocket JSON frame for $sessionId.',
+          );
         }
       },
       close: ([code, reason]) async {
@@ -396,7 +415,14 @@ class DartEdge<TServices> extends Router<TServices> {
       if (message == null) {
         return;
       }
-      session.messages.add(message.text);
+      session.messages.add(switch (message.kind) {
+        NativeWebSocketMessageKind.text => WebSocketMessage.text(
+          utf8.decode(message.body),
+        ),
+        NativeWebSocketMessageKind.binary => WebSocketMessage.binary(
+          message.body,
+        ),
+      });
     }
   }
 
@@ -615,6 +641,6 @@ Map<String, Object?> _middlewareConfigurationJson(
 final class _ActiveWebSocketSession {
   _ActiveWebSocketSession(this.messages);
 
-  final StreamController<String> messages;
+  final StreamController<WebSocketMessage> messages;
   Future<void>? task;
 }

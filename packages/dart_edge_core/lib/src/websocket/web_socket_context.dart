@@ -1,8 +1,13 @@
+import 'dart:typed_data';
+
 import '../context/request_context.dart';
 import '../context/request_input.dart';
 import '../context/request_telemetry.dart';
 import 'incoming_web_socket_messages.dart';
+import 'web_socket_message.dart';
 
+typedef WebSocketTextSender = Future<void> Function(String value);
+typedef WebSocketBinarySender = Future<void> Function(List<int> value);
 typedef WebSocketJsonSender = Future<void> Function(Object? value);
 typedef WebSocketCloser = Future<void> Function([int? code, String? reason]);
 
@@ -13,6 +18,8 @@ final class WebSocketContext<TServices> {
     this.req = RequestInput.empty,
     this.messages = const IncomingWebSocketMessages(),
     this.telemetry = const RequestTelemetry(),
+    WebSocketTextSender? sendText,
+    WebSocketBinarySender? sendBinary,
     WebSocketJsonSender? sendJson,
     WebSocketCloser? close,
   }) : _requestContext = RequestContext<TServices>(
@@ -20,18 +27,24 @@ final class WebSocketContext<TServices> {
          req: req,
          telemetry: telemetry,
        ),
+       _sendText = sendText,
+       _sendBinary = sendBinary,
        _sendJson = sendJson,
        _close = close;
 
   WebSocketContext.fromRequest({
     required RequestContext<TServices> request,
     this.messages = const IncomingWebSocketMessages(),
+    WebSocketTextSender? sendText,
+    WebSocketBinarySender? sendBinary,
     WebSocketJsonSender? sendJson,
     WebSocketCloser? close,
   }) : services = request.services,
        req = request.req,
        telemetry = request.telemetry,
        _requestContext = request,
+       _sendText = sendText,
+       _sendBinary = sendBinary,
        _sendJson = sendJson,
        _close = close;
 
@@ -48,6 +61,8 @@ final class WebSocketContext<TServices> {
   final RequestTelemetry telemetry;
 
   final RequestContext<TServices> _requestContext;
+  final WebSocketTextSender? _sendText;
+  final WebSocketBinarySender? _sendBinary;
   final WebSocketJsonSender? _sendJson;
   final WebSocketCloser? _close;
 
@@ -63,6 +78,34 @@ final class WebSocketContext<TServices> {
   /// Stores a request-scoped extension by its runtime type.
   void put<T>(T value) {
     _requestContext.put<T>(value);
+  }
+
+  /// Sends one text frame to the client.
+  Future<void> sendText(String value) async {
+    final sendText = _sendText;
+    if (sendText == null) {
+      return;
+    }
+    await sendText(value);
+  }
+
+  /// Sends one binary frame to the client.
+  Future<void> sendBinary(List<int> value) async {
+    final sendBinary = _sendBinary;
+    if (sendBinary == null) {
+      return;
+    }
+    await sendBinary(Uint8List.fromList(value));
+  }
+
+  /// Sends one text or binary frame to the client.
+  Future<void> sendFrame(WebSocketMessage message) async {
+    switch (message.kind) {
+      case WebSocketMessageKind.text:
+        await sendText(message.text);
+      case WebSocketMessageKind.binary:
+        await sendBinary(message.bytes);
+    }
   }
 
   /// Sends a JSON value to the client.
