@@ -45,6 +45,8 @@ For local-only development, omit `host:` and the runtime stays bound to
   request and response shape
 - `RequestContext` gives handlers access to services, decoded request values, and
   request-scoped extensions
+- `WebSocketContext` gives WebSocket handlers typed text, JSON, binary, and
+  mixed-frame streams plus matching send helpers
 - `JsonSchema`, including `JsonSchema.ref`, and `JsonSchemaRegistry` connect the
   runtime to generated JSON Schema metadata
 - `RustMiddleware` configures the transport-layer middleware stack
@@ -67,6 +69,26 @@ app.post('/upload', handler: (ctx) async {
 
 `nativeBody` is a borrowed view and is only valid while the current request is
 being handled. Copy bytes if data needs to outlive the handler.
+
+## WebSocket Frames
+
+WebSocket routes can handle JSON control messages, raw text, binary streams, or
+mixed protocols:
+
+```dart
+app.websocket('/stream', onConnect: (socket) async {
+  await socket.sendText('ready');
+
+  await for (final frame in socket.messages.frames()) {
+    switch (frame.kind) {
+      case WebSocketMessageKind.text:
+        await socket.sendJson({'echo': frame.text});
+      case WebSocketMessageKind.binary:
+        await socket.sendBinary(frame.bytes);
+    }
+  }
+});
+```
 
 See [example/native_probe.dart](example/native_probe.dart) for the native asset
 probe and [../dart_edge_http_server/example/simple_http_server.dart](../dart_edge_http_server/example/simple_http_server.dart)

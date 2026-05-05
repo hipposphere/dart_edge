@@ -196,7 +196,7 @@ abstract final class DartEdgeNative {
     }
   }
 
-  /// Reads one queued WebSocket text message from the native runtime.
+  /// Reads one queued WebSocket message from the native runtime.
   static NativeWebSocketMessage? takeWebSocketMessage(int sessionId) {
     final messagePtr = gen
         .dart_edge_http_server_runtime_take_web_socket_message(sessionId);

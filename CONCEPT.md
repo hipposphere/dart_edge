@@ -57,8 +57,8 @@ native integration model.
 The HTTP runtime is the real delivered center today. The HTTP codegen package
 now exposes annotations, generated route artifacts, schema registry output,
 runtime codec registry skeletons, and client-generation pieces. A full
-analyzer-backed builder remains a later layer. WebSocket contract types exist,
-but WebSocket transport is not yet the shipped path.
+analyzer-backed builder remains a later layer. WebSocket routes are supported
+with explicit text, JSON, and binary frame handling.
 
 ## Product Position
 
@@ -654,27 +654,29 @@ That is enough to describe a real platform foundation.
 
 ### Later, after the HTTP core is excellent
 
-- full WebSocket transport on top of the existing contract surface
-- streaming-oriented protocols such as SSE and multipart handling
+- richer generated contracts for WebSocket subprotocols and message schemas
+- additional streaming-oriented protocols beyond SSE and multipart handling
 - additional focused native service packages where the boundary is justified
 
 The important sequencing rule is simple: the HTTP core, contracts, schemas, and
 codegen story should become excellent before the platform promises too many
 protocols.
 
-## WebSockets Need Honest Framing
+## WebSockets Need Explicit Framing
 
-The runtime already exposes WebSocket contract and context types, but the
-transport implementation is not the current delivered center of the repo.
+The runtime exposes WebSocket route contracts and a concrete transport. The
+handler surface is frame-oriented instead of JSON-only:
 
-The concept should say this plainly:
+- `socket.messages.text()` reads incoming text frames
+- `socket.messages.json<T>()` decodes JSON from incoming text frames
+- `socket.messages.binary()` reads incoming binary frames
+- `socket.messages.frames()` reads mixed text and binary frames as
+  `WebSocketMessage` values
+- `socket.sendText`, `sendJson`, `sendBinary`, and `sendFrame` write explicit
+  frame types
 
-- WebSocket API surface exists as a planned contract
-- HTTP is the real current transport path
-- WebSocket transport remains a later execution track
-
-That is a better document than one that talks about WebSockets as if they are
-already fully shipped.
+This keeps binary protocols such as audio streams out of the JSON abstraction
+while preserving the ergonomic JSON helper for chat/control channels.
 
 ## Non-Goals
 

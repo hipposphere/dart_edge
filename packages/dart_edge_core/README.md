@@ -19,8 +19,8 @@ same contract model.
   `HttpMethod` for explicit HTTP contracts
 - `JsonEncodable`, `JsonSchema`, and `JsonSchemaRegistry` for schema-driven
   request and response metadata
-- `WebSocketOptions`, `WebSocketContext`, and related route definitions for the
-  planned WebSocket surface
+- `WebSocketOptions`, `WebSocketContext`, `WebSocketMessage`, and related route
+  definitions for text, JSON, and binary WebSocket routes
 
 ## Quick Start
 

@@ -15,8 +15,8 @@ lower-level runtime, codegen, auth, SQL, audio, and benchmark packages.
 The current delivered center is HTTP. The HTTP codegen package exposes
 annotations, normalized route artifact generation, schema registry generation,
 runtime codec registry skeletons, and client-generation pieces. A full
-analyzer-backed builder remains a later layer. WebSocket contract types exist,
-but WebSocket transport is not the shipped path yet.
+analyzer-backed builder remains a later layer. WebSocket routes are also
+supported by the runtime, including text, JSON, and binary frames.
 
 ## Quick Start
 
@@ -70,6 +70,23 @@ deployment, pass a real bind address such as `0.0.0.0` or `::`.
 Import `package:dart_edge_http_server/dart_edge_http_server.dart` when you want the normal developer
 experience: the runtime surface from `dart_edge_http_server_runtime` plus
 app-facing helper APIs such as `OpenApiHelpers`.
+
+## WebSocket Frames
+
+WebSocket handlers receive the normal handshake request input and a typed
+message stream. Use `messages.json<T>()` for JSON text protocols,
+`messages.text()` for raw text frames, `messages.binary()` for binary-only
+streams, or `messages.frames()` when a route accepts mixed frame types.
+
+```dart
+app.websocket('/audio', onConnect: (socket) async {
+  await socket.sendJson({'ready': true});
+
+  await for (final bytes in socket.messages.binary()) {
+    await socket.sendBinary(bytes);
+  }
+});
+```
 
 ## Workspace Layout
 

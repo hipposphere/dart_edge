@@ -359,28 +359,9 @@ class DartEdge<TServices> extends Router<TServices> {
     final socket = WebSocketContext<TServices>.fromRequest(
       request: requestContext,
       messages: IncomingWebSocketMessages(activeSession.messages.stream),
-      sendText: (value) async {
-        if (!DartEdgeNative.webSocketSendText(sessionId, value)) {
-          throw StateError(
-            'Failed to send WebSocket text frame for $sessionId.',
-          );
-        }
-      },
-      sendBinary: (value) async {
-        if (!DartEdgeNative.webSocketSendBinary(sessionId, value)) {
-          throw StateError(
-            'Failed to send WebSocket binary frame for $sessionId.',
-          );
-        }
-      },
-      sendJson: (value) async {
-        final encoded = jsonEncode(_normalizeWebSocketJson(value));
-        if (!DartEdgeNative.webSocketSendText(sessionId, encoded)) {
-          throw StateError(
-            'Failed to send WebSocket JSON frame for $sessionId.',
-          );
-        }
-      },
+      sendText: (value) => _sendWebSocketText(sessionId, value),
+      sendBinary: (value) => _sendWebSocketBinary(sessionId, value),
+      sendJson: (value) => _sendWebSocketJson(sessionId, value),
       close: ([code, reason]) async {
         DartEdgeNative.webSocketClose(sessionId, code: code, reason: reason);
       },
@@ -415,14 +396,7 @@ class DartEdge<TServices> extends Router<TServices> {
       if (message == null) {
         return;
       }
-      session.messages.add(switch (message.kind) {
-        NativeWebSocketMessageKind.text => WebSocketMessage.text(
-          utf8.decode(message.body),
-        ),
-        NativeWebSocketMessageKind.binary => WebSocketMessage.binary(
-          message.body,
-        ),
-      });
+      session.messages.add(_decodeWebSocketMessage(message));
     }
   }
 
@@ -544,6 +518,34 @@ Object? _normalizeWebSocketJson(Object? value) {
         'WebSocket payload of type ${value.runtimeType} is not JSON encodable.',
       );
   }
+}
+
+Future<void> _sendWebSocketText(int sessionId, String value) async {
+  if (!DartEdgeNative.webSocketSendText(sessionId, value)) {
+    throw StateError('Failed to send WebSocket text frame for $sessionId.');
+  }
+}
+
+Future<void> _sendWebSocketBinary(int sessionId, List<int> value) async {
+  if (!DartEdgeNative.webSocketSendBinary(sessionId, value)) {
+    throw StateError('Failed to send WebSocket binary frame for $sessionId.');
+  }
+}
+
+Future<void> _sendWebSocketJson(int sessionId, Object? value) async {
+  final encoded = jsonEncode(_normalizeWebSocketJson(value));
+  if (!DartEdgeNative.webSocketSendText(sessionId, encoded)) {
+    throw StateError('Failed to send WebSocket JSON frame for $sessionId.');
+  }
+}
+
+WebSocketMessage _decodeWebSocketMessage(NativeWebSocketMessage message) {
+  return switch (message.kind) {
+    NativeWebSocketMessageKind.text => WebSocketMessage.text(
+      utf8.decode(message.body),
+    ),
+    NativeWebSocketMessageKind.binary => WebSocketMessage.binary(message.body),
+  };
 }
 
 typedef _NativeTransportEvent = Void Function(Int32, Int64);

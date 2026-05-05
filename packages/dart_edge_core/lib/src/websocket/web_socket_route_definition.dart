@@ -3,7 +3,7 @@ import 'dart:async';
 import 'web_socket_context.dart';
 import 'web_socket_options.dart';
 
-/// Base class for the planned WebSocket route surface.
+/// Base class for a WebSocket route surface.
 abstract class WebSocketRouteDefinition<TServices> {
   WebSocketOptions get options;
 

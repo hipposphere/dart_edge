@@ -14,6 +14,7 @@ app-facing helpers in one import.
 - `RouteOptions` for inline handlers and `RouteContract` for explicit route
   definitions
 - `OpenApiHelpers` for mounting helper endpoints alongside your app
+- WebSocket handlers with text, JSON, binary, and mixed-frame streams
 - `JasprRenderer` and `getJaspr` / `postJaspr` style helpers for HTML routes
 - `dart_edge_jaspr_helpers` components for reusable Jaspr-backed page and email
   scaffolds
@@ -64,3 +65,18 @@ app.post('/upload', handler: (ctx) async {
 
 `nativeBody` is a borrowed native view for the current request. Copy it before
 storing it beyond the handler.
+
+## WebSocket Routes
+
+Use `messages.json<T>()` for JSON text protocols and `messages.binary()` or
+`messages.frames()` when the route needs raw binary data:
+
+```dart
+app.websocket('/audio', onConnect: (socket) async {
+  await socket.sendJson({'ready': true});
+
+  await for (final bytes in socket.messages.binary()) {
+    await socket.sendBinary(bytes);
+  }
+});
+```
