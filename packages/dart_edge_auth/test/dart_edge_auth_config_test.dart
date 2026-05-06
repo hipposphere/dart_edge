@@ -90,12 +90,14 @@ void main() {
 
   test('exposes auth schemas with stable schema ids and refs', () {
     expect(DartEdgeAuthUser.schemaId, 'DartEdgeAuthUser');
-    expect(DartEdgeAuthUser.schemaRef.toJson(), {r'$ref': 'DartEdgeAuthUser'});
+    expect(DartEdgeAuthUser.schemaRef.toJson(), {
+      r'$ref': '#/components/schemas/DartEdgeAuthUser',
+    });
     expect(DartEdgeAuthUser.jsonSchema.id, DartEdgeAuthUser.schemaId);
 
     expect(DartEdgeAuthSignUpResult.schemaId, 'DartEdgeAuthSignUpResult');
     expect(DartEdgeAuthSignUpResult.schemaRef.toJson(), {
-      r'$ref': 'DartEdgeAuthSignUpResult',
+      r'$ref': '#/components/schemas/DartEdgeAuthSignUpResult',
     });
     expect(
       DartEdgeAuthSchema.jsonSchemas

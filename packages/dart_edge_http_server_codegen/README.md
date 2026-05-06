@@ -77,7 +77,7 @@ final class _$CreateUserInput {
 
   static const schemaId = 'CreateUserInput';
 
-  static const schemaRef = JsonSchema.ref(schemaId);
+  static const schemaRef = JsonSchema.componentRef(schemaId);
 
   static const RequestBody requestBody = RequestBody.json(
     schema: schemaRef,

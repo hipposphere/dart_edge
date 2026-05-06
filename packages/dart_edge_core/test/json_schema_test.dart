@@ -28,6 +28,13 @@ void main() {
     );
   });
 
+  test('component refs serialize as JSON Schema component refs', () {
+    expect(
+      const JsonSchema.componentRef('UserDto', id: 'UserDtoReference').toJson(),
+      {r'$id': 'UserDtoReference', r'$ref': '#/components/schemas/UserDto'},
+    );
+  });
+
   test('serializes enum as JSON Schema enum keyword', () {
     expect(
       const JsonSchema.string(

@@ -76,7 +76,7 @@ final class DartEdgeAuthSession implements JsonEncodable {
 
   static const schemaId = 'DartEdgeAuthSession';
 
-  static const schemaRef = JsonSchema.ref(schemaId);
+  static const schemaRef = JsonSchema.componentRef(schemaId);
 
   static const jsonSchema = JsonSchema.object(
     id: schemaId,

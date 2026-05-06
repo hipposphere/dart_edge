@@ -305,8 +305,8 @@ const createUserInputSchema = JsonSchema.object(
     'age': JsonSchema.integer(),
     'status': JsonSchema.string(enumValues: ['draft', 'published']),
     'tags': JsonSchema.array(items: JsonSchema.string()),
-    'best_friend': JsonSchema.ref('FriendDto'),
-    'manager': JsonSchema.ref('UserDto'),
+    'best_friend': JsonSchema.ref('#/components/schemas/FriendDto'),
+    'manager': JsonSchema.ref('#/components/schemas/UserDto'),
   },
   required: <String>['name', 'tags'],
   additionalProperties: false,
@@ -321,11 +321,11 @@ const userSchemas = JsonSchemaRegistry(
   ],
 );
 
-const createUserBodySchema = JsonSchema.ref('CreateUserInput');
+const createUserBodySchema = JsonSchema.ref('#/components/schemas/CreateUserInput');
 
 const userListSchema = JsonSchema.array(
   id: 'UserList',
-  items: JsonSchema.ref('UserDto'),
+  items: JsonSchema.ref('#/components/schemas/UserDto'),
 );
 
 const tagListSchema = JsonSchema.array(
@@ -422,7 +422,9 @@ typedef PublishStatus = _$PublishStatus;
                 'final class _\$CreateUserInput implements JsonEncodable',
               ),
               contains('static const schemaId = "CreateUserInput";'),
-              contains('static const schemaRef = JsonSchema.ref(schemaId);'),
+              contains(
+                'static const schemaRef = JsonSchema.componentRef(schemaId);',
+              ),
               contains(
                 'static const RequestBody requestBody = RequestBody.json(',
               ),

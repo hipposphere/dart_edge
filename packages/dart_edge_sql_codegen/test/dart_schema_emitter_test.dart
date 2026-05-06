@@ -109,7 +109,7 @@ void main() {
     expect(usersTable, contains("static const schemaId = 'UsersRow';"));
     expect(
       usersTable,
-      contains('static const schemaRef = JsonSchema.ref(schemaId);'),
+      contains('static const schemaRef = JsonSchema.componentRef(schemaId);'),
     );
     expect(
       usersTable,

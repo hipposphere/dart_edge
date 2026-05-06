@@ -81,7 +81,7 @@ List<Field> _schemaFields({
       name: 'schemaRef',
       assignment: refer(
         'JsonSchema',
-      ).constInstanceNamed('ref', [refer('schemaId')]),
+      ).constInstanceNamed('componentRef', [refer('schemaId')]),
     ),
     _staticConstField(
       name: 'jsonSchema',

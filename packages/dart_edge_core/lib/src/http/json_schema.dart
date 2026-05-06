@@ -91,6 +91,14 @@ sealed class JsonSchema {
     List<Object?> enumValues,
   }) = JsonReferenceSchema;
 
+  const factory JsonSchema.componentRef(
+    String schemaId, {
+    String? id,
+    String? title,
+    String? description,
+    List<Object?> enumValues,
+  }) = JsonReferenceSchema.component;
+
   const factory JsonSchema.raw(Map<String, Object?> schema, {String? id}) =
       JsonRawSchema;
 
@@ -283,6 +291,15 @@ final class JsonReferenceSchema extends JsonSchema {
     super.description,
     super.enumValues,
   }) : super._();
+
+  const JsonReferenceSchema.component(
+    String schemaId, {
+    super.id,
+    super.title,
+    super.description,
+    super.enumValues,
+  }) : ref = '#/components/schemas/$schemaId',
+       super._();
 
   final String ref;
 

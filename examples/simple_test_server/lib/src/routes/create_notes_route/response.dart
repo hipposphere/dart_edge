@@ -15,7 +15,7 @@ final class CreateNoteResponse implements JsonEncodable {
 
   static const schemaId = 'CreateNoteResponse';
 
-  static const schemaRef = JsonSchema.ref(schemaId);
+  static const schemaRef = JsonSchema.componentRef(schemaId);
 
   static const jsonSchema = JsonSchema.object(
     id: schemaId,

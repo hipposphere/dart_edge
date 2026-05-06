@@ -67,7 +67,9 @@ void main() {
             contains('final class PublicSchemaRoutines'),
             contains('Future<SqlResult> findUser('),
             contains("static const schemaId = 'UsersRow';"),
-            contains('static const schemaRef = JsonSchema.ref(schemaId);'),
+            contains(
+              'static const schemaRef = JsonSchema.componentRef(schemaId);',
+            ),
             isNot(contains('ref: schemaRef')),
             contains('id: schemaId'),
             contains('static const JsonSchemaRegistry jsonSchemas'),
