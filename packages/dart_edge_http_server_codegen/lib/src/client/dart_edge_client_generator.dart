@@ -13,6 +13,7 @@ final class DartEdgeClientLibrarySpec {
     required this.operations,
     this.webSockets = const <DartEdgeClientWebSocketOperation>[],
     this.schemas = const <JsonSchema>[],
+    this.schemaTypes = const <String, String>{},
     this.additionalImports = const <String>[],
   });
 
@@ -20,6 +21,7 @@ final class DartEdgeClientLibrarySpec {
   final List<DartEdgeClientOperation> operations;
   final List<DartEdgeClientWebSocketOperation> webSockets;
   final List<JsonSchema> schemas;
+  final Map<String, String> schemaTypes;
   final List<String> additionalImports;
 
   factory DartEdgeClientLibrarySpec.fromRouter({
@@ -33,6 +35,7 @@ final class DartEdgeClientLibrarySpec {
   }) {
     final operations = <DartEdgeClientOperation>[];
     final webSockets = <DartEdgeClientWebSocketOperation>[];
+    final discoveredSchemas = _ClientSchemaCollector(schemas);
 
     for (final registration in router.routeRegistry.registrations) {
       final path = registration.httpPath;
@@ -59,6 +62,7 @@ final class DartEdgeClientLibrarySpec {
               options.ignoresOperation(routeOptions.operationId!)) {
             continue;
           }
+          discoveredSchemas.addRouteOptions(routeOptions);
           operations.add(
             _operationFromOptions(
               method: method,
@@ -86,6 +90,7 @@ final class DartEdgeClientLibrarySpec {
               options.ignoresOperation(routeOptions.operationId!)) {
             continue;
           }
+          discoveredSchemas.addRouteOptions(routeOptions);
           operations.add(
             _operationFromOptions(
               method: route.method,
@@ -136,7 +141,8 @@ final class DartEdgeClientLibrarySpec {
       className: className,
       operations: operations,
       webSockets: webSockets,
-      schemas: schemas,
+      schemas: discoveredSchemas.schemas,
+      schemaTypes: schemaTypes,
       additionalImports: additionalImports,
     );
   }
@@ -268,7 +274,7 @@ final class DartEdgeClientGenerator {
         ..directives.add(
           Directive.import('package:dart_edge_core/dart_edge_core.dart'),
         )
-        ..body.addAll(buildSpecs(spec));
+        ..body.addAll([..._modelClasses(spec), ...buildSpecs(spec)]);
 
       for (final import in spec.additionalImports) {
         builder.directives.add(Directive.import(import));
@@ -335,45 +341,105 @@ final class DartEdgeClientGenerator {
   }
 
   List<Class> _modelClasses(DartEdgeClientLibrarySpec spec) {
-    final generatedTypeIds = {
-      for (final operation in spec.operations)
-        if (!_isRawTransportType(operation.successType)) operation.successType,
-    };
+    final generatedTypeIds = _generatedModelTypeIds(spec);
     return [
       for (final schema in spec.schemas)
         if (schema is JsonObjectSchema &&
             schema.id != null &&
-            generatedTypeIds.contains(schema.id))
-          _modelClass(schema.id!, schema),
+            !spec.schemaTypes.containsKey(schema.id) &&
+            generatedTypeIds.contains(
+              _schemaTypeFromId(schema.id!, spec.schemaTypes),
+            ))
+          _modelClass(
+            _schemaTypeFromId(schema.id!, spec.schemaTypes)!,
+            schema,
+            spec.schemaTypes,
+          ),
     ];
   }
 
-  Class _modelClass(String name, JsonObjectSchema schema) {
+  Set<String> _generatedModelTypeIds(DartEdgeClientLibrarySpec spec) {
+    final schemasByType = <String, JsonObjectSchema>{
+      for (final schema in spec.schemas)
+        if (schema is JsonObjectSchema &&
+            schema.id != null &&
+            !spec.schemaTypes.containsKey(schema.id))
+          _schemaTypeFromId(schema.id!, spec.schemaTypes)!: schema,
+    };
+    final generated = <String>{};
+    final pending = <String>[];
+
+    void addType(String? type) {
+      if (type == null || _isRawTransportType(type)) {
+        return;
+      }
+      if (!schemasByType.containsKey(type) || !generated.add(type)) {
+        return;
+      }
+      pending.add(type);
+    }
+
+    for (final operation in spec.operations) {
+      addType(operation.successType);
+      addType(operation.paramsType);
+      addType(operation.queryType);
+      addType(operation.headersType);
+      addType(operation.bodyType);
+    }
+
+    while (pending.isNotEmpty) {
+      final schema = schemasByType[pending.removeLast()]!;
+      for (final property in schema.properties.values) {
+        addType(
+          _clientModelType(
+            property,
+            nullable: false,
+            schemaTypes: spec.schemaTypes,
+          ),
+        );
+      }
+    }
+
+    return generated;
+  }
+
+  Class _modelClass(
+    String name,
+    JsonObjectSchema schema,
+    Map<String, String> schemaTypes,
+  ) {
     return Class((builder) {
       builder
         ..modifier = ClassModifier.final$
         ..name = name
         ..implements.add(refer('JsonEncodable'))
-        ..constructors.add(_modelConstructor(schema))
-        ..constructors.add(_modelFromJsonFactory(name, schema))
-        ..fields.addAll(_modelFields(schema))
-        ..methods.add(_modelToJsonMethod(schema));
+        ..constructors.add(_modelConstructor(schema, schemaTypes))
+        ..constructors.add(_modelFromJsonFactory(name, schema, schemaTypes))
+        ..fields.addAll(_modelFields(schema, schemaTypes))
+        ..methods.add(_modelToJsonMethod(schema, schemaTypes));
     });
   }
 
-  Constructor _modelConstructor(JsonObjectSchema schema) {
+  Constructor _modelConstructor(
+    JsonObjectSchema schema,
+    Map<String, String> schemaTypes,
+  ) {
     return Constructor((builder) {
       builder
         ..constant = true
         ..optionalParameters.addAll([
-          for (final field in _modelFieldSpecs(schema))
+          for (final field in _modelFieldSpecs(schema, schemaTypes))
             _namedParameter(field.name, required: field.required, toThis: true),
         ]);
     });
   }
 
-  Constructor _modelFromJsonFactory(String name, JsonObjectSchema schema) {
-    final fields = _modelFieldSpecs(schema);
+  Constructor _modelFromJsonFactory(
+    String name,
+    JsonObjectSchema schema,
+    Map<String, String> schemaTypes,
+  ) {
+    final fields = _modelFieldSpecs(schema, schemaTypes);
     final assignments = fields
         .map((field) => '${field.name}: ${_decodeField(field)},')
         .join('\n');
@@ -397,9 +463,12 @@ $assignments
     });
   }
 
-  Iterable<Field> _modelFields(JsonObjectSchema schema) {
+  Iterable<Field> _modelFields(
+    JsonObjectSchema schema,
+    Map<String, String> schemaTypes,
+  ) {
     return [
-      for (final field in _modelFieldSpecs(schema))
+      for (final field in _modelFieldSpecs(schema, schemaTypes))
         Field((builder) {
           builder
             ..modifier = FieldModifier.final$
@@ -409,9 +478,13 @@ $assignments
     ];
   }
 
-  Method _modelToJsonMethod(JsonObjectSchema schema) {
+  Method _modelToJsonMethod(
+    JsonObjectSchema schema,
+    Map<String, String> schemaTypes,
+  ) {
     final entries = _modelFieldSpecs(
       schema,
+      schemaTypes,
     ).map((field) => "'${field.wireName}': ${_encodeField(field)},").join('\n');
     return Method((builder) {
       builder
@@ -426,7 +499,10 @@ $entries
     });
   }
 
-  List<_ClientModelFieldSpec> _modelFieldSpecs(JsonObjectSchema schema) {
+  List<_ClientModelFieldSpec> _modelFieldSpecs(
+    JsonObjectSchema schema,
+    Map<String, String> schemaTypes,
+  ) {
     return [
       for (final entry in schema.properties.entries)
         _ClientModelFieldSpec(
@@ -437,7 +513,9 @@ $entries
           type: _clientModelType(
             entry.value,
             nullable: !schema.required.contains(entry.key),
+            schemaTypes: schemaTypes,
           ),
+          schemaTypes: schemaTypes,
         ),
     ];
   }
@@ -446,7 +524,7 @@ $entries
     final access = field.required
         ? "json['${field.wireName}']!"
         : "json['${field.wireName}']";
-    final decoded = _decodeSchemaValue(field.schema, access);
+    final decoded = _decodeSchemaValue(field.schema, access, field.schemaTypes);
     if (field.required) {
       return decoded;
     }
@@ -458,6 +536,7 @@ $entries
       field.schema,
       field.name,
       nullable: !field.required,
+      schemaTypes: field.schemaTypes,
     );
   }
 
@@ -638,7 +717,7 @@ $entries
           'contentType': literalString(options.responses.success.contentType),
           if (successSchemaId case final schemaId?)
             'schemaId': literalString(schemaId),
-          if (successSchemaId != null)
+          if (!_isRawTransportType(operation.successType))
             'decoder': refer(operation.successType).property('fromJson'),
         },
         <Reference>[refer(operation.successType)],
@@ -681,9 +760,7 @@ $entries
     }
     if (options.body case final body?) {
       final bodySchemaId = jsonSchemaRouteId(body.schema);
-      final bodyEncoder = bodySchemaId == null
-          ? null
-          : _encoderFor(operation.bodyType!);
+      final bodyEncoder = _encoderFor(operation.bodyType!);
       arguments['body'] = refer('DartEdgeClientRequestBody').newInstance(
         const <Expression>[],
         <String, Expression>{
@@ -708,6 +785,7 @@ final class _ClientModelFieldSpec {
     required this.schema,
     required this.required,
     required this.type,
+    required this.schemaTypes,
   });
 
   final String wireName;
@@ -715,17 +793,24 @@ final class _ClientModelFieldSpec {
   final JsonSchema schema;
   final bool required;
   final String type;
+  final Map<String, String> schemaTypes;
 }
 
-String _clientModelType(JsonSchema schema, {required bool nullable}) {
+String _clientModelType(
+  JsonSchema schema, {
+  required bool nullable,
+  required Map<String, String> schemaTypes,
+}) {
   final baseType = switch (schema) {
-    JsonReferenceSchema _ => jsonSchemaRouteId(schema) ?? 'Object?',
+    JsonReferenceSchema _ =>
+      _schemaTypeFromId(jsonSchemaRouteId(schema), schemaTypes) ?? 'Object?',
     JsonStringSchema _ => 'String',
     JsonIntegerSchema _ => 'int',
     JsonNumberSchema _ => 'num',
     JsonBooleanSchema _ => 'bool',
     JsonArraySchema _ =>
-      'List<${_clientModelType(schema.items ?? const JsonSchema.any(), nullable: false)}>',
+      'List<${_clientModelType(schema.items ?? const JsonSchema.any(), nullable: false, schemaTypes: schemaTypes)}>',
+    JsonObjectSchema(:final id?) => _schemaTypeFromId(id, schemaTypes)!,
     JsonObjectSchema _ => 'Map<String, Object?>',
     JsonAnySchema _ => 'Object?',
     JsonRawSchema _ => 'Object?',
@@ -740,16 +825,26 @@ String _clientModelType(JsonSchema schema, {required bool nullable}) {
   return baseType;
 }
 
-String _decodeSchemaValue(JsonSchema schema, String value) {
+String _decodeSchemaValue(
+  JsonSchema schema,
+  String value,
+  Map<String, String> schemaTypes,
+) {
   return switch (schema) {
-    JsonReferenceSchema _ =>
-      '${jsonSchemaRouteId(schema) ?? 'Object'}.fromJson(Map<String, Object?>.from($value as Map))',
+    JsonReferenceSchema _ => _decodeClientModelValue(
+      _schemaTypeFromId(jsonSchemaRouteId(schema), schemaTypes),
+      value,
+    ),
     JsonStringSchema _ => '$value as String',
     JsonIntegerSchema _ => '($value as num).toInt()',
     JsonNumberSchema _ => '$value as num',
     JsonBooleanSchema _ => '$value as bool',
     JsonArraySchema _ =>
-      '($value as List).map((item) => ${_decodeSchemaValue(schema.items ?? const JsonSchema.any(), 'item')}).toList(growable: false)',
+      '($value as List).map((item) => ${_decodeSchemaValue(schema.items ?? const JsonSchema.any(), 'item', schemaTypes)}).toList(growable: false)',
+    JsonObjectSchema(:final id?) => _decodeClientModelValue(
+      _schemaTypeFromId(id, schemaTypes),
+      value,
+    ),
     JsonObjectSchema _ => 'Map<String, Object?>.from($value as Map)',
     JsonAnySchema _ => value,
     JsonRawSchema _ => value,
@@ -757,19 +852,68 @@ String _decodeSchemaValue(JsonSchema schema, String value) {
   };
 }
 
+String _decodeClientModelValue(String? type, String value) {
+  if (type == null || _isRawTransportType(type)) {
+    return 'Map<String, Object?>.from($value as Map)';
+  }
+  return '$type.fromJson($value)';
+}
+
 String _encodeSchemaValue(
   JsonSchema schema,
   String value, {
   required bool nullable,
+  required Map<String, String> schemaTypes,
 }) {
   return switch (schema) {
-    JsonReferenceSchema _ => nullable ? '$value?.toJson()' : '$value.toJson()',
-    JsonArraySchema _ when schema.items is JsonReferenceSchema =>
-      nullable
-          ? '$value?.map((item) => item.toJson()).toList(growable: false)'
-          : '$value.map((item) => item.toJson()).toList(growable: false)',
+    JsonReferenceSchema _ => _encodeClientModelValue(
+      _schemaTypeFromId(jsonSchemaRouteId(schema), schemaTypes),
+      value,
+      nullable: nullable,
+    ),
+    JsonObjectSchema(:final id?) => _encodeClientModelValue(
+      _schemaTypeFromId(id, schemaTypes),
+      value,
+      nullable: nullable,
+    ),
+    JsonArraySchema(:final items?) => _encodeArrayValue(
+      items,
+      value,
+      nullable: nullable,
+      schemaTypes: schemaTypes,
+    ),
     _ => value,
   };
+}
+
+String _encodeClientModelValue(
+  String? type,
+  String value, {
+  required bool nullable,
+}) {
+  if (type == null || _isRawTransportType(type)) {
+    return value;
+  }
+  return nullable ? '$value?.toJson()' : '$value.toJson()';
+}
+
+String _encodeArrayValue(
+  JsonSchema items,
+  String value, {
+  required bool nullable,
+  required Map<String, String> schemaTypes,
+}) {
+  final encoded = _encodeSchemaValue(
+    items,
+    'item',
+    nullable: false,
+    schemaTypes: schemaTypes,
+  );
+  if (encoded == 'item') {
+    return value;
+  }
+  final receiver = nullable ? '$value?' : value;
+  return '$receiver.map((item) => $encoded).toList(growable: false)';
 }
 
 Expression _requestValueExpression({
@@ -815,6 +959,48 @@ bool _isRawTransportType(String type) {
       type == 'Object';
 }
 
+final class _ClientSchemaCollector {
+  _ClientSchemaCollector(Iterable<JsonSchema> schemas) {
+    for (final schema in schemas) {
+      add(schema);
+    }
+  }
+
+  final Map<String, JsonSchema> _schemasById = <String, JsonSchema>{};
+
+  List<JsonSchema> get schemas =>
+      List<JsonSchema>.unmodifiable(_schemasById.values);
+
+  void addRouteOptions(RouteOptions options) {
+    add(options.params);
+    add(options.query);
+    add(options.headers);
+    add(options.body?.schema);
+    add(options.responses.success.schema);
+  }
+
+  void add(JsonSchema? schema) {
+    if (schema == null) {
+      return;
+    }
+
+    if (schema case JsonSchema(:final id?)) {
+      _schemasById.putIfAbsent(id, () => schema);
+    }
+
+    switch (schema) {
+      case JsonObjectSchema(:final properties):
+        for (final property in properties.values) {
+          add(property);
+        }
+      case JsonArraySchema(:final items?):
+        add(items);
+      case _:
+        break;
+    }
+  }
+}
+
 DartEdgeClientOperation _operationFromOptions({
   required HttpMethod method,
   required String path,
@@ -822,20 +1008,52 @@ DartEdgeClientOperation _operationFromOptions({
   required Map<String, String> schemaTypes,
   String? methodName,
 }) {
+  final operationId = options.operationId!;
   return DartEdgeClientOperation(
     method: method,
     path: path,
     options: options,
     successType:
-        _schemaType(options.success?.schema, schemaTypes) ??
+        _schemaTypeForOperation(
+          operationId: operationId,
+          path: path,
+          field: 'success',
+          schema: options.success?.schema,
+          schemaTypes: schemaTypes,
+        ) ??
         _defaultSuccessType(options.success),
     methodName: methodName,
-    paramsType: _schemaType(options.params, schemaTypes),
-    queryType: _schemaType(options.query, schemaTypes),
-    headersType: _schemaType(options.headers, schemaTypes),
+    paramsType: _schemaTypeForOperation(
+      operationId: operationId,
+      path: path,
+      field: 'params',
+      schema: options.params,
+      schemaTypes: schemaTypes,
+    ),
+    queryType: _schemaTypeForOperation(
+      operationId: operationId,
+      path: path,
+      field: 'query',
+      schema: options.query,
+      schemaTypes: schemaTypes,
+    ),
+    headersType: _schemaTypeForOperation(
+      operationId: operationId,
+      path: path,
+      field: 'headers',
+      schema: options.headers,
+      schemaTypes: schemaTypes,
+    ),
     bodyType: options.body == null
         ? null
-        : _schemaType(options.body?.schema, schemaTypes) ?? 'Object?',
+        : _schemaTypeForOperation(
+                operationId: operationId,
+                path: path,
+                field: 'body',
+                schema: options.body?.schema,
+                schemaTypes: schemaTypes,
+              ) ??
+              'Object?',
   );
 }
 
@@ -883,11 +1101,78 @@ List<String> _mergeTags(Iterable<String> first, Iterable<String> second) {
 }
 
 String? _schemaType(JsonSchema? schema, Map<String, String> schemaTypes) {
-  final schemaId = jsonSchemaRouteId(schema);
+  final schemaId = _clientSchemaTypeId(schema);
   if (schemaId == null) {
+    return switch (schema) {
+      JsonStringSchema _ => 'String',
+      JsonIntegerSchema _ => 'int',
+      JsonNumberSchema _ => 'num',
+      JsonBooleanSchema _ => 'bool',
+      JsonArraySchema _ => _clientModelType(
+        schema,
+        nullable: false,
+        schemaTypes: schemaTypes,
+      ),
+      JsonObjectSchema _ => 'Map<String, Object?>',
+      JsonAnySchema _ => 'Object?',
+      JsonRawSchema _ => 'Object?',
+      _ => null,
+    };
+  }
+  return _schemaTypeFromId(schemaId, schemaTypes);
+}
+
+String? _schemaTypeForOperation({
+  required String operationId,
+  required String path,
+  required String field,
+  required JsonSchema? schema,
+  required Map<String, String> schemaTypes,
+}) {
+  if (schema == null) {
     return null;
   }
-  return schemaTypes[schemaId] ?? schemaId;
+  final type = _schemaType(schema, schemaTypes);
+  if (type != null) {
+    return type;
+  }
+  throw StateError(
+    'Unable to resolve Dart client type for $field schema on operation '
+    '"$operationId" ($path): ${_schemaDescription(schema)}. Use a supported '
+    'JsonSchema.ref/componentRef, add an inline schema id, or provide a '
+    'schemaTypes override.',
+  );
+}
+
+String _schemaDescription(JsonSchema schema) {
+  return switch (schema) {
+    JsonReferenceSchema(:final ref) => 'ref "$ref"',
+    JsonSchema(:final id?) => 'id "$id"',
+    _ => schema.runtimeType.toString(),
+  };
+}
+
+String? _clientSchemaTypeId(JsonSchema? schema) {
+  return switch (schema) {
+    null => null,
+    JsonReferenceSchema _ => jsonSchemaRouteId(schema),
+    JsonObjectSchema(:final id?) => id,
+    JsonArraySchema(:final id?) => id,
+    JsonStringSchema(:final id?) => id,
+    JsonIntegerSchema(:final id?) => id,
+    JsonNumberSchema(:final id?) => id,
+    JsonBooleanSchema(:final id?) => id,
+    JsonAnySchema(:final id?) => id,
+    JsonRawSchema(:final id?) => id,
+    _ => null,
+  };
+}
+
+String? _schemaTypeFromId(String? id, Map<String, String> schemaTypes) {
+  if (id == null) {
+    return null;
+  }
+  return schemaTypes[id] ?? id;
 }
 
 String _defaultSuccessType(ResponseSpec? response) {

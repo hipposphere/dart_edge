@@ -259,6 +259,154 @@ void main() {
       expect(source, contains("pathTemplate: '/auth/session/socket'"));
     });
 
+    test('generates client models from inline router schemas', () {
+      const ownerSchema = JsonSchema.object(
+        id: 'UserDto',
+        properties: {'id': JsonSchema.string()},
+        required: ['id'],
+        additionalProperties: false,
+      );
+      const paramsSchema = JsonSchema.object(
+        id: 'PhoneCallGetParams',
+        properties: {'id': JsonSchema.string()},
+        required: ['id'],
+        additionalProperties: false,
+      );
+      const bodySchema = JsonSchema.object(
+        id: 'UpdatePhoneCallBody',
+        properties: {'subject': JsonSchema.string()},
+        required: ['subject'],
+        additionalProperties: false,
+      );
+      const responseSchema = JsonSchema.object(
+        id: 'PhoneCallDto',
+        properties: {
+          'id': JsonSchema.string(),
+          'owner': JsonSchema.ref('UserDto'),
+        },
+        required: ['id', 'owner'],
+        additionalProperties: false,
+      );
+      final router = Router<TestServices>();
+      router.put(
+        '/phone-calls/<id>',
+        options: const RouteOptions(
+          operationId: 'updatePhoneCall',
+          params: paramsSchema,
+          body: RequestBody.json(schema: bodySchema),
+          success: ResponseSpec.json(schema: responseSchema),
+        ),
+        handler: (_) => const <String, Object?>{},
+      );
+
+      final spec = DartEdgeClientLibrarySpec.fromRouter(
+        className: 'PhoneCallsClient',
+        router: router,
+        schemas: const [ownerSchema],
+      );
+      final source = const DartEdgeClientGenerator().generate(spec);
+
+      expect(
+        source,
+        contains(
+          'Future<DartEdgeClientResponseObject<PhoneCallDto>> '
+          'updatePhoneCall({',
+        ),
+      );
+      expect(source, contains('required PhoneCallGetParams params'));
+      expect(source, contains('required UpdatePhoneCallBody body'));
+      expect(
+        source,
+        contains('final class PhoneCallGetParams implements JsonEncodable'),
+      );
+      expect(
+        source,
+        contains('final class UpdatePhoneCallBody implements JsonEncodable'),
+      );
+      expect(
+        source,
+        contains('final class PhoneCallDto implements JsonEncodable'),
+      );
+      expect(source, contains('final class UserDto implements JsonEncodable'));
+      expect(source, contains('final UserDto owner;'));
+      expect(source, contains('owner: UserDto.fromJson(json[\'owner\']!),'));
+      expect(source, contains("'owner': owner.toJson()"));
+      expect(source, contains('decoder: PhoneCallDto.fromJson'));
+      expect(source, contains('encoder: (value) => value.toJson()'));
+      expect(source, isNot(contains("schemaId: 'PhoneCallDto'")));
+      expect(source, isNot(contains("schemaId: 'PhoneCallGetParams'")));
+      expect(source, isNot(contains("schemaId: 'UpdatePhoneCallBody'")));
+    });
+
+    test('uses schemaTypes as overrides for inline router schemas', () {
+      const paramsSchema = JsonSchema.object(
+        id: 'PhoneCallGetParams',
+        properties: {'id': JsonSchema.string()},
+        required: ['id'],
+        additionalProperties: false,
+      );
+      final router = Router<TestServices>();
+      router.get(
+        '/phone-calls/<id>',
+        options: const RouteOptions(
+          operationId: 'getPhoneCall',
+          params: paramsSchema,
+          success: ResponseSpec.text(),
+        ),
+        handler: (_) => 'ok',
+      );
+
+      final spec = DartEdgeClientLibrarySpec.fromRouter(
+        className: 'PhoneCallsClient',
+        router: router,
+        schemaTypes: const {'PhoneCallGetParams': 'Map<String, Object?>'},
+      );
+      final source = const DartEdgeClientGenerator().generate(spec);
+
+      expect(
+        source,
+        contains('Future<DartEdgeClientResponseObject<String>> getPhoneCall({'),
+      );
+      expect(source, contains('required Map<String, Object?> params'));
+      expect(
+        source,
+        isNot(contains('final class PhoneCallGetParams implements')),
+      );
+      expect(source, isNot(contains('encoder: (value) => value.toJson()')));
+    });
+
+    test('throws a clear error for unresolved operation schema types', () {
+      final router = Router<TestServices>();
+      router.get(
+        '/phone-calls/<id>',
+        options: const RouteOptions(
+          operationId: 'getPhoneCall',
+          params: JsonSchema.ref('https://schemas.example.test/Params'),
+          success: ResponseSpec.text(),
+        ),
+        handler: (_) => 'ok',
+      );
+
+      expect(
+        () => DartEdgeClientLibrarySpec.fromRouter(
+          className: 'PhoneCallsClient',
+          router: router,
+        ),
+        throwsA(
+          isA<StateError>().having(
+            (error) => error.message,
+            'message',
+            allOf(
+              contains('params schema'),
+              contains('getPhoneCall'),
+              contains('/phone-calls/<id>'),
+              contains('https://schemas.example.test/Params'),
+            ),
+          ),
+        ),
+      );
+    });
+
     test('filters router discovery by exposure, path, and operation id', () {
       final router = Router<TestServices>();
       router.get(
@@ -371,9 +519,13 @@ void main() {
       expect(source, isNot(contains('connectEvents')));
     });
 
-    test('does not use inline schema ids as serializer targets', () {
+    test('does not emit schema ids for inline serializer targets', () {
       final source = const DartEdgeClientGenerator().generate(
         DartEdgeClientLibrarySpec(
+          schemas: const [
+            JsonSchema.object(id: 'CreateUserBody'),
+            JsonSchema.object(id: 'UserDto'),
+          ],
           className: 'UsersClient',
           operations: [
             DartEdgeClientOperation(
@@ -397,8 +549,8 @@ void main() {
 
       expect(source, isNot(contains("schemaId: 'CreateUserBody'")));
       expect(source, isNot(contains("schemaId: 'UserDto'")));
-      expect(source, isNot(contains('decoder: UserDto.fromJson')));
-      expect(source, isNot(contains('encoder: (value) => value.toJson()')));
+      expect(source, contains('decoder: UserDto.fromJson'));
+      expect(source, contains('encoder: (value) => value.toJson()'));
     });
   });
 
