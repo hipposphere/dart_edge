@@ -48,7 +48,7 @@ final class NativeHttpRouteDescriptor {
       'path': path,
       'operationId': operationId,
       'acceptsJsonBody': acceptsJsonBody,
-      if (pluginName case final pluginName?) 'pluginName': pluginName,
+      'pluginName': ?pluginName,
     };
   }
 

@@ -2,7 +2,7 @@
 ///
 /// Import this library to scan for nearby networks and connect through the
 /// host platform's Wi-Fi backend.
-library dart_edge_wifi;
+library;
 
 export 'src/backends/core_wlan_wifi_backend.dart';
 export 'src/backends/nmcli_wifi_backend.dart';

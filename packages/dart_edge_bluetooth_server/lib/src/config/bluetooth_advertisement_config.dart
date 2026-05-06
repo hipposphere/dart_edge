@@ -15,7 +15,7 @@ final class BluetoothAdvertisementConfig {
 
   Map<String, Object?> toJson({required List<String> advertisedServiceUuids}) {
     return {
-      if (localName case final localName?) 'localName': localName,
+      'localName': ?localName,
       'discoverable': discoverable,
       'serviceUuids': advertisedServiceUuids,
       if (manufacturerData.isNotEmpty)

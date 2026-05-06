@@ -25,10 +25,9 @@ String _emitEntrypoint({
 
 String _emitSchemaLibrary(_SchemaGroup group) {
   final library = Library((builder) {
-    builder
-      ..directives.add(
-        Directive.import('package:dart_edge_core/dart_edge_core.dart'),
-      );
+    builder.directives.add(
+      Directive.import('package:dart_edge_core/dart_edge_core.dart'),
+    );
     builder.body.add(_schemaClass(group));
 
     for (final table in group.tables) {

@@ -13,7 +13,7 @@ import 'generated_bindings.dart' as gen;
 import 'native_transport_request.dart';
 import 'native_transport_web_socket.dart';
 
-typedef _NativeTransportEvent = Void Function(Int32, Int64);
+typedef NativeTransportEvent = Void Function(Int32, Int64);
 
 final class NativeTransportRequestLease {
   NativeTransportRequestLease._({
@@ -54,7 +54,7 @@ abstract final class DartEdgeNative {
     required int workers,
     required String routesJson,
     required String middlewaresJson,
-    required Pointer<NativeFunction<_NativeTransportEvent>> callback,
+    required Pointer<NativeFunction<NativeTransportEvent>> callback,
   }) {
     final hostPtr = host.toNativeUtf8();
     final routesJsonPtr = routesJson.toNativeUtf8();

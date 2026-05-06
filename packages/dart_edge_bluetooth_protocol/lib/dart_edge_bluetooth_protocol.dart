@@ -3,7 +3,7 @@
 /// Import this library to define reusable GATT applications, implement a
 /// platform-specific client backend, and emit typed client/server facades from
 /// normal Dart tool scripts.
-library dart_edge_bluetooth_protocol;
+library;
 
 export 'src/client/bluetooth_client_backend.dart';
 export 'src/codegen/bluetooth_code_emitter.dart';

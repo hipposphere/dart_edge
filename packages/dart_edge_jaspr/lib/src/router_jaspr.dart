@@ -241,6 +241,7 @@ RouteOptions _normalizeJasprOptions(RouteOptions options) {
     summary: options.summary,
     tags: options.tags,
     deprecated: options.deprecated,
+    exposure: options.exposure,
     params: options.params,
     query: options.query,
     headers: options.headers,

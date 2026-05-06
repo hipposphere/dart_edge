@@ -41,11 +41,7 @@ final class OpenApiDocument {
 
     return {
       'openapi': '3.1.0',
-      'info': {
-        'title': title,
-        'version': version,
-        if (description case final description?) 'description': description,
-      },
+      'info': {'title': title, 'version': version, 'description': ?description},
       if (servers.isNotEmpty)
         'servers': servers
             .map((server) => server.toJson())
@@ -55,8 +51,7 @@ final class OpenApiDocument {
         'components': {
           'schemas': {
             for (final schema in registry.schemas)
-              if (schema.id case final id?)
-                id: _openApiSchemaObject(schema.toJson()),
+              ?schema.id: _openApiSchemaObject(schema.toJson()),
           },
         },
     };
@@ -70,10 +65,7 @@ final class OpenApiServer {
   final String url;
   final String? description;
 
-  Map<String, Object?> toJson() => {
-    'url': url,
-    if (description case final description?) 'description': description,
-  };
+  Map<String, Object?> toJson() => {'url': url, 'description': ?description};
 }
 
 Map<String, Object?> _buildOperation(
@@ -99,7 +91,7 @@ Map<String, Object?> _buildOperation(
 
   return {
     'operationId': options.operationId!,
-    if (options.summary case final summary?) 'summary': summary,
+    'summary': ?options.summary,
     if (options.tags.isNotEmpty) 'tags': options.tags,
     if (options.deprecated) 'deprecated': true,
     if (parameters.isNotEmpty) 'parameters': parameters,
@@ -171,9 +163,7 @@ Map<String, Object?> _buildRequestBody(RequestBody body) {
   return {
     'required': true,
     'content': {
-      _contentTypeEssence(body.contentType): {
-        if (schema != null) 'schema': schema,
-      },
+      _contentTypeEssence(body.contentType): {'schema': ?schema},
     },
   };
 }
@@ -226,7 +216,7 @@ Map<String, Object?> _buildParameter({
     'name': name,
     'in': in_,
     'required': required,
-    if (schema.description case final description?) 'description': description,
+    'description': ?schema.description,
     'schema': _openApiSchemaObject(schema.toJson()),
   };
 }

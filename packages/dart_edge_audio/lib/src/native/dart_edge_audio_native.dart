@@ -8,8 +8,8 @@ import 'package:ffi/ffi.dart';
 
 import 'generated_bindings.dart' as gen;
 
-final class _NativeBytesConversionResponse {
-  const _NativeBytesConversionResponse({
+final class NativeBytesConversionResponse {
+  const NativeBytesConversionResponse({
     required this.resultJson,
     required this.bytes,
   });
@@ -119,7 +119,7 @@ abstract final class DartEdgeAudioNative {
     }
   }
 
-  static _NativeBytesConversionResponse convertBytes(
+  static NativeBytesConversionResponse convertBytes(
     String requestJson,
     Uint8List bytes,
   ) {
@@ -138,7 +138,7 @@ abstract final class DartEdgeAudioNative {
     }
   }
 
-  static _NativeBytesConversionResponse convertRawBytes(
+  static NativeBytesConversionResponse convertRawBytes(
     String requestJson,
     Pointer<Uint8> bytesPtr,
     int bytesLength,
@@ -163,7 +163,7 @@ abstract final class DartEdgeAudioNative {
             ? '{}'
             : response.result_json.cast<Utf8>().toDartString();
 
-        return _NativeBytesConversionResponse(
+        return NativeBytesConversionResponse(
           resultJson: resultJson,
           bytes: outputBytes,
         );

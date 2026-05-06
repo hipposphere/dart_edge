@@ -43,6 +43,8 @@ void main() {
     expect(openApiJson['openapi'], '3.1.0');
     expect(openApiJson['info'], containsPair('title', 'Example API'));
     expect(openApiJson['paths'], contains('/health'));
+    expect(openApiJson['paths'], isNot(contains('/openapi.json')));
+    expect(openApiJson['paths'], isNot(contains('/docs')));
 
     final docsResponse = await (await client.getUrl(
       baseUri.resolve('/docs'),
@@ -101,6 +103,40 @@ void main() {
       expect(operation['parameters'], contains(containsPair('name', 'id')));
     },
   );
+
+  test('excludes routes from OpenAPI by route and router exposure', () {
+    final app = DartEdge<void>(services: () {});
+    app.get('/public', handler: (_) => const {'ok': true});
+    app.get(
+      '/hidden',
+      options: const RouteOptions(exposure: RouteExposure.clientOnly),
+      handler: (_) => const {'ok': true},
+    );
+    app
+        .router('/internal', exposure: RouteExposure.none)
+        .get('/health', handler: (_) => const {'ok': true});
+
+    final mounted = Router<void>(exposure: RouteExposure.clientOnly);
+    mounted.get('/status', handler: (_) => const {'ok': true});
+    app.mountRouter('/mounted', mounted, exposure: RouteExposure.openApiOnly);
+
+    OpenApiHelpers.mountJson(app, path: '/openapi.json');
+    OpenApiHelpers.mountSwaggerUi(
+      app,
+      path: '/docs',
+      specPath: '/openapi.json',
+    );
+
+    final document = app.buildOpenApiDocumentJson();
+    final paths = document['paths']! as Map<String, Object?>;
+
+    expect(paths, contains('/public'));
+    expect(paths, isNot(contains('/hidden')));
+    expect(paths, isNot(contains('/internal/health')));
+    expect(paths, isNot(contains('/mounted/status')));
+    expect(paths, isNot(contains('/openapi.json')));
+    expect(paths, isNot(contains('/docs')));
+  });
 
   test('emits inline route schemas without registered components', () {
     final app = DartEdge<void>(services: () {});

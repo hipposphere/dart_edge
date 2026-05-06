@@ -1,0 +1,19 @@
+name: simple_test_db_migrator
+version: 0.1.0
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ">=3.11.0 <4.0.0"
+
+dependencies:
+  dart_edge_sql:
+    hosted: "https://registry.hippolabs.org/pub/internal-pub/"
+  dart_edge_sql_migrator:
+    hosted: "https://registry.hippolabs.org/pub/internal-pub/"
+  dart_edge_sql_pglite:
+    hosted: "https://registry.hippolabs.org/pub/internal-pub/"
+
+dev_dependencies:
+  dart_edge_sql_codegen:
+    hosted: "https://registry.hippolabs.org/pub/internal-pub/"

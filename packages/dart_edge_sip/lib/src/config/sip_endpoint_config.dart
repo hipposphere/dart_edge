@@ -25,7 +25,7 @@ final class SipEndpointConfig {
     'username': username,
     'password': password,
     'realm': realm,
-    if (displayName case final displayName?) 'displayName': displayName,
+    'displayName': ?displayName,
     'allowRegistrations': allowRegistrations,
     if (metadata.isNotEmpty) 'metadata': metadata,
   };

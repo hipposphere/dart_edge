@@ -6,11 +6,10 @@ import 'sse_event.dart';
 /// Streaming HTTP response emitted as `text/event-stream`.
 final class SseResponse {
   SseResponse({
-    required Stream<SseEvent> events,
+    required this.events,
     this.status = 200,
     List<HttpHeader> headers = const <HttpHeader>[],
-  }) : events = events,
-       headers = List<HttpHeader>.unmodifiable(headers);
+  }) : headers = List<HttpHeader>.unmodifiable(headers);
 
   /// Event stream forwarded to the client.
   final Stream<SseEvent> events;

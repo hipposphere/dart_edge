@@ -3,6 +3,7 @@ import '../http/json_schema.dart';
 import '../http/request_body.dart';
 import '../http/response_set.dart';
 import '../http/response_spec.dart';
+import 'route_exposure.dart';
 
 /// Convenience options for inline `Router.get`/`post`/`put` style handlers.
 final class RouteOptions {
@@ -11,6 +12,7 @@ final class RouteOptions {
     this.summary,
     this.tags = const <String>[],
     this.deprecated = false,
+    this.exposure = RouteExposure.all,
     this.params,
     this.query,
     this.headers,
@@ -30,6 +32,9 @@ final class RouteOptions {
 
   /// Whether the route should be marked as deprecated.
   final bool deprecated;
+
+  /// Generated surfaces this route should appear in.
+  final RouteExposure exposure;
 
   /// Schema for decoded path parameters.
   final JsonSchema? params;
@@ -68,6 +73,7 @@ final class RouteOptions {
       summary: summary,
       tags: List<String>.unmodifiable(tags),
       deprecated: deprecated,
+      exposure: exposure,
       params: params,
       query: query,
       headers: headers,
@@ -91,6 +97,8 @@ final class RouteOptions {
         'errors: [${responses.errors.map<String>(_errorLabel).join(', ')}]',
       if (normalizedOptions.tags.isNotEmpty) 'tags: ${normalizedOptions.tags}',
       if (normalizedOptions.deprecated) 'deprecated: true',
+      if (normalizedOptions.exposure != RouteExposure.all)
+        'exposure: ${normalizedOptions.exposure}',
     ];
     return 'RouteOptions(${parts.join(', ')})';
   }

@@ -35,9 +35,9 @@ final class SipTrunkConfig {
     'id': id,
     'direction': direction.wireName,
     'serverUri': serverUri,
-    if (username case final username?) 'username': username,
-    if (password case final password?) 'password': password,
-    if (realm case final realm?) 'realm': realm,
+    'username': ?username,
+    'password': ?password,
+    'realm': ?realm,
     if (allowedNumbers.isNotEmpty) 'allowedNumbers': allowedNumbers,
     if (metadata.isNotEmpty) 'metadata': metadata,
   };

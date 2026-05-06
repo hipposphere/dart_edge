@@ -8,6 +8,7 @@ import 'handler_http_route_definition.dart';
 import 'http_route_definition.dart';
 import 'http_route_mount.dart';
 import 'native_http_route_mount.dart';
+import 'route_exposure.dart';
 import 'route_options.dart';
 import 'route_path.dart';
 import 'route_registry.dart';
@@ -18,6 +19,7 @@ class Router<TServices> {
     this.prefix = '',
     List<String>? tags,
     List<Guard<TServices>>? guards,
+    this.exposure = RouteExposure.all,
     RouteRegistry<TServices>? routeRegistry,
   }) : routeRegistry = routeRegistry ?? RouteRegistry<TServices>(),
        tags = List.unmodifiable(tags ?? const <String>[]),
@@ -35,17 +37,22 @@ class Router<TServices> {
   /// Guard metadata associated with this router scope.
   final List<Guard<TServices>> guards;
 
+  /// Generated surfaces associated with this router scope.
+  final RouteExposure exposure;
+
   /// Creates a child router that shares the same registry under [childPrefix].
   Router<TServices> router(
     String childPrefix, {
     List<String>? tags,
     List<Guard<TServices>>? guards,
+    RouteExposure exposure = RouteExposure.all,
   }) {
     return Router<TServices>(
       prefix: '$prefix$childPrefix',
       routeRegistry: routeRegistry,
       tags: [...this.tags, ...?tags],
       guards: [...this.guards, ...?guards],
+      exposure: this.exposure.restrict(exposure),
     );
   }
 
@@ -59,6 +66,7 @@ class Router<TServices> {
     Router<TServices> router, {
     List<String>? tags,
     List<Guard<TServices>>? guards,
+    RouteExposure exposure = RouteExposure.all,
   }) {
     if (identical(routeRegistry, router.routeRegistry)) {
       throw ArgumentError.value(
@@ -69,11 +77,13 @@ class Router<TServices> {
     }
 
     final mountPrefix = joinRoutePath(prefix, basePath);
+    final mountedExposure = this.exposure.restrict(exposure);
     for (final registration in router.routeRegistry.registrations) {
       routeRegistry.registerMounted(
         prefix: joinRoutePath(mountPrefix, registration.prefix),
         tags: [...this.tags, ...?tags, ...registration.tags],
         guards: [...this.guards, ...?guards, ...registration.guards],
+        exposure: mountedExposure.restrict(registration.exposure),
         registration: registration,
       );
     }
@@ -104,6 +114,7 @@ class Router<TServices> {
       prefix: prefix,
       tags: tags,
       guards: [...this.guards, ...?guards],
+      exposure: exposure,
       mount: route,
     );
   }
@@ -395,6 +406,7 @@ class Router<TServices> {
       prefix: prefix,
       tags: tags,
       guards: [...this.guards, ...?guards],
+      exposure: exposure,
       mount: mount,
     );
   }
@@ -407,6 +419,7 @@ class Router<TServices> {
       prefix: prefix,
       tags: tags,
       guards: [...this.guards, ...?guards],
+      exposure: exposure,
       mount: mount,
     );
   }

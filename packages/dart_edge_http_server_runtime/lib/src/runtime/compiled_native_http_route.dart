@@ -65,7 +65,7 @@ final class CompiledNativeHttpRoute implements CompiledOpenApiRoute {
   Map<String, Object?> toNativeJson() => {
     'kind': 'nativeHttp',
     'routeId': routeId,
-    'method': httpMethodName(method),
+    'method': method.wireName,
     'path': path,
     'operationId': options.operationId!,
     'pathSegments': patternSegments.map((segment) => segment.toJson()).toList(),

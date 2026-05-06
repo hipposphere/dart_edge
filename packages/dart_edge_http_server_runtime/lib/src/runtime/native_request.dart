@@ -148,7 +148,7 @@ final class NativeMultipartForm {
   }
 }
 
-typedef _MultipartLoader = Future<NativeMultipartForm> Function();
+typedef MultipartLoader = Future<NativeMultipartForm> Function();
 
 /// Low-level native request view for the current handler lifecycle.
 final class NativeRequest {
@@ -158,7 +158,7 @@ final class NativeRequest {
     required Map<String, String> query,
     required Map<String, String> headers,
     this.body,
-    _MultipartLoader? multipartLoader,
+    MultipartLoader? multipartLoader,
   }) : pathParams = Map.unmodifiable(pathParams),
        query = Map.unmodifiable(query),
        headers = Map.unmodifiable(headers),
@@ -179,7 +179,7 @@ final class NativeRequest {
   /// Borrowed native request body, if present.
   final NativeRequestBody? body;
 
-  final _MultipartLoader? _multipartLoader;
+  final MultipartLoader? _multipartLoader;
   Future<NativeMultipartForm>? _multipartFuture;
 
   /// Parses the current request body as `multipart/form-data`.

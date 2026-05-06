@@ -3,7 +3,7 @@
 /// Import this library to configure a [DartEdgeSip] instance, start the native
 /// SIP runtime scaffold, observe telephony events, and work with the package's
 /// call-control and routing concepts.
-library dart_edge_sip;
+library;
 
 export 'src/config/sip_endpoint_config.dart';
 export 'src/config/sip_engine_config.dart';

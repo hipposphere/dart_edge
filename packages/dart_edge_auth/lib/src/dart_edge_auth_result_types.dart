@@ -107,7 +107,7 @@ final class DartEdgeAuthSignInResult implements JsonEncodable {
     'redirect': redirect,
     'token': token,
     'url': url,
-    if (user case final user?) 'user': user,
+    'user': ?user,
     if (twoFactorRedirect) 'twoFactorRedirect': true,
   };
 }
@@ -390,7 +390,7 @@ final class DartEdgeAuthStatusResult implements JsonEncodable {
   @override
   Map<String, Object?> toJson() => <String, Object?>{
     'status': status,
-    if (message case final message?) 'message': message,
+    'message': ?message,
   };
 }
 
@@ -438,7 +438,7 @@ final class DartEdgeAuthSuccessResult implements JsonEncodable {
   @override
   Map<String, Object?> toJson() => <String, Object?>{
     'success': success,
-    if (message case final message?) 'message': message,
+    'message': ?message,
   };
 }
 
@@ -484,7 +484,7 @@ final class DartEdgeAuthPermissionResult implements JsonEncodable {
   @override
   Map<String, Object?> toJson() => <String, Object?>{
     'success': success,
-    if (error case final error?) 'error': error,
+    'error': ?error,
   };
 }
 

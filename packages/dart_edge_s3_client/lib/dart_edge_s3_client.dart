@@ -2,7 +2,7 @@
 ///
 /// Import this library when you want a bundled Rust S3 client that can talk to
 /// AWS S3 or compatible endpoints such as MinIO and Cloudflare R2.
-library dart_edge_s3_client;
+library;
 
 export 'src/dart_edge_s3_client.dart';
 export 'src/s3_client_config.dart';

@@ -1,7 +1,7 @@
 name: dart_edge_auth_db_benchmark_shared
 description: Shared scenarios and payloads for the auth/db HTTP benchmark suite.
 publish_to: none
-version: 0.2.0
+version: 0.2.1
 
 environment:
   sdk: ">=3.11.0 <4.0.0"

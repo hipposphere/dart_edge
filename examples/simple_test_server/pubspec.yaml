@@ -1,0 +1,29 @@
+name: simple_test_server
+version: 0.2.0
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ">=3.11.0 <4.0.0"
+
+dependencies:
+  dart_edge_core:
+    hosted: "https://registry.hippolabs.org/pub/internal-pub/"
+  dart_edge_http_server:
+    hosted: "https://registry.hippolabs.org/pub/internal-pub/"
+  dart_edge_auth:
+    hosted: "https://registry.hippolabs.org/pub/internal-pub/"
+  dart_edge_sql:
+    hosted: "https://registry.hippolabs.org/pub/internal-pub/"
+  dart_edge_sql_pglite:
+    hosted: "https://registry.hippolabs.org/pub/internal-pub/"
+  simple_test_db_migrator:
+    path: ../simple_test_db_migrator
+  simple_test_db_models:
+    path: ../simple_test_db_models
+
+
+dev_dependencies:
+  build_runner: ^2.15.0
+  dart_edge_http_server_codegen:
+    hosted: "https://registry.hippolabs.org/pub/internal-pub/"

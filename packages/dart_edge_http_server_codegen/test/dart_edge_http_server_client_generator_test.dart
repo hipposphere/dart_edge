@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:dart_edge_core/dart_edge_core.dart';
 import 'package:dart_edge_http_server_codegen/dart_edge_http_server_codegen.dart';
@@ -44,6 +45,268 @@ void main() {
       expect(source, contains("import 'package:example/models.dart';"));
     });
 
+    test('emits websocket connect methods', () {
+      final source = const DartEdgeClientGenerator().generate(
+        const DartEdgeClientLibrarySpec(
+          className: 'RealtimeClient',
+          operations: [],
+          webSockets: [
+            DartEdgeClientWebSocketOperation(
+              path: '/rooms/<id>/socket',
+              operationId: 'connectRoom',
+              paramsType: 'RoomPath',
+            ),
+          ],
+        ),
+      );
+
+      expect(source, contains('Future<DartEdgeClientWebSocket> connectRoom'));
+      expect(source, contains("pathTemplate: '/rooms/<id>/socket'"));
+      expect(source, contains('connectWebSocket<RoomPath, Never, Never>'));
+    });
+
+    test('emits split client library and bindings parts', () {
+      final spec = DartEdgeClientLibrarySpec(
+        className: 'UsersClient',
+        schemas: const [
+          JsonSchema.object(
+            id: 'UserDto',
+            properties: {
+              'id': JsonSchema.string(),
+              'name': JsonSchema.string(),
+            },
+            required: ['id', 'name'],
+            additionalProperties: false,
+          ),
+        ],
+        operations: [
+          DartEdgeClientOperation(
+            method: HttpMethod.post,
+            path: '/users',
+            options: const RouteOptions(
+              operationId: 'createUser',
+              body: RequestBody.json(schema: JsonSchema.ref('CreateUserBody')),
+              success: ResponseSpec.json(schema: JsonSchema.ref('UserDto')),
+            ),
+            successType: 'UserDto',
+            bodyType: 'CreateUserBody',
+          ),
+        ],
+      );
+
+      final generator = const DartEdgeClientGenerator();
+      final library = generator.generateLibrary(spec);
+      final bindings = generator.generateBindingsPart(spec);
+      final models = generator.generateModelsPart(spec);
+
+      expect(
+        library,
+        contains("import 'package:dart_edge_core/dart_edge_core.dart';"),
+      );
+      expect(library, contains("part 'client.models.g.dart';"));
+      expect(library, contains("part 'client.bindings.g.dart';"));
+      expect(bindings, contains("part of 'client.g.dart';"));
+      expect(bindings, contains('final class UsersClient'));
+      expect(
+        bindings,
+        contains('Future<UserDto> createUser({required CreateUserBody body})'),
+      );
+      expect(models, contains("part of 'client.g.dart';"));
+      expect(models, contains('final class UserDto implements JsonEncodable'));
+      expect(models, contains('factory UserDto.fromJson(Object? value)'));
+    });
+
+    test(
+      'emits split client files into an existing or new directory',
+      () async {
+        final output = await Directory.systemTemp.createTemp(
+          'dart_edge_client_',
+        );
+        addTearDown(() => output.delete(recursive: true));
+
+        await const DartEdgeClientFileEmitter().emit(
+          DartEdgeClientLibrarySpec(
+            className: 'UsersClient',
+            schemas: const [
+              JsonSchema.object(
+                id: 'UserDto',
+                properties: {'id': JsonSchema.string()},
+                required: ['id'],
+                additionalProperties: false,
+              ),
+            ],
+            operations: [
+              DartEdgeClientOperation(
+                method: HttpMethod.get,
+                path: '/users/<id>',
+                options: const RouteOptions(
+                  operationId: 'getUser',
+                  success: ResponseSpec.json(schema: JsonSchema.ref('UserDto')),
+                ),
+                successType: 'UserDto',
+              ),
+            ],
+          ),
+          output: Directory('${output.path}/generated'),
+        );
+
+        expect(
+          File('${output.path}/generated/client.g.dart').existsSync(),
+          isTrue,
+        );
+        expect(
+          File('${output.path}/generated/client.bindings.g.dart').existsSync(),
+          isTrue,
+        );
+        expect(
+          await File(
+            '${output.path}/generated/client.models.g.dart',
+          ).readAsString(),
+          contains('final class UserDto implements JsonEncodable'),
+        );
+      },
+    );
+
+    test('discovers operations from a router registry', () {
+      final router = Router<TestServices>();
+      router.get(
+        '/hello',
+        options: const RouteOptions(
+          operationId: 'getHello',
+          success: ResponseSpec.text(),
+        ),
+        handler: (_) => 'hello',
+      );
+      router.post(
+        '/users',
+        options: const RouteOptions(
+          operationId: 'createUser',
+          body: RequestBody.json(schema: JsonSchema.ref('CreateUserBody')),
+          success: ResponseSpec.json(schema: JsonSchema.ref('UserDto')),
+        ),
+        handler: (_) => const UserDto(id: '42', name: 'Ada'),
+      );
+      router.websocket(
+        '/events',
+        options: const WebSocketOptions(operationId: 'connectEvents'),
+        onConnect: (_) async {},
+      );
+
+      final spec = DartEdgeClientLibrarySpec.fromRouter(
+        className: 'DiscoveredClient',
+        router: router,
+      );
+      final source = const DartEdgeClientGenerator().generate(spec);
+
+      expect(source, contains('Future<String> getHello()'));
+      expect(
+        source,
+        contains('Future<UserDto> createUser({required CreateUserBody body})'),
+      );
+      expect(source, contains('Future<DartEdgeClientWebSocket> connectEvents'));
+    });
+
+    test('filters router discovery by exposure, path, and operation id', () {
+      final router = Router<TestServices>();
+      router.get(
+        '/public',
+        options: const RouteOptions(
+          operationId: 'getPublic',
+          success: ResponseSpec.text(),
+        ),
+        handler: (_) => 'public',
+      );
+      router.get(
+        '/openapi-only',
+        options: const RouteOptions(
+          operationId: 'getOpenApiOnly',
+          exposure: RouteExposure.openApiOnly,
+          success: ResponseSpec.text(),
+        ),
+        handler: (_) => 'hidden',
+      );
+      router
+          .router('/internal', exposure: RouteExposure.none)
+          .get('/health', handler: (_) => const {'ok': true});
+      router.get(
+        '/ignored/:id',
+        options: const RouteOptions(
+          operationId: 'getIgnoredPath',
+          success: ResponseSpec.text(),
+        ),
+        handler: (_) => 'ignored',
+      );
+      router.get(
+        '/ignored/:id/details',
+        options: const RouteOptions(
+          operationId: 'getIgnoredPathDetails',
+          success: ResponseSpec.text(),
+        ),
+        handler: (_) => 'ignored',
+      );
+      router.get(
+        '/ignored-other',
+        options: const RouteOptions(
+          operationId: 'getIgnoredOther',
+          success: ResponseSpec.text(),
+        ),
+        handler: (_) => 'included',
+      );
+      router.get(
+        '/same',
+        options: const RouteOptions(
+          operationId: 'getSame',
+          success: ResponseSpec.text(),
+        ),
+        handler: (_) => 'same',
+      );
+      router.post(
+        '/same',
+        options: const RouteOptions(
+          operationId: 'mutateSame',
+          success: ResponseSpec.text(),
+        ),
+        handler: (_) => 'same',
+      );
+      router.post(
+        '/same/details',
+        options: const RouteOptions(
+          operationId: 'mutateSameDetails',
+          success: ResponseSpec.text(),
+        ),
+        handler: (_) => 'same',
+      );
+      router.websocket(
+        '/events',
+        options: const WebSocketOptions(
+          operationId: 'connectEvents',
+          exposure: RouteExposure.openApiOnly,
+        ),
+        onConnect: (_) async {},
+      );
+
+      final spec = DartEdgeClientLibrarySpec.fromRouter(
+        className: 'FilteredClient',
+        router: router,
+        options: const DartEdgeClientGenerationOptions(
+          ignorePaths: {'/ignored/:id'},
+          ignoreOperations: {'mutateSame'},
+        ),
+      );
+      final source = const DartEdgeClientGenerator().generate(spec);
+
+      expect(source, contains('Future<String> getPublic()'));
+      expect(source, contains('Future<String> getSame()'));
+      expect(source, contains('Future<String> getIgnoredOther()'));
+      expect(source, isNot(contains('getOpenApiOnly')));
+      expect(source, isNot(contains('getInternalHealth')));
+      expect(source, isNot(contains('getIgnoredPath')));
+      expect(source, isNot(contains('getIgnoredPathDetails')));
+      expect(source, isNot(contains('mutateSame')));
+      expect(source, isNot(contains('mutateSameDetails')));
+      expect(source, isNot(contains('connectEvents')));
+    });
+
     test('does not use inline schema ids as serializer targets', () {
       final source = const DartEdgeClientGenerator().generate(
         DartEdgeClientLibrarySpec(
@@ -75,7 +338,7 @@ void main() {
     });
   });
 
-  group('DartEdgeGeneratedClientBase', () {
+  group('DartEdgeHttpClientBase', () {
     test(
       'builds requests and decodes responses via generated serializers',
       () async {
@@ -164,13 +427,47 @@ void main() {
         expect(response, const UserDto(id: '42', name: 'Ada'));
       },
     );
+
+    test('builds websocket connection requests', () async {
+      final transport = _FakeWebSocketTransport(
+        onConnect: (request) async {
+          expect(
+            request.uri,
+            Uri.parse('wss://api.example.test/v1/rooms/42/socket'),
+          );
+          expect(request.headers, {'authorization': 'Bearer token'});
+          expect(request.protocols, ['chat']);
+          return const _FakeWebSocket();
+        },
+      );
+      final client = _TestClient(
+        baseUri: Uri.parse('https://api.example.test/v1'),
+        transport: _FakeTransport(
+          onSend: (_) => throw StateError('HTTP transport should not run.'),
+        ),
+        webSocketTransport: transport,
+        defaultHeaders: const {'authorization': 'Bearer token'},
+      );
+
+      await client.connectWebSocket<RoomPath, Never, Never>(
+        const DartEdgeClientWebSocketInvocation<RoomPath, Never, Never>(
+          pathTemplate: '/rooms/<id>/socket',
+          params: DartEdgeClientRequestValue<RoomPath>(
+            value: RoomPath(id: '42'),
+            encoder: RoomPath.toJson,
+          ),
+          protocols: ['chat'],
+        ),
+      );
+    });
   });
 }
 
-final class _TestClient extends DartEdgeGeneratedClientBase {
+final class _TestClient extends DartEdgeHttpClientBase {
   const _TestClient({
     required super.baseUri,
     required super.transport,
+    super.webSocketTransport,
     super.defaultHeaders,
   });
 }
@@ -185,6 +482,50 @@ final class _FakeTransport implements DartEdgeClientTransport {
   Future<DartEdgeClientResponse> send(DartEdgeClientRequest request) {
     return onSend(request);
   }
+}
+
+final class _FakeWebSocketTransport
+    implements DartEdgeClientWebSocketTransport {
+  const _FakeWebSocketTransport({required this.onConnect});
+
+  final Future<DartEdgeClientWebSocket> Function(
+    DartEdgeClientWebSocketRequest request,
+  )
+  onConnect;
+
+  @override
+  Future<DartEdgeClientWebSocket> connect(
+    DartEdgeClientWebSocketRequest request,
+  ) {
+    return onConnect(request);
+  }
+}
+
+final class _FakeWebSocket implements DartEdgeClientWebSocket {
+  const _FakeWebSocket();
+
+  @override
+  Stream<WebSocketMessage> get messages => const Stream.empty();
+
+  @override
+  Future<void> close([int? code, String? reason]) async {}
+
+  @override
+  Future<void> sendBinary(List<int> value) async {}
+
+  @override
+  Future<void> sendJson(Object? value) async {}
+
+  @override
+  Future<void> sendText(String value) async {}
+}
+
+final class RoomPath {
+  const RoomPath({required this.id});
+
+  final String id;
+
+  static Map<String, Object?> toJson(RoomPath value) => {'id': value.id};
 }
 
 final class UserPath {
@@ -245,4 +586,8 @@ final class UserDto {
 
   @override
   int get hashCode => Object.hash(id, name);
+}
+
+final class TestServices {
+  const TestServices();
 }

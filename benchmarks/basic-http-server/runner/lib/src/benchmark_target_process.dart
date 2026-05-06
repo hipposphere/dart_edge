@@ -145,9 +145,8 @@ final class BenchmarkTargetProcess {
         'server.mjs',
         '--port=$port',
       ], workingDirectory: workingDirectory),
-      BenchmarkTargetRuntime.python => Process.start(
-        _resolvePythonExecutable(workingDirectory),
-        [
+      BenchmarkTargetRuntime.python =>
+        Process.start(_resolvePythonExecutable(workingDirectory), [
           '-m',
           'uvicorn',
           'server:app',
@@ -157,9 +156,7 @@ final class BenchmarkTargetProcess {
           '--log-level=warning',
           '--no-access-log',
           '--no-server-header',
-        ],
-        workingDirectory: workingDirectory,
-      ),
+        ], workingDirectory: workingDirectory),
       BenchmarkTargetRuntime.rust => Process.start(
         '$workingDirectory/target/release/${target.rustBinaryName}',
         ['--port=$port'],

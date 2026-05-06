@@ -477,7 +477,7 @@ void main() {
 
     final outputDirectory = Directory('${root.path}/generated')..createSync();
     File('${outputDirectory.path}/stale.dart').writeAsStringSync('// stale');
-    Directory('${outputDirectory.path}/obsolete')..createSync();
+    Directory('${outputDirectory.path}/obsolete').createSync();
 
     final emission = emitDartSchema(database, databaseClassName: 'AppSchema');
 

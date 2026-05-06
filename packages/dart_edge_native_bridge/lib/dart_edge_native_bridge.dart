@@ -1,5 +1,5 @@
 /// Shared Dart FFI value types for Dart Edge native packages.
-library dart_edge_native_bridge;
+library;
 
 export 'src/ffi/generated_bindings.dart'
     show NativeBytes, NativeOwnedBytes, NativePair;

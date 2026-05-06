@@ -408,8 +408,8 @@ Expression _jsonSchemaFactory(
   return refer('JsonSchema').constInstanceNamed(kind, const <Expression>[], {
     if (nullable) 'nullable': literalBool(true),
     if (format case final format?) 'format': literalString(format),
-    if (items case final items?) 'items': items,
-    if (enumValues case final enumValues?) 'enumValues': enumValues,
+    'items': ?items,
+    'enumValues': ?enumValues,
   });
 }
 

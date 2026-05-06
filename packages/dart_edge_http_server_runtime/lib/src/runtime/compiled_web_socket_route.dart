@@ -70,6 +70,7 @@ WebSocketOptions _effectiveOptions<TServices>(
     summary: options.summary,
     tags: _mergeTags(registration.tags, options.tags),
     deprecated: options.deprecated,
+    exposure: registration.exposure.restrict(options.exposure),
   );
 }
 

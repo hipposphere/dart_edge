@@ -59,8 +59,8 @@ final class SipEndpointCallRequest {
 
   Map<String, Object?> toJson() => {
     'endpointId': endpointId,
-    if (fromUri case final fromUri?) 'fromUri': fromUri,
-    if (toUri case final toUri?) 'toUri': toUri,
+    'fromUri': ?fromUri,
+    'toUri': ?toUri,
     if (headers.isNotEmpty) 'headers': headers,
     if (metadata.isNotEmpty) 'metadata': metadata,
   };

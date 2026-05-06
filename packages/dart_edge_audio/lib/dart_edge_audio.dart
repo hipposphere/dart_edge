@@ -2,7 +2,7 @@
 ///
 /// Import this library when you want coarse-grained metadata extraction and
 /// WAV conversion helpers backed by a bundled Rust implementation.
-library dart_edge_audio;
+library;
 
 export 'src/audio_bytes_conversion_request.dart';
 export 'src/audio_bytes_conversion_result.dart';

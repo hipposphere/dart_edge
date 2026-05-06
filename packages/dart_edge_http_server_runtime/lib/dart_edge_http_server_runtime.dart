@@ -3,7 +3,7 @@
 /// Import this library when you want direct access to the runtime surface,
 /// including [DartEdge], the re-exported `dart_edge_core` contracts, JSON
 /// Schema registry types, and the native transport bridge.
-library dart_edge_http_server_runtime;
+library;
 
 export 'package:dart_edge_core/dart_edge_core.dart';
 

@@ -453,10 +453,7 @@ final class DartEdgeSip {
         await _issueCallCommand(
           call.id,
           'reject',
-          payload: {
-            'status': status,
-            if (reason case final reason?) 'reason': reason,
-          },
+          payload: {'status': status, 'reason': ?reason},
           drain: false,
         );
       case SipSendToVoicemailDecision(:final mailbox):
@@ -483,10 +480,7 @@ final class DartEdgeSip {
         await _issueCallCommand(
           call.id,
           'routeToTrunk',
-          payload: {
-            'trunkId': trunkId,
-            if (targetUri case final targetUri?) 'targetUri': targetUri,
-          },
+          payload: {'trunkId': trunkId, 'targetUri': ?targetUri},
           drain: false,
         );
     }

@@ -44,8 +44,7 @@ final class _DartEdgeAuthRouteTable {
     }
 
     final pluginNames = <String>{
-      for (final route in routes)
-        if (route.pluginName case final pluginName?) pluginName,
+      for (final route in routes) ?route.pluginName,
     }.toList()..sort();
     final operationIds = routes.map((route) => route.operationId).toList()
       ..sort();

@@ -66,10 +66,6 @@ final class OnooWifiState {
   }
 
   Map<String, Object?> toJson() {
-    return {
-      'connected': connected,
-      if (ssid case final value?) 'ssid': value,
-      if (ipAddress case final value?) 'ipAddress': value,
-    };
+    return {'connected': connected, 'ssid': ?ssid, 'ipAddress': ?ipAddress};
   }
 }

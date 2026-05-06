@@ -69,7 +69,7 @@ final class CompiledRoute<TServices> implements CompiledOpenApiRoute {
   Map<String, Object?> toNativeJson() => {
     'kind': 'http',
     'routeId': routeId,
-    'method': httpMethodName(method),
+    'method': method.wireName,
     'path': path,
     'operationId': options.operationId!,
     'pathSegments': patternSegments.map((segment) => segment.toJson()).toList(),
@@ -95,6 +95,7 @@ RouteOptions effectiveRouteOptions<TServices>(
     summary: options.summary,
     tags: _mergeTags(registration.tags, options.tags),
     deprecated: options.deprecated,
+    exposure: registration.exposure.restrict(options.exposure),
     params: options.params,
     query: options.query,
     headers: options.headers,
@@ -120,16 +121,6 @@ final class RouteSegment {
 
   Map<String, Object?> toJson() => {'value': value, 'isParameter': isParameter};
 }
-
-String httpMethodName(HttpMethod method) => switch (method) {
-  HttpMethod.get => 'GET',
-  HttpMethod.post => 'POST',
-  HttpMethod.put => 'PUT',
-  HttpMethod.patch => 'PATCH',
-  HttpMethod.delete => 'DELETE',
-  HttpMethod.head => 'HEAD',
-  HttpMethod.options => 'OPTIONS',
-};
 
 List<RouteSegment> parseRoutePattern(String path) {
   if (path == '/') {

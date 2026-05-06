@@ -10,6 +10,7 @@ workspace:
   - examples/*
 
 dev_dependencies:
+  lints: ^6.0.0
   melos: ^7.6.0
 
 melos:

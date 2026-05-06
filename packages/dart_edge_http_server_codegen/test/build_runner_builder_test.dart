@@ -253,6 +253,11 @@ const userSchemas = JsonSchemaRegistry(
 
 const createUserBodySchema = JsonSchema.ref('CreateUserInput');
 
+const publishStatusSchema = JsonSchema.string(
+  id: 'PublishStatus',
+  enumValues: <Object?>['draft', 'published', 'in-review'],
+);
+
 @FromSchema(
   createUserInputSchema,
   registry: userSchemas,
@@ -270,6 +275,9 @@ typedef CreateUserBody = _$CreateUserBody;
 
 @FromSchema(userDtoSchema, registry: userSchemas)
 typedef UserDto = _$UserDto;
+
+@FromSchema(publishStatusSchema)
+typedef PublishStatus = _$PublishStatus;
 ''',
         },
         generateFor: const {'test_app|lib/models.dart'},
@@ -315,6 +323,16 @@ typedef UserDto = _$UserDto;
               contains('final String name;'),
               contains('final class _\$UserDto implements JsonEncodable'),
               contains('static const schemaId = "UserDto";'),
+              contains('enum _\$PublishStatus implements JsonEncodable'),
+              contains('draft("draft"),'),
+              contains('published("published"),'),
+              contains('inReview("in-review");'),
+              contains('final String value;'),
+              contains('String toJson() => value;'),
+              contains('static PublishStatus fromJson(Object? value)'),
+              contains('"draft" => PublishStatus.draft'),
+              contains('"in-review" => PublishStatus.inReview'),
+              contains('static const schemaId = "PublishStatus";'),
               isNot(contains('RouteOptions')),
               isNot(contains('\$generatedRoutes')),
             ]),

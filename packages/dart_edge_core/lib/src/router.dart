@@ -4,6 +4,7 @@ export 'router/http_route_definition.dart';
 export 'router/http_route_mount.dart';
 export 'router/native_http_route_descriptor.dart';
 export 'router/native_http_route_mount.dart';
+export 'router/route_exposure.dart';
 export 'router/route_options.dart';
 export 'router/route_path.dart';
 export 'router/route_registry.dart';

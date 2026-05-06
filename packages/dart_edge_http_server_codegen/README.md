@@ -1,10 +1,11 @@
 # dart_edge_http_server_codegen
 
-Build-time JSON Schema generation and generator-facing APIs for Dart Edge HTTP.
+Build-time JSON Schema model generation and client-generation APIs for Dart
+Edge HTTP.
 
 This package provides a `build_runner` builder for schema-inferred Dart model
-types plus lower-level generator APIs for tooling that already has normalized
-HTTP route metadata.
+types plus lower-level client generator APIs for tooling that already has
+normalized HTTP route metadata.
 
 ## Core Concepts
 
@@ -13,12 +14,15 @@ HTTP route metadata.
 - `JsonSchemaRegistry` references can be supplied to validate `$ref` usage
 - `FromSchema.responseStatus` controls the generated JSON `ResponseSpec`
   status, defaulting to `200`
-- `DartEdgeHttpServerGenerator` emits server artifacts from normalized route
-  specs
 - `DartEdgeClientGenerator` emits Dart client classes from normalized route
   metadata
-- `DartEdgeGeneratedClientBase` and the client transport types provide the
-  runtime support surface for generated clients
+- `DartEdgeHttpClientBase` is exported by `dart_edge_core`
+- `dart_edge_http_client` provides concrete `package:http` and
+  `web_socket_client` transports for generated clients
+
+`dart_edge_http_server_codegen` does not export `FromSchema`. Import
+annotations and runtime contracts from `dart_edge_core` or the app-facing
+`dart_edge_http_server` package.
 
 ## Schema Model Generation
 
@@ -99,32 +103,8 @@ final class _$CreateUserInput {
 }
 ```
 
-## Server Artifact Generation
-
-`DartEdgeHttpServerGenerator` is intentionally built around normalized specs.
-Custom tooling can construct these specs directly.
-
-```dart
-final source = const DartEdgeHttpServerGenerator().generate(
-  DartEdgeHttpServerLibrarySpec(
-    clientClassName: 'UsersClient',
-    schemas: userSchemas.schemas,
-    routes: [
-      DartEdgeHttpRouteSpec(
-        routeClassName: 'CreateUserRoute',
-        method: HttpMethod.post,
-        path: '/users',
-        options: createUserRouteOptions,
-        successType: 'UserDto',
-        bodyType: 'CreateUserInput',
-      ),
-    ],
-  ),
-);
-```
-
 ## Client Generation
 
-`dart_edge_http_server_codegen` also contains the client-generation slice for
-HTTP routes. It is intentionally built around normalized route options and
-schema ids, not runtime reflection.
+`dart_edge_http_server_codegen` contains the client-generation slice for HTTP
+routes. It is intentionally built around normalized route options and schema
+ids, not runtime reflection.

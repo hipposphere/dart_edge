@@ -32,8 +32,8 @@ final class DartEdgeAuthTrustedAdminApi {
           'email': email,
           'password': password,
           'name': name,
-          if (role case final role?) 'role': role,
-          if (data case final data?) 'data': data,
+          'role': ?role,
+          'data': ?data,
         },
       ),
     );
@@ -55,19 +55,16 @@ final class DartEdgeAuthTrustedAdminApi {
       await _call(
         'listUsers',
         query: {
-          if (limit case final limit?) 'limit': limit,
-          if (offset case final offset?) 'offset': offset,
-          if (searchField case final searchField?) 'searchField': searchField,
-          if (searchValue case final searchValue?) 'searchValue': searchValue,
-          if (searchOperator case final searchOperator?)
-            'searchOperator': searchOperator,
-          if (sortBy case final sortBy?) 'sortBy': sortBy,
-          if (sortDirection case final sortDirection?)
-            'sortDirection': sortDirection,
-          if (filterField case final filterField?) 'filterField': filterField,
-          if (filterValue case final filterValue?) 'filterValue': filterValue,
-          if (filterOperator case final filterOperator?)
-            'filterOperator': filterOperator,
+          'limit': ?limit,
+          'offset': ?offset,
+          'searchField': ?searchField,
+          'searchValue': ?searchValue,
+          'searchOperator': ?searchOperator,
+          'sortBy': ?sortBy,
+          'sortDirection': ?sortDirection,
+          'filterField': ?filterField,
+          'filterValue': ?filterValue,
+          'filterOperator': ?filterOperator,
         },
       ),
     );
@@ -91,9 +88,8 @@ final class DartEdgeAuthTrustedAdminApi {
         'banUser',
         body: {
           'userId': userId,
-          if (banReason case final banReason?) 'banReason': banReason,
-          if (banExpiresIn case final banExpiresIn?)
-            'banExpiresIn': banExpiresIn,
+          'banReason': ?banReason,
+          'banExpiresIn': ?banExpiresIn,
         },
       ),
     );
@@ -117,8 +113,8 @@ final class DartEdgeAuthTrustedAdminApi {
         body: {
           'userId': userId,
           'impersonatedByUserId': impersonatedByUserId,
-          if (ipAddress case final ipAddress?) 'ipAddress': ipAddress,
-          if (userAgent case final userAgent?) 'userAgent': userAgent,
+          'ipAddress': ?ipAddress,
+          'userAgent': ?userAgent,
         },
       ),
     );
@@ -134,8 +130,8 @@ final class DartEdgeAuthTrustedAdminApi {
         'stopImpersonating',
         body: {
           'sessionToken': sessionToken,
-          if (ipAddress case final ipAddress?) 'ipAddress': ipAddress,
-          if (userAgent case final userAgent?) 'userAgent': userAgent,
+          'ipAddress': ?ipAddress,
+          'userAgent': ?userAgent,
         },
       ),
     );
@@ -185,8 +181,8 @@ final class DartEdgeAuthTrustedAdminApi {
         'hasPermission',
         body: {
           'userId': userId,
-          if (permission case final permission?) 'permission': permission,
-          if (permissions case final permissions?) 'permissions': permissions,
+          'permission': ?permission,
+          'permissions': ?permissions,
         },
       ),
     );

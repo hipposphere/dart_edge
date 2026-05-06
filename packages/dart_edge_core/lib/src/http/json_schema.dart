@@ -112,9 +112,9 @@ sealed class JsonSchema {
   /// Serializes this schema into a JSON-compatible map.
   Map<String, Object?> toJson() {
     return <String, Object?>{
-      if (id case final id?) r'$id': id,
-      if (title case final title?) 'title': title,
-      if (description case final description?) 'description': description,
+      r'$id': ?id,
+      'title': ?title,
+      'description': ?description,
       if (enumValues.isNotEmpty) 'enum': enumValues.toList(growable: false),
       ...toJsonKeywords(),
     };
@@ -183,8 +183,7 @@ final class JsonObjectSchema extends _JsonTypedSchema {
             entry.key: entry.value.toJson(),
         },
       if (required.isNotEmpty) 'required': required.toList(growable: false),
-      if (additionalProperties case final additionalProperties?)
-        'additionalProperties': additionalProperties,
+      'additionalProperties': ?additionalProperties,
     };
   }
 }
@@ -223,7 +222,7 @@ final class JsonStringSchema extends _JsonTypedSchema {
 
   @override
   Map<String, Object?> additionalKeywords() {
-    return <String, Object?>{if (format case final format?) 'format': format};
+    return <String, Object?>{'format': ?format};
   }
 }
 
@@ -241,7 +240,7 @@ final class JsonIntegerSchema extends _JsonTypedSchema {
 
   @override
   Map<String, Object?> additionalKeywords() {
-    return <String, Object?>{if (format case final format?) 'format': format};
+    return <String, Object?>{'format': ?format};
   }
 }
 
@@ -259,7 +258,7 @@ final class JsonNumberSchema extends _JsonTypedSchema {
 
   @override
   Map<String, Object?> additionalKeywords() {
-    return <String, Object?>{if (format case final format?) 'format': format};
+    return <String, Object?>{'format': ?format};
   }
 }
 
@@ -319,7 +318,7 @@ final class JsonRawSchema extends JsonSchema {
 
   @override
   Map<String, Object?> toJson() {
-    return <String, Object?>{...schema, if (id case final id?) r'$id': id};
+    return <String, Object?>{...schema, r'$id': ?id};
   }
 
   @override

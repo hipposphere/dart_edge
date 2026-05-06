@@ -79,11 +79,7 @@ final class IntrospectedEnum {
   final List<String> values;
 
   Map<String, Object?> toJson() {
-    return <String, Object?>{
-      'name': name,
-      if (schema case final schema?) 'schema': schema,
-      'values': values,
-    };
+    return <String, Object?>{'name': name, 'schema': ?schema, 'values': values};
   }
 }
 
@@ -129,7 +125,7 @@ final class IntrospectedTable {
   Map<String, Object?> toJson() {
     return <String, Object?>{
       'name': name,
-      if (schema case final schema?) 'schema': schema,
+      'schema': ?schema,
       'columns': [for (final column in columns) column.toJson()],
       if (constraints.isNotEmpty)
         'constraints': [
@@ -198,12 +194,10 @@ final class IntrospectedTableConstraint {
       'name': name,
       'kind': kind.name,
       if (columns.isNotEmpty) 'columns': columns,
-      if (referencedSchema case final referencedSchema?)
-        'referencedSchema': referencedSchema,
-      if (referencedTable case final referencedTable?)
-        'referencedTable': referencedTable,
+      'referencedSchema': ?referencedSchema,
+      'referencedTable': ?referencedTable,
       if (referencedColumns.isNotEmpty) 'referencedColumns': referencedColumns,
-      if (expression case final expression?) 'expression': expression,
+      'expression': ?expression,
     };
   }
 }
@@ -281,11 +275,10 @@ final class IntrospectedColumn {
       'dartType': dartType,
       if (nullable) 'nullable': true,
       if (hasDefault) 'hasDefault': true,
-      if (defaultExpression case final defaultExpression?)
-        'defaultExpression': defaultExpression,
+      'defaultExpression': ?defaultExpression,
       if (primaryKey) 'primaryKey': true,
-      if (enumName case final enumName?) 'enumName': enumName,
-      if (enumSchema case final enumSchema?) 'enumSchema': enumSchema,
+      'enumName': ?enumName,
+      'enumSchema': ?enumSchema,
       if (enumValues.isNotEmpty) 'enumValues': enumValues,
     };
   }
@@ -345,7 +338,7 @@ final class IntrospectedRoutine {
   Map<String, Object?> toJson() {
     return <String, Object?>{
       'name': name,
-      if (schema case final schema?) 'schema': schema,
+      'schema': ?schema,
       'kind': kind.name,
       'returnDatabaseType': returnDatabaseType,
       'returnDartType': returnDartType,

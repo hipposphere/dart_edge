@@ -236,14 +236,13 @@ final class DartEdgeAuthApi {
       await callKnownOperation(
         operation: DartEdgeAuthOperation.updateUser,
         body: {
-          if (email case final email?) 'email': email,
-          if (name case final name?) 'name': name,
-          if (image case final image?) 'image': image,
-          if (username case final username?) 'username': username,
-          if (displayUsername case final displayUsername?)
-            'displayUsername': displayUsername,
-          if (role case final role?) 'role': role,
-          if (metadata case final metadata?) 'metadata': metadata,
+          'email': ?email,
+          'name': ?name,
+          'image': ?image,
+          'username': ?username,
+          'displayUsername': ?displayUsername,
+          'role': ?role,
+          'metadata': ?metadata,
         },
       ),
     );

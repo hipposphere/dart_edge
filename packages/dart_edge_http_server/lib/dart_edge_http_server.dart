@@ -3,7 +3,7 @@
 /// Import this library when you want the default combination of runtime APIs
 /// such as [DartEdge], [HttpRouteDefinition], and [RequestContext], plus helper
 /// APIs such as [OpenApiHelpers].
-library dart_edge_http_server;
+library;
 
 export 'package:dart_edge_http_server_runtime/dart_edge_http_server_runtime.dart';
 

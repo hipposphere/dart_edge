@@ -3,7 +3,7 @@
 /// Import this library to work with [SqlPool] implementations, table/column
 /// descriptors, `executor.typed` / `executor.raw` query roots, and raw
 /// [SqlStatement] values.
-library dart_edge_sql;
+library;
 
 export 'src/core/sql_dialect.dart';
 export 'src/core/sql_executor.dart';

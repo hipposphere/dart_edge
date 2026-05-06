@@ -24,7 +24,7 @@ final class BluetoothServerConfig {
 
     return {
       'serverName': serverName,
-      if (adapterName case final adapterName?) 'adapterName': adapterName,
+      'adapterName': ?adapterName,
       'autoPowerAdapter': autoPowerAdapter,
       'advertisement': advertisement.toJson(
         advertisedServiceUuids: advertisedServiceUuids,

@@ -1,3 +1,5 @@
+import '../router/route_exposure.dart';
+
 /// Convenience options for inline `Router.websocket` handlers.
 final class WebSocketOptions {
   const WebSocketOptions({
@@ -5,6 +7,7 @@ final class WebSocketOptions {
     this.summary,
     this.tags = const <String>[],
     this.deprecated = false,
+    this.exposure = RouteExposure.all,
   });
 
   /// Optional stable identifier used in generated output and manifests.
@@ -18,6 +21,13 @@ final class WebSocketOptions {
 
   /// Whether the route should be marked as deprecated.
   final bool deprecated;
+
+  /// Generated surfaces this route should appear in.
+  ///
+  /// [RouteExposure.client] controls generated WebSocket client methods.
+  /// [RouteExposure.openApi] is preserved for consistency with HTTP route
+  /// options and future WebSocket documentation support.
+  final RouteExposure exposure;
 
   /// Returns a normalized options object suitable for runtime execution.
   WebSocketOptions normalized({String? defaultOperationId}) {
@@ -35,6 +45,7 @@ final class WebSocketOptions {
       summary: summary,
       tags: List<String>.unmodifiable(tags),
       deprecated: deprecated,
+      exposure: exposure,
     );
   }
 }

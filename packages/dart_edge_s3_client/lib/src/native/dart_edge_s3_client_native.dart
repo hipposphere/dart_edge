@@ -12,8 +12,8 @@ import '../s3_object_ref.dart';
 import '../s3_put_object_result.dart';
 import 'generated_bindings.dart' as gen;
 
-final class _NativeS3BytesResponse {
-  const _NativeS3BytesResponse({required this.metadata, required this.bytes});
+final class NativeS3BytesResponse {
+  const NativeS3BytesResponse({required this.metadata, required this.bytes});
 
   final S3ObjectMetadata metadata;
   final Uint8List bytes;
@@ -165,7 +165,7 @@ abstract final class DartEdgeS3ClientNative {
     }
   }
 
-  static _NativeS3BytesResponse getObjectBytes(int handle, S3ObjectRef object) {
+  static NativeS3BytesResponse getObjectBytes(int handle, S3ObjectRef object) {
     final allocations = core_ffi.NativeAllocations();
     final requestPtr = calloc<gen.NativeS3ObjectRef>();
 
@@ -182,7 +182,7 @@ abstract final class DartEdgeS3ClientNative {
       try {
         final result = resultPtr.ref;
         _throwIfError(result.error);
-        return _NativeS3BytesResponse(
+        return NativeS3BytesResponse(
           metadata: _readObjectMetadata(result.metadata),
           bytes: core_ffi.copyNativeOwnedBytes(result.bytes),
         );

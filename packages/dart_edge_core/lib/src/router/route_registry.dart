@@ -5,6 +5,7 @@ import 'guard.dart';
 import 'http_route_definition.dart';
 import 'http_route_mount.dart';
 import 'native_http_route_mount.dart';
+import 'route_exposure.dart';
 import 'route_path.dart';
 
 /// In-memory route registration table shared across router scopes.
@@ -16,6 +17,7 @@ final class RouteRegistry<TServices> {
     required String prefix,
     required List<String> tags,
     required List<Guard<TServices>> guards,
+    required RouteExposure exposure,
     required HttpRouteMount<TServices, dynamic> mount,
   }) {
     registrations.add(
@@ -23,6 +25,7 @@ final class RouteRegistry<TServices> {
         prefix: prefix,
         tags: tags,
         guards: guards,
+        exposure: exposure,
         route: mount.route,
         httpMethod: mount.method,
         httpPath: mount.path,
@@ -34,6 +37,7 @@ final class RouteRegistry<TServices> {
     required String prefix,
     required List<String> tags,
     required List<Guard<TServices>> guards,
+    required RouteExposure exposure,
     required WebSocketRouteMount<TServices> mount,
   }) {
     registrations.add(
@@ -41,6 +45,7 @@ final class RouteRegistry<TServices> {
         prefix: prefix,
         tags: tags,
         guards: guards,
+        exposure: exposure,
         route: mount.route,
         httpPath: mount.path,
       ),
@@ -51,6 +56,7 @@ final class RouteRegistry<TServices> {
     required String prefix,
     required List<String> tags,
     required List<Guard<TServices>> guards,
+    required RouteExposure exposure,
     required NativeHttpRouteMount mount,
   }) {
     registrations.add(
@@ -58,6 +64,7 @@ final class RouteRegistry<TServices> {
         prefix: prefix,
         tags: tags,
         guards: guards,
+        exposure: exposure,
         route: mount,
         httpMethod: mount.method,
         httpPath: mount.path,
@@ -69,6 +76,7 @@ final class RouteRegistry<TServices> {
     required String prefix,
     required List<String> tags,
     required List<Guard<TServices>> guards,
+    required RouteExposure exposure,
     required RouteRegistration<TServices> registration,
   }) {
     registrations.add(
@@ -76,6 +84,7 @@ final class RouteRegistry<TServices> {
         prefix: prefix,
         tags: tags,
         guards: guards,
+        exposure: exposure,
         route: registration.route,
         httpMethod: registration.httpMethod,
         httpPath: registration.httpPath,
@@ -90,6 +99,7 @@ final class RouteRegistration<TServices> {
     required this.prefix,
     required List<String> tags,
     required List<Guard<TServices>> guards,
+    required this.exposure,
     required this.route,
     this.httpMethod,
     this.httpPath,
@@ -99,6 +109,7 @@ final class RouteRegistration<TServices> {
   final String prefix;
   final List<String> tags;
   final List<Guard<TServices>> guards;
+  final RouteExposure exposure;
   final Object route;
   final HttpMethod? httpMethod;
   final String? httpPath;
@@ -120,6 +131,7 @@ final class RouteRegistration<TServices> {
           'operationId: ${options.operationId!}',
           if (routeTags.isNotEmpty) 'tags: $routeTags',
           if (guards.isNotEmpty) 'guards: $guards',
+          if (exposure != RouteExposure.all) 'exposure: $exposure',
           'route: $route',
         ];
         return 'RouteRegistration(${parts.join(', ')})';
@@ -136,6 +148,7 @@ final class RouteRegistration<TServices> {
           'operationId: ${options.operationId}',
           if (routeTags.isNotEmpty) 'tags: $routeTags',
           if (guards.isNotEmpty) 'guards: $guards',
+          if (exposure != RouteExposure.all) 'exposure: $exposure',
           'route: $route',
         ];
         return 'RouteRegistration(${parts.join(', ')})';

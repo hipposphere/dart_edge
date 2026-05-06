@@ -2,7 +2,7 @@
 ///
 /// Import this library to declare reusable GATT application definitions and
 /// serve them through a native Linux/BlueZ backend.
-library dart_edge_bluetooth_server;
+library;
 
 export 'package:dart_edge_bluetooth_protocol/dart_edge_bluetooth_protocol.dart';
 

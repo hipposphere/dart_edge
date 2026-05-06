@@ -22,6 +22,7 @@ final class OpenApiHelpers {
       options: RouteOptions(
         summary: 'Serve the generated OpenAPI document.',
         tags: <String>['openapi'],
+        exposure: RouteExposure.none,
         success: ResponseSpec.json(),
       ),
       handler: (_) => RawResponse.encoded(
@@ -47,6 +48,7 @@ final class OpenApiHelpers {
       options: RouteOptions(
         summary: 'Serve a Swagger UI page for the generated OpenAPI document.',
         tags: <String>['openapi'],
+        exposure: RouteExposure.none,
         success: ResponseSpec.html(),
       ),
       handler: (_) => RawResponse.encoded(

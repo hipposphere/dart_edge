@@ -48,7 +48,7 @@ final class SipTransportBinding {
     'protocol': protocol.wireName,
     'host': host,
     'port': port,
-    if (tlsProfile case final tlsProfile?) 'tlsProfile': tlsProfile,
+    'tlsProfile': ?tlsProfile,
   };
 }
 
@@ -88,8 +88,7 @@ final class SipMediaConfig {
   Map<String, Object?> toJson() => {
     'rtpStartPort': rtpStartPort,
     'rtpEndPort': rtpEndPort,
-    if (externalAddress case final externalAddress?)
-      'externalAddress': externalAddress,
+    'externalAddress': ?externalAddress,
     'enableSrtp': enableSrtp,
     'enableDtmfDetection': enableDtmfDetection,
   };
@@ -115,8 +114,8 @@ final class SipRecordingStorageConfig {
 
   Map<String, Object?> toJson() => {
     'enabled': enabled,
-    if (directory case final directory?) 'directory': directory,
-    if (retentionDays case final retentionDays?) 'retentionDays': retentionDays,
+    'directory': ?directory,
+    'retentionDays': ?retentionDays,
   };
 }
 
@@ -144,9 +143,8 @@ final class SipVoicemailStorageConfig {
 
   Map<String, Object?> toJson() => {
     'enabled': enabled,
-    if (directory case final directory?) 'directory': directory,
-    if (defaultGreetingUri case final defaultGreetingUri?)
-      'defaultGreetingUri': defaultGreetingUri,
+    'directory': ?directory,
+    'defaultGreetingUri': ?defaultGreetingUri,
   };
 }
 

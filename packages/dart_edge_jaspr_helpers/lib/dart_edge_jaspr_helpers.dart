@@ -2,7 +2,7 @@
 ///
 /// Use this package when you want reusable HTML scaffolds, iconography, and
 /// auth-oriented templates on top of `dart_edge_jaspr`.
-library dart_edge_jaspr_helpers;
+library;
 
 export 'src/email.dart';
 export 'src/icons.dart';

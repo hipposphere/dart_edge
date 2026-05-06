@@ -18,7 +18,7 @@ final class FromSchemaModelSpec {
 
   final String publicName;
   final String backingClassName;
-  final JsonObjectSchema schema;
+  final JsonSchema schema;
   final String schemaId;
   final Map<String, SchemaRefModelSpec> refModels;
   final int responseStatus;
@@ -56,7 +56,7 @@ FromSchemaModelSpec buildFromSchemaModel(
     );
   }
 
-  final schema = _resolveRootObjectSchema(
+  final schema = _resolveRootSchema(
     sourceSchema,
     registry: registry,
     element: element,
@@ -182,6 +182,17 @@ String generateFromSchemaModels(List<FromSchemaModelSpec> models) {
 }
 
 void _writeModel(StringBuffer buffer, FromSchemaModelSpec model) {
+  switch (model.schema) {
+    case JsonObjectSchema():
+      _writeObjectModel(buffer, model);
+    case JsonStringSchema(:final enumValues) when enumValues.isNotEmpty:
+      _writeStringEnumModel(buffer, model);
+    case _:
+      throw StateError('Unsupported FromSchema model schema ${model.schema}.');
+  }
+}
+
+void _writeObjectModel(StringBuffer buffer, FromSchemaModelSpec model) {
   final fields = _modelFields(model);
 
   buffer
@@ -250,12 +261,76 @@ void _writeModel(StringBuffer buffer, FromSchemaModelSpec model) {
     ..writeln('}');
 }
 
+void _writeStringEnumModel(StringBuffer buffer, FromSchemaModelSpec model) {
+  final schema = model.schema;
+  if (schema is! JsonStringSchema) {
+    throw StateError('Expected JsonStringSchema, got $schema.');
+  }
+  final values = _stringEnumValues(schema, model.publicName);
+
+  buffer.writeln('enum ${model.backingClassName} implements JsonEncodable {');
+
+  for (var i = 0; i < values.length; i += 1) {
+    final separator = i == values.length - 1 ? ';' : ',';
+    buffer.writeln(
+      '  ${values[i].name}(${_dartString(values[i].wireValue)})$separator',
+    );
+  }
+
+  buffer
+    ..writeln()
+    ..writeln('  const ${model.backingClassName}(this.value);')
+    ..writeln()
+    ..writeln('  final String value;')
+    ..writeln()
+    ..writeln('  static const schemaId = ${_dartString(model.schemaId)};')
+    ..writeln()
+    ..writeln('  static const schemaRef = JsonSchema.ref(schemaId);')
+    ..writeln()
+    ..writeln('  static const RequestBody requestBody = RequestBody.json(')
+    ..writeln('    schema: schemaRef,')
+    ..writeln('    decoder: fromJson,')
+    ..writeln('  );')
+    ..writeln()
+    ..writeln('  static const ResponseSpec response = ResponseSpec.json(')
+    ..writeln('    status: ${model.responseStatus},')
+    ..writeln('    schema: schemaRef,')
+    ..writeln('  );')
+    ..writeln()
+    ..writeln('  @override')
+    ..writeln('  String toJson() => value;')
+    ..writeln()
+    ..writeln('  static ${model.publicName} fromJson(Object? value) {')
+    ..writeln('    return switch (value) {');
+
+  for (final value in values) {
+    buffer.writeln(
+      '      ${_dartString(value.wireValue)} => '
+      '${model.publicName}.${value.name},',
+    );
+  }
+
+  buffer
+    ..writeln(
+      '      _ => throw ArgumentError.value('
+      'value, \'value\', \'Expected ${model.publicName} JSON enum value.\'),',
+    )
+    ..writeln('    };')
+    ..writeln('  }')
+    ..writeln('}');
+}
+
 List<_SchemaFieldSpec> _modelFields(FromSchemaModelSpec model) {
+  final schema = model.schema;
+  if (schema is! JsonObjectSchema) {
+    throw StateError('Expected JsonObjectSchema, got $schema.');
+  }
+
   final fields = <_SchemaFieldSpec>[];
   final fieldNames = <String>{};
-  final required = model.schema.required.toSet();
+  final required = schema.required.toSet();
 
-  for (final entry in model.schema.properties.entries) {
+  for (final entry in schema.properties.entries) {
     final fieldName = _fieldName(entry.key);
     if (!fieldNames.add(fieldName)) {
       throw InvalidGenerationSourceError(
@@ -541,13 +616,13 @@ SchemaRefModelSpec _schemaRefModelFromDartObject(
   return SchemaRefModelSpec(schemaId: schemaId, typeName: typeName);
 }
 
-JsonObjectSchema _resolveRootObjectSchema(
+JsonSchema _resolveRootSchema(
   JsonSchema schema, {
   required JsonSchemaRegistry? registry,
   required Element element,
 }) {
-  if (schema case final JsonObjectSchema objectSchema) {
-    return objectSchema;
+  if (_supportedRootSchema(schema)) {
+    return schema;
   }
 
   if (schema case JsonReferenceSchema(:final ref)) {
@@ -566,24 +641,29 @@ JsonObjectSchema _resolveRootObjectSchema(
         element: element,
       );
     }
-    if (resolvedSchema case final JsonObjectSchema objectSchema) {
-      return objectSchema;
+    if (_supportedRootSchema(resolvedSchema)) {
+      return resolvedSchema;
     }
     throw InvalidGenerationSourceError(
-      '@FromSchema resolved $ref to a non-object schema.',
+      '@FromSchema resolved $ref to an unsupported schema.',
       element: element,
     );
   }
 
   throw InvalidGenerationSourceError(
-    '@FromSchema currently supports object schemas only.',
+    '@FromSchema supports object schemas and string schemas with enumValues.',
     element: element,
   );
 }
 
+bool _supportedRootSchema(JsonSchema schema) {
+  return schema is JsonObjectSchema ||
+      (schema is JsonStringSchema && schema.enumValues.isNotEmpty);
+}
+
 String _schemaIdForModel(
   JsonSchema sourceSchema,
-  JsonObjectSchema resolvedSchema,
+  JsonSchema resolvedSchema,
   String publicName,
 ) {
   if (sourceSchema case JsonReferenceSchema(:final ref)) {
@@ -713,7 +793,7 @@ List<String> _stringListField(DartObject object, String name) {
   return [
     for (final value
         in _field(object, name)?.toListValue() ?? const <DartObject>[])
-      if (value.toStringValue() case final string?) string,
+      ?value.toStringValue(),
   ];
 }
 
@@ -821,6 +901,58 @@ String _fieldName(String wireName) {
   return name;
 }
 
+List<_StringEnumValueSpec> _stringEnumValues(
+  JsonStringSchema schema,
+  String publicName,
+) {
+  final values = <_StringEnumValueSpec>[];
+  final names = <String>{};
+
+  for (final value in schema.enumValues) {
+    if (value is! String) {
+      throw InvalidGenerationSourceError(
+        '@FromSchema can generate $publicName as a Dart enum only when every '
+        'JsonSchema.string enumValues entry is a string.',
+      );
+    }
+
+    final name = _enumValueName(value);
+    if (!names.add(name)) {
+      throw InvalidGenerationSourceError(
+        'Schema ${schema.id ?? publicName} contains duplicate Dart enum value '
+        'name $name.',
+      );
+    }
+    values.add(_StringEnumValueSpec(name: name, wireValue: value));
+  }
+
+  return values;
+}
+
+String _enumValueName(String wireValue) {
+  if (_validIdentifier(wireValue) &&
+      !_dartKeywords.contains(wireValue) &&
+      !wireValue.startsWith('_') &&
+      !RegExp(r'^[A-Z]').hasMatch(wireValue)) {
+    return wireValue;
+  }
+
+  final parts = _identifierParts(wireValue);
+  var name = switch (parts) {
+    [] => 'value',
+    [final first, ...final rest] =>
+      '${first.toLowerCase()}${rest.map(_capitalize).join()}',
+  };
+
+  if (RegExp(r'^[0-9]').hasMatch(name)) {
+    name = 'value${_capitalize(name)}';
+  }
+  if (_dartKeywords.contains(name) || name.startsWith('_')) {
+    return '${name}Value';
+  }
+  return name;
+}
+
 String _upperCamel(String value) {
   if (_validIdentifier(value) &&
       !_dartKeywords.contains(value) &&
@@ -873,6 +1005,13 @@ final class _SchemaFieldSpec {
   final bool nullable;
 }
 
+final class _StringEnumValueSpec {
+  const _StringEnumValueSpec({required this.name, required this.wireValue});
+
+  final String name;
+  final String wireValue;
+}
+
 final class SchemaRefModelSpec {
   const SchemaRefModelSpec({required this.schemaId, required this.typeName});
 
@@ -919,7 +1058,6 @@ const _dartKeywords = <String>{
   'interface',
   'is',
   'late',
-  'library',
   'mixin',
   'new',
   'null',

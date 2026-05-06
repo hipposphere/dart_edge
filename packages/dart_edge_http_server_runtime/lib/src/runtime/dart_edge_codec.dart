@@ -12,11 +12,11 @@ final class DartEdgeCodec<T> {
 /// Registry of schema-id keyed codecs used by the runtime.
 final class DartEdgeCodecRegistry {
   const DartEdgeCodecRegistry([
-    Map<String, _ErasedDartEdgeCodec> codecs =
-        const <String, _ErasedDartEdgeCodec>{},
+    Map<String, ErasedDartEdgeCodec> codecs =
+        const <String, ErasedDartEdgeCodec>{},
   ]) : _codecs = codecs;
 
-  final Map<String, _ErasedDartEdgeCodec> _codecs;
+  final Map<String, ErasedDartEdgeCodec> _codecs;
 
   static const empty = DartEdgeCodecRegistry();
 
@@ -24,7 +24,7 @@ final class DartEdgeCodecRegistry {
   DartEdgeCodecRegistry withCodec<T>(String schemaId, DartEdgeCodec<T> codec) {
     return DartEdgeCodecRegistry({
       ..._codecs,
-      schemaId: _ErasedDartEdgeCodec(
+      schemaId: ErasedDartEdgeCodec(
         encode: (value) => codec.encode(value as T),
         decode: codec.decode,
       ),
@@ -73,8 +73,8 @@ final class DartEdgeCodecRegistry {
   }
 }
 
-final class _ErasedDartEdgeCodec {
-  const _ErasedDartEdgeCodec({required this.encode, required this.decode});
+final class ErasedDartEdgeCodec {
+  const ErasedDartEdgeCodec({required this.encode, required this.decode});
 
   final Object? Function(Object? value) encode;
   final Object? Function(Object? value) decode;
