@@ -375,6 +375,60 @@ void main() {
       expect(source, isNot(contains('encoder: (value) => value.toJson()')));
     });
 
+    test('skips model generation for external schema ids', () {
+      const ownerSchema = JsonSchema.object(
+        id: 'UserDto',
+        properties: {'id': JsonSchema.string()},
+        required: ['id'],
+        additionalProperties: false,
+      );
+      const responseSchema = JsonSchema.object(
+        id: 'PhoneCallDto',
+        properties: {
+          'id': JsonSchema.string(),
+          'owner': JsonSchema.ref('UserDto'),
+        },
+        required: ['id', 'owner'],
+        additionalProperties: false,
+      );
+      final router = Router<TestServices>();
+      router.get(
+        '/phone-calls/<id>',
+        options: const RouteOptions(
+          operationId: 'getPhoneCall',
+          success: ResponseSpec.json(schema: responseSchema),
+        ),
+        handler: (_) => const <String, Object?>{},
+      );
+      router.get(
+        '/users/<id>',
+        options: const RouteOptions(
+          operationId: 'getUser',
+          success: ResponseSpec.json(schema: JsonSchema.ref('UserDto')),
+        ),
+        handler: (_) => const <String, Object?>{},
+      );
+
+      final spec = DartEdgeClientLibrarySpec.fromRouter(
+        className: 'PhoneCallsClient',
+        router: router,
+        schemas: const [ownerSchema],
+        externalSchemaIds: const {'UserDto'},
+      );
+      final source = const DartEdgeClientGenerator().generate(spec);
+
+      expect(
+        source,
+        contains('final class PhoneCallDto implements JsonEncodable'),
+      );
+      expect(source, isNot(contains('final class UserDto implements')));
+      expect(source, contains('final UserDto owner;'));
+      expect(source, contains('owner: UserDto.fromJson(json[\'owner\']!),'));
+      expect(source, contains('Future<DartEdgeClientResponseObject<UserDto>>'));
+      expect(source, contains('decoder: UserDto.fromJson'));
+      expect(source, contains("schemaId: 'UserDto'"));
+    });
+
     test('throws a clear error for unresolved operation schema types', () {
       final router = Router<TestServices>();
       router.get(

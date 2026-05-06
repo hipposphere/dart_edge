@@ -14,6 +14,7 @@ final class DartEdgeClientLibrarySpec {
     this.webSockets = const <DartEdgeClientWebSocketOperation>[],
     this.schemas = const <JsonSchema>[],
     this.schemaTypes = const <String, String>{},
+    this.externalSchemaIds = const <String>{},
     this.additionalImports = const <String>[],
   });
 
@@ -22,6 +23,7 @@ final class DartEdgeClientLibrarySpec {
   final List<DartEdgeClientWebSocketOperation> webSockets;
   final List<JsonSchema> schemas;
   final Map<String, String> schemaTypes;
+  final Set<String> externalSchemaIds;
   final List<String> additionalImports;
 
   factory DartEdgeClientLibrarySpec.fromRouter({
@@ -29,6 +31,7 @@ final class DartEdgeClientLibrarySpec {
     required Router<dynamic> router,
     List<JsonSchema> schemas = const <JsonSchema>[],
     Map<String, String> schemaTypes = const <String, String>{},
+    Set<String> externalSchemaIds = const <String>{},
     List<String> additionalImports = const <String>[],
     DartEdgeClientGenerationOptions options =
         const DartEdgeClientGenerationOptions(),
@@ -143,6 +146,7 @@ final class DartEdgeClientLibrarySpec {
       webSockets: webSockets,
       schemas: discoveredSchemas.schemas,
       schemaTypes: schemaTypes,
+      externalSchemaIds: externalSchemaIds,
       additionalImports: additionalImports,
     );
   }
@@ -346,6 +350,7 @@ final class DartEdgeClientGenerator {
       for (final schema in spec.schemas)
         if (schema is JsonObjectSchema &&
             schema.id != null &&
+            !spec.externalSchemaIds.contains(schema.id) &&
             !spec.schemaTypes.containsKey(schema.id) &&
             generatedTypeIds.contains(
               _schemaTypeFromId(schema.id!, spec.schemaTypes),
@@ -363,6 +368,7 @@ final class DartEdgeClientGenerator {
       for (final schema in spec.schemas)
         if (schema is JsonObjectSchema &&
             schema.id != null &&
+            !spec.externalSchemaIds.contains(schema.id) &&
             !spec.schemaTypes.containsKey(schema.id))
           _schemaTypeFromId(schema.id!, spec.schemaTypes)!: schema,
     };
