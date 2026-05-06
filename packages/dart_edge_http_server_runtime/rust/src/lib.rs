@@ -22,6 +22,7 @@ use dart_edge_http_server_core::{
 use futures_util::StreamExt;
 use once_cell::sync::Lazy;
 use serde::Deserialize;
+use serde_json::{Map, Value, json};
 use tokio::net::TcpListener;
 use tokio::sync::{mpsc, oneshot};
 use tower_http::cors::{Any, CorsLayer};
@@ -1537,15 +1538,41 @@ fn cors_layer(configuration: CorsMiddlewareConfiguration) -> Result<CorsLayer, S
 fn compile_schemas(
     manifest_schemas: HashMap<String, serde_json::Value>,
 ) -> Result<HashMap<String, jsonschema::Validator>, String> {
-    let mut schemas = HashMap::with_capacity(manifest_schemas.len());
+    let component_schemas = manifest_schemas
+        .into_iter()
+        .map(|(id, schema)| (id, strip_schema_ids(schema)))
+        .collect::<Map<String, Value>>();
+    let mut schemas = HashMap::with_capacity(component_schemas.len());
 
-    for (id, schema) in manifest_schemas {
+    for id in component_schemas.keys() {
+        let schema = json!({
+            "$ref": format!("#/components/schemas/{id}"),
+            "components": {
+                "schemas": component_schemas.clone(),
+            },
+        });
         let validator = jsonschema::validator_for(&schema)
             .map_err(|error| format!("Invalid schema '{id}': {error}"))?;
-        schemas.insert(id, validator);
+        schemas.insert(id.clone(), validator);
     }
 
     Ok(schemas)
+}
+
+fn strip_schema_ids(value: Value) -> Value {
+    match value {
+        Value::Array(values) => Value::Array(values.into_iter().map(strip_schema_ids).collect()),
+        Value::Object(mut object) => {
+            object.remove("$id");
+            Value::Object(
+                object
+                    .into_iter()
+                    .map(|(key, value)| (key, strip_schema_ids(value)))
+                    .collect(),
+            )
+        }
+        value => value,
+    }
 }
 
 fn compile_route(
@@ -2355,4 +2382,45 @@ unsafe fn read_optional_c_string(value: *const c_char) -> Option<String> {
     }
 
     unsafe { read_c_string(value) }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn compiles_installed_schemas_with_component_refs() {
+        let schemas = HashMap::from([
+            (
+                "ListSort".to_string(),
+                json!({
+                    "$id": "ListSort",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/components/schemas/ListSortItem",
+                    },
+                }),
+            ),
+            (
+                "ListSortItem".to_string(),
+                json!({
+                    "$id": "ListSortItem",
+                    "type": "object",
+                    "properties": {
+                        "field": {
+                            "type": "string",
+                        },
+                    },
+                    "required": ["field"],
+                    "additionalProperties": false,
+                }),
+            ),
+        ]);
+
+        let validators = compile_schemas(schemas).expect("schemas compile");
+        let validator = validators.get("ListSort").expect("ListSort validator");
+
+        assert!(validator.is_valid(&json!([{ "field": "createdAt" }])));
+        assert!(!validator.is_valid(&json!([{ "field": 42 }])));
+    }
 }
