@@ -10,6 +10,7 @@ use axum::extract::FromRequestParts;
 use axum::extract::Request;
 use axum::extract::ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade, close_code};
 use axum::http::{HeaderMap, HeaderName, HeaderValue, Method, Response, StatusCode, header};
+use axum::middleware::{self, Next};
 use axum::response::IntoResponse;
 use axum::routing::any;
 use dart_edge_core::{
@@ -22,12 +23,13 @@ use dart_edge_http_server_core::{
 use futures_util::StreamExt;
 use once_cell::sync::Lazy;
 use serde::Deserialize;
-use serde_json::{Map, Value, json};
+use serde_json::Value;
 use tokio::net::TcpListener;
 use tokio::sync::{mpsc, oneshot};
 use tower_http::cors::{Any, CorsLayer};
 
 const DART_EDGE_HTTP_SERVER_RUNTIME_NATIVE_ABI_VERSION: i32 = 11;
+const SCHEMA_REGISTRY_URI: &str = "urn:dart-edge:schema-registry";
 
 type TransportEventCallback = extern "C" fn(i32, i64);
 
@@ -323,6 +325,7 @@ enum RequestBodyKind {
     Other,
 }
 
+#[derive(Clone)]
 struct NativeRouteMatch {
     kind: RouteTransportKind,
     route_id: String,
@@ -334,6 +337,17 @@ struct NativeRouteMatch {
     native_handler: Option<CompiledNativeHttpHandler>,
 }
 
+#[derive(Clone)]
+struct ValidatedRouteRequest {
+    route_match: NativeRouteMatch,
+    method: String,
+    path: String,
+    query: HashMap<String, String>,
+    headers: HashMap<String, String>,
+    body: Option<ValidatedBody>,
+}
+
+#[derive(Clone)]
 struct ValidatedBody {
     bytes: Option<Vec<u8>>,
     kind: NativeBodyKind,
@@ -492,7 +506,9 @@ pub extern "C" fn dart_edge_http_server_runtime_start_server(
             };
             let _ = ready_tx.send(Ok(local_port));
 
-            let mut app = Router::new().fallback(any(handle_request));
+            let mut app = Router::new()
+                .fallback(any(handle_validated_request))
+                .layer(middleware::from_fn(validate_request_middleware));
             if let Some(cors_layer) = cors_layer {
                 app = app.layer(cors_layer);
             }
@@ -889,7 +905,7 @@ pub extern "C" fn dart_edge_http_server_runtime_send_response(
     )
 }
 
-async fn handle_request(request: Request<Body>) -> Response<Body> {
+async fn validate_request_middleware(request: Request<Body>, next: Next) -> Response<Body> {
     let (parts, body) = request.into_parts();
     let requested_kind = if wants_web_socket_upgrade(&parts.headers) {
         RouteTransportKind::WebSocket
@@ -907,6 +923,8 @@ async fn handle_request(request: Request<Body>) -> Response<Body> {
             );
         }
     };
+    let method = parts.method.as_str().to_string();
+    let path = parts.uri.path().to_string();
     let query = parse_query(parts.uri.query());
     let headers = collect_headers(&parts.headers);
 
@@ -958,23 +976,71 @@ async fn handle_request(request: Request<Body>) -> Response<Body> {
                 }
             }
 
-            match route_match.kind {
-                RouteTransportKind::NativeHttp => {
-                    handle_native_http_request(
-                        route_match,
-                        parts.method.as_str(),
-                        parts.uri.path(),
-                        query,
-                        headers,
-                        body,
-                    )
-                    .await
-                }
-                _ => handle_http_request(route_match, query, headers, body).await,
-            }
+            let mut request = Request::from_parts(parts, Body::empty());
+            request.extensions_mut().insert(ValidatedRouteRequest {
+                route_match,
+                method,
+                path,
+                query,
+                headers,
+                body: Some(body),
+            });
+            next.run(request).await
         }
         RouteTransportKind::WebSocket => {
-            handle_web_socket_request(parts, route_match, query, headers).await
+            let mut request = Request::from_parts(parts, body);
+            request.extensions_mut().insert(ValidatedRouteRequest {
+                route_match,
+                method,
+                path,
+                query,
+                headers,
+                body: None,
+            });
+            next.run(request).await
+        }
+    }
+}
+
+async fn handle_validated_request(mut request: Request<Body>) -> Response<Body> {
+    let Some(validated) = request.extensions_mut().remove::<ValidatedRouteRequest>() else {
+        return response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "text/plain; charset=utf-8",
+            "Request validation context is missing".to_string(),
+        );
+    };
+
+    match validated.route_match.kind {
+        RouteTransportKind::NativeHttp => {
+            handle_native_http_request(
+                validated.route_match,
+                &validated.method,
+                &validated.path,
+                validated.query,
+                validated.headers,
+                validated.body.unwrap_or_else(ValidatedBody::none),
+            )
+            .await
+        }
+        RouteTransportKind::Http => {
+            handle_http_request(
+                validated.route_match,
+                validated.query,
+                validated.headers,
+                validated.body.unwrap_or_else(ValidatedBody::none),
+            )
+            .await
+        }
+        RouteTransportKind::WebSocket => {
+            let (parts, _body) = request.into_parts();
+            handle_web_socket_request(
+                parts,
+                validated.route_match,
+                validated.query,
+                validated.headers,
+            )
+            .await
         }
     }
 }
@@ -1538,25 +1604,50 @@ fn cors_layer(configuration: CorsMiddlewareConfiguration) -> Result<CorsLayer, S
 fn compile_schemas(
     manifest_schemas: HashMap<String, serde_json::Value>,
 ) -> Result<HashMap<String, jsonschema::Validator>, String> {
-    let component_schemas = manifest_schemas
-        .into_iter()
-        .map(|(id, schema)| (id, strip_schema_ids(schema)))
-        .collect::<Map<String, Value>>();
-    let mut schemas = HashMap::with_capacity(component_schemas.len());
+    let schema_ids = manifest_schemas.keys().cloned().collect::<Vec<_>>();
+    let registry_schema = schema_registry_document(manifest_schemas);
+    let registry = jsonschema::Registry::new()
+        .add(SCHEMA_REGISTRY_URI, registry_schema)
+        .map_err(|error| format!("Invalid schema registry URI: {error}"))?
+        .prepare()
+        .map_err(|error| format!("Invalid schema registry: {error}"))?;
+    let mut schemas = HashMap::with_capacity(schema_ids.len());
 
-    for id in component_schemas.keys() {
-        let schema = json!({
-            "$ref": format!("#/components/schemas/{id}"),
-            "components": {
-                "schemas": component_schemas.clone(),
-            },
+    for id in schema_ids {
+        let schema = serde_json::json!({
+            "$ref": format!("{SCHEMA_REGISTRY_URI}#/components/schemas/{id}"),
         });
-        let validator = jsonschema::validator_for(&schema)
+        let validator = jsonschema::options()
+            .with_registry(&registry)
+            .build(&schema)
             .map_err(|error| format!("Invalid schema '{id}': {error}"))?;
-        schemas.insert(id.clone(), validator);
+        schemas.insert(id, validator);
     }
 
     Ok(schemas)
+}
+
+fn schema_registry_document(manifest_schemas: HashMap<String, serde_json::Value>) -> Value {
+    Value::Object(
+        [(
+            "components".to_string(),
+            Value::Object(
+                [(
+                    "schemas".to_string(),
+                    Value::Object(
+                        manifest_schemas
+                            .into_iter()
+                            .map(|(id, schema)| (id, strip_schema_ids(schema)))
+                            .collect(),
+                    ),
+                )]
+                .into_iter()
+                .collect(),
+            ),
+        )]
+        .into_iter()
+        .collect(),
+    )
 }
 
 fn strip_schema_ids(value: Value) -> Value {
@@ -2387,6 +2478,7 @@ unsafe fn read_optional_c_string(value: *const c_char) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     #[test]
     fn compiles_installed_schemas_with_component_refs() {

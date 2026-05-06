@@ -92,6 +92,49 @@ void main() {
     );
   });
 
+  test('includes component refs without duplicating the schema graph', () {
+    const registry = JsonSchemaRegistry(
+      schemas: <JsonSchema>[
+        JsonSchema.array(
+          id: 'ListSort',
+          items: JsonSchema.componentRef('ListSortItem'),
+        ),
+        JsonSchema.object(
+          id: 'ListSortItem',
+          properties: <String, JsonSchema>{'field': JsonSchema.string()},
+          required: <String>['field'],
+          additionalProperties: false,
+        ),
+      ],
+    );
+
+    final app = DartEdge<void>(services: () {});
+    app.routePost('/users', _SchemaRoute());
+
+    final compiledRoutes = CompiledRouteTable.fromRegistrations(
+      app.routeRegistry.registrations,
+    );
+    final manifest =
+        jsonDecode(compiledRoutes.nativeManifestJson(schemaRegistry: registry))
+            as Map<String, Object?>;
+    final schemas = manifest['schemas']! as Map<String, Object?>;
+
+    expect(schemas['ListSort'], {
+      r'$id': 'ListSort',
+      'type': 'array',
+      'items': {r'$ref': '#/components/schemas/ListSortItem'},
+    });
+    expect(schemas['ListSortItem'], {
+      r'$id': 'ListSortItem',
+      'type': 'object',
+      'properties': {
+        'field': {'type': 'string'},
+      },
+      'required': ['field'],
+      'additionalProperties': false,
+    });
+  });
+
   test('does not treat inline route schema ids as native manifest refs', () {
     final app = DartEdge<void>(services: () {});
     app.get(
