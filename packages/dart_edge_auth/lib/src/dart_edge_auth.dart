@@ -15,6 +15,7 @@ part 'generated/models/user.g.dart';
 part 'dart_edge_auth_api_types.dart';
 part 'dart_edge_auth_api.dart';
 part 'dart_edge_auth_admin_api.dart';
+part 'dart_edge_auth_trusted_admin_api.dart';
 part 'dart_edge_auth_result_types.dart';
 part 'dart_edge_auth_api_response.dart';
 part 'dart_edge_auth_route_table.dart';
@@ -135,6 +136,8 @@ final class DartEdgeAuth {
   List<AuthNativeRouteDescriptor> get _routes => _routeTable.routes;
   var _disposed = false;
   late final DartEdgeAuthApi api = DartEdgeAuthApi._(this);
+  late final DartEdgeAuthTrustedAdminApi trustedAdmin =
+      DartEdgeAuthTrustedAdminApi._(this);
 
   /// Registers all auth routes on [router].
   ///

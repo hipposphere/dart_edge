@@ -102,6 +102,27 @@ _AsyncAuthResponse _performNativeAuthRequest(_AsyncAuthRequest request) {
   );
 }
 
+_AsyncAuthResponse _performNativeTrustedAdminCall(
+  _AsyncTrustedAdminRequest request,
+) {
+  final response = DartEdgeAuthNative.trustedAdminCall(
+    request.handle,
+    operation: request.operation,
+    query: _stringifyMap(request.query),
+    body: _encodeBody(request.body),
+  );
+
+  return (
+    status: response.status,
+    contentType: response.contentType,
+    headers: [
+      for (final header in response.headers)
+        (name: header.name, value: header.value),
+    ],
+    body: response.body,
+  );
+}
+
 DartEdgeAuthApiResponse _responseFromAsync(_AsyncAuthResponse response) {
   return DartEdgeAuthApiResponse(
     status: response.status,

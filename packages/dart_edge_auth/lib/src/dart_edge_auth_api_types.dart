@@ -15,3 +15,10 @@ typedef _AsyncAuthResponse = ({
   List<({String name, String value})> headers,
   String body,
 });
+
+typedef _AsyncTrustedAdminRequest = ({
+  int handle,
+  String operation,
+  Map<String, Object?> query,
+  Object? body,
+});

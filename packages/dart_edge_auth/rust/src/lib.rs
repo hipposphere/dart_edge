@@ -8,10 +8,14 @@ use better_auth::plugins::{
     AccountManagementPlugin, AdminPlugin, EmailPasswordPlugin, EmailVerificationPlugin,
     PasswordManagementPlugin, SessionManagementPlugin,
 };
+use better_auth::types_mod::{ListUsersParams, PASSWORD_HASH_KEY, UpdateAccount};
+use better_auth::{AuthAccount, AuthSession, AuthUser};
 use better_auth::{
-    AuthBuilder, AuthConfig, AuthRequest, BetterAuth, HttpMethod, RateLimitConfig, TypedAuthBuilder,
+    AuthBuilder, AuthConfig, AuthError, AuthRequest, AuthResponse, AuthResult, BetterAuth,
+    CreateAccount, CreateSession, HttpMethod, RateLimitConfig, TypedAuthBuilder, UpdateUser,
 };
 use better_auth_diesel_sqlite::DieselSqliteAdapter;
+use chrono::{Duration, Utc};
 use dart_edge_core::{
     NativePair, OwnedBytes, OwnedPair, boxed_pairs_ptr, native_pairs_from_owned, read_native_bytes,
     read_pairs_map,
@@ -30,7 +34,7 @@ mod shared_sql_adapter;
 
 use routes::{join_path, normalize_base_path};
 
-const DART_EDGE_AUTH_NATIVE_ABI_VERSION: i32 = 1;
+const DART_EDGE_AUTH_NATIVE_ABI_VERSION: i32 = 2;
 
 static NEXT_INSTANCE_ID: AtomicI64 = AtomicI64::new(1);
 static INSTANCES: Lazy<Mutex<HashMap<i64, AuthInstance>>> =
@@ -39,6 +43,7 @@ static LAST_ERROR: Lazy<Mutex<Option<CString>>> = Lazy::new(|| Mutex::new(None))
 
 struct AuthInstance {
     base_path: String,
+    admin_config: NativeAdminConfig,
     runtime: Runtime,
     auth: NativeAuthBackend,
 }
@@ -85,7 +90,7 @@ struct NativeAuthConfig {
     admin: Option<NativeAdminConfig>,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct NativeAdminConfig {
     admin_role: String,
@@ -93,6 +98,87 @@ struct NativeAdminConfig {
     allow_ban_admin: bool,
     default_page_limit: usize,
     max_page_limit: usize,
+}
+
+impl Default for NativeAdminConfig {
+    fn default() -> Self {
+        Self {
+            admin_role: "admin".to_string(),
+            default_user_role: "user".to_string(),
+            allow_ban_admin: false,
+            default_page_limit: 100,
+            max_page_limit: 500,
+        }
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TrustedCreateUserRequest {
+    email: String,
+    password: String,
+    name: String,
+    role: Option<String>,
+    data: Option<serde_json::Value>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TrustedSetRoleRequest {
+    user_id: String,
+    role: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TrustedUserIdRequest {
+    user_id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TrustedBanUserRequest {
+    user_id: String,
+    ban_reason: Option<String>,
+    ban_expires_in: Option<i64>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TrustedImpersonateUserRequest {
+    user_id: String,
+    impersonated_by_user_id: String,
+    ip_address: Option<String>,
+    user_agent: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TrustedStopImpersonatingRequest {
+    session_token: String,
+    ip_address: Option<String>,
+    user_agent: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TrustedRevokeSessionRequest {
+    session_token: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TrustedSetUserPasswordRequest {
+    user_id: String,
+    new_password: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TrustedHasPermissionRequest {
+    user_id: String,
+    permission: Option<serde_json::Value>,
+    permissions: Option<serde_json::Value>,
 }
 
 #[derive(Deserialize)]
@@ -212,6 +298,7 @@ fn create_instance(
         handle,
         AuthInstance {
             base_path,
+            admin_config: config.admin.clone().unwrap_or_default(),
             runtime,
             auth,
         },
@@ -305,6 +392,53 @@ pub extern "C" fn dart_edge_auth_handle_request(
             .runtime
             .block_on(instance.auth.handle_request(request))
     };
+
+    match response {
+        Ok(response) => {
+            clear_last_error();
+            Box::into_raw(Box::new(NativeAuthResponseHandle::from_response(response)))
+                .cast::<NativeHttpResponse>()
+        }
+        Err(error) => {
+            set_last_error(error);
+            std::ptr::null_mut()
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_auth_trusted_admin_call(
+    handle: i64,
+    operation: *const c_char,
+    query_count: usize,
+    query: *const NativePair,
+    body_ptr: *const u8,
+    body_len: usize,
+) -> *mut NativeHttpResponse {
+    let Some(operation) = (unsafe { read_c_string(operation) }) else {
+        set_last_error("Missing trusted admin operation.");
+        return std::ptr::null_mut();
+    };
+
+    let query = unsafe { read_pairs_map(query, query_count as isize) };
+    let body = if body_ptr.is_null() || body_len == 0 {
+        None
+    } else {
+        Some(unsafe { std::slice::from_raw_parts(body_ptr, body_len) }.to_vec())
+    };
+
+    let mut instances = INSTANCES.lock().unwrap();
+    let Some(instance) = instances.get_mut(&handle) else {
+        set_last_error("Unknown dart_edge_auth handle.");
+        return std::ptr::null_mut();
+    };
+
+    let response = instance.runtime.block_on(instance.auth.trusted_admin_call(
+        &instance.admin_config,
+        &operation,
+        query,
+        body,
+    ));
 
     match response {
         Ok(response) => {
@@ -499,6 +633,34 @@ impl NativeAuthBackend {
         }
     }
 
+    async fn trusted_admin_call(
+        &self,
+        config: &NativeAdminConfig,
+        operation: &str,
+        query: HashMap<String, String>,
+        body: Option<Vec<u8>>,
+    ) -> Result<AuthResponse, String> {
+        let result = match self {
+            NativeAuthBackend::Memory(auth) => {
+                trusted_admin_call(auth, config, operation, query, body).await
+            }
+            NativeAuthBackend::Postgres(auth) => {
+                trusted_admin_call(auth, config, operation, query, body).await
+            }
+            NativeAuthBackend::Sqlite(auth) => {
+                trusted_admin_call(auth, config, operation, query, body).await
+            }
+            NativeAuthBackend::Shared(auth) => {
+                trusted_admin_call(auth, config, operation, query, body).await
+            }
+        };
+
+        Ok(match result {
+            Ok(response) => response,
+            Err(error) => error.into_response(),
+        })
+    }
+
     fn openapi_spec(&self) -> better_auth::OpenApiSpec {
         match self {
             NativeAuthBackend::Memory(auth) => auth.openapi_spec(),
@@ -507,6 +669,487 @@ impl NativeAuthBackend {
             NativeAuthBackend::Shared(auth) => auth.openapi_spec(),
         }
     }
+}
+
+async fn trusted_admin_call<DB: DatabaseAdapter>(
+    auth: &BetterAuth<DB>,
+    config: &NativeAdminConfig,
+    operation: &str,
+    query: HashMap<String, String>,
+    body: Option<Vec<u8>>,
+) -> AuthResult<AuthResponse> {
+    match operation {
+        "setRole" => {
+            let body: TrustedSetRoleRequest = decode_trusted_body(body)?;
+            let user = trusted_set_role(auth, &body).await?;
+            AuthResponse::json(200, &json!({ "user": user })).map_err(AuthError::from)
+        }
+        "createUser" => {
+            let body: TrustedCreateUserRequest = decode_trusted_body(body)?;
+            let user = trusted_create_user(auth, config, &body).await?;
+            AuthResponse::json(200, &json!({ "user": user })).map_err(AuthError::from)
+        }
+        "listUsers" => {
+            let response = trusted_list_users(auth, config, query).await?;
+            AuthResponse::json(200, &response).map_err(AuthError::from)
+        }
+        "listUserSessions" => {
+            let body: TrustedUserIdRequest = decode_trusted_body(body)?;
+            let sessions = trusted_list_user_sessions(auth, &body.user_id).await?;
+            AuthResponse::json(200, &json!({ "sessions": sessions })).map_err(AuthError::from)
+        }
+        "banUser" => {
+            let body: TrustedBanUserRequest = decode_trusted_body(body)?;
+            let user = trusted_ban_user(auth, config, &body).await?;
+            AuthResponse::json(200, &json!({ "user": user })).map_err(AuthError::from)
+        }
+        "unbanUser" => {
+            let body: TrustedUserIdRequest = decode_trusted_body(body)?;
+            let user = trusted_unban_user(auth, &body.user_id).await?;
+            AuthResponse::json(200, &json!({ "user": user })).map_err(AuthError::from)
+        }
+        "impersonateUser" => {
+            let body: TrustedImpersonateUserRequest = decode_trusted_body(body)?;
+            let response = trusted_impersonate_user(auth, &body).await?;
+            AuthResponse::json(200, &response).map_err(AuthError::from)
+        }
+        "stopImpersonating" => {
+            let body: TrustedStopImpersonatingRequest = decode_trusted_body(body)?;
+            let response = trusted_stop_impersonating(auth, &body).await?;
+            AuthResponse::json(200, &response).map_err(AuthError::from)
+        }
+        "revokeUserSession" => {
+            let body: TrustedRevokeSessionRequest = decode_trusted_body(body)?;
+            auth.session_manager()
+                .delete_session(&body.session_token)
+                .await?;
+            AuthResponse::json(200, &json!({ "success": true })).map_err(AuthError::from)
+        }
+        "revokeUserSessions" => {
+            let body: TrustedUserIdRequest = decode_trusted_body(body)?;
+            let _target = auth
+                .database()
+                .get_user_by_id(&body.user_id)
+                .await?
+                .ok_or_else(|| AuthError::not_found("User not found"))?;
+            auth.session_manager()
+                .revoke_all_user_sessions(&body.user_id)
+                .await?;
+            AuthResponse::json(200, &json!({ "success": true })).map_err(AuthError::from)
+        }
+        "removeUser" => {
+            let body: TrustedUserIdRequest = decode_trusted_body(body)?;
+            trusted_remove_user(auth, &body.user_id).await?;
+            AuthResponse::json(200, &json!({ "success": true })).map_err(AuthError::from)
+        }
+        "setUserPassword" => {
+            let body: TrustedSetUserPasswordRequest = decode_trusted_body(body)?;
+            trusted_set_user_password(auth, &body).await?;
+            AuthResponse::json(200, &json!({ "status": true })).map_err(AuthError::from)
+        }
+        "hasPermission" => {
+            let body: TrustedHasPermissionRequest = decode_trusted_body(body)?;
+            let response = trusted_has_permission(auth, config, &body).await?;
+            AuthResponse::json(200, &response).map_err(AuthError::from)
+        }
+        _ => Err(AuthError::not_found(format!(
+            "Unknown trusted admin operation: {operation}"
+        ))),
+    }
+}
+
+fn decode_trusted_body<T: for<'de> Deserialize<'de>>(body: Option<Vec<u8>>) -> AuthResult<T> {
+    let Some(body) = body else {
+        return Err(AuthError::bad_request("Missing trusted admin request body"));
+    };
+    serde_json::from_slice(&body).map_err(|error| {
+        AuthError::bad_request(format!("Invalid trusted admin request body: {error}"))
+    })
+}
+
+async fn trusted_set_role<DB: DatabaseAdapter>(
+    auth: &BetterAuth<DB>,
+    body: &TrustedSetRoleRequest,
+) -> AuthResult<DB::User> {
+    let _target = auth
+        .database()
+        .get_user_by_id(&body.user_id)
+        .await?
+        .ok_or_else(|| AuthError::not_found("User not found"))?;
+
+    auth.database()
+        .update_user(
+            &body.user_id,
+            UpdateUser {
+                role: Some(body.role.clone()),
+                ..Default::default()
+            },
+        )
+        .await
+}
+
+async fn trusted_create_user<DB: DatabaseAdapter>(
+    auth: &BetterAuth<DB>,
+    config: &NativeAdminConfig,
+    body: &TrustedCreateUserRequest,
+) -> AuthResult<DB::User> {
+    if auth
+        .database()
+        .get_user_by_email(&body.email)
+        .await?
+        .is_some()
+    {
+        return Err(AuthError::conflict("A user with this email already exists"));
+    }
+
+    if body.password.len() < auth.config().password.min_length {
+        return Err(AuthError::bad_request(format!(
+            "Password must be at least {} characters long",
+            auth.config().password.min_length
+        )));
+    }
+
+    let password_hash = better_auth::types_mod::hash_password(None, &body.password).await?;
+    let role = body
+        .role
+        .clone()
+        .unwrap_or_else(|| config.default_user_role.clone());
+    let metadata = metadata_with_password_hash(body.data.clone(), &password_hash);
+
+    let user = auth
+        .database()
+        .create_user(
+            better_auth::CreateUser::new()
+                .with_email(&body.email)
+                .with_name(&body.name)
+                .with_role(role)
+                .with_email_verified(true)
+                .with_metadata(metadata),
+        )
+        .await?;
+
+    auth.database()
+        .create_account(CreateAccount {
+            user_id: user.id().to_string(),
+            account_id: user.id().to_string(),
+            provider_id: "credential".to_string(),
+            access_token: None,
+            refresh_token: None,
+            id_token: None,
+            access_token_expires_at: None,
+            refresh_token_expires_at: None,
+            scope: None,
+            password: Some(password_hash),
+        })
+        .await?;
+
+    Ok(user)
+}
+
+async fn trusted_list_users<DB: DatabaseAdapter>(
+    auth: &BetterAuth<DB>,
+    config: &NativeAdminConfig,
+    query: HashMap<String, String>,
+) -> AuthResult<serde_json::Value> {
+    let limit = query
+        .get("limit")
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(config.default_page_limit)
+        .min(config.max_page_limit);
+    let offset = query
+        .get("offset")
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(0);
+
+    let (users, total) = auth
+        .database()
+        .list_users(ListUsersParams {
+            limit: Some(limit),
+            offset: Some(offset),
+            search_field: query.get("searchField").cloned(),
+            search_value: query.get("searchValue").cloned(),
+            search_operator: query.get("searchOperator").cloned(),
+            sort_by: query.get("sortBy").cloned(),
+            sort_direction: query.get("sortDirection").cloned(),
+            filter_field: query.get("filterField").cloned(),
+            filter_value: query.get("filterValue").cloned(),
+            filter_operator: query.get("filterOperator").cloned(),
+        })
+        .await?;
+
+    Ok(json!({
+        "users": users,
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+    }))
+}
+
+async fn trusted_list_user_sessions<DB: DatabaseAdapter>(
+    auth: &BetterAuth<DB>,
+    user_id: &str,
+) -> AuthResult<Vec<DB::Session>> {
+    let _target = auth
+        .database()
+        .get_user_by_id(user_id)
+        .await?
+        .ok_or_else(|| AuthError::not_found("User not found"))?;
+    auth.session_manager().list_user_sessions(user_id).await
+}
+
+async fn trusted_ban_user<DB: DatabaseAdapter>(
+    auth: &BetterAuth<DB>,
+    config: &NativeAdminConfig,
+    body: &TrustedBanUserRequest,
+) -> AuthResult<DB::User> {
+    let target = auth
+        .database()
+        .get_user_by_id(&body.user_id)
+        .await?
+        .ok_or_else(|| AuthError::not_found("User not found"))?;
+
+    if !config.allow_ban_admin && target.role().unwrap_or("user") == config.admin_role {
+        return Err(AuthError::forbidden("Cannot ban an admin user"));
+    }
+
+    let ban_expires = body
+        .ban_expires_in
+        .and_then(Duration::try_seconds)
+        .map(|duration| Utc::now() + duration);
+
+    let updated_user = auth
+        .database()
+        .update_user(
+            &body.user_id,
+            UpdateUser {
+                banned: Some(true),
+                ban_reason: body.ban_reason.clone(),
+                ban_expires,
+                ..Default::default()
+            },
+        )
+        .await?;
+
+    auth.session_manager()
+        .revoke_all_user_sessions(&body.user_id)
+        .await?;
+
+    Ok(updated_user)
+}
+
+async fn trusted_unban_user<DB: DatabaseAdapter>(
+    auth: &BetterAuth<DB>,
+    user_id: &str,
+) -> AuthResult<DB::User> {
+    let _target = auth
+        .database()
+        .get_user_by_id(user_id)
+        .await?
+        .ok_or_else(|| AuthError::not_found("User not found"))?;
+
+    auth.database()
+        .update_user(
+            user_id,
+            UpdateUser {
+                banned: Some(false),
+                ban_reason: None,
+                ban_expires: None,
+                ..Default::default()
+            },
+        )
+        .await
+}
+
+async fn trusted_impersonate_user<DB: DatabaseAdapter>(
+    auth: &BetterAuth<DB>,
+    body: &TrustedImpersonateUserRequest,
+) -> AuthResult<serde_json::Value> {
+    if body.user_id == body.impersonated_by_user_id {
+        return Err(AuthError::bad_request("Cannot impersonate yourself"));
+    }
+
+    let target = auth
+        .database()
+        .get_user_by_id(&body.user_id)
+        .await?
+        .ok_or_else(|| AuthError::not_found("User not found"))?;
+    let _admin = auth
+        .database()
+        .get_user_by_id(&body.impersonated_by_user_id)
+        .await?
+        .ok_or_else(|| AuthError::not_found("Impersonating user not found"))?;
+
+    let session = auth
+        .database()
+        .create_session(CreateSession {
+            user_id: target.id().to_string(),
+            expires_at: Utc::now() + auth.config().session.expires_in,
+            ip_address: body.ip_address.clone(),
+            user_agent: body.user_agent.clone(),
+            impersonated_by: Some(body.impersonated_by_user_id.clone()),
+            active_organization_id: None,
+        })
+        .await?;
+
+    Ok(json!({ "session": session, "user": target }))
+}
+
+async fn trusted_stop_impersonating<DB: DatabaseAdapter>(
+    auth: &BetterAuth<DB>,
+    body: &TrustedStopImpersonatingRequest,
+) -> AuthResult<serde_json::Value> {
+    let session = auth
+        .database()
+        .get_session(&body.session_token)
+        .await?
+        .ok_or(AuthError::Unauthenticated)?;
+    let admin_id = session
+        .impersonated_by()
+        .ok_or_else(|| AuthError::bad_request("Current session is not an impersonation session"))?
+        .to_string();
+
+    auth.session_manager()
+        .delete_session(&body.session_token)
+        .await?;
+
+    let admin_user = auth
+        .database()
+        .get_user_by_id(&admin_id)
+        .await?
+        .ok_or(AuthError::UserNotFound)?;
+    let admin_session = auth
+        .database()
+        .create_session(CreateSession {
+            user_id: admin_id,
+            expires_at: Utc::now() + auth.config().session.expires_in,
+            ip_address: body.ip_address.clone(),
+            user_agent: body.user_agent.clone(),
+            impersonated_by: None,
+            active_organization_id: None,
+        })
+        .await?;
+
+    Ok(json!({ "session": admin_session, "user": admin_user }))
+}
+
+async fn trusted_remove_user<DB: DatabaseAdapter>(
+    auth: &BetterAuth<DB>,
+    user_id: &str,
+) -> AuthResult<()> {
+    let _target = auth
+        .database()
+        .get_user_by_id(user_id)
+        .await?
+        .ok_or_else(|| AuthError::not_found("User not found"))?;
+
+    auth.database().delete_user_sessions(user_id).await?;
+    let accounts = auth.database().get_user_accounts(user_id).await?;
+    for account in &accounts {
+        auth.database().delete_account(account.id()).await?;
+    }
+    auth.database().delete_user(user_id).await
+}
+
+async fn trusted_set_user_password<DB: DatabaseAdapter>(
+    auth: &BetterAuth<DB>,
+    body: &TrustedSetUserPasswordRequest,
+) -> AuthResult<()> {
+    if body.new_password.len() < auth.config().password.min_length {
+        return Err(AuthError::bad_request(format!(
+            "Password must be at least {} characters long",
+            auth.config().password.min_length
+        )));
+    }
+
+    let user = auth
+        .database()
+        .get_user_by_id(&body.user_id)
+        .await?
+        .ok_or_else(|| AuthError::not_found("User not found"))?;
+    let password_hash = better_auth::types_mod::hash_password(None, &body.new_password).await?;
+
+    auth.database()
+        .update_user(
+            &body.user_id,
+            UpdateUser {
+                metadata: Some(metadata_with_password_hash(
+                    Some(user.metadata().clone()),
+                    &password_hash,
+                )),
+                ..Default::default()
+            },
+        )
+        .await?;
+
+    let accounts = auth.database().get_user_accounts(&body.user_id).await?;
+    if let Some(account) = accounts
+        .iter()
+        .find(|account| account.provider_id() == "credential")
+    {
+        auth.database()
+            .update_account(
+                account.id(),
+                UpdateAccount {
+                    password: Some(password_hash),
+                    ..Default::default()
+                },
+            )
+            .await?;
+    } else {
+        auth.database()
+            .create_account(CreateAccount {
+                user_id: body.user_id.clone(),
+                account_id: body.user_id.clone(),
+                provider_id: "credential".to_string(),
+                access_token: None,
+                refresh_token: None,
+                id_token: None,
+                access_token_expires_at: None,
+                refresh_token_expires_at: None,
+                scope: None,
+                password: Some(password_hash),
+            })
+            .await?;
+    }
+
+    Ok(())
+}
+
+async fn trusted_has_permission<DB: DatabaseAdapter>(
+    auth: &BetterAuth<DB>,
+    config: &NativeAdminConfig,
+    body: &TrustedHasPermissionRequest,
+) -> AuthResult<serde_json::Value> {
+    let _permissions = body.permissions.clone().or(body.permission.clone());
+    let user = auth
+        .database()
+        .get_user_by_id(&body.user_id)
+        .await?
+        .ok_or_else(|| AuthError::not_found("User not found"))?;
+
+    if user.role().unwrap_or("user") == config.admin_role {
+        Ok(json!({ "success": true, "error": null }))
+    } else {
+        Ok(json!({
+            "success": false,
+            "error": "User does not have the required permissions",
+        }))
+    }
+}
+
+fn metadata_with_password_hash(
+    metadata: Option<serde_json::Value>,
+    password_hash: &str,
+) -> serde_json::Value {
+    let mut obj = match metadata {
+        Some(serde_json::Value::Object(obj)) => obj,
+        _ => serde_json::Map::new(),
+    };
+    obj.insert(
+        PASSWORD_HASH_KEY.to_string(),
+        serde_json::json!(password_hash),
+    );
+    serde_json::Value::Object(obj)
 }
 
 fn decode_shared_dialect(value: i32) -> Option<SharedSqlDialect> {

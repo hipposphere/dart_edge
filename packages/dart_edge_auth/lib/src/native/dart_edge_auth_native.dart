@@ -192,6 +192,51 @@ abstract final class DartEdgeAuthNative {
       _freePairs(headerEntries);
     }
   }
+
+  static NativeAuthResponseData trustedAdminCall(
+    int handle, {
+    required String operation,
+    Map<String, String> query = const <String, String>{},
+    Uint8List? body,
+  }) {
+    final operationPtr = operation.toNativeUtf8();
+    final queryEntries = _encodePairs(query);
+    final queryStorage = calloc<core_ffi.NativePair>(queryEntries.length);
+    final bodyStorage = body == null ? nullptr : calloc<Uint8>(body.length);
+
+    try {
+      _writePairs(queryStorage, queryEntries);
+
+      if (body case final body?) {
+        bodyStorage.asTypedList(body.length).setAll(0, body);
+      }
+
+      final responsePtr = gen.dart_edge_auth_trusted_admin_call(
+        handle,
+        operationPtr.cast<Char>(),
+        queryEntries.length,
+        queryEntries.isEmpty ? nullptr : queryStorage,
+        bodyStorage,
+        body?.length ?? 0,
+      );
+      if (responsePtr == nullptr) {
+        throw StateError(_takeLastError());
+      }
+
+      try {
+        return _decodeResponse(responsePtr);
+      } finally {
+        gen.dart_edge_auth_free_response(responsePtr);
+      }
+    } finally {
+      calloc.free(operationPtr);
+      calloc.free(queryStorage);
+      if (bodyStorage != nullptr) {
+        calloc.free(bodyStorage);
+      }
+      _freePairs(queryEntries);
+    }
+  }
 }
 
 int _sharedDatabaseHandle(SqlPool database) => switch (database) {

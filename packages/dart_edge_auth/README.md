@@ -104,6 +104,21 @@ Auth plugin, your `DartEdgeAuthConfig` does not have
 `admin: DartEdgeAuthAdminConfig()` enabled. The error also includes the
 operation ids registered by the native auth route table.
 
+For backend-only code that is already trusted by your application, use the
+separate trusted admin API. This does not use request/session authorization and
+must not be exposed directly from public routes:
+
+```dart
+final created = await auth.trustedAdmin.createUser(
+  email: 'grace@example.com',
+  password: 'password123',
+  name: 'Grace Hopper',
+  role: 'member',
+);
+
+final users = await auth.trustedAdmin.listUsers(limit: 50);
+```
+
 ## Shared Native Databases
 
 When your app already uses `dart_edge_sql`, share that same live native database

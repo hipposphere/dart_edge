@@ -185,6 +185,41 @@ void main() {
     },
   );
 
+  test('supports trusted admin calls without a session token', () async {
+    final auth = DartEdgeAuth(
+      const DartEdgeAuthConfig(
+        secret: 'test-secret-key-that-is-at-least-32-characters-long',
+        baseUrl: 'http://localhost:3000',
+      ),
+    );
+    addTearDown(auth.dispose);
+
+    final created = await auth.trustedAdmin.createUser(
+      email: 'trusted@example.com',
+      password: 'password123',
+      name: 'Trusted User',
+      role: 'member',
+    );
+    expect(created.user.email, 'trusted@example.com');
+    expect(created.user.role, 'member');
+
+    final signIn = await auth.api.signInEmail(
+      email: 'trusted@example.com',
+      password: 'password123',
+    );
+    expect(signIn.user!.id, created.user.id);
+
+    final promoted = await auth.trustedAdmin.setRole(
+      userId: created.user.id,
+      role: 'admin',
+    );
+    expect(promoted.user.role, 'admin');
+
+    final listed = await auth.trustedAdmin.listUsers(limit: 10);
+    expect(listed.total, 1);
+    expect(listed.users.single.email, 'trusted@example.com');
+  });
+
   test('enables direct admin api calls when configured', () async {
     final auth = DartEdgeAuth(
       const DartEdgeAuthConfig(

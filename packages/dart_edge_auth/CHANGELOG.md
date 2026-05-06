@@ -1,3 +1,9 @@
+## 0.3.10
+
+- Add `DartEdgeAuth.trustedAdmin` for deliberately trusted server-side admin
+  calls that do not require an admin session token.
+- Bump the native artifact version to 0.1.3 for the trusted admin ABI.
+
 ## 0.3.9
 
 - Bump the native artifact version to 0.1.2 for rebuilt prebuilts.

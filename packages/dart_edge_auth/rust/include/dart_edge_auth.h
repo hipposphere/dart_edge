@@ -30,6 +30,14 @@ NativeHttpResponse* dart_edge_auth_handle_request(
     int64_t handle,
     const NativeHttpRequest* request);
 
+NativeHttpResponse* dart_edge_auth_trusted_admin_call(
+    int64_t handle,
+    const char* operation,
+    size_t query_count,
+    const NativePair* query,
+    const uint8_t* body_ptr,
+    size_t body_len);
+
 void dart_edge_auth_free_response(NativeHttpResponse* value);
 
 char* dart_edge_auth_take_last_error(void);

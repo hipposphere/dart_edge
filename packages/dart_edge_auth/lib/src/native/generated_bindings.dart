@@ -84,6 +84,25 @@ external int dart_edge_auth_native_abi_version();
 @ffi.Native<ffi.Pointer<ffi.Char> Function()>()
 external ffi.Pointer<ffi.Char> dart_edge_auth_take_last_error();
 
+@ffi.Native<
+  ffi.Pointer<NativeHttpResponse> Function(
+    ffi.Int64,
+    ffi.Pointer<ffi.Char>,
+    ffi.Size,
+    ffi.Pointer<imp$1.NativePair>,
+    ffi.Pointer<ffi.Uint8>,
+    ffi.Size,
+  )
+>()
+external ffi.Pointer<NativeHttpResponse> dart_edge_auth_trusted_admin_call(
+  int handle,
+  ffi.Pointer<ffi.Char> operation,
+  int query_count,
+  ffi.Pointer<imp$1.NativePair> query,
+  ffi.Pointer<ffi.Uint8> body_ptr,
+  int body_len,
+);
+
 final class NativeHttpRequest extends ffi.Struct {
   @ffi.Int32()
   external int method;
