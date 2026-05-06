@@ -1,4 +1,5 @@
 import 'bluetooth_gatt_access.dart';
+import 'bluetooth_gatt_value_codec_definition.dart';
 
 final class BluetoothGattDescriptorDefinition {
   const BluetoothGattDescriptorDefinition({
@@ -8,6 +9,7 @@ final class BluetoothGattDescriptorDefinition {
     this.authorize = false,
     this.read = const BluetoothReadAccess(),
     this.write = const BluetoothWriteAccess(),
+    this.codec,
     this.metadata = const <String, Object?>{},
   });
 
@@ -17,6 +19,7 @@ final class BluetoothGattDescriptorDefinition {
   final bool authorize;
   final BluetoothReadAccess read;
   final BluetoothWriteAccess write;
+  final BluetoothGattValueCodecDefinition? codec;
   final Map<String, Object?> metadata;
 
   Map<String, Object?> toJson() {

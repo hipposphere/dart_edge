@@ -13,3 +13,4 @@ export 'src/gatt/bluetooth_gatt_characteristic_definition.dart';
 export 'src/gatt/bluetooth_gatt_descriptor_definition.dart';
 export 'src/gatt/bluetooth_gatt_path.dart';
 export 'src/gatt/bluetooth_gatt_service_definition.dart';
+export 'src/gatt/bluetooth_gatt_value_codec_definition.dart';

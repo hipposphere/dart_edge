@@ -104,6 +104,9 @@ repository root and composed from `packages/*`, with shared Rust crates under
   is expected to implement.
 - Keep public contracts explicit. Route shape should live in one contract object
   rather than being spread across many unrelated fields.
+- Build Dart code generators with `code_builder` instead of handwritten source
+  string assembly. Keep raw `Code` snippets small and localized to expression or
+  statement bodies that `code_builder` cannot model clearly.
 - Avoid experimental language features unless the repo explicitly opts into
   them.
 
