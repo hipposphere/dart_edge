@@ -1,5 +1,5 @@
+import 'package:dart_edge_core/dart_edge_core.dart';
 import 'package:dart_edge_http_server_codegen/dart_edge_http_server_codegen.dart';
-import 'package:dart_edge_http_server_runtime/dart_edge_http_server_runtime.dart';
 import 'package:test/test.dart';
 
 void main() {

@@ -23,6 +23,9 @@ melos:
     test:
       run: melos exec --dir-exists=test -- dart test
       description: Run tests in workspace packages that have a test directory.
+    check:boundaries:
+      run: dart --disable-dart-dev tool/check_package_boundaries.dart
+      description: Check Dart package dependency and import boundaries.
     publish:dry-run:
       run: melos publish --no-private --dry-run --yes
       description: Validate publishable packages without uploading them.

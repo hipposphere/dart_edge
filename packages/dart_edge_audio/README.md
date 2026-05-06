@@ -49,7 +49,7 @@ before the Rust audio worker runs.
 
 ```dart
 import 'package:dart_edge_audio/dart_edge_audio.dart';
-import 'package:dart_edge_core/ffi.dart' as core_ffi;
+import 'package:dart_edge_native_bridge/dart_edge_native_bridge.dart' as core_ffi;
 
 Future<AudioMetadata> inspectBorrowedAudio(core_ffi.NativeBytes bytes) {
   return DartEdgeAudio.probeNativeBytes(

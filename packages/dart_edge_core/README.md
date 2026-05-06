@@ -54,16 +54,3 @@ final class AppServices {
 
 This package only models the shared contracts. It does not open sockets, accept
 connections, or execute a concrete HTTP runtime by itself.
-
-## Shared FFI Types
-
-`dart_edge_core` also exposes the shared Dart-side FFI value structs used by
-multiple native packages, but through a dedicated sublibrary so the main
-contract API stays transport-agnostic.
-
-```dart
-import 'package:dart_edge_core/ffi.dart';
-```
-
-That sublibrary exports `NativeBytes`, `NativeOwnedBytes`, `NativePair`, and a
-small set of byte and UTF-8 decoding helpers for native wrappers.

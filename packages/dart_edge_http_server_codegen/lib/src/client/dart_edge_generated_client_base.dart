@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-import 'package:dart_edge_http_server_runtime/dart_edge_http_server_runtime.dart';
+import 'package:dart_edge_core/dart_edge_core.dart';
 
 import 'dart_edge_client_transport.dart';
 

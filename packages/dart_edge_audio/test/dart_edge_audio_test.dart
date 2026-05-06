@@ -3,7 +3,8 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:dart_edge_audio/dart_edge_audio.dart';
-import 'package:dart_edge_core/ffi.dart' as core_ffi;
+import 'package:dart_edge_native_bridge/dart_edge_native_bridge.dart'
+    as core_ffi;
 import 'package:ffi/ffi.dart';
 import 'package:test/test.dart';
 

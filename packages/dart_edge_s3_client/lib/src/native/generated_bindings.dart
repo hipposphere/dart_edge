@@ -8,7 +8,7 @@
 library;
 
 import 'dart:ffi' as ffi;
-import 'package:dart_edge_core/ffi.dart' as imp$1;
+import 'package:dart_edge_native_bridge/dart_edge_native_bridge.dart' as imp$1;
 
 @ffi.Native<
   ffi.Pointer<NativeS3CreateResult> Function(ffi.Pointer<NativeS3ClientConfig>)

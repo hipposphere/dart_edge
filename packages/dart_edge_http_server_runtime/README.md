@@ -1,10 +1,11 @@
 # dart_edge_http_server_runtime
 
-Core runtime and shared contract package for Dart Edge.
+Concrete HTTP runtime package for Dart Edge.
 
 Use this package directly when you want the low-level Dart Edge API surface
-without the higher-level HTTP server package. It owns the route options, request context,
-schema registry model, middleware configuration, and native server bridge.
+without the higher-level HTTP server package. It re-exports the shared
+contracts from `dart_edge_core`, but owns the concrete native server bridge,
+route compilation, middleware configuration, and runtime request dispatch.
 
 ## Quick Start
 
@@ -40,15 +41,15 @@ For local-only development, omit `host:` and the runtime stays bound to
 - `Router.get`, `post`, `put`, `patch`, `delete`, `head`, and `options` add
   inline HTTP handlers without writing a route class, with metadata grouped in
   `RouteOptions`
-- `HttpRouteDefinition` is the main HTTP route base class
+- `HttpRouteDefinition` is the main HTTP route base class from `dart_edge_core`
 - `RouteOptions`, `RequestBody`, `ResponseSpec`, and `ResponseSet` describe the
-  request and response shape
+  request and response shape in `dart_edge_core`
 - `RequestContext` gives handlers access to services, decoded request values, and
-  request-scoped extensions
+  request-scoped extensions through `dart_edge_core`
 - `WebSocketContext` gives WebSocket handlers typed text, JSON, binary, and
   mixed-frame streams plus matching send helpers
 - `JsonSchema`, including `JsonSchema.ref`, and `JsonSchemaRegistry` connect the
-  runtime to generated JSON Schema metadata
+  runtime to generated JSON Schema metadata through `dart_edge_core`
 - `RustMiddleware` configures the transport-layer middleware stack
 
 ## Request Body Ergonomics

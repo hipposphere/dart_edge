@@ -32,6 +32,9 @@ jobs:
       - name: Analyze Dart workspace
         run: dart analyze
 
+      - name: Check package boundaries
+        run: dart --disable-dart-dev tool/check_package_boundaries.dart
+
       - name: Test Dart packages
         run: dart run melos exec --dir-exists=test -- dart test
 

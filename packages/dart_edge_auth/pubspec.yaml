@@ -17,6 +17,9 @@ dependencies:
   dart_edge_native_assets:
     hosted: "https://registry.hippolabs.org/pub/internal-pub/"
     version: ^0.1.2
+  dart_edge_native_bridge:
+    hosted: "https://registry.hippolabs.org/pub/internal-pub/"
+    version: ^0.1.0
   dart_edge_sql:
     hosted: "https://registry.hippolabs.org/pub/internal-pub/"
     version: ^0.3.8

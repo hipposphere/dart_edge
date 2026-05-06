@@ -10,7 +10,8 @@ Dart Edge is a Dart-first backend platform built around:
 
 This repository is a Pub workspace. The app-facing default package is
 [`package:dart_edge_http_server`](packages/dart_edge_http_server), while the workspace also contains the
-lower-level runtime, codegen, auth, SQL, audio, and benchmark packages.
+lower-level core contracts, runtime, codegen, auth, SQL, audio, and benchmark
+packages.
 
 The current delivered center is HTTP. The HTTP codegen package exposes
 annotations, normalized route artifact generation, schema registry generation,
@@ -68,8 +69,9 @@ For local-only development, `listen(port: 8080)` still binds loopback. For
 deployment, pass a real bind address such as `0.0.0.0` or `::`.
 
 Import `package:dart_edge_http_server/dart_edge_http_server.dart` when you want the normal developer
-experience: the runtime surface from `dart_edge_http_server_runtime` plus
-app-facing helper APIs such as `OpenApiHelpers`.
+experience: the shared contracts from `dart_edge_core`, the concrete runtime
+surface from `dart_edge_http_server_runtime`, and app-facing helper APIs such as
+`OpenApiHelpers`.
 
 ## WebSocket Frames
 
@@ -92,8 +94,11 @@ app.websocket('/audio', onConnect: (socket) async {
 
 - [`packages/dart_edge_http_server`](packages/dart_edge_http_server): app-facing HTTP server package for application
   authors, including OpenAPI JSON and Swagger UI mounting helpers
+- [`packages/dart_edge_core`](packages/dart_edge_core): transport-agnostic
+  route, request/response, schema, WebSocket, and router contracts
 - [`packages/dart_edge_http_server_runtime`](packages/dart_edge_http_server_runtime): Rust-backed HTTP
-  runtime plus shared route, schema, and context contracts
+  runtime that consumes the shared contracts and owns native transport
+  integration
 - [`packages/dart_edge_http_server_codegen`](packages/dart_edge_http_server_codegen): build-time HTTP route
   generation, normalized metadata, generated route artifacts, schema registries,
   codec registry skeletons, and generated HTTP client support
@@ -105,6 +110,8 @@ app.websocket('/audio', onConnect: (socket) async {
   introspection and Dart descriptor generation
 - [`packages/dart_edge_sql_migrator`](packages/dart_edge_sql_migrator): SQL
   migration management on top of `dart_edge_sql`
+- [`packages/dart_edge_native_bridge`](packages/dart_edge_native_bridge):
+  shared Dart FFI structs and pointer helpers used by native-backed packages
 - [`packages/dart_edge_audio`](packages/dart_edge_audio): native-backed audio
   probing and WAV conversion utilities
 - [`packages/dart_edge_s3_client`](packages/dart_edge_s3_client): native-backed
@@ -133,6 +140,12 @@ Analyze the whole repo:
 
 ```sh
 dart analyze
+```
+
+Check package boundaries:
+
+```sh
+dart --disable-dart-dev tool/check_package_boundaries.dart
 ```
 
 Format the repo:
@@ -187,9 +200,13 @@ for targets, scenarios, external dependencies, and methodology.
 - First-party packages live under `packages/`.
 - Benchmark packages live under `benchmarks/`.
 - Keep `dart_edge_http_server` as the default app-facing package.
+- Keep transport-agnostic route, request/response, schema, WebSocket, and router
+  contracts in `dart_edge_core`.
 - Keep helper-only APIs out of `dart_edge_http_server_runtime`.
 - Keep app-facing schema annotations in `dart_edge_core` and export them through
   `dart_edge_http_server`.
+- Keep shared Dart FFI structs and pointer helpers in
+  `dart_edge_native_bridge`, not in `dart_edge_core`.
 - Keep generator-facing APIs in `dart_edge_http_server_codegen`.
 
 For lower-level package details, use the package-local READMEs. The root README

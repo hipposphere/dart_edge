@@ -8,7 +8,7 @@
 library;
 
 import 'dart:ffi' as ffi;
-import 'package:dart_edge_core/ffi.dart' as imp$1;
+import 'package:dart_edge_native_bridge/dart_edge_native_bridge.dart' as imp$1;
 
 @ffi.Native<ffi.Int64 Function(ffi.Pointer<ffi.Char>)>()
 external int dart_edge_auth_create(ffi.Pointer<ffi.Char> config_json);

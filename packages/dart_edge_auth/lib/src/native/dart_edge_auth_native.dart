@@ -3,9 +3,10 @@ import 'dart:ffi';
 import 'dart:typed_data';
 
 import 'package:dart_edge_core/dart_edge_core.dart';
-import 'package:dart_edge_core/ffi.dart' as core_ffi;
+import 'package:dart_edge_native_bridge/dart_edge_native_bridge.dart'
+    as core_ffi;
 import 'package:dart_edge_sql/dart_edge_sql.dart';
-import 'package:dart_edge_sql/src/native/generated_bindings.dart' as sql_gen;
+import 'package:dart_edge_sql/dart_edge_sql_native.dart';
 import 'package:ffi/ffi.dart';
 
 import '../dart_edge_auth_config.dart';
@@ -41,15 +42,11 @@ final class NativeAuthInstance {
 }
 
 final Pointer<NativeFunction<Pointer<Char> Function(Int64, Pointer<Char>)>>
-_sharedExecutePoolPointer = Native.addressOf(
-  sql_gen.dart_edge_sql_execute_pool,
-);
+_sharedExecutePoolPointer = DartEdgeSqlNative.executePoolPointer;
 final Pointer<NativeFunction<Pointer<Char> Function()>>
-_sharedTakeLastErrorPointer = Native.addressOf(
-  sql_gen.dart_edge_sql_take_last_error,
-);
+_sharedTakeLastErrorPointer = DartEdgeSqlNative.takeLastErrorPointer;
 final Pointer<NativeFunction<Void Function(Pointer<Char>)>>
-_sharedFreeStringPointer = Native.addressOf(sql_gen.dart_edge_sql_free_string);
+_sharedFreeStringPointer = DartEdgeSqlNative.freeStringPointer;
 final Pointer<
   NativeFunction<
     Pointer<gen.NativeHttpResponse> Function(

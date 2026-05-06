@@ -27,7 +27,7 @@ final class _$CreateNoteBody implements JsonEncodable {
   );
 
   static const ResponseSpec response = ResponseSpec.json(
-    status: 201,
+    status: 200,
     schema: schemaRef,
   );
 
@@ -75,7 +75,7 @@ final class _$CreateNoteResponse implements JsonEncodable {
   );
 
   static const ResponseSpec response = ResponseSpec.json(
-    status: 201,
+    status: 200,
     schema: schemaRef,
   );
 

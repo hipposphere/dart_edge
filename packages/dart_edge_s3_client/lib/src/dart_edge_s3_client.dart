@@ -2,7 +2,8 @@ import 'dart:ffi';
 import 'dart:io';
 import 'dart:isolate';
 
-import 'package:dart_edge_core/ffi.dart' as core_ffi;
+import 'package:dart_edge_native_bridge/dart_edge_native_bridge.dart'
+    as core_ffi;
 
 import 'native/dart_edge_s3_client_native.dart';
 import 's3_client_config.dart';

@@ -3,7 +3,8 @@ import 'dart:ffi';
 import 'dart:isolate';
 import 'dart:typed_data';
 
-import 'package:dart_edge_core/ffi.dart' as core_ffi;
+import 'package:dart_edge_native_bridge/dart_edge_native_bridge.dart'
+    as core_ffi;
 
 import 'audio_bytes_conversion_request.dart';
 import 'audio_bytes_conversion_result.dart';

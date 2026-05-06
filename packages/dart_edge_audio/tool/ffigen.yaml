@@ -8,7 +8,7 @@ compiler-opts:
   - -I../../crates/dart_edge_core/include
 import:
   symbol-files:
-    - package:dart_edge_core/src/ffi/generated_symbols.yaml
+    - package:dart_edge_native_bridge/src/ffi/generated_symbols.yaml
 functions:
   include:
     - dart_edge_audio_.*

@@ -1,4 +1,4 @@
-import 'package:dart_edge_http_server_runtime/dart_edge_http_server_runtime.dart';
+import 'package:dart_edge_core/dart_edge_core.dart';
 
 /// Returns the generated route schema target only for explicit `$ref`s.
 ///

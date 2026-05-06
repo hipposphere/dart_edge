@@ -1,19 +1,20 @@
 import 'package:dart_edge_http_server/dart_edge_http_server.dart';
 import 'package:dart_edge_sql/dart_edge_sql.dart';
 import 'package:simple_test/generated/app_schema.g.dart';
+import 'package:simple_test/src/service.dart';
 
 part 'schema.dart';
-part 'schema.g.dart';
+part 'route.g.dart';
 
 final class CreateNotesRoute
-    extends HttpRouteDefinition<PostgresPool, CreateNoteResponse> {
+    extends HttpRouteDefinition<SimpleTestServices, CreateNoteResponse> {
   @override
   RouteOptions get options => _routeOptions;
 
   @override
   Future<CreateNoteResponse> handle(ctx) async {
     final body = ctx.req.body<CreateNoteBody>();
-    final note = await ctx.services.typed
+    final note = await ctx.services.database.typed
         .insertInto(NotesTable.table)
         .values(
           NotesInsert(

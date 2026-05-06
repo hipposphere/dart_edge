@@ -12,6 +12,17 @@ import 'generated_bindings.dart' as gen;
 abstract final class DartEdgeSqlNative {
   static int get abiVersion => gen.dart_edge_sql_native_abi_version();
 
+  static final Pointer<
+    NativeFunction<Pointer<Char> Function(Int64, Pointer<Char>)>
+  >
+  executePoolPointer = Native.addressOf(gen.dart_edge_sql_execute_pool);
+
+  static final Pointer<NativeFunction<Pointer<Char> Function()>>
+  takeLastErrorPointer = Native.addressOf(gen.dart_edge_sql_take_last_error);
+
+  static final Pointer<NativeFunction<Void Function(Pointer<Char>)>>
+  freeStringPointer = Native.addressOf(gen.dart_edge_sql_free_string);
+
   static int openPostgresPool(
     String connectionString, {
     required int maxSessions,

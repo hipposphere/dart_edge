@@ -3,16 +3,16 @@
 App-facing HTTP server package for building Dart Edge services.
 
 Import `package:dart_edge_http_server/dart_edge_http_server.dart` when you want the normal developer
-experience: the runtime contracts from `dart_edge_http_server_runtime` plus
-app-facing helpers in one import.
+experience: the shared contracts from `dart_edge_core`, the concrete runtime
+from `dart_edge_http_server_runtime`, and app-facing helpers in one import.
 
 ## What You Get
 
 - `DartEdge` and `Router` for starting the server and registering routes with
   `get`/`post`/`put`/`patch`/`delete` helpers, plus `routeGet`/`routePost`
   helpers for explicit route classes
-- `RouteOptions` for inline handlers and `RouteContract` for explicit route
-  definitions
+- `RouteOptions` for inline handlers and `HttpRouteDefinition` for explicit
+  route definitions
 - `OpenApiHelpers` for mounting helper endpoints alongside your app
 - WebSocket handlers with text, JSON, binary, and mixed-frame streams
 - `JasprRenderer` and `getJaspr` / `postJaspr` style helpers for HTML routes

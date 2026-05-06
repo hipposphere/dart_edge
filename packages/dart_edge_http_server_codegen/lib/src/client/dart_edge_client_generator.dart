@@ -1,5 +1,5 @@
 import 'package:code_builder/code_builder.dart';
-import 'package:dart_edge_http_server_runtime/dart_edge_http_server_runtime.dart';
+import 'package:dart_edge_core/dart_edge_core.dart';
 import 'package:dart_style/dart_style.dart';
 
 import '../json_schema_route_id.dart';
@@ -59,9 +59,7 @@ final class DartEdgeClientGenerator {
           ),
         )
         ..directives.add(
-          Directive.import(
-            'package:dart_edge_http_server_runtime/dart_edge_http_server_runtime.dart',
-          ),
+          Directive.import('package:dart_edge_core/dart_edge_core.dart'),
         )
         ..body.addAll(buildSpecs(spec));
 

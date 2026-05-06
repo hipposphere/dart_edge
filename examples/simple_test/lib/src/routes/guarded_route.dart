@@ -3,9 +3,10 @@ import 'dart:io';
 
 import 'package:dart_edge_auth/dart_edge_auth.dart';
 import 'package:dart_edge_http_server/dart_edge_http_server.dart';
-import 'package:dart_edge_sql/dart_edge_sql.dart';
+import 'package:simple_test/src/service.dart';
 
-final class GuardedRoute extends HttpRouteDefinition<PostgresPool, dynamic> {
+final class GuardedRoute
+    extends HttpRouteDefinition<SimpleTestServices, dynamic> {
   @override
   RouteOptions get options => RouteOptions(
     operationId: 'getGuarded',
@@ -14,7 +15,7 @@ final class GuardedRoute extends HttpRouteDefinition<PostgresPool, dynamic> {
   );
 
   @override
-  FutureOr<dynamic> handle(RequestContext<PostgresPool> ctx) {
+  FutureOr<dynamic> handle(RequestContext<SimpleTestServices> ctx) {
     final authIdentity = ctx.authIdentity;
     if (authIdentity == null) {
       return RawResponse.json(

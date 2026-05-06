@@ -1,5 +1,5 @@
 import 'package:code_builder/code_builder.dart';
-import 'package:dart_edge_http_server_runtime/dart_edge_http_server_runtime.dart';
+import 'package:dart_edge_core/dart_edge_core.dart';
 import 'package:dart_style/dart_style.dart';
 
 import '../client/dart_edge_client_generator.dart';
@@ -193,9 +193,7 @@ final class DartEdgeHttpServerGenerator {
           ..comments.add('GENERATED CODE - DO NOT MODIFY BY HAND.')
           ..directives.add(Directive.import('dart:async'))
           ..directives.add(
-            Directive.import(
-              'package:dart_edge_http_server_runtime/dart_edge_http_server_runtime.dart',
-            ),
+            Directive.import('package:dart_edge_core/dart_edge_core.dart'),
           );
 
         if (spec.clientClassName != null) {

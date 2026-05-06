@@ -91,9 +91,7 @@ void main() {
     expect(usersTable, isNot(contains(RegExp(r'^library\s', multiLine: true))));
     expect(
       usersTable,
-      contains(
-        "import 'package:dart_edge_http_server_runtime/dart_edge_http_server_runtime.dart';",
-      ),
+      contains("import 'package:dart_edge_core/dart_edge_core.dart';"),
     );
     expect(
       usersTable,

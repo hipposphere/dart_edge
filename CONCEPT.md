@@ -37,14 +37,20 @@ That is the current shape of the project.
 The workspace already contains:
 
 - `dart_edge_http_server`: the app-facing umbrella package
-- `dart_edge_http_server_runtime`: the shared contract surface plus the Rust-backed HTTP
-  runtime
+- `dart_edge_core`: transport-agnostic route, request/response, schema,
+  WebSocket, and router contracts
+- `dart_edge_http_server_runtime`: the Rust-backed HTTP runtime that consumes
+  the shared contracts
 - `dart_edge_http_server_codegen`: HTTP generator-facing annotations and normalized client
   generation
 - `dart_edge_auth`: native Better Auth route mounting for Dart Edge apps
 - `dart_edge_sql`: native-backed typed SQL pools and query builders
 - `dart_edge_sql_codegen`: schema introspection and Dart descriptor generation
 - `dart_edge_sql_migrator`: ordered SQL migrations on top of `dart_edge_sql`
+- `dart_edge_native_bridge`: shared Dart FFI value types and pointer helpers
+  used by native-backed packages
+- `dart_edge_native_assets`: native asset build-hook helpers used by
+  native-backed packages
 - `dart_edge_audio`: native-backed audio probing and conversion utilities
 - `dart_edge_sip`: standalone native SIP runtime package for
   backend-controlled VoIP and PBX-style call handling
@@ -104,12 +110,13 @@ they can all be versioned in isolation from day one.
 This is the core HTTP application path:
 
 - `dart_edge_http_server`
+- `dart_edge_core`
 - `dart_edge_http_server_runtime`
 
 This axis is responsible for:
 
 - starting the server
-- registering routes
+- registering routes through the shared router contracts
 - compiling route metadata into a native manifest
 - validating incoming requests
 - decoding typed inputs for Dart handlers
@@ -121,6 +128,7 @@ This axis is responsible for:
 This is the normalization axis:
 
 - `dart_edge_http_server_codegen`
+- `dart_edge_core`
 - `RouteOptions`
 - `JsonSchemaRef`
 - `JsonSchemaRegistry`
@@ -160,15 +168,22 @@ This is a stronger concept than one giant runtime package.
   authors import. It also owns app-facing helpers such as OpenAPI JSON and
   Swagger UI mounting.
 
+- `dart_edge_core`
+  Owns transport-agnostic Dart contracts: route definitions, route options,
+  request context, request/response shapes, JSON Schema references and
+  registries, WebSocket contracts, router contracts, app-facing schema
+  annotations, and shared Dart FFI value types.
+
 - `dart_edge_http_server_runtime`
-  Owns the concrete HTTP runtime plus the shared contract surface. This is where
-  route options, request context, schema references, middleware descriptors,
-  and the native server bridge live.
+  Owns the concrete HTTP runtime. This is where route compilation, runtime
+  codec integration, middleware descriptors, OpenAPI document generation from
+  compiled routes, and the native server bridge live.
 
 - `dart_edge_http_server_codegen`
   Owns build-time route annotations, generator-facing metadata, and normalized
-  client generation. It should compile down to runtime contracts, schema refs,
-  codec registries, and generated registries, not runtime reflection.
+  client generation. It should compile down to `dart_edge_core` contracts,
+  schema refs, codec registries, and generated registries, not runtime
+  reflection.
 
 - `dart_edge_auth`
   Owns auth-specific native behavior and route bundles. Auth should integrate
@@ -449,7 +464,7 @@ language instead of several disconnected ones.
 
 ## Request Context And App Extensions
 
-`RequestContext` should stay intentionally small.
+`RequestContext` should stay intentionally small and owned by `dart_edge_core`.
 
 The current core shape is good:
 
@@ -697,6 +712,8 @@ The platform is on the right path if these remain true:
 - `package:dart_edge_http_server/dart_edge_http_server.dart` stays the simple default import
 - explicit contracts remain the shared language across runtime, docs, and
   generators
+- transport-agnostic contracts stay in `dart_edge_core` while the native HTTP
+  runtime stays in `dart_edge_http_server_runtime`
 - native work is used where it makes the product better, not just because it is
   available
 - auth, SQL, audio, and future packages fit beside the runtime instead of

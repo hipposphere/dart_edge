@@ -1,7 +1,8 @@
 import 'dart:ffi';
 import 'dart:typed_data';
 
-import 'package:dart_edge_core/ffi.dart' as core_ffi;
+import 'package:dart_edge_native_bridge/dart_edge_native_bridge.dart'
+    as core_ffi;
 import 'package:ffi/ffi.dart';
 
 import '../s3_client_config.dart';

@@ -140,9 +140,7 @@ String emitDartSchemaLibrary(
     builder
       ..comments.add('GENERATED CODE - DO NOT MODIFY BY HAND.')
       ..directives.add(
-        Directive.import(
-          'package:dart_edge_http_server_runtime/dart_edge_http_server_runtime.dart',
-        ),
+        Directive.import('package:dart_edge_core/dart_edge_core.dart'),
       )
       ..directives.add(
         Directive.import('package:dart_edge_sql/dart_edge_sql.dart'),

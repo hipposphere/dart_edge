@@ -4,7 +4,8 @@ library;
 import 'dart:ffi' as ffi;
 import 'dart:typed_data';
 
-import 'package:dart_edge_core/ffi.dart' as core_ffi;
+import 'package:dart_edge_native_bridge/dart_edge_native_bridge.dart'
+    as core_ffi;
 import 'package:ffi/ffi.dart';
 
 import '../media/sip_audio.dart';

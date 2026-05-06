@@ -7,9 +7,7 @@ String _emitEntrypoint({
   final library = Library((builder) {
     builder
       ..directives.add(
-        Directive.import(
-          'package:dart_edge_http_server_runtime/dart_edge_http_server_runtime.dart',
-        ),
+        Directive.import('package:dart_edge_core/dart_edge_core.dart'),
       )
       ..body.add(_databaseClass(databaseClassName, schemaGroups));
 
@@ -29,9 +27,7 @@ String _emitSchemaLibrary(_SchemaGroup group) {
   final library = Library((builder) {
     builder
       ..directives.add(
-        Directive.import(
-          'package:dart_edge_http_server_runtime/dart_edge_http_server_runtime.dart',
-        ),
+        Directive.import('package:dart_edge_core/dart_edge_core.dart'),
       );
     builder.body.add(_schemaClass(group));
 
@@ -73,9 +69,7 @@ String _emitTableLibrary(
   final library = Library((builder) {
     builder
       ..directives.add(
-        Directive.import(
-          'package:dart_edge_http_server_runtime/dart_edge_http_server_runtime.dart',
-        ),
+        Directive.import('package:dart_edge_core/dart_edge_core.dart'),
       )
       ..directives.add(
         Directive.import('package:dart_edge_sql/dart_edge_sql.dart'),

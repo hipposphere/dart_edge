@@ -21,7 +21,7 @@ description: Use when designing or editing typed route annotations, JSON Schema 
 
 - Keep `$ref` support first-class.
 - Prefer generated registries over runtime discovery.
-- Generated output should compile down to `RouteContract` plus
+- Generated output should compile down to `dart_edge_core` route contracts plus
   `JsonSchemaRef`-backed schema references.
 - Do not split route codegen and schema codegen into separate packages unless
   the repo proves that boundary later.

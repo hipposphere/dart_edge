@@ -1,9 +1,5 @@
 /// Shared Dart FFI value types for Dart Edge native packages.
-///
-/// Import this library when you need the common `NativeBytes`,
-/// `NativeOwnedBytes`, and `NativePair` structs or the small decoding helpers
-/// that sit on top of them.
-library dart_edge_core_ffi;
+library dart_edge_native_bridge;
 
 export 'src/ffi/generated_bindings.dart'
     show NativeBytes, NativeOwnedBytes, NativePair;

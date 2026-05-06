@@ -2,7 +2,7 @@ import 'dart:convert';
 
 import 'package:analyzer/dart/constant/value.dart';
 import 'package:analyzer/dart/element/element.dart';
-import 'package:dart_edge_http_server_runtime/dart_edge_http_server_runtime.dart';
+import 'package:dart_edge_core/dart_edge_core.dart';
 import 'package:source_gen/source_gen.dart';
 
 /// Build-time description of a model generated from a JSON Schema.

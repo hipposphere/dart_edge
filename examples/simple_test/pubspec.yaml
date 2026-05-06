@@ -17,7 +17,6 @@ dependencies:
     hosted: "https://registry.hippolabs.org/pub/internal-pub/"
   dart_edge_sql_pglite:
     hosted: "https://registry.hippolabs.org/pub/internal-pub/"
-  http: ^1.6.0
 
 
 dev_dependencies:

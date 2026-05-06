@@ -8,11 +8,15 @@ repository root and composed from `packages/*`, with shared Rust crates under
 
 - `CONCEPT.md`: evolving product and architecture concept
 - `packages/dart_edge_http_server`: umbrella package that application authors should import
-- `packages/dart_edge_http_server_runtime`: concrete runtime package and shared contract
-  surface
+- `packages/dart_edge_core`: transport-agnostic Dart route, request/response,
+  schema, WebSocket, and router contracts
+- `packages/dart_edge_http_server_runtime`: concrete Rust-backed HTTP runtime
+  package that consumes the shared contract surface
 - `packages/dart_edge_http_server_runtime/hook`: SDK-discovered build hooks for the runtime
 - `packages/dart_edge_http_server_runtime/rust`: Rust crate compiled into the runtime's
   native asset
+- `packages/dart_edge_native_bridge`: shared Dart FFI value types and pointer
+  helpers used by native-backed packages
 - `crates/dart_edge_core`: shared Rust FFI primitives used by native packages
 - `crates/dart_edge_sql_core`: shared Rust SQL wire payload types used by native packages
 - `benchmarks`: reproducible benchmark apps and the benchmark runner
@@ -21,8 +25,8 @@ repository root and composed from `packages/*`, with shared Rust crates under
   S3 and compatible object stores
 - `packages/dart_edge_sip`: standalone native SIP runtime concept package for
   backend-controlled VoIP and PBX-style call handling
-- `.agents/skills`: repo-local skills for recurring monorepo, runtime, and
-  codegen work
+- `.agents/skills`: repo-local skills for Dart Edge-specific runtime, codegen,
+  and native-artifact work
 
 ## Dart Baseline
 
@@ -41,6 +45,7 @@ repository root and composed from `packages/*`, with shared Rust crates under
 - Resolve the whole workspace: `dart pub get`
 - List workspace packages: `dart pub workspace list`
 - Analyze the whole repo: `dart analyze`
+- Check package boundaries: `dart --disable-dart-dev tool/check_package_boundaries.dart`
 - Format the whole repo: `dart format .`
 - Test one package: `cd packages/<package> && dart test`
 - Work on one package with pub commands: `dart pub -C packages/<package> <cmd>`
@@ -62,6 +67,10 @@ repository root and composed from `packages/*`, with shared Rust crates under
   `path` dependencies.
 - Codegen packages must stay pure Dart unless a later design explicitly changes
   that.
+- Keep transport-agnostic route, request/response, schema, WebSocket, and router
+  contracts in `dart_edge_core`.
+- Keep shared Dart-side FFI structs and pointer helpers in
+  `dart_edge_native_bridge`, not in `dart_edge_core`.
 - Keep app-facing schema annotation contracts in `dart_edge_core`.
 - Keep generated API surface in `dart_edge_http_server_codegen`.
 - Keep app-facing imports simple by exporting the normal runtime and helper
@@ -112,11 +121,13 @@ repository root and composed from `packages/*`, with shared Rust crates under
 
 ## Architecture Guardrails
 
-- Runtime and shared contract types live together in `dart_edge_http_server_runtime`.
+- Transport-agnostic contract types live in `dart_edge_core`; the concrete
+  native HTTP runtime lives in `dart_edge_http_server_runtime`.
 - App-facing helpers can wrap or mount runtime capabilities from
   `dart_edge_http_server`, but they should not redefine core contracts.
 - Generated code should compile down to normalized route contracts and JSON
-  Schema references rather than relying on runtime type inspection.
+  Schema references from public package APIs rather than relying on runtime type
+  inspection or private `src` imports.
 - JSON Schema support must preserve `$ref` support for shared and recursive
   models.
 
@@ -189,8 +200,9 @@ repository root and composed from `packages/*`, with shared Rust crates under
 
 ## Skills
 
-Use the repo-local skills in `.agents/skills` when the task is clearly about:
+Use the repo-local skills in `.agents/skills` when the task needs Dart
+Edge-specific detail beyond the shared `hippo-dev` workflow:
 
-- workspace/package layout
 - runtime contracts and API boundaries
 - JSON Schema and codegen design
+- native artifact publishing/version checks

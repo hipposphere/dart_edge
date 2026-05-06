@@ -1,2 +1,2 @@
-export 'package:dart_edge_http_server_runtime/dart_edge_http_server_runtime.dart'
+export 'package:dart_edge_core/dart_edge_core.dart'
     show FromSchema, SchemaRefModel;

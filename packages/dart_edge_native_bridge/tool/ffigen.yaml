@@ -1,10 +1,10 @@
-name: DartEdgeCoreFfiBindings
-description: Shared FFI value types for dart_edge_core.
+name: DartEdgeNativeBridgeBindings
+description: Shared FFI value types for Dart Edge native packages.
 output:
   bindings: ../lib/src/ffi/generated_bindings.dart
   symbol-file:
-    output: package:dart_edge_core/src/ffi/generated_symbols.yaml
-    import-path: package:dart_edge_core/ffi.dart
+    output: package:dart_edge_native_bridge/src/ffi/generated_symbols.yaml
+    import-path: package:dart_edge_native_bridge/dart_edge_native_bridge.dart
 headers:
   entry-points:
     - ../../../crates/dart_edge_core/include/dart_edge_core_ffi.h

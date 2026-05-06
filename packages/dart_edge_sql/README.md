@@ -69,3 +69,10 @@ final rows = await raw
     .where(raw.eq('"u"."email"', 'ada@example.com'))
     .execute();
 ```
+
+## Native Integration
+
+Most code should import `package:dart_edge_sql/dart_edge_sql.dart`. Sibling
+native-backed Dart Edge packages that need to share an existing SQL pool handle
+can import `package:dart_edge_sql/dart_edge_sql_native.dart` for the public
+native callback pointers instead of reaching into `lib/src`.

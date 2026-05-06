@@ -1,5 +1,5 @@
 name: dart_edge_http_server_runtime
-description: HTTP server runtime and shared contracts for Dart Edge.
+description: Rust-backed HTTP server runtime for Dart Edge.
 version: 0.3.9
 publish_to: "https://registry.hippolabs.org/pub/internal-pub/"
 repository: https://github.com/hipposphere/dart_edge/tree/main/packages/dart_edge_http_server_runtime
@@ -17,6 +17,9 @@ dependencies:
   dart_edge_native_assets:
     hosted: "https://registry.hippolabs.org/pub/internal-pub/"
     version: ^0.1.2
+  dart_edge_native_bridge:
+    hosted: "https://registry.hippolabs.org/pub/internal-pub/"
+    version: ^0.1.0
   ffi: ^2.2.0
   hooks: ^1.0.3
   native_toolchain_rust: ^1.0.4
