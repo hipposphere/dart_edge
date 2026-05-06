@@ -65,6 +65,16 @@ final class DartEdgeClientLibrarySpec {
               path: fullPath,
               options: routeOptions,
               schemaTypes: schemaTypes,
+              methodName:
+                  _prefixedMethodName(
+                    registration.prefix,
+                    routeOptions.operationId!,
+                  ) ??
+                  _pathPrefixedMethodName(
+                    fullPath,
+                    routeOptions.operationId!,
+                    options.methodNamePathPrefixes,
+                  ),
             ),
           );
         case final NativeHttpRouteMount route:
@@ -82,6 +92,16 @@ final class DartEdgeClientLibrarySpec {
               path: fullPath,
               options: routeOptions,
               schemaTypes: schemaTypes,
+              methodName:
+                  _prefixedMethodName(
+                    registration.prefix,
+                    routeOptions.operationId!,
+                  ) ??
+                  _pathPrefixedMethodName(
+                    fullPath,
+                    routeOptions.operationId!,
+                    options.methodNamePathPrefixes,
+                  ),
             ),
           );
         case final WebSocketRouteDefinition<dynamic> route:
@@ -97,6 +117,16 @@ final class DartEdgeClientLibrarySpec {
             DartEdgeClientWebSocketOperation(
               path: fullPath,
               operationId: webSocketOptions.operationId!,
+              methodName:
+                  _prefixedMethodName(
+                    registration.prefix,
+                    webSocketOptions.operationId!,
+                  ) ??
+                  _pathPrefixedMethodName(
+                    fullPath,
+                    webSocketOptions.operationId!,
+                    options.methodNamePathPrefixes,
+                  ),
             ),
           );
       }
@@ -117,6 +147,7 @@ final class DartEdgeClientGenerationOptions {
   const DartEdgeClientGenerationOptions({
     this.ignorePaths = const <String>{},
     this.ignoreOperations = const <String>{},
+    this.methodNamePathPrefixes = const <String>{'/auth'},
   });
 
   /// Full public route template prefixes to skip after router prefixes are applied.
@@ -128,6 +159,13 @@ final class DartEdgeClientGenerationOptions {
 
   /// Operation id prefixes to skip.
   final Set<String> ignoreOperations;
+
+  /// Full route path prefixes that should namespace generated method names.
+  ///
+  /// This is for package-owned route groups that register absolute paths rather
+  /// than a [RouteRegistration.prefix], such as Dart Edge Auth's `/auth/...`
+  /// routes.
+  final Set<String> methodNamePathPrefixes;
 
   bool ignoresPath(String path) {
     return ignorePaths.any((ignored) => _matchesPathPrefix(path, ignored));
@@ -458,7 +496,9 @@ $entries
   Method _operationMethod(DartEdgeClientOperation operation) {
     return Method((builder) {
       builder
-        ..returns = _type('Future', [refer(operation.successType)])
+        ..returns = _type('Future', [
+          _type('DartEdgeClientResponseObject', [refer(operation.successType)]),
+        ])
         ..name = operation.resolvedMethodName
         ..optionalParameters.addAll(_operationParameters(operation))
         ..body = _invokeExpression(operation).returned.statement;
@@ -603,6 +643,16 @@ $entries
         },
         <Reference>[refer(operation.successType)],
       ),
+      if (options.responses.errors.isNotEmpty)
+        'errors': literalList([
+          for (final error in options.responses.errors)
+            refer(
+              'DartEdgeClientErrorSpec',
+            ).newInstance(const <Expression>[], <String, Expression>{
+              'status': literalNum(error.status),
+              if (error.code case final code?) 'code': literalString(code),
+            }),
+        ], refer('DartEdgeClientErrorSpec')),
     };
 
     if (options.params case final schema?) {
@@ -770,6 +820,7 @@ DartEdgeClientOperation _operationFromOptions({
   required String path,
   required RouteOptions options,
   required Map<String, String> schemaTypes,
+  String? methodName,
 }) {
   return DartEdgeClientOperation(
     method: method,
@@ -778,6 +829,7 @@ DartEdgeClientOperation _operationFromOptions({
     successType:
         _schemaType(options.success?.schema, schemaTypes) ??
         _defaultSuccessType(options.success),
+    methodName: methodName,
     paramsType: _schemaType(options.params, schemaTypes),
     queryType: _schemaType(options.query, schemaTypes),
     headersType: _schemaType(options.headers, schemaTypes),
@@ -865,6 +917,41 @@ String _normalizeIgnoredPath(String path) {
     return path;
   }
   return path.endsWith('/') ? path.substring(0, path.length - 1) : path;
+}
+
+String? _prefixedMethodName(String routePrefix, String operationId) {
+  final normalizedPrefix = _normalizeIgnoredPath(routePrefix);
+  if (normalizedPrefix.isEmpty || normalizedPrefix == '/') {
+    return null;
+  }
+
+  final prefix = _lowerCamel(normalizedPrefix);
+  if (prefix.isEmpty || operationId.startsWith(prefix)) {
+    return null;
+  }
+
+  final operationName = _lowerCamel(operationId);
+  if (operationName.isEmpty) {
+    return prefix;
+  }
+  return '$prefix${operationName[0].toUpperCase()}${operationName.substring(1)}';
+}
+
+String? _pathPrefixedMethodName(
+  String fullPath,
+  String operationId,
+  Set<String> pathPrefixes,
+) {
+  final matchingPrefixes = [
+    for (final pathPrefix in pathPrefixes)
+      if (_matchesPathPrefix(fullPath, pathPrefix))
+        _normalizeIgnoredPath(pathPrefix),
+  ]..sort((left, right) => right.length.compareTo(left.length));
+
+  if (matchingPrefixes.isEmpty) {
+    return null;
+  }
+  return _prefixedMethodName(matchingPrefixes.first, operationId);
 }
 
 Parameter _superParameter(

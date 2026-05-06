@@ -10,7 +10,9 @@ final class SimpleTestClient extends DartEdgeHttpClientBase {
     super.defaultHeaders = const <String, String>{},
   });
 
-  Future<Object?> changeEmail({required Object? body}) {
+  Future<DartEdgeClientResponseObject<Object?>> authChangeEmail({
+    required Object? body,
+  }) {
     return invoke<Object?, Never, Never, Never, Object?>(
       DartEdgeClientInvocation<Object?, Never, Never, Never, Object?>(
         method: HttpMethod.post,
@@ -27,7 +29,9 @@ final class SimpleTestClient extends DartEdgeHttpClientBase {
     );
   }
 
-  Future<Object?> changePassword({required Object? body}) {
+  Future<DartEdgeClientResponseObject<Object?>> authChangePassword({
+    required Object? body,
+  }) {
     return invoke<Object?, Never, Never, Never, Object?>(
       DartEdgeClientInvocation<Object?, Never, Never, Never, Object?>(
         method: HttpMethod.post,
@@ -44,7 +48,9 @@ final class SimpleTestClient extends DartEdgeHttpClientBase {
     );
   }
 
-  Future<Object?> deleteUser({required Object? body}) {
+  Future<DartEdgeClientResponseObject<Object?>> authDeleteUser({
+    required Object? body,
+  }) {
     return invoke<Object?, Never, Never, Never, Object?>(
       DartEdgeClientInvocation<Object?, Never, Never, Never, Object?>(
         method: HttpMethod.post,
@@ -61,7 +67,9 @@ final class SimpleTestClient extends DartEdgeHttpClientBase {
     );
   }
 
-  Future<Object?> deleteUserDelete({required Object? body}) {
+  Future<DartEdgeClientResponseObject<Object?>> authDeleteUserDelete({
+    required Object? body,
+  }) {
     return invoke<Object?, Never, Never, Never, Object?>(
       DartEdgeClientInvocation<Object?, Never, Never, Never, Object?>(
         method: HttpMethod.delete,
@@ -78,7 +86,7 @@ final class SimpleTestClient extends DartEdgeHttpClientBase {
     );
   }
 
-  Future<Object?> deleteUserCallback() {
+  Future<DartEdgeClientResponseObject<Object?>> authDeleteUserCallback() {
     return invoke<Object?, Never, Never, Never, Never>(
       DartEdgeClientInvocation<Object?, Never, Never, Never, Never>(
         method: HttpMethod.get,
@@ -91,7 +99,7 @@ final class SimpleTestClient extends DartEdgeHttpClientBase {
     );
   }
 
-  Future<Object?> error() {
+  Future<DartEdgeClientResponseObject<Object?>> authError() {
     return invoke<Object?, Never, Never, Never, Never>(
       DartEdgeClientInvocation<Object?, Never, Never, Never, Never>(
         method: HttpMethod.get,
@@ -104,7 +112,9 @@ final class SimpleTestClient extends DartEdgeHttpClientBase {
     );
   }
 
-  Future<Object?> forgetPassword({required Object? body}) {
+  Future<DartEdgeClientResponseObject<Object?>> authForgetPassword({
+    required Object? body,
+  }) {
     return invoke<Object?, Never, Never, Never, Object?>(
       DartEdgeClientInvocation<Object?, Never, Never, Never, Object?>(
         method: HttpMethod.post,
@@ -121,7 +131,7 @@ final class SimpleTestClient extends DartEdgeHttpClientBase {
     );
   }
 
-  Future<Object?> getSession() {
+  Future<DartEdgeClientResponseObject<Object?>> authGetSession() {
     return invoke<Object?, Never, Never, Never, Never>(
       DartEdgeClientInvocation<Object?, Never, Never, Never, Never>(
         method: HttpMethod.get,
@@ -134,7 +144,9 @@ final class SimpleTestClient extends DartEdgeHttpClientBase {
     );
   }
 
-  Future<Object?> getSessionPost({required Object? body}) {
+  Future<DartEdgeClientResponseObject<Object?>> authGetSessionPost({
+    required Object? body,
+  }) {
     return invoke<Object?, Never, Never, Never, Object?>(
       DartEdgeClientInvocation<Object?, Never, Never, Never, Object?>(
         method: HttpMethod.post,
@@ -151,7 +163,7 @@ final class SimpleTestClient extends DartEdgeHttpClientBase {
     );
   }
 
-  Future<Object?> listAccounts() {
+  Future<DartEdgeClientResponseObject<Object?>> authListAccounts() {
     return invoke<Object?, Never, Never, Never, Never>(
       DartEdgeClientInvocation<Object?, Never, Never, Never, Never>(
         method: HttpMethod.get,
@@ -164,7 +176,7 @@ final class SimpleTestClient extends DartEdgeHttpClientBase {
     );
   }
 
-  Future<Object?> listSessions() {
+  Future<DartEdgeClientResponseObject<Object?>> authListSessions() {
     return invoke<Object?, Never, Never, Never, Never>(
       DartEdgeClientInvocation<Object?, Never, Never, Never, Never>(
         method: HttpMethod.get,
@@ -177,7 +189,7 @@ final class SimpleTestClient extends DartEdgeHttpClientBase {
     );
   }
 
-  Future<Object?> ok() {
+  Future<DartEdgeClientResponseObject<Object?>> authOk() {
     return invoke<Object?, Never, Never, Never, Never>(
       DartEdgeClientInvocation<Object?, Never, Never, Never, Never>(
         method: HttpMethod.get,
@@ -190,7 +202,7 @@ final class SimpleTestClient extends DartEdgeHttpClientBase {
     );
   }
 
-  Future<Object?> openapiSpec() {
+  Future<DartEdgeClientResponseObject<Object?>> authOpenapiSpec() {
     return invoke<Object?, Never, Never, Never, Never>(
       DartEdgeClientInvocation<Object?, Never, Never, Never, Never>(
         method: HttpMethod.get,
@@ -203,7 +215,9 @@ final class SimpleTestClient extends DartEdgeHttpClientBase {
     );
   }
 
-  Future<Object?> resetPassword({required Object? body}) {
+  Future<DartEdgeClientResponseObject<Object?>> authResetPassword({
+    required Object? body,
+  }) {
     return invoke<Object?, Never, Never, Never, Object?>(
       DartEdgeClientInvocation<Object?, Never, Never, Never, Object?>(
         method: HttpMethod.post,
@@ -220,7 +234,7 @@ final class SimpleTestClient extends DartEdgeHttpClientBase {
     );
   }
 
-  Future<Object?> resetPasswordToken() {
+  Future<DartEdgeClientResponseObject<Object?>> authResetPasswordToken() {
     return invoke<Object?, Never, Never, Never, Never>(
       DartEdgeClientInvocation<Object?, Never, Never, Never, Never>(
         method: HttpMethod.get,
@@ -233,7 +247,9 @@ final class SimpleTestClient extends DartEdgeHttpClientBase {
     );
   }
 
-  Future<Object?> revokeOtherSessions({required Object? body}) {
+  Future<DartEdgeClientResponseObject<Object?>> authRevokeOtherSessions({
+    required Object? body,
+  }) {
     return invoke<Object?, Never, Never, Never, Object?>(
       DartEdgeClientInvocation<Object?, Never, Never, Never, Object?>(
         method: HttpMethod.post,
@@ -250,7 +266,9 @@ final class SimpleTestClient extends DartEdgeHttpClientBase {
     );
   }
 
-  Future<Object?> revokeSession({required Object? body}) {
+  Future<DartEdgeClientResponseObject<Object?>> authRevokeSession({
+    required Object? body,
+  }) {
     return invoke<Object?, Never, Never, Never, Object?>(
       DartEdgeClientInvocation<Object?, Never, Never, Never, Object?>(
         method: HttpMethod.post,
@@ -267,7 +285,9 @@ final class SimpleTestClient extends DartEdgeHttpClientBase {
     );
   }
 
-  Future<Object?> revokeSessions({required Object? body}) {
+  Future<DartEdgeClientResponseObject<Object?>> authRevokeSessions({
+    required Object? body,
+  }) {
     return invoke<Object?, Never, Never, Never, Object?>(
       DartEdgeClientInvocation<Object?, Never, Never, Never, Object?>(
         method: HttpMethod.post,
@@ -284,7 +304,9 @@ final class SimpleTestClient extends DartEdgeHttpClientBase {
     );
   }
 
-  Future<Object?> setPassword({required Object? body}) {
+  Future<DartEdgeClientResponseObject<Object?>> authSetPassword({
+    required Object? body,
+  }) {
     return invoke<Object?, Never, Never, Never, Object?>(
       DartEdgeClientInvocation<Object?, Never, Never, Never, Object?>(
         method: HttpMethod.post,
@@ -301,7 +323,9 @@ final class SimpleTestClient extends DartEdgeHttpClientBase {
     );
   }
 
-  Future<Object?> signInEmail({required Object? body}) {
+  Future<DartEdgeClientResponseObject<Object?>> authSignInEmail({
+    required Object? body,
+  }) {
     return invoke<Object?, Never, Never, Never, Object?>(
       DartEdgeClientInvocation<Object?, Never, Never, Never, Object?>(
         method: HttpMethod.post,
@@ -318,7 +342,9 @@ final class SimpleTestClient extends DartEdgeHttpClientBase {
     );
   }
 
-  Future<Object?> signInUsername({required Object? body}) {
+  Future<DartEdgeClientResponseObject<Object?>> authSignInUsername({
+    required Object? body,
+  }) {
     return invoke<Object?, Never, Never, Never, Object?>(
       DartEdgeClientInvocation<Object?, Never, Never, Never, Object?>(
         method: HttpMethod.post,
@@ -335,7 +361,9 @@ final class SimpleTestClient extends DartEdgeHttpClientBase {
     );
   }
 
-  Future<Object?> signOut({required Object? body}) {
+  Future<DartEdgeClientResponseObject<Object?>> authSignOut({
+    required Object? body,
+  }) {
     return invoke<Object?, Never, Never, Never, Object?>(
       DartEdgeClientInvocation<Object?, Never, Never, Never, Object?>(
         method: HttpMethod.post,
@@ -352,7 +380,9 @@ final class SimpleTestClient extends DartEdgeHttpClientBase {
     );
   }
 
-  Future<Object?> signUpEmail({required Object? body}) {
+  Future<DartEdgeClientResponseObject<Object?>> authSignUpEmail({
+    required Object? body,
+  }) {
     return invoke<Object?, Never, Never, Never, Object?>(
       DartEdgeClientInvocation<Object?, Never, Never, Never, Object?>(
         method: HttpMethod.post,
@@ -369,7 +399,9 @@ final class SimpleTestClient extends DartEdgeHttpClientBase {
     );
   }
 
-  Future<Object?> unlinkAccount({required Object? body}) {
+  Future<DartEdgeClientResponseObject<Object?>> authUnlinkAccount({
+    required Object? body,
+  }) {
     return invoke<Object?, Never, Never, Never, Object?>(
       DartEdgeClientInvocation<Object?, Never, Never, Never, Object?>(
         method: HttpMethod.post,
@@ -386,7 +418,9 @@ final class SimpleTestClient extends DartEdgeHttpClientBase {
     );
   }
 
-  Future<Object?> updateUser({required Object? body}) {
+  Future<DartEdgeClientResponseObject<Object?>> authUpdateUser({
+    required Object? body,
+  }) {
     return invoke<Object?, Never, Never, Never, Object?>(
       DartEdgeClientInvocation<Object?, Never, Never, Never, Object?>(
         method: HttpMethod.post,
@@ -403,7 +437,7 @@ final class SimpleTestClient extends DartEdgeHttpClientBase {
     );
   }
 
-  Future<String> getRoot() {
+  Future<DartEdgeClientResponseObject<String>> getRoot() {
     return invoke<String, Never, Never, Never, Never>(
       DartEdgeClientInvocation<String, Never, Never, Never, Never>(
         method: HttpMethod.get,
@@ -416,7 +450,7 @@ final class SimpleTestClient extends DartEdgeHttpClientBase {
     );
   }
 
-  Future<String> upload() {
+  Future<DartEdgeClientResponseObject<String>> upload() {
     return invoke<String, Never, Never, Never, Never>(
       DartEdgeClientInvocation<String, Never, Never, Never, Never>(
         method: HttpMethod.get,
@@ -429,7 +463,7 @@ final class SimpleTestClient extends DartEdgeHttpClientBase {
     );
   }
 
-  Future<String> getHello() {
+  Future<DartEdgeClientResponseObject<String>> getHello() {
     return invoke<String, Never, Never, Never, Never>(
       DartEdgeClientInvocation<String, Never, Never, Never, Never>(
         method: HttpMethod.get,
@@ -442,7 +476,9 @@ final class SimpleTestClient extends DartEdgeHttpClientBase {
     );
   }
 
-  Future<CreateNoteResponse> createNote({required NotesInsert body}) {
+  Future<DartEdgeClientResponseObject<CreateNoteResponse>> createNote({
+    required NotesInsert body,
+  }) {
     return invoke<CreateNoteResponse, Never, Never, Never, NotesInsert>(
       DartEdgeClientInvocation<
         CreateNoteResponse,
@@ -469,7 +505,7 @@ final class SimpleTestClient extends DartEdgeHttpClientBase {
     );
   }
 
-  Future<String> getGuarded() {
+  Future<DartEdgeClientResponseObject<String>> getGuarded() {
     return invoke<String, Never, Never, Never, Never>(
       DartEdgeClientInvocation<String, Never, Never, Never, Never>(
         method: HttpMethod.get,
@@ -478,6 +514,9 @@ final class SimpleTestClient extends DartEdgeHttpClientBase {
           status: 200,
           contentType: 'text/plain; charset=utf-8',
         ),
+        errors: <DartEdgeClientErrorSpec>[
+          DartEdgeClientErrorSpec(status: 401, code: 'unauthorized'),
+        ],
       ),
     );
   }

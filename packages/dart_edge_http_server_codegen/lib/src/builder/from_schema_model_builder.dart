@@ -187,6 +187,8 @@ void _writeModel(StringBuffer buffer, FromSchemaModelSpec model) {
       _writeObjectModel(buffer, model);
     case JsonStringSchema(:final enumValues) when enumValues.isNotEmpty:
       _writeStringEnumModel(buffer, model);
+    case JsonArraySchema() when !model.schema.nullable:
+      _writeArrayModel(buffer, model);
     case _:
       throw StateError('Unsupported FromSchema model schema ${model.schema}.');
   }
@@ -320,6 +322,52 @@ void _writeStringEnumModel(StringBuffer buffer, FromSchemaModelSpec model) {
     ..writeln('}');
 }
 
+void _writeArrayModel(StringBuffer buffer, FromSchemaModelSpec model) {
+  final schema = model.schema;
+  if (schema is! JsonArraySchema) {
+    throw StateError('Expected JsonArraySchema, got $schema.');
+  }
+
+  final itemType = schema.items == null
+      ? 'Object?'
+      : _schemaDartType(
+          schema.items!,
+          nullable: schema.items!.nullable,
+          refModels: model.refModels,
+        );
+
+  buffer
+    ..writeln('extension type ${model.backingClassName}(List<$itemType> value)')
+    ..writeln('    implements List<$itemType> {')
+    ..writeln('  static const schemaId = ${_dartString(model.schemaId)};')
+    ..writeln()
+    ..writeln('  static const schemaRef = JsonSchema.ref(schemaId);')
+    ..writeln()
+    ..writeln('  static const RequestBody requestBody = RequestBody.json(')
+    ..writeln('    schema: schemaRef,')
+    ..writeln('    decoder: fromJson,')
+    ..writeln('  );')
+    ..writeln()
+    ..writeln('  static const ResponseSpec response = ResponseSpec.json(')
+    ..writeln('    status: ${model.responseStatus},')
+    ..writeln('    schema: schemaRef,')
+    ..writeln('  );')
+    ..writeln()
+    ..writeln(
+      '  List<Object?> toJson() => '
+      '${_encodeValue(schema, 'value', nullable: false, refModels: model.refModels)};',
+    )
+    ..writeln()
+    ..writeln('  static ${model.publicName} fromJson(Object? value) {')
+    ..writeln(
+      '    return ${model.publicName}('
+      '${_decodeValue(schema, 'value', nullable: false, refModels: model.refModels)}'
+      ');',
+    )
+    ..writeln('  }')
+    ..writeln('}');
+}
+
 List<_SchemaFieldSpec> _modelFields(FromSchemaModelSpec model) {
   final schema = model.schema;
   if (schema is! JsonObjectSchema) {
@@ -436,12 +484,12 @@ String _decodeArrayValue(
         );
 
   if (nullable) {
-    return '($source as List<Object?>?)'
+    return '($source as List?)'
         '?.map((item) => $itemExpression)'
         '.toList()';
   }
 
-  return '($source! as List<Object?>)'
+  return '($source! as List)'
       '.map((item) => $itemExpression)'
       '.toList()';
 }
@@ -651,13 +699,15 @@ JsonSchema _resolveRootSchema(
   }
 
   throw InvalidGenerationSourceError(
-    '@FromSchema supports object schemas and string schemas with enumValues.',
+    '@FromSchema supports object schemas, non-null array schemas, and string '
+    'schemas with enumValues.',
     element: element,
   );
 }
 
 bool _supportedRootSchema(JsonSchema schema) {
   return schema is JsonObjectSchema ||
+      (schema is JsonArraySchema && !schema.nullable) ||
       (schema is JsonStringSchema && schema.enumValues.isNotEmpty);
 }
 

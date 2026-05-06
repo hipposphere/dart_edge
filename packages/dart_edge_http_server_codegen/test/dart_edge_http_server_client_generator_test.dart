@@ -23,6 +23,7 @@ void main() {
                 success: ResponseSpec.json(
                   schema: const JsonSchema.ref('UserDto'),
                 ),
+                errors: const [ErrorResponse(status: 404, code: 'not_found')],
               ),
               successType: 'UserDto',
               paramsType: 'UserPath',
@@ -33,11 +34,18 @@ void main() {
       );
 
       expect(source, contains('final class UsersClient'));
-      expect(source, contains('Future<UserDto> getUser({'));
+      expect(
+        source,
+        contains('Future<DartEdgeClientResponseObject<UserDto>> getUser({'),
+      );
       expect(source, contains("pathTemplate: '/users/<id>'"));
       expect(
         source,
         contains('invoke<UserDto, UserPath, GetUserQuery?, Never, Never>'),
+      );
+      expect(
+        source,
+        contains("DartEdgeClientErrorSpec(status: 404, code: 'not_found')"),
       );
       expect(source, contains("schemaId: 'UserPath'"));
       expect(source, contains("schemaId: 'GetUserQuery'"));
@@ -109,7 +117,7 @@ void main() {
       expect(bindings, contains('final class UsersClient'));
       expect(
         bindings,
-        contains('Future<UserDto> createUser({required CreateUserBody body})'),
+        contains('Future<DartEdgeClientResponseObject<UserDto>> createUser({'),
       );
       expect(models, contains("part of 'client.g.dart';"));
       expect(models, contains('final class UserDto implements JsonEncodable'));
@@ -191,6 +199,28 @@ void main() {
         options: const WebSocketOptions(operationId: 'connectEvents'),
         onConnect: (_) async {},
       );
+      final auth = router.router('/auth');
+      auth.post(
+        '/delete-user',
+        options: const RouteOptions(
+          operationId: 'deleteUser',
+          success: ResponseSpec.json(),
+        ),
+        handler: (_) => const <String, Object?>{},
+      );
+      auth.websocket(
+        '/session/socket',
+        options: const WebSocketOptions(operationId: 'connectSession'),
+        onConnect: (_) async {},
+      );
+      router.post(
+        '/auth/update-user',
+        options: const RouteOptions(
+          operationId: 'updateUser',
+          success: ResponseSpec.json(),
+        ),
+        handler: (_) => const <String, Object?>{},
+      );
 
       final spec = DartEdgeClientLibrarySpec.fromRouter(
         className: 'DiscoveredClient',
@@ -198,12 +228,35 @@ void main() {
       );
       final source = const DartEdgeClientGenerator().generate(spec);
 
-      expect(source, contains('Future<String> getHello()'));
       expect(
         source,
-        contains('Future<UserDto> createUser({required CreateUserBody body})'),
+        contains('Future<DartEdgeClientResponseObject<String>> getHello()'),
+      );
+      expect(
+        source,
+        contains('Future<DartEdgeClientResponseObject<UserDto>> createUser({'),
       );
       expect(source, contains('Future<DartEdgeClientWebSocket> connectEvents'));
+      expect(source, contains('authDeleteUser'));
+      expect(source, contains("pathTemplate: '/auth/delete-user'"));
+      expect(
+        source,
+        isNot(
+          contains('Future<DartEdgeClientResponseObject<Object?>> deleteUser'),
+        ),
+      );
+      expect(source, contains('authUpdateUser'));
+      expect(
+        source,
+        isNot(
+          contains('Future<DartEdgeClientResponseObject<Object?>> updateUser'),
+        ),
+      );
+      expect(
+        source,
+        contains('Future<DartEdgeClientWebSocket> authConnectSession'),
+      );
+      expect(source, contains("pathTemplate: '/auth/session/socket'"));
     });
 
     test('filters router discovery by exposure, path, and operation id', () {
@@ -295,9 +348,20 @@ void main() {
       );
       final source = const DartEdgeClientGenerator().generate(spec);
 
-      expect(source, contains('Future<String> getPublic()'));
-      expect(source, contains('Future<String> getSame()'));
-      expect(source, contains('Future<String> getIgnoredOther()'));
+      expect(
+        source,
+        contains('Future<DartEdgeClientResponseObject<String>> getPublic()'),
+      );
+      expect(
+        source,
+        contains('Future<DartEdgeClientResponseObject<String>> getSame()'),
+      );
+      expect(
+        source,
+        contains(
+          'Future<DartEdgeClientResponseObject<String>> getIgnoredOther()',
+        ),
+      );
       expect(source, isNot(contains('getOpenApiOnly')));
       expect(source, isNot(contains('getInternalHealth')));
       expect(source, isNot(contains('getIgnoredPath')));
@@ -364,6 +428,7 @@ void main() {
             return DartEdgeClientResponse(
               status: 201,
               contentType: 'application/json; charset=utf-8',
+              headers: const {'x-response-id': 'res_1'},
               body: jsonEncode({'id': '42', 'name': 'Ada'}),
             );
           },
@@ -424,7 +489,99 @@ void main() {
               ),
             );
 
-        expect(response, const UserDto(id: '42', name: 'Ada'));
+        expect(response.isSuccess, isTrue);
+        expect(response.status, 201);
+        expect(response.contentType, 'application/json; charset=utf-8');
+        expect(response.headers, {'x-response-id': 'res_1'});
+        expect(response.rawBody, jsonEncode({'id': '42', 'name': 'Ada'}));
+        expect(response.data, const UserDto(id: '42', name: 'Ada'));
+        expect(response.requireData, const UserDto(id: '42', name: 'Ada'));
+        expect(response.error, isNull);
+      },
+    );
+
+    test('returns documented error response objects', () async {
+      final client = _TestClient(
+        baseUri: Uri.parse('https://api.example.test'),
+        transport: _FakeTransport(
+          onSend: (_) async => DartEdgeClientResponse(
+            status: 401,
+            contentType: 'application/json; charset=utf-8',
+            headers: const {'www-authenticate': 'Bearer'},
+            body: jsonEncode({'error': 'unauthorized'}),
+          ),
+        ),
+      );
+
+      final response = await client.invoke<UserDto, Never, Never, Never, Never>(
+        const DartEdgeClientInvocation<UserDto, Never, Never, Never, Never>(
+          method: HttpMethod.get,
+          pathTemplate: '/me',
+          success: DartEdgeClientResponseSpec<UserDto>(
+            status: 200,
+            contentType: 'application/json; charset=utf-8',
+            schemaId: 'UserDto',
+            decoder: UserDto.fromJson,
+          ),
+          errors: [DartEdgeClientErrorSpec(status: 401, code: 'unauthorized')],
+        ),
+      );
+
+      expect(response.isSuccess, isFalse);
+      expect(response.data, isNull);
+      expect(response.status, 401);
+      expect(response.contentType, 'application/json; charset=utf-8');
+      expect(response.rawBody, jsonEncode({'error': 'unauthorized'}));
+      expect(response.error?.status, 401);
+      expect(response.error?.code, 'unauthorized');
+      expect(response.error?.kind, DartEdgeClientErrorKind.documented);
+      expect(response.error?.contentType, 'application/json; charset=utf-8');
+      expect(response.error?.headers, {'www-authenticate': 'Bearer'});
+      expect(response.error?.rawBody, jsonEncode({'error': 'unauthorized'}));
+      expect(response.error?.body, {'error': 'unauthorized'});
+      expect(() => response.requireData, throwsStateError);
+    });
+
+    test(
+      'returns unknown error response objects for undeclared statuses',
+      () async {
+        final client = _TestClient(
+          baseUri: Uri.parse('https://api.example.test'),
+          transport: _FakeTransport(
+            onSend: (_) async => const DartEdgeClientResponse(
+              status: 503,
+              contentType: 'text/plain; charset=utf-8',
+              body: 'service unavailable',
+            ),
+          ),
+        );
+
+        final response = await client
+            .invoke<String, Never, Never, Never, Never>(
+              const DartEdgeClientInvocation<
+                String,
+                Never,
+                Never,
+                Never,
+                Never
+              >(
+                method: HttpMethod.get,
+                pathTemplate: '/health',
+                success: DartEdgeClientResponseSpec<String>(
+                  status: 200,
+                  contentType: 'text/plain; charset=utf-8',
+                ),
+              ),
+            );
+
+        expect(response.isSuccess, isFalse);
+        expect(response.status, 503);
+        expect(response.data, isNull);
+        expect(response.error?.status, 503);
+        expect(response.error?.code, isNull);
+        expect(response.error?.kind, DartEdgeClientErrorKind.unknownStatus);
+        expect(response.error?.body, 'service unavailable');
+        expect(() => response.requireData, throwsStateError);
       },
     );
 

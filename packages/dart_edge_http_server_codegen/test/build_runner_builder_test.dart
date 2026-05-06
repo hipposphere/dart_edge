@@ -25,6 +25,13 @@ sealed class JsonSchema {
     this.nullable = false,
   });
 
+  const factory JsonSchema.any({
+    String? id,
+    String? title,
+    String? description,
+    List<Object?> enumValues,
+  }) = JsonAnySchema;
+
   const factory JsonSchema.object({
     String? id,
     String? title,
@@ -63,6 +70,23 @@ sealed class JsonSchema {
     String? format,
   }) = JsonIntegerSchema;
 
+  const factory JsonSchema.number({
+    String? id,
+    String? title,
+    String? description,
+    List<Object?> enumValues,
+    bool nullable,
+    String? format,
+  }) = JsonNumberSchema;
+
+  const factory JsonSchema.boolean({
+    String? id,
+    String? title,
+    String? description,
+    List<Object?> enumValues,
+    bool nullable,
+  }) = JsonBooleanSchema;
+
   const factory JsonSchema.ref(
     String ref, {
     String? id,
@@ -71,11 +95,23 @@ sealed class JsonSchema {
     List<Object?> enumValues,
   }) = JsonReferenceSchema;
 
+  const factory JsonSchema.raw(Map<String, Object?> schema, {String? id}) =
+      JsonRawSchema;
+
   final String? id;
   final String? title;
   final String? description;
   final List<Object?> enumValues;
   final bool nullable;
+}
+
+final class JsonAnySchema extends JsonSchema {
+  const JsonAnySchema({
+    super.id,
+    super.title,
+    super.description,
+    super.enumValues,
+  }) : super._();
 }
 
 final class JsonObjectSchema extends JsonSchema {
@@ -134,6 +170,29 @@ final class JsonIntegerSchema extends JsonSchema {
   final String? format;
 }
 
+final class JsonNumberSchema extends JsonSchema {
+  const JsonNumberSchema({
+    super.id,
+    super.title,
+    super.description,
+    super.enumValues,
+    super.nullable = false,
+    this.format,
+  }) : super._();
+
+  final String? format;
+}
+
+final class JsonBooleanSchema extends JsonSchema {
+  const JsonBooleanSchema({
+    super.id,
+    super.title,
+    super.description,
+    super.enumValues,
+    super.nullable = false,
+  }) : super._();
+}
+
 final class JsonReferenceSchema extends JsonSchema {
   const JsonReferenceSchema(
     this.ref, {
@@ -144,6 +203,12 @@ final class JsonReferenceSchema extends JsonSchema {
   }) : super._();
 
   final String ref;
+}
+
+final class JsonRawSchema extends JsonSchema {
+  const JsonRawSchema(this.schema, {super.id}) : super._();
+
+  final Map<String, Object?> schema;
 }
 
 final class JsonSchemaRegistry {
@@ -248,10 +313,55 @@ const createUserInputSchema = JsonSchema.object(
 );
 
 const userSchemas = JsonSchemaRegistry(
-  schemas: <JsonSchema>[createUserInputSchema, userDtoSchema, friendDtoSchema],
+  schemas: <JsonSchema>[
+    createUserInputSchema,
+    userDtoSchema,
+    friendDtoSchema,
+    userListSchema,
+  ],
 );
 
 const createUserBodySchema = JsonSchema.ref('CreateUserInput');
+
+const userListSchema = JsonSchema.array(
+  id: 'UserList',
+  items: JsonSchema.ref('UserDto'),
+);
+
+const tagListSchema = JsonSchema.array(
+  id: 'TagList',
+  items: JsonSchema.string(),
+);
+
+const scoreListSchema = JsonSchema.array(
+  id: 'ScoreList',
+  items: JsonSchema.integer(),
+);
+
+const ratioListSchema = JsonSchema.array(
+  id: 'RatioList',
+  items: JsonSchema.number(),
+);
+
+const flagListSchema = JsonSchema.array(
+  id: 'FlagList',
+  items: JsonSchema.boolean(),
+);
+
+const tagMatrixSchema = JsonSchema.array(
+  id: 'TagMatrix',
+  items: JsonSchema.array(items: JsonSchema.string()),
+);
+
+const jsonListSchema = JsonSchema.array(
+  id: 'JsonList',
+  items: JsonSchema.any(),
+);
+
+const rawObjectListSchema = JsonSchema.array(
+  id: 'RawObjectList',
+  items: JsonSchema.raw({'type': 'object'}),
+);
 
 const publishStatusSchema = JsonSchema.string(
   id: 'PublishStatus',
@@ -275,6 +385,30 @@ typedef CreateUserBody = _$CreateUserBody;
 
 @FromSchema(userDtoSchema, registry: userSchemas)
 typedef UserDto = _$UserDto;
+
+@FromSchema(userListSchema, registry: userSchemas)
+typedef UserList = _$UserList;
+
+@FromSchema(tagListSchema)
+typedef TagList = _$TagList;
+
+@FromSchema(scoreListSchema)
+typedef ScoreList = _$ScoreList;
+
+@FromSchema(ratioListSchema)
+typedef RatioList = _$RatioList;
+
+@FromSchema(flagListSchema)
+typedef FlagList = _$FlagList;
+
+@FromSchema(tagMatrixSchema)
+typedef TagMatrix = _$TagMatrix;
+
+@FromSchema(jsonListSchema)
+typedef JsonList = _$JsonList;
+
+@FromSchema(rawObjectListSchema)
+typedef RawObjectList = _$RawObjectList;
 
 @FromSchema(publishStatusSchema)
 typedef PublishStatus = _$PublishStatus;
@@ -308,6 +442,7 @@ typedef PublishStatus = _$PublishStatus;
               contains('"manager": manager?.toJson()'),
               contains('name: json["name"]! as String'),
               contains('age: json["age"] as int?'),
+              contains('tags: (json["tags"]! as List)'),
               contains('bestFriend: json["best_friend"] == null'),
               contains(': FriendDto.fromJson('),
               contains(
@@ -323,6 +458,55 @@ typedef PublishStatus = _$PublishStatus;
               contains('final String name;'),
               contains('final class _\$UserDto implements JsonEncodable'),
               contains('static const schemaId = "UserDto";'),
+              contains('extension type _\$UserList(List<UserDto> value)'),
+              contains('implements List<UserDto>'),
+              contains('static const schemaId = "UserList";'),
+              contains(
+                'List<Object?> toJson() => value.map((item) => item.toJson()).toList();',
+              ),
+              contains('static UserList fromJson(Object? value)'),
+              contains(
+                '(value! as List).map((item) => UserDto.fromJson(item))',
+              ),
+              contains('UserDto.fromJson(item)'),
+              contains('extension type _\$TagList(List<String> value)'),
+              contains('implements List<String>'),
+              contains('static const schemaId = "TagList";'),
+              contains(
+                '(value! as List).map((item) => item! as String).toList()',
+              ),
+              contains('extension type _\$ScoreList(List<int> value)'),
+              contains('implements List<int>'),
+              contains('static const schemaId = "ScoreList";'),
+              contains('(value! as List).map((item) => item! as int).toList()'),
+              contains('extension type _\$RatioList(List<num> value)'),
+              contains('implements List<num>'),
+              contains('static const schemaId = "RatioList";'),
+              contains('(value! as List).map((item) => item! as num).toList()'),
+              contains('extension type _\$FlagList(List<bool> value)'),
+              contains('implements List<bool>'),
+              contains('static const schemaId = "FlagList";'),
+              contains(
+                '(value! as List).map((item) => item! as bool).toList()',
+              ),
+              contains('extension type _\$TagMatrix(List<List<String>> value)'),
+              contains('implements List<List<String>>'),
+              contains('static const schemaId = "TagMatrix";'),
+              contains(
+                'value.map((item) => item.map((item) => item).toList()).toList()',
+              ),
+              contains(
+                '(item) => (item! as List).map((item) => item! as String).toList()',
+              ),
+              contains('extension type _\$JsonList(List<Object?> value)'),
+              contains('implements List<Object?>'),
+              contains('static const schemaId = "JsonList";'),
+              contains(
+                'extension type _\$RawObjectList(List<Map<String, Object?>> value)',
+              ),
+              contains('implements List<Map<String, Object?>>'),
+              contains('static const schemaId = "RawObjectList";'),
+              contains('Map<String, Object?>.from(item! as Map)'),
               contains('enum _\$PublishStatus implements JsonEncodable'),
               contains('draft("draft"),'),
               contains('published("published"),'),

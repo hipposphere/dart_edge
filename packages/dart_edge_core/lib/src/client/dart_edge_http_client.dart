@@ -17,7 +17,8 @@ abstract base class DartEdgeHttpClientBase {
   final DartEdgeClientWebSocketTransport? webSocketTransport;
   final Map<String, String> defaultHeaders;
 
-  Future<TResponse> invoke<TResponse, TParams, TQuery, THeaders, TBody>(
+  Future<DartEdgeClientResponseObject<TResponse>>
+  invoke<TResponse, TParams, TQuery, THeaders, TBody>(
     DartEdgeClientInvocation<TResponse, TParams, TQuery, THeaders, TBody>
     invocation,
   ) async {
@@ -36,17 +37,36 @@ abstract base class DartEdgeHttpClientBase {
     );
 
     final response = await transport.send(request);
-    if (response.status != invocation.success.status) {
-      throw DartEdgeClientResponseException(
-        method: invocation.method,
-        uri: request.uri,
-        expectedStatus: invocation.success.status,
-        actualStatus: response.status,
-        body: response.body,
+    if (response.status == invocation.success.status) {
+      return DartEdgeClientResponseObject<TResponse>(
+        status: response.status,
+        contentType: response.contentType,
+        headers: response.headers,
+        rawBody: response.body,
+        data: _decodeResponse<TResponse>(response, success: invocation.success),
       );
     }
 
-    return _decodeResponse<TResponse>(response, success: invocation.success);
+    final documentedError = invocation.errors
+        .where((error) => error.status == response.status)
+        .firstOrNull;
+    return DartEdgeClientResponseObject<TResponse>(
+      status: response.status,
+      contentType: response.contentType,
+      headers: response.headers,
+      rawBody: response.body,
+      error: DartEdgeClientError(
+        status: response.status,
+        code: documentedError?.code,
+        kind: documentedError == null
+            ? DartEdgeClientErrorKind.unknownStatus
+            : DartEdgeClientErrorKind.documented,
+        contentType: response.contentType,
+        headers: response.headers,
+        rawBody: response.body,
+        body: _decodeErrorBody(response),
+      ),
+    );
   }
 
   Future<DartEdgeClientWebSocket> connectWebSocket<TParams, TQuery, THeaders>(
@@ -153,6 +173,19 @@ abstract base class DartEdgeHttpClientBase {
     }
 
     return response.body as T;
+  }
+
+  Object? _decodeErrorBody(DartEdgeClientResponse response) {
+    if (response.body.isEmpty) {
+      return null;
+    }
+    if (_isJsonContentType(response.contentType)) {
+      return jsonDecode(response.body);
+    }
+    if (_isTextContentType(response.contentType)) {
+      return response.body;
+    }
+    return response.body;
   }
 
   String _resolvePathTemplate<TParams>(
@@ -293,6 +326,7 @@ final class DartEdgeClientInvocation<
     required this.method,
     required this.pathTemplate,
     required this.success,
+    this.errors = const <DartEdgeClientErrorSpec>[],
     this.params,
     this.query,
     this.headers,
@@ -307,6 +341,9 @@ final class DartEdgeClientInvocation<
 
   /// Expected success response metadata.
   final DartEdgeClientResponseSpec<TResponse> success;
+
+  /// Documented error response metadata.
+  final List<DartEdgeClientErrorSpec> errors;
 
   /// Optional path-parameter payload.
   final DartEdgeClientRequestValue<TParams>? params;
@@ -423,4 +460,99 @@ final class DartEdgeClientResponseSpec<T> {
 
   /// Decodes the response body into [T].
   final T Function(Object? value)? decoder;
+}
+
+/// Typed response object returned by generated HTTP clients.
+final class DartEdgeClientResponseObject<T> {
+  const DartEdgeClientResponseObject({
+    required this.status,
+    required this.contentType,
+    this.headers = const <String, String>{},
+    required this.rawBody,
+    this.data,
+    this.error,
+  });
+
+  /// Actual HTTP response status.
+  final int status;
+
+  /// Actual HTTP response content type.
+  final String contentType;
+
+  /// Actual HTTP response headers.
+  final Map<String, String> headers;
+
+  /// Raw transport response body.
+  final String rawBody;
+
+  /// Decoded success payload when [isSuccess] is true.
+  final T? data;
+
+  /// Decoded generic error metadata when [isSuccess] is false.
+  final DartEdgeClientError? error;
+
+  /// Whether this response matched the generated success status.
+  bool get isSuccess => error == null;
+
+  /// Returns [data] or throws when the response is an error or has no data.
+  T get requireData {
+    if (error case final error?) {
+      throw StateError(
+        'Expected a successful Dart Edge client response, got '
+        '${error.status} ${error.kind.name}.',
+      );
+    }
+    if (data case final data?) {
+      return data;
+    }
+    throw StateError('Expected Dart Edge client response data.');
+  }
+}
+
+/// Generic non-success response metadata returned by generated HTTP clients.
+final class DartEdgeClientError {
+  const DartEdgeClientError({
+    required this.status,
+    this.code,
+    required this.kind,
+    required this.contentType,
+    this.headers = const <String, String>{},
+    required this.rawBody,
+    this.body,
+  });
+
+  /// Actual HTTP response status.
+  final int status;
+
+  /// Documented stable error code, when this status matches route metadata.
+  final String? code;
+
+  /// Whether this error matched route metadata.
+  final DartEdgeClientErrorKind kind;
+
+  /// Actual HTTP response content type.
+  final String contentType;
+
+  /// Actual HTTP response headers.
+  final Map<String, String> headers;
+
+  /// Raw transport response body.
+  final String rawBody;
+
+  /// Generic decoded error body.
+  final Object? body;
+}
+
+/// Error classification for generated HTTP client responses.
+enum DartEdgeClientErrorKind { documented, unknownStatus }
+
+/// Documented error response metadata used by generated client invocations.
+final class DartEdgeClientErrorSpec {
+  const DartEdgeClientErrorSpec({required this.status, this.code});
+
+  /// Documented HTTP error status.
+  final int status;
+
+  /// Optional stable application error code.
+  final String? code;
 }
