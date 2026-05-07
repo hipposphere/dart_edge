@@ -121,7 +121,11 @@ void main() {
       );
       expect(models, contains("part of 'client.g.dart';"));
       expect(models, contains('final class UserDto implements JsonEncodable'));
-      expect(models, contains('factory UserDto.fromJson(Object? value)'));
+      expect(models, contains('factory UserDto.decode(Object? value)'));
+      expect(
+        models,
+        contains('factory UserDto.fromJson(Map<String, Object?> json)'),
+      );
     });
 
     test(
@@ -329,9 +333,9 @@ void main() {
       );
       expect(source, contains('final class UserDto implements JsonEncodable'));
       expect(source, contains('final UserDto owner;'));
-      expect(source, contains('owner: UserDto.fromJson(json[\'owner\']!),'));
+      expect(source, contains('owner: UserDto.decode(json[\'owner\']!),'));
       expect(source, contains("'owner': owner.toJson()"));
-      expect(source, contains('decoder: PhoneCallDto.fromJson'));
+      expect(source, contains('decoder: PhoneCallDto.decode'));
       expect(source, contains('encoder: (value) => value.toJson()'));
       expect(source, isNot(contains("schemaId: 'PhoneCallDto'")));
       expect(source, isNot(contains("schemaId: 'PhoneCallGetParams'")));
@@ -423,9 +427,9 @@ void main() {
       );
       expect(source, isNot(contains('final class UserDto implements')));
       expect(source, contains('final UserDto owner;'));
-      expect(source, contains('owner: UserDto.fromJson(json[\'owner\']!),'));
+      expect(source, contains('owner: UserDto.decode(json[\'owner\']!),'));
       expect(source, contains('Future<DartEdgeClientResponseObject<UserDto>>'));
-      expect(source, contains('decoder: UserDto.fromJson'));
+      expect(source, contains('decoder: UserDto.decode'));
       expect(source, contains("schemaId: 'UserDto'"));
     });
 
@@ -603,7 +607,7 @@ void main() {
 
       expect(source, isNot(contains("schemaId: 'CreateUserBody'")));
       expect(source, isNot(contains("schemaId: 'UserDto'")));
-      expect(source, contains('decoder: UserDto.fromJson'));
+      expect(source, contains('decoder: UserDto.decode'));
       expect(source, contains('encoder: (value) => value.toJson()'));
     });
   });
@@ -666,7 +670,7 @@ void main() {
                   status: 201,
                   contentType: 'application/json; charset=utf-8',
                   schemaId: 'UserDto',
-                  decoder: UserDto.fromJson,
+                  decoder: UserDto.decode,
                 ),
                 params: DartEdgeClientRequestValue<UserPath>(
                   schemaId: 'UserPath',
@@ -727,7 +731,7 @@ void main() {
             status: 200,
             contentType: 'application/json; charset=utf-8',
             schemaId: 'UserDto',
-            decoder: UserDto.fromJson,
+            decoder: UserDto.decode,
           ),
           errors: [DartEdgeClientErrorSpec(status: 401, code: 'unauthorized')],
         ),
@@ -937,8 +941,11 @@ final class UserDto {
   final String id;
   final String name;
 
-  static UserDto fromJson(Object? value) {
-    final map = value! as Map<String, Object?>;
+  static UserDto decode(Object? value) {
+    return UserDto.fromJson(value! as Map<String, Object?>);
+  }
+
+  static UserDto fromJson(Map<String, Object?> map) {
     return UserDto(id: map['id']! as String, name: map['name']! as String);
   }
 

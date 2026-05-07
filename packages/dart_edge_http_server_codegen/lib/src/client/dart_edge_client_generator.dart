@@ -278,7 +278,7 @@ final class DartEdgeClientGenerator {
         ..directives.add(
           Directive.import('package:dart_edge_core/dart_edge_core.dart'),
         )
-        ..body.addAll([..._modelClasses(spec), ...buildSpecs(spec)]);
+        ..body.addAll([..._modelSpecs(spec), ...buildSpecs(spec)]);
 
       for (final import in spec.additionalImports) {
         builder.directives.add(Directive.import(import));
@@ -334,7 +334,7 @@ final class DartEdgeClientGenerator {
       builder
         ..comments.add('GENERATED CODE - DO NOT MODIFY BY HAND.')
         ..directives.add(Directive.partOf(libraryFile))
-        ..body.addAll(_modelClasses(spec));
+        ..body.addAll(_modelSpecs(spec));
     });
 
     return _dartFormatter.format('${library.accept(DartEmitter())}');
@@ -344,9 +344,9 @@ final class DartEdgeClientGenerator {
     return <Spec>[_clientClass(spec)];
   }
 
-  List<Class> _modelClasses(DartEdgeClientLibrarySpec spec) {
+  List<Spec> _modelSpecs(DartEdgeClientLibrarySpec spec) {
     final generatedTypeIds = _generatedModelTypeIds(spec);
-    return [
+    final classes = <Class>[
       for (final schema in spec.schemas)
         if (schema is JsonObjectSchema &&
             schema.id != null &&
@@ -361,6 +361,31 @@ final class DartEdgeClientGenerator {
             spec.schemaTypes,
           ),
     ];
+    if (classes.isEmpty) {
+      return const <Spec>[];
+    }
+    return <Spec>[_readJsonObjectMethod(), ...classes];
+  }
+
+  Method _readJsonObjectMethod() {
+    return Method((builder) {
+      builder
+        ..returns = refer('Map<String, Object?>')
+        ..name = '_readJsonObject'
+        ..requiredParameters.add(
+          Parameter((parameter) {
+            parameter
+              ..name = 'value'
+              ..type = refer('Object?');
+          }),
+        )
+        ..body = const Code('''
+if (value is Map<String, Object?>) {
+  return value;
+}
+return Map<String, Object?>.from(value! as Map);
+''');
+    });
   }
 
   Set<String> _generatedModelTypeIds(DartEdgeClientLibrarySpec spec) {
@@ -420,6 +445,7 @@ final class DartEdgeClientGenerator {
         ..name = name
         ..implements.add(refer('JsonEncodable'))
         ..constructors.add(_modelConstructor(schema, schemaTypes))
+        ..constructors.add(_modelDecodeFactory(name))
         ..constructors.add(_modelFromJsonFactory(name, schema, schemaTypes))
         ..fields.addAll(_modelFields(schema, schemaTypes))
         ..methods.add(_modelToJsonMethod(schema, schemaTypes));
@@ -456,16 +482,31 @@ final class DartEdgeClientGenerator {
         ..requiredParameters.add(
           Parameter((parameter) {
             parameter
-              ..name = 'value'
-              ..type = refer('Object?');
+              ..name = 'json'
+              ..type = refer('Map<String, Object?>');
           }),
         )
         ..body = Code('''
-final json = Map<String, Object?>.from(value! as Map);
 return $name(
 $assignments
 );
 ''');
+    });
+  }
+
+  Constructor _modelDecodeFactory(String name) {
+    return Constructor((builder) {
+      builder
+        ..factory = true
+        ..name = 'decode'
+        ..requiredParameters.add(
+          Parameter((parameter) {
+            parameter
+              ..name = 'value'
+              ..type = refer('Object?');
+          }),
+        )
+        ..body = Code('return $name.fromJson(_readJsonObject(value));');
     });
   }
 
@@ -724,7 +765,7 @@ $entries
           if (successSchemaId case final schemaId?)
             'schemaId': literalString(schemaId),
           if (!_isRawTransportType(operation.successType))
-            'decoder': refer(operation.successType).property('fromJson'),
+            'decoder': refer(operation.successType).property('decode'),
         },
         <Reference>[refer(operation.successType)],
       ),
@@ -851,7 +892,7 @@ String _decodeSchemaValue(
       _schemaTypeFromId(id, schemaTypes),
       value,
     ),
-    JsonObjectSchema _ => 'Map<String, Object?>.from($value as Map)',
+    JsonObjectSchema _ => '_readJsonObject($value)',
     JsonAnySchema _ => value,
     JsonRawSchema _ => value,
     _ => value,
@@ -860,9 +901,9 @@ String _decodeSchemaValue(
 
 String _decodeClientModelValue(String? type, String value) {
   if (type == null || _isRawTransportType(type)) {
-    return 'Map<String, Object?>.from($value as Map)';
+    return '_readJsonObject($value)';
   }
-  return '$type.fromJson($value)';
+  return '$type.decode($value)';
 }
 
 String _encodeSchemaValue(

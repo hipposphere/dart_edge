@@ -3,7 +3,6 @@ import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:dart_edge_core/dart_edge_core.dart';
-import 'package:dart_edge_sql/dart_edge_sql.dart';
 
 import 'dart_edge_auth_config.dart';
 import 'native/dart_edge_auth_native.dart';

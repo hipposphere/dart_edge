@@ -152,6 +152,7 @@ void main() {
         "'UsersInsert(id: \$id, email: \$email, displayName: \$displayName, createdAt: \$createdAt)'",
       ),
     );
+    expect(_avoidableDoubleQuotedStrings(usersTable), isEmpty);
   });
 
   test('emits single-library table models without dart_edge_sql imports', () {
@@ -186,6 +187,7 @@ void main() {
       isNot(contains("import 'package:dart_edge_sql/dart_edge_sql.dart';")),
     );
     expect(library, contains('final class UsersTable extends SqlTable<'));
+    expect(_avoidableDoubleQuotedStrings(library), isEmpty);
   });
 
   test('keeps same-named tables isolated by schema', () {
@@ -565,4 +567,86 @@ void main() {
     expect(tableFile, contains('nameColumn.asObjectColumn,'));
     expect(tableFile, contains("String get name => 'schema_migrations';"));
   });
+}
+
+List<String> _avoidableDoubleQuotedStrings(String source) {
+  final literals = <String>[];
+  var index = 0;
+  var line = 1;
+  while (index < source.length) {
+    final char = source[index];
+    final next = index + 1 < source.length ? source[index + 1] : '';
+    if (char == '\n') {
+      line += 1;
+      index += 1;
+      continue;
+    }
+    if (char == '/' && next == '/') {
+      while (index < source.length && source[index] != '\n') {
+        index += 1;
+      }
+      continue;
+    }
+    if (char == '/' && next == '*') {
+      index += 2;
+      while (index < source.length &&
+          !(source[index] == '*' &&
+              index + 1 < source.length &&
+              source[index + 1] == '/')) {
+        if (source[index] == '\n') {
+          line += 1;
+        }
+        index += 1;
+      }
+      index += 2;
+      continue;
+    }
+
+    var raw = false;
+    if ((char == 'r' || char == 'R') && (next == "'" || next == '"')) {
+      raw = true;
+      index += 1;
+    }
+
+    final quote = source[index];
+    if (quote != "'" && quote != '"') {
+      index += 1;
+      continue;
+    }
+
+    final start = index;
+    final startLine = line;
+    final tripleQuote = '$quote$quote$quote';
+    final triple = source.startsWith(tripleQuote, index);
+    index += triple ? 3 : 1;
+    var hasSingleQuote = false;
+    var closed = false;
+    while (index < source.length) {
+      if (!triple && source[index] == '\n') {
+        break;
+      }
+      if (source[index] == '\n') {
+        line += 1;
+      }
+      if (source[index] == "'") {
+        hasSingleQuote = true;
+      }
+      if (!raw && source.codeUnitAt(index) == 92) {
+        index += 2;
+        continue;
+      }
+      if (triple
+          ? source.startsWith(tripleQuote, index)
+          : source[index] == quote) {
+        index += triple ? 3 : 1;
+        closed = true;
+        break;
+      }
+      index += 1;
+    }
+    if (closed && quote == '"' && !hasSingleQuote) {
+      literals.add('$startLine: ${source.substring(start, index)}');
+    }
+  }
+  return literals;
 }
