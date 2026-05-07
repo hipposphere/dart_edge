@@ -1,5 +1,4 @@
 import 'package:dart_edge_core/dart_edge_core.dart';
-import 'package:dart_edge_sql/dart_edge_sql.dart';
 
 final class NotesRow implements JsonEncodable {
   const NotesRow({

@@ -142,11 +142,14 @@ String emitDartSchemaLibrary(
       ..directives.add(
         Directive.import('package:dart_edge_core/dart_edge_core.dart'),
       )
-      ..directives.add(
-        Directive.import('package:dart_edge_sql/dart_edge_sql.dart'),
-      )
       ..body.add(_databaseClass(databaseClassName, schemaGroups))
       ..body.addAll(schemaGroups.map(_schemaClass));
+
+    if (schemaGroups.any((group) => group.routines.isNotEmpty)) {
+      builder.directives.add(
+        Directive.import('package:dart_edge_sql/dart_edge_sql.dart'),
+      );
+    }
 
     for (final group in schemaGroups) {
       for (final value in group.enums) {

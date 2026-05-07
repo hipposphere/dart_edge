@@ -10,4 +10,5 @@ export 'src/client/dart_edge_http_client.dart';
 export 'src/context.dart';
 export 'src/http.dart';
 export 'src/router.dart';
+export 'src/sql.dart';
 export 'src/web_socket.dart';

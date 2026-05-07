@@ -66,13 +66,9 @@ String _emitTableLibrary(
   List<_SchemaGroup> schemaGroups,
 ) {
   final library = Library((builder) {
-    builder
-      ..directives.add(
-        Directive.import('package:dart_edge_core/dart_edge_core.dart'),
-      )
-      ..directives.add(
-        Directive.import('package:dart_edge_sql/dart_edge_sql.dart'),
-      );
+    builder.directives.add(
+      Directive.import('package:dart_edge_core/dart_edge_core.dart'),
+    );
     for (final import in _tableEnumImports(table, group, schemaGroups)) {
       builder.directives.add(Directive.import(import.path));
     }

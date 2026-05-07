@@ -9,5 +9,3 @@ environment:
 dependencies:
   dart_edge_core:
     hosted: "https://registry.hippolabs.org/pub/internal-pub/"
-  dart_edge_sql:
-    hosted: "https://registry.hippolabs.org/pub/internal-pub/"

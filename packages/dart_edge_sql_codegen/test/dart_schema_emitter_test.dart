@@ -95,6 +95,10 @@ void main() {
     );
     expect(
       usersTable,
+      isNot(contains("import 'package:dart_edge_sql/dart_edge_sql.dart';")),
+    );
+    expect(
+      usersTable,
       contains('final class UsersRow implements JsonEncodable {'),
     );
     expect(
@@ -148,6 +152,40 @@ void main() {
         "'UsersInsert(id: \$id, email: \$email, displayName: \$displayName, createdAt: \$createdAt)'",
       ),
     );
+  });
+
+  test('emits single-library table models without dart_edge_sql imports', () {
+    const database = IntrospectedDatabase(
+      dialect: SqlCodegenDialect.sqlite,
+      tables: [
+        IntrospectedTable(
+          name: 'users',
+          columns: [
+            IntrospectedColumn(
+              name: 'id',
+              databaseType: 'INTEGER',
+              dartType: 'int',
+              primaryKey: true,
+            ),
+          ],
+        ),
+      ],
+    );
+
+    final library = emitDartSchemaLibrary(
+      database,
+      databaseClassName: 'AppSchema',
+    );
+
+    expect(
+      library,
+      contains("import 'package:dart_edge_core/dart_edge_core.dart';"),
+    );
+    expect(
+      library,
+      isNot(contains("import 'package:dart_edge_sql/dart_edge_sql.dart';")),
+    );
+    expect(library, contains('final class UsersTable extends SqlTable<'));
   });
 
   test('keeps same-named tables isolated by schema', () {
