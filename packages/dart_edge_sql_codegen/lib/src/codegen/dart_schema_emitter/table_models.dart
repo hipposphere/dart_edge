@@ -34,6 +34,7 @@ Class _rowClass(IntrospectedTable table) {
       ..constructors.addAll([
         _fromSqlRowFactory(rowType, table),
         _fromColumnsFactory(rowType),
+        _decodeFactory(rowType),
         _fromJsonFactory(rowType, table, _GeneratedShape.row),
       ])
       ..methods.addAll([
@@ -105,9 +106,10 @@ Class _insertClass(IntrospectedTable table) {
             _insertFieldType(column),
           ),
       ])
-      ..constructors.add(
+      ..constructors.addAll([
+        _decodeFactory(insertType),
         _fromJsonFactory(insertType, table, _GeneratedShape.insert),
-      )
+      ])
       ..methods.addAll([
         _copyWithMethod(
           insertType,
@@ -166,9 +168,10 @@ Class _updateClass(IntrospectedTable table) {
             _updateFieldType(column),
           ),
       ])
-      ..constructors.add(
+      ..constructors.addAll([
+        _decodeFactory(updateType),
         _fromJsonFactory(updateType, table, _GeneratedShape.update),
-      )
+      ])
       ..methods.addAll([
         _copyWithMethod(
           updateType,

@@ -194,6 +194,19 @@ Constructor _fromJsonFactory(
   });
 }
 
+Constructor _decodeFactory(String typeName) {
+  return Constructor((constructor) {
+    constructor
+      ..factory = true
+      ..name = 'decode'
+      ..requiredParameters.add(_typedParameter('value', refer('Object?')))
+      ..lambda = true
+      ..body = refer(typeName).newInstanceNamed('fromJson', [
+        refer('readJsonObject').call([refer('value')]),
+      ]).code;
+  });
+}
+
 Expression _rowReadExpression(IntrospectedColumn column) {
   final fieldKey = '\${prefix}${column.name}';
   final type = _normalizedValueType(column);

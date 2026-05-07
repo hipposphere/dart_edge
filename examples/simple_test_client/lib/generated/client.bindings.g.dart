@@ -10,16 +10,22 @@ final class SimpleTestClient extends DartEdgeHttpClientBase {
     super.defaultHeaders = const <String, String>{},
   });
 
-  Future<DartEdgeClientResponseObject<Object?>> authChangeEmail({
-    required Object? body,
-  }) {
-    return invoke<Object?, Never, Never, Never, Object?>(
-      DartEdgeClientInvocation<Object?, Never, Never, Never, Object?>(
+  Future<DartEdgeClientResponseObject<DartEdgeAuthStatusResult>>
+  authChangeEmail({required Object? body}) {
+    return invoke<DartEdgeAuthStatusResult, Never, Never, Never, Object?>(
+      DartEdgeClientInvocation<
+        DartEdgeAuthStatusResult,
+        Never,
+        Never,
+        Never,
+        Object?
+      >(
         method: HttpMethod.post,
         pathTemplate: '/auth/change-email',
-        success: DartEdgeClientResponseSpec<Object?>(
+        success: DartEdgeClientResponseSpec<DartEdgeAuthStatusResult>(
           status: 200,
           contentType: 'application/json; charset=utf-8',
+          decoder: DartEdgeAuthStatusResult.decode,
         ),
         body: DartEdgeClientRequestBody<Object?>(
           contentType: 'application/json; charset=utf-8',
@@ -131,29 +137,43 @@ final class SimpleTestClient extends DartEdgeHttpClientBase {
     );
   }
 
-  Future<DartEdgeClientResponseObject<Object?>> authGetSession() {
-    return invoke<Object?, Never, Never, Never, Never>(
-      DartEdgeClientInvocation<Object?, Never, Never, Never, Never>(
+  Future<DartEdgeClientResponseObject<DartEdgeAuthSessionResult>>
+  authGetSession() {
+    return invoke<DartEdgeAuthSessionResult, Never, Never, Never, Never>(
+      DartEdgeClientInvocation<
+        DartEdgeAuthSessionResult,
+        Never,
+        Never,
+        Never,
+        Never
+      >(
         method: HttpMethod.get,
         pathTemplate: '/auth/get-session',
-        success: DartEdgeClientResponseSpec<Object?>(
+        success: DartEdgeClientResponseSpec<DartEdgeAuthSessionResult>(
           status: 200,
           contentType: 'application/json; charset=utf-8',
+          decoder: DartEdgeAuthSessionResult.decode,
         ),
       ),
     );
   }
 
-  Future<DartEdgeClientResponseObject<Object?>> authGetSessionPost({
-    required Object? body,
-  }) {
-    return invoke<Object?, Never, Never, Never, Object?>(
-      DartEdgeClientInvocation<Object?, Never, Never, Never, Object?>(
+  Future<DartEdgeClientResponseObject<DartEdgeAuthSessionResult>>
+  authGetSessionPost({required Object? body}) {
+    return invoke<DartEdgeAuthSessionResult, Never, Never, Never, Object?>(
+      DartEdgeClientInvocation<
+        DartEdgeAuthSessionResult,
+        Never,
+        Never,
+        Never,
+        Object?
+      >(
         method: HttpMethod.post,
         pathTemplate: '/auth/get-session',
-        success: DartEdgeClientResponseSpec<Object?>(
+        success: DartEdgeClientResponseSpec<DartEdgeAuthSessionResult>(
           status: 200,
           contentType: 'application/json; charset=utf-8',
+          decoder: DartEdgeAuthSessionResult.decode,
         ),
         body: DartEdgeClientRequestBody<Object?>(
           contentType: 'application/json; charset=utf-8',
@@ -323,16 +343,22 @@ final class SimpleTestClient extends DartEdgeHttpClientBase {
     );
   }
 
-  Future<DartEdgeClientResponseObject<Object?>> authSignInEmail({
-    required Object? body,
-  }) {
-    return invoke<Object?, Never, Never, Never, Object?>(
-      DartEdgeClientInvocation<Object?, Never, Never, Never, Object?>(
+  Future<DartEdgeClientResponseObject<DartEdgeAuthSignInResult>>
+  authSignInEmail({required Object? body}) {
+    return invoke<DartEdgeAuthSignInResult, Never, Never, Never, Object?>(
+      DartEdgeClientInvocation<
+        DartEdgeAuthSignInResult,
+        Never,
+        Never,
+        Never,
+        Object?
+      >(
         method: HttpMethod.post,
         pathTemplate: '/auth/sign-in/email',
-        success: DartEdgeClientResponseSpec<Object?>(
+        success: DartEdgeClientResponseSpec<DartEdgeAuthSignInResult>(
           status: 200,
           contentType: 'application/json; charset=utf-8',
+          decoder: DartEdgeAuthSignInResult.decode,
         ),
         body: DartEdgeClientRequestBody<Object?>(
           contentType: 'application/json; charset=utf-8',
@@ -361,16 +387,23 @@ final class SimpleTestClient extends DartEdgeHttpClientBase {
     );
   }
 
-  Future<DartEdgeClientResponseObject<Object?>> authSignOut({
+  Future<DartEdgeClientResponseObject<DartEdgeAuthSuccessResult>> authSignOut({
     required Object? body,
   }) {
-    return invoke<Object?, Never, Never, Never, Object?>(
-      DartEdgeClientInvocation<Object?, Never, Never, Never, Object?>(
+    return invoke<DartEdgeAuthSuccessResult, Never, Never, Never, Object?>(
+      DartEdgeClientInvocation<
+        DartEdgeAuthSuccessResult,
+        Never,
+        Never,
+        Never,
+        Object?
+      >(
         method: HttpMethod.post,
         pathTemplate: '/auth/sign-out',
-        success: DartEdgeClientResponseSpec<Object?>(
+        success: DartEdgeClientResponseSpec<DartEdgeAuthSuccessResult>(
           status: 200,
           contentType: 'application/json; charset=utf-8',
+          decoder: DartEdgeAuthSuccessResult.decode,
         ),
         body: DartEdgeClientRequestBody<Object?>(
           contentType: 'application/json; charset=utf-8',
@@ -380,16 +413,22 @@ final class SimpleTestClient extends DartEdgeHttpClientBase {
     );
   }
 
-  Future<DartEdgeClientResponseObject<Object?>> authSignUpEmail({
-    required Object? body,
-  }) {
-    return invoke<Object?, Never, Never, Never, Object?>(
-      DartEdgeClientInvocation<Object?, Never, Never, Never, Object?>(
+  Future<DartEdgeClientResponseObject<DartEdgeAuthSignUpResult>>
+  authSignUpEmail({required Object? body}) {
+    return invoke<DartEdgeAuthSignUpResult, Never, Never, Never, Object?>(
+      DartEdgeClientInvocation<
+        DartEdgeAuthSignUpResult,
+        Never,
+        Never,
+        Never,
+        Object?
+      >(
         method: HttpMethod.post,
         pathTemplate: '/auth/sign-up/email',
-        success: DartEdgeClientResponseSpec<Object?>(
+        success: DartEdgeClientResponseSpec<DartEdgeAuthSignUpResult>(
           status: 200,
           contentType: 'application/json; charset=utf-8',
+          decoder: DartEdgeAuthSignUpResult.decode,
         ),
         body: DartEdgeClientRequestBody<Object?>(
           contentType: 'application/json; charset=utf-8',
@@ -418,16 +457,22 @@ final class SimpleTestClient extends DartEdgeHttpClientBase {
     );
   }
 
-  Future<DartEdgeClientResponseObject<Object?>> authUpdateUser({
-    required Object? body,
-  }) {
-    return invoke<Object?, Never, Never, Never, Object?>(
-      DartEdgeClientInvocation<Object?, Never, Never, Never, Object?>(
+  Future<DartEdgeClientResponseObject<DartEdgeAuthStatusResult>>
+  authUpdateUser({required Object? body}) {
+    return invoke<DartEdgeAuthStatusResult, Never, Never, Never, Object?>(
+      DartEdgeClientInvocation<
+        DartEdgeAuthStatusResult,
+        Never,
+        Never,
+        Never,
+        Object?
+      >(
         method: HttpMethod.post,
         pathTemplate: '/auth/update-user',
-        success: DartEdgeClientResponseSpec<Object?>(
+        success: DartEdgeClientResponseSpec<DartEdgeAuthStatusResult>(
           status: 200,
           contentType: 'application/json; charset=utf-8',
+          decoder: DartEdgeAuthStatusResult.decode,
         ),
         body: DartEdgeClientRequestBody<Object?>(
           contentType: 'application/json; charset=utf-8',
@@ -493,7 +538,7 @@ final class SimpleTestClient extends DartEdgeHttpClientBase {
           status: 200,
           contentType: 'application/json; charset=utf-8',
           schemaId: 'CreateNoteResponse',
-          decoder: CreateNoteResponse.fromJson,
+          decoder: CreateNoteResponse.decode,
         ),
         body: DartEdgeClientRequestBody<NotesInsert>(
           contentType: 'application/json; charset=utf-8',

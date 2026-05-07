@@ -364,28 +364,7 @@ final class DartEdgeClientGenerator {
     if (classes.isEmpty) {
       return const <Spec>[];
     }
-    return <Spec>[_readJsonObjectMethod(), ...classes];
-  }
-
-  Method _readJsonObjectMethod() {
-    return Method((builder) {
-      builder
-        ..returns = refer('Map<String, Object?>')
-        ..name = '_readJsonObject'
-        ..requiredParameters.add(
-          Parameter((parameter) {
-            parameter
-              ..name = 'value'
-              ..type = refer('Object?');
-          }),
-        )
-        ..body = const Code('''
-if (value is Map<String, Object?>) {
-  return value;
-}
-return Map<String, Object?>.from(value! as Map);
-''');
-    });
+    return classes;
   }
 
   Set<String> _generatedModelTypeIds(DartEdgeClientLibrarySpec spec) {
@@ -506,7 +485,7 @@ $assignments
               ..type = refer('Object?');
           }),
         )
-        ..body = Code('return $name.fromJson(_readJsonObject(value));');
+        ..body = Code('return $name.fromJson(readJsonObject(value));');
     });
   }
 
@@ -892,7 +871,7 @@ String _decodeSchemaValue(
       _schemaTypeFromId(id, schemaTypes),
       value,
     ),
-    JsonObjectSchema _ => '_readJsonObject($value)',
+    JsonObjectSchema _ => 'readJsonObject($value)',
     JsonAnySchema _ => value,
     JsonRawSchema _ => value,
     _ => value,
@@ -901,7 +880,7 @@ String _decodeSchemaValue(
 
 String _decodeClientModelValue(String? type, String value) {
   if (type == null || _isRawTransportType(type)) {
-    return '_readJsonObject($value)';
+    return 'readJsonObject($value)';
   }
   return '$type.decode($value)';
 }

@@ -22,6 +22,9 @@ final class NotesRow implements JsonEncodable {
     String prefix = '',
   }) => NotesRow.fromSqlRow(SqlRow(columns), prefix: prefix);
 
+  factory NotesRow.decode(Object? value) =>
+      NotesRow.fromJson(readJsonObject(value));
+
   factory NotesRow.fromJson(Map<String, Object?> json) => NotesRow(
     id: (json['id'] as num).toInt(),
     title: (json['title'] as String),
@@ -103,6 +106,9 @@ final class NotesInsert implements JsonEncodable {
     required this.ownerId,
     this.createdAt = const SqlValue.absent(),
   });
+
+  factory NotesInsert.decode(Object? value) =>
+      NotesInsert.fromJson(readJsonObject(value));
 
   factory NotesInsert.fromJson(Map<String, Object?> json) => NotesInsert(
     id: json.containsKey('id')
@@ -189,6 +195,9 @@ final class NotesUpdate implements JsonEncodable {
     this.ownerId = const SqlValue.absent(),
     this.createdAt = const SqlValue.absent(),
   });
+
+  factory NotesUpdate.decode(Object? value) =>
+      NotesUpdate.fromJson(readJsonObject(value));
 
   factory NotesUpdate.fromJson(Map<String, Object?> json) => NotesUpdate(
     id: json.containsKey('id')

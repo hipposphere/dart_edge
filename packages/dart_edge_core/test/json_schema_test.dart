@@ -2,6 +2,13 @@ import 'package:dart_edge_core/dart_edge_core.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test('reads decoded JSON objects as string-keyed maps', () {
+    final value = readJsonObject(<Object?, Object?>{'id': '42'});
+
+    expect(value, {'id': '42'});
+    expect(readJsonObject(value), same(value));
+  });
+
   test('serializes id as JSON Schema \$id', () {
     expect(
       const JsonSchema.object(

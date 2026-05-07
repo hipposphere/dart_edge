@@ -63,6 +63,12 @@ void main() {
           allOf([
             contains('final class AppSchema'),
             contains('final class UsersRow implements JsonEncodable'),
+            contains('final class UsersInsert implements JsonEncodable'),
+            contains('final class UsersUpdate implements JsonEncodable'),
+            contains('factory UsersRow.decode(Object? value)'),
+            contains('factory UsersInsert.decode(Object? value)'),
+            contains('factory UsersUpdate.decode(Object? value)'),
+            contains('factory UsersRow.fromJson(Map<String, Object?> json)'),
             contains('final class UsersTable extends SqlTable<'),
             contains('final class PublicSchemaRoutines'),
             contains('Future<SqlResult> findUser('),

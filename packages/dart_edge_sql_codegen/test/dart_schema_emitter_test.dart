@@ -109,6 +109,13 @@ void main() {
       usersTable,
       contains('final class UsersUpdate implements JsonEncodable {'),
     );
+    expect(usersTable, contains('factory UsersRow.decode(Object? value)'));
+    expect(usersTable, contains('factory UsersInsert.decode(Object? value)'));
+    expect(usersTable, contains('factory UsersUpdate.decode(Object? value)'));
+    expect(
+      usersTable,
+      contains('factory UsersRow.fromJson(Map<String, Object?> json)'),
+    );
     expect(usersTable, contains('final class UsersTable extends SqlTable<'));
     expect(usersTable, contains("static const schemaId = 'UsersRow';"));
     expect(
@@ -187,6 +194,7 @@ void main() {
       isNot(contains("import 'package:dart_edge_sql/dart_edge_sql.dart';")),
     );
     expect(library, contains('final class UsersTable extends SqlTable<'));
+    expect(library, contains('factory UsersRow.decode(Object? value)'));
     expect(_avoidableDoubleQuotedStrings(library), isEmpty);
   });
 

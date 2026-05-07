@@ -2,7 +2,9 @@ import 'dart:convert';
 
 import 'package:analyzer/dart/constant/value.dart';
 import 'package:analyzer/dart/element/element.dart';
+import 'package:code_builder/code_builder.dart';
 import 'package:dart_edge_core/dart_edge_core.dart';
+import 'package:dart_style/dart_style.dart';
 import 'package:source_gen/source_gen.dart';
 
 /// Build-time description of a model generated from a JSON Schema.
@@ -170,159 +172,132 @@ JsonSchema jsonSchemaFromDartObject(
 }
 
 String generateFromSchemaModels(List<FromSchemaModelSpec> models) {
-  const ignoreForFile = '// ignore_for_file: unused_element, unused_field\n\n';
-  final buffer = StringBuffer(ignoreForFile);
-  for (final model in models) {
-    if (buffer.length > ignoreForFile.length) {
-      buffer.writeln();
-    }
-    _writeModel(buffer, model);
-  }
-  return buffer.toString();
+  final library = Library(
+    (builder) => builder.body.addAll(models.map(_modelSpec)),
+  );
+  const ignoreForFile = '// ignore_for_file: unused_element, unused_field\n';
+  return _dartFormatter.format(
+    '$ignoreForFile${library.accept(DartEmitter())}',
+  );
 }
 
-void _writeModel(StringBuffer buffer, FromSchemaModelSpec model) {
-  switch (model.schema) {
-    case JsonObjectSchema():
-      _writeObjectModel(buffer, model);
-    case JsonStringSchema(:final enumValues) when enumValues.isNotEmpty:
-      _writeStringEnumModel(buffer, model);
-    case JsonArraySchema() when !model.schema.nullable:
-      _writeArrayModel(buffer, model);
-    case _:
-      throw StateError('Unsupported FromSchema model schema ${model.schema}.');
-  }
+Spec _modelSpec(FromSchemaModelSpec model) {
+  return switch (model.schema) {
+    JsonObjectSchema() => _objectModel(model),
+    JsonStringSchema(:final enumValues) when enumValues.isNotEmpty =>
+      _stringEnumModel(model),
+    JsonArraySchema() when !model.schema.nullable => _arrayModel(model),
+    _ => throw StateError(
+      'Unsupported FromSchema model schema ${model.schema}.',
+    ),
+  };
 }
 
-void _writeObjectModel(StringBuffer buffer, FromSchemaModelSpec model) {
+Class _objectModel(FromSchemaModelSpec model) {
   final fields = _modelFields(model);
 
-  buffer
-    ..writeln(
-      'final class ${model.backingClassName} implements JsonEncodable {',
-    )
-    ..writeln('  const ${model.backingClassName}({');
-
-  for (final field in fields) {
-    final required = field.requiredParameter ? 'required ' : '';
-    buffer.writeln('    ${required}this.${field.name},');
-  }
-
-  buffer
-    ..writeln('  });')
-    ..writeln()
-    ..writeln('  static const schemaId = ${_dartString(model.schemaId)};')
-    ..writeln()
-    ..writeln('  static const schemaRef = JsonSchema.componentRef(schemaId);')
-    ..writeln()
-    ..writeln('  static const RequestBody requestBody = RequestBody.json(')
-    ..writeln('    schema: schemaRef,')
-    ..writeln('    decoder: fromJson,')
-    ..writeln('  );')
-    ..writeln()
-    ..writeln('  static const ResponseSpec response = ResponseSpec.json(')
-    ..writeln('    status: ${model.responseStatus},')
-    ..writeln('    schema: schemaRef,')
-    ..writeln('  );');
-
-  for (final field in fields) {
-    buffer
-      ..writeln()
-      ..writeln('  final ${field.dartType} ${field.name};');
-  }
-
-  buffer
-    ..writeln()
-    ..writeln('  @override')
-    ..writeln('  Map<String, Object?> toJson() => <String, Object?>{');
-
-  for (final field in fields) {
-    buffer.writeln(
-      '    ${_dartString(field.wireName)}: '
-      '${_encodeValue(field.schema, field.name, nullable: field.nullable, refModels: model.refModels)},',
-    );
-  }
-
-  buffer
-    ..writeln('  };')
-    ..writeln()
-    ..writeln('  static ${model.publicName} fromJson(Object? value) {')
-    ..writeln('    final json = value! as Map<String, Object?>;')
-    ..writeln('    return ${model.publicName}(');
-
-  for (final field in fields) {
-    buffer.writeln(
-      '      ${field.name}: '
-      '${_decodeValue(field.schema, "json[${_dartString(field.wireName)}]", nullable: field.nullable, refModels: model.refModels)},',
-    );
-  }
-
-  buffer
-    ..writeln('    );')
-    ..writeln('  }')
-    ..writeln('}');
+  return Class((builder) {
+    builder
+      ..modifier = ClassModifier.final$
+      ..name = model.backingClassName
+      ..implements.add(refer('JsonEncodable'))
+      ..constructors.add(
+        Constructor((constructor) {
+          constructor
+            ..constant = true
+            ..optionalParameters.addAll([
+              for (final field in fields)
+                Parameter((parameter) {
+                  parameter
+                    ..name = field.name
+                    ..named = true
+                    ..toThis = true
+                    ..required = field.requiredParameter;
+                }),
+            ]);
+        }),
+      )
+      ..fields.addAll([
+        _schemaIdField(model.schemaId),
+        _schemaRefField(),
+        _requestBodyField(),
+        _responseField(model.responseStatus),
+        for (final field in fields)
+          Field((builder) {
+            builder
+              ..modifier = FieldModifier.final$
+              ..type = refer(field.dartType)
+              ..name = field.name;
+          }),
+      ])
+      ..methods.addAll([
+        _objectToJsonMethod(fields, model.refModels),
+        _decodeMethod(model.publicName, 'fromJson(readJsonObject(value))'),
+        _objectFromJsonMethod(model.publicName, fields, model.refModels),
+      ]);
+  });
 }
 
-void _writeStringEnumModel(StringBuffer buffer, FromSchemaModelSpec model) {
+Enum _stringEnumModel(FromSchemaModelSpec model) {
   final schema = model.schema;
   if (schema is! JsonStringSchema) {
     throw StateError('Expected JsonStringSchema, got $schema.');
   }
   final values = _stringEnumValues(schema, model.publicName);
 
-  buffer.writeln('enum ${model.backingClassName} implements JsonEncodable {');
-
-  for (var i = 0; i < values.length; i += 1) {
-    final separator = i == values.length - 1 ? ';' : ',';
-    buffer.writeln(
-      '  ${values[i].name}(${_dartString(values[i].wireValue)})$separator',
-    );
-  }
-
-  buffer
-    ..writeln()
-    ..writeln('  const ${model.backingClassName}(this.value);')
-    ..writeln()
-    ..writeln('  final String value;')
-    ..writeln()
-    ..writeln('  static const schemaId = ${_dartString(model.schemaId)};')
-    ..writeln()
-    ..writeln('  static const schemaRef = JsonSchema.componentRef(schemaId);')
-    ..writeln()
-    ..writeln('  static const RequestBody requestBody = RequestBody.json(')
-    ..writeln('    schema: schemaRef,')
-    ..writeln('    decoder: fromJson,')
-    ..writeln('  );')
-    ..writeln()
-    ..writeln('  static const ResponseSpec response = ResponseSpec.json(')
-    ..writeln('    status: ${model.responseStatus},')
-    ..writeln('    schema: schemaRef,')
-    ..writeln('  );')
-    ..writeln()
-    ..writeln('  @override')
-    ..writeln('  String toJson() => value;')
-    ..writeln()
-    ..writeln('  static ${model.publicName} fromJson(Object? value) {')
-    ..writeln('    return switch (value) {');
-
-  for (final value in values) {
-    buffer.writeln(
-      '      ${_dartString(value.wireValue)} => '
-      '${model.publicName}.${value.name},',
-    );
-  }
-
-  buffer
-    ..writeln(
-      '      _ => throw ArgumentError.value('
-      'value, \'value\', \'Expected ${model.publicName} JSON enum value.\'),',
-    )
-    ..writeln('    };')
-    ..writeln('  }')
-    ..writeln('}');
+  return Enum((builder) {
+    builder
+      ..name = model.backingClassName
+      ..implements.add(refer('JsonEncodable'))
+      ..values.addAll([
+        for (final value in values)
+          EnumValue((builder) {
+            builder
+              ..name = value.name
+              ..arguments.add(literalString(value.wireValue));
+          }),
+      ])
+      ..constructors.add(
+        Constructor((constructor) {
+          constructor
+            ..constant = true
+            ..requiredParameters.add(
+              Parameter((parameter) {
+                parameter
+                  ..name = 'value'
+                  ..toThis = true;
+              }),
+            );
+        }),
+      )
+      ..fields.addAll([
+        Field((builder) {
+          builder
+            ..modifier = FieldModifier.final$
+            ..type = refer('String')
+            ..name = 'value';
+        }),
+        _schemaIdField(model.schemaId),
+        _schemaRefField(),
+        _requestBodyField(),
+        _responseField(model.responseStatus),
+      ])
+      ..methods.addAll([
+        Method((builder) {
+          builder
+            ..annotations.add(refer('override'))
+            ..returns = refer('String')
+            ..name = 'toJson'
+            ..lambda = true
+            ..body = const Code('value');
+        }),
+        _decodeMethod(model.publicName, 'fromJson(value)'),
+        _enumFromJsonMethod(model.publicName, values),
+      ]);
+  });
 }
 
-void _writeArrayModel(StringBuffer buffer, FromSchemaModelSpec model) {
+ExtensionType _arrayModel(FromSchemaModelSpec model) {
   final schema = model.schema;
   if (schema is! JsonArraySchema) {
     throw StateError('Expected JsonArraySchema, got $schema.');
@@ -336,36 +311,176 @@ void _writeArrayModel(StringBuffer buffer, FromSchemaModelSpec model) {
           refModels: model.refModels,
         );
 
-  buffer
-    ..writeln('extension type ${model.backingClassName}(List<$itemType> value)')
-    ..writeln('    implements List<$itemType> {')
-    ..writeln('  static const schemaId = ${_dartString(model.schemaId)};')
-    ..writeln()
-    ..writeln('  static const schemaRef = JsonSchema.componentRef(schemaId);')
-    ..writeln()
-    ..writeln('  static const RequestBody requestBody = RequestBody.json(')
-    ..writeln('    schema: schemaRef,')
-    ..writeln('    decoder: fromJson,')
-    ..writeln('  );')
-    ..writeln()
-    ..writeln('  static const ResponseSpec response = ResponseSpec.json(')
-    ..writeln('    status: ${model.responseStatus},')
-    ..writeln('    schema: schemaRef,')
-    ..writeln('  );')
-    ..writeln()
-    ..writeln(
-      '  List<Object?> toJson() => '
-      '${_encodeValue(schema, 'value', nullable: false, refModels: model.refModels)};',
-    )
-    ..writeln()
-    ..writeln('  static ${model.publicName} fromJson(Object? value) {')
-    ..writeln(
-      '    return ${model.publicName}('
-      '${_decodeValue(schema, 'value', nullable: false, refModels: model.refModels)}'
-      ');',
-    )
-    ..writeln('  }')
-    ..writeln('}');
+  return ExtensionType((builder) {
+    builder
+      ..name = model.backingClassName
+      ..representationDeclaration = RepresentationDeclaration(
+        (builder) => builder
+          ..declaredRepresentationType = refer('List<$itemType>')
+          ..name = 'value',
+      )
+      ..implements.add(refer('List<$itemType>'))
+      ..fields.addAll([
+        _schemaIdField(model.schemaId),
+        _schemaRefField(),
+        _requestBodyField(),
+        _responseField(model.responseStatus),
+      ])
+      ..methods.addAll([
+        Method((builder) {
+          builder
+            ..returns = refer('List<Object?>')
+            ..name = 'toJson'
+            ..lambda = true
+            ..body = Code(
+              _encodeValue(
+                schema,
+                'value',
+                nullable: false,
+                refModels: model.refModels,
+              ),
+            );
+        }),
+        _decodeMethod(model.publicName, 'fromJson(value)'),
+        Method((builder) {
+          builder
+            ..static = true
+            ..returns = refer(model.publicName)
+            ..name = 'fromJson'
+            ..requiredParameters.add(_typedParameter('value', refer('Object?')))
+            ..body = Code('''
+return ${model.publicName}(${_decodeValue(schema, 'value', nullable: false, refModels: model.refModels)});
+''');
+        }),
+      ]);
+  });
+}
+
+Field _schemaIdField(String schemaId) {
+  return Field((builder) {
+    builder
+      ..static = true
+      ..modifier = FieldModifier.constant
+      ..name = 'schemaId'
+      ..assignment = literalString(schemaId).code;
+  });
+}
+
+Field _schemaRefField() {
+  return Field((builder) {
+    builder
+      ..static = true
+      ..modifier = FieldModifier.constant
+      ..name = 'schemaRef'
+      ..assignment = refer(
+        'JsonSchema',
+      ).constInstanceNamed('componentRef', [refer('schemaId')]).code;
+  });
+}
+
+Field _requestBodyField() {
+  return Field((builder) {
+    builder
+      ..static = true
+      ..modifier = FieldModifier.constant
+      ..type = refer('RequestBody')
+      ..name = 'requestBody'
+      ..assignment = refer('RequestBody').constInstanceNamed('json', const [], {
+        'schema': refer('schemaRef'),
+        'decoder': refer('decode'),
+      }).code;
+  });
+}
+
+Field _responseField(int status) {
+  return Field((builder) {
+    builder
+      ..static = true
+      ..modifier = FieldModifier.constant
+      ..type = refer('ResponseSpec')
+      ..name = 'response'
+      ..assignment = refer('ResponseSpec').constInstanceNamed(
+        'json',
+        const [],
+        {'status': literalNum(status), 'schema': refer('schemaRef')},
+      ).code;
+  });
+}
+
+Method _objectToJsonMethod(
+  List<_SchemaFieldSpec> fields,
+  Map<String, SchemaRefModelSpec> refModels,
+) {
+  return Method((builder) {
+    builder
+      ..annotations.add(refer('override'))
+      ..returns = refer('Map<String, Object?>')
+      ..name = 'toJson'
+      ..body = Code('''
+return <String, Object?>{
+${fields.map((field) => '${_dartString(field.wireName)}: ${_encodeValue(field.schema, field.name, nullable: field.nullable, refModels: refModels)},').join('\n')}
+};
+''');
+  });
+}
+
+Method _decodeMethod(String publicName, String expression) {
+  return Method((builder) {
+    builder
+      ..static = true
+      ..returns = refer(publicName)
+      ..name = 'decode'
+      ..requiredParameters.add(_typedParameter('value', refer('Object?')))
+      ..body = Code('return $expression;');
+  });
+}
+
+Method _objectFromJsonMethod(
+  String publicName,
+  List<_SchemaFieldSpec> fields,
+  Map<String, SchemaRefModelSpec> refModels,
+) {
+  return Method((builder) {
+    builder
+      ..static = true
+      ..returns = refer(publicName)
+      ..name = 'fromJson'
+      ..requiredParameters.add(
+        _typedParameter('json', refer('Map<String, Object?>')),
+      )
+      ..body = Code('''
+return $publicName(
+${fields.map((field) => '${field.name}: ${_decodeValue(field.schema, "json[${_dartString(field.wireName)}]", nullable: field.nullable, refModels: refModels)},').join('\n')}
+);
+''');
+  });
+}
+
+Method _enumFromJsonMethod(
+  String publicName,
+  List<_StringEnumValueSpec> values,
+) {
+  return Method((builder) {
+    builder
+      ..static = true
+      ..returns = refer(publicName)
+      ..name = 'fromJson'
+      ..requiredParameters.add(_typedParameter('value', refer('Object?')))
+      ..body = Code('''
+return switch (value) {
+${values.map((value) => '${_dartString(value.wireValue)} => $publicName.${value.name},').join('\n')}
+_ => throw ArgumentError.value(value, 'value', 'Expected $publicName JSON enum value.'),
+};
+''');
+  });
+}
+
+Parameter _typedParameter(String name, Reference type) {
+  return Parameter((builder) {
+    builder
+      ..name = name
+      ..type = type;
+  });
 }
 
 List<_SchemaFieldSpec> _modelFields(FromSchemaModelSpec model) {
@@ -515,9 +630,9 @@ String _decodeReferenceValue(
   }
 
   if (nullable) {
-    return '$source == null ? null : $typeName.fromJson($source)';
+    return '$source == null ? null : $typeName.decode($source)';
   }
-  return '$typeName.fromJson($source)';
+  return '$typeName.decode($source)';
 }
 
 String _encodeValue(
@@ -1136,3 +1251,7 @@ const _dartKeywords = <String>{
   'with',
   'yield',
 };
+
+final _dartFormatter = DartFormatter(
+  languageVersion: DartFormatter.latestLanguageVersion,
+);

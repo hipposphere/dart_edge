@@ -14,6 +14,9 @@ final class PeopleRow implements JsonEncodable {
     String prefix = '',
   }) => PeopleRow.fromSqlRow(SqlRow(columns), prefix: prefix);
 
+  factory PeopleRow.decode(Object? value) =>
+      PeopleRow.fromJson(readJsonObject(value));
+
   factory PeopleRow.fromJson(Map<String, Object?> json) => PeopleRow(
     id: (json['id'] as num).toInt(),
     name: (json['name'] as String),
@@ -72,6 +75,9 @@ final class PeopleInsert implements JsonEncodable {
     required this.name,
     required this.email,
   });
+
+  factory PeopleInsert.decode(Object? value) =>
+      PeopleInsert.fromJson(readJsonObject(value));
 
   factory PeopleInsert.fromJson(Map<String, Object?> json) => PeopleInsert(
     id: json.containsKey('id')
@@ -133,6 +139,9 @@ final class PeopleUpdate implements JsonEncodable {
     this.name = const SqlValue.absent(),
     this.email = const SqlValue.absent(),
   });
+
+  factory PeopleUpdate.decode(Object? value) =>
+      PeopleUpdate.fromJson(readJsonObject(value));
 
   factory PeopleUpdate.fromJson(Map<String, Object?> json) => PeopleUpdate(
     id: json.containsKey('id')

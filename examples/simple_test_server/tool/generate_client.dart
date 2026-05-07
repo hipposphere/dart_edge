@@ -22,9 +22,6 @@ Future<void> main() async {
     router: server,
     schemas: server.schemaRegistry?.schemas ?? const <JsonSchema>[],
     options: DartEdgeClientGenerationOptions(ignorePaths: {'/auth/admin'}),
-    additionalImports: [
-      'package:simple_test_db_models/simple_test_db_models.dart',
-    ],
   );
 
   await const DartEdgeClientFileEmitter().emit(
