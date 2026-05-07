@@ -350,7 +350,10 @@ SqlStatement _compileInsert(
             compiler.write('DEFAULT');
             return;
           }
-          compiler.writeValue(row[columnName]);
+          final column = query._table.columns.firstWhere(
+            (column) => column.name == columnName,
+          );
+          compiler.writeValue(row[columnName], column: column);
         },
       );
       compiler.write(')');
@@ -390,7 +393,7 @@ SqlStatement _compileUpdate(
     writeElement: (assignment) {
       compiler.writeIdentifier(assignment.column.name);
       compiler.write(' = ');
-      compiler.writeValue(assignment.value);
+      compiler.writeValue(assignment.value, column: assignment.column);
     },
   );
   if (query._where case final SqlPredicate where) {

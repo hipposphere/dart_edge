@@ -232,6 +232,7 @@ Class _tableClass(IntrospectedTable table) {
                     'table': refer('table'),
                     'name': literalString(column.name),
                     'nullable': literalBool(column.nullable),
+                    'databaseType': literalString(_columnDatabaseType(column)),
                   })
                   .code;
           }),

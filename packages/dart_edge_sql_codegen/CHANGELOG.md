@@ -1,3 +1,8 @@
+## 0.3.15
+
+- Emit database type metadata on generated SQL columns for PostgreSQL casts.
+- Require `dart_edge_sql` 0.3.11.
+
 ## 0.3.9
 
 - Update `dart_edge_sql` constraint for rebuilt native artifacts.

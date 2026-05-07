@@ -41,7 +41,7 @@ final class _SqlCompiler {
     writeIdentifier(column.name);
   }
 
-  void writeValue(Object? value) {
+  void writeValue(Object? value, {SqlColumn<dynamic>? column}) {
     final parameterName = 'p${++_parameterIndex}';
     _parameters[parameterName] = value;
     final placeholderPrefix = switch (dialect) {
@@ -49,6 +49,11 @@ final class _SqlCompiler {
       SqlDialect.postgres => '@',
     };
     _buffer.write('$placeholderPrefix$parameterName');
+    if (dialect == SqlDialect.postgres) {
+      if (_postgresParameterCast(column) case final cast?) {
+        _buffer.write('::$cast');
+      }
+    }
   }
 
   void writePredicate(SqlPredicate predicate) {
@@ -62,7 +67,7 @@ final class _SqlCompiler {
           case final SqlColumn<dynamic> column:
             writeColumn(column);
           default:
-            writeValue(predicate.right);
+            writeValue(predicate.right, column: predicate.left.asObjectColumn);
         }
       case _SqlNullPredicate():
         writeColumn(predicate.column.asObjectColumn);
@@ -77,7 +82,9 @@ final class _SqlCompiler {
         writeJoined(
           predicate.values,
           separator: ', ',
-          writeElement: writeValue,
+          writeElement: (value) {
+            writeValue(value, column: predicate.column.asObjectColumn);
+          },
         );
         write(')');
       case _SqlCompoundPredicate():
@@ -241,6 +248,59 @@ final class _SqlCompiler {
       Map<String, Object?>.unmodifiable(_parameters),
     );
   }
+}
+
+String? _postgresParameterCast(SqlColumn<dynamic>? column) {
+  final type = column?.databaseType?.trim();
+  if (type == null || type.isEmpty) {
+    return null;
+  }
+
+  final normalized = type.toLowerCase();
+  return switch (normalized) {
+    'uuid' ||
+    'date' ||
+    'time' ||
+    'timetz' ||
+    'timestamp' ||
+    'timestamptz' => normalized,
+    _ when _isPostgresUserType(normalized) => _quotePostgresTypeName(type),
+    _ => null,
+  };
+}
+
+bool _isPostgresUserType(String type) {
+  if (type.startsWith('_')) {
+    return false;
+  }
+  const builtInTypes = {
+    'bool',
+    'int2',
+    'int4',
+    'int8',
+    'serial',
+    'bigserial',
+    'float4',
+    'float8',
+    'numeric',
+    'decimal',
+    'money',
+    'text',
+    'varchar',
+    'bpchar',
+    'citext',
+    'json',
+    'jsonb',
+    'bytea',
+  };
+  return !builtInTypes.contains(type);
+}
+
+String _quotePostgresTypeName(String type) {
+  return type
+      .split('.')
+      .map((part) => '"${part.replaceAll('"', '""')}"')
+      .join('.');
 }
 
 bool _startsWith(String value, int index, String pattern) {

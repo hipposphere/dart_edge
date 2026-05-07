@@ -11,7 +11,7 @@ use serde::Serialize;
 use sqlx::pool::PoolConnection;
 use sqlx::postgres::{PgPool, PgPoolOptions, PgRow};
 use sqlx::sqlite::{SqlitePool, SqlitePoolOptions, SqliteRow};
-use sqlx::types::chrono::{DateTime, Utc};
+use sqlx::types::chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
 use sqlx::{Column, Postgres, Row, Sqlite, TypeInfo};
 use tokio::runtime::{Builder, Runtime};
 
@@ -545,9 +545,18 @@ fn bind_postgres_value<'q>(
         SqlValue::Boolean(value) => query.bind(*value),
         SqlValue::String(value) => query.bind(value.clone()),
         SqlValue::Bytes(value) => query.bind(BASE64.decode(value).unwrap_or_default()),
-        SqlValue::DateTime(value) => query.bind(value.clone()),
+        SqlValue::DateTime(value) => match parse_datetime_value(value) {
+            Some(value) => query.bind(value),
+            None => query.bind(value.clone()),
+        },
         SqlValue::Json(value) => query.bind(sqlx::types::Json(value.clone())),
     }
+}
+
+fn parse_datetime_value(value: &str) -> Option<DateTime<Utc>> {
+    DateTime::parse_from_rfc3339(value)
+        .map(|value| value.with_timezone(&Utc))
+        .ok()
 }
 
 fn bind_sqlite_value<'q>(
@@ -643,6 +652,21 @@ fn decode_postgres_value(
             Ok(None) => SqlValue::Null,
             Err(error) => return Err(format!("Failed to decode PostgreSQL timestamptz: {error}")),
         },
+        "TIMESTAMP" => match row.try_get::<Option<NaiveDateTime>, usize>(index) {
+            Ok(Some(value)) => SqlValue::DateTime(value.and_utc().to_rfc3339()),
+            Ok(None) => SqlValue::Null,
+            Err(error) => return Err(format!("Failed to decode PostgreSQL timestamp: {error}")),
+        },
+        "DATE" => match row.try_get::<Option<NaiveDate>, usize>(index) {
+            Ok(Some(value)) => {
+                let value = value
+                    .and_hms_opt(0, 0, 0)
+                    .ok_or_else(|| "Failed to decode PostgreSQL date.".to_string())?;
+                SqlValue::DateTime(value.and_utc().to_rfc3339())
+            }
+            Ok(None) => SqlValue::Null,
+            Err(error) => return Err(format!("Failed to decode PostgreSQL date: {error}")),
+        },
         "BOOL[]" => decode_postgres_array::<bool>(row, index, "bool array")?,
         "INT2[]" => decode_postgres_array::<i16>(row, index, "int2 array")?,
         "INT4[]" => decode_postgres_array::<i32>(row, index, "int4 array")?,
@@ -690,15 +714,7 @@ fn decode_postgres_value(
         _ => {
             if matches!(
                 type_name,
-                "TIMESTAMP"
-                    | "TIMESTAMPTZ"
-                    | "DATE"
-                    | "TIME"
-                    | "UUID"
-                    | "TEXT"
-                    | "VARCHAR"
-                    | "BPCHAR"
-                    | "NAME"
+                "TIME" | "UUID" | "TEXT" | "VARCHAR" | "BPCHAR" | "NAME"
             ) {
                 match row.try_get::<Option<String>, usize>(index) {
                     Ok(Some(value)) => SqlValue::String(value),
@@ -865,4 +881,22 @@ fn set_last_error(message: impl ToString) {
 
 fn clear_last_error() {
     *LAST_ERROR.lock().unwrap() = None;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_rfc3339_datetime_values_for_postgres_binding() {
+        let value =
+            parse_datetime_value("2026-05-07T10:11:12.123456Z").expect("valid RFC 3339 timestamp");
+
+        assert_eq!(value.to_rfc3339(), "2026-05-07T10:11:12.123456+00:00");
+    }
+
+    #[test]
+    fn rejects_malformed_datetime_values() {
+        assert!(parse_datetime_value("not-a-date").is_none());
+    }
 }

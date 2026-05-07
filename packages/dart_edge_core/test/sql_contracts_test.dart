@@ -19,6 +19,7 @@ void main() {
     expect(_UsersTable.table.qualifiedName, 'public.users');
     expect(_UsersTable.id.qualifiedName, 'public.users.id');
     expect(_UsersTable.id.asObjectColumn.name, 'id');
+    expect(_UsersTable.id.databaseType, 'uuid');
   });
 }
 
@@ -27,7 +28,11 @@ final class _UsersTable
   const _UsersTable._();
 
   static const table = _UsersTable._();
-  static const id = SqlColumn<int>(table: table, name: 'id');
+  static const id = SqlColumn<int>(
+    table: table,
+    name: 'id',
+    databaseType: 'uuid',
+  );
 
   @override
   String get name => 'users';

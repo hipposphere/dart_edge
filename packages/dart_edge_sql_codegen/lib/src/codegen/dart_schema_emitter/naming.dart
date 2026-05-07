@@ -85,6 +85,16 @@ Reference _sqlColumnType(IntrospectedColumn column) {
   return refer(_normalizedValueType(column));
 }
 
+String _columnDatabaseType(IntrospectedColumn column) {
+  if (column.enumName case final enumName?) {
+    if (column.enumSchema case final enumSchema?) {
+      return '$enumSchema.$enumName';
+    }
+    return enumName;
+  }
+  return column.databaseType;
+}
+
 bool _isOptionalInsertColumn(IntrospectedColumn column) =>
     column.hasDefault || column.primaryKey;
 

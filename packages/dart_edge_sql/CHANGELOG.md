@@ -1,3 +1,13 @@
+## 0.3.11
+
+- Bind PostgreSQL `dateTime` parameters as native timestamps so generated table
+  updates can set `timestamptz` columns.
+- Cast PostgreSQL generated-table parameters for special database types such as
+  `uuid`, `time`, and user-defined enum columns.
+- Decode PostgreSQL `date` and `timestamp` result columns as `DateTime` values.
+- Bump the native artifact version to 0.1.3 for rebuilt prebuilts.
+- Require `dart_edge_core` 0.3.9.
+
 ## 0.3.8
 
 - Bump the native artifact version to 0.1.2 for rebuilt prebuilts.

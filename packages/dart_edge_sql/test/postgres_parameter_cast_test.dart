@@ -1,0 +1,142 @@
+import 'package:dart_edge_sql/dart_edge_sql.dart';
+import 'package:test/test.dart';
+
+void main() {
+  test('casts generated special type values in postgres inserts', () async {
+    final db = _RecordingExecutor(SqlDialect.postgres);
+
+    await db.typed
+        .insertInto(DocumentsTable.table)
+        .values(
+          const DocumentsInsert(
+            id: '5a33f896-175c-4c21-81c7-89b73729ec73',
+            status: 'draft',
+            publishTime: '10:30:00',
+          ),
+        )
+        .execute();
+
+    expect(db.statement.sql, contains('@p1::uuid'));
+    expect(db.statement.sql, contains('@p2::"public"."document_status"'));
+    expect(db.statement.sql, contains('@p3::time'));
+  });
+
+  test(
+    'casts generated special type values in postgres updates and filters',
+    () async {
+      final db = _RecordingExecutor(SqlDialect.postgres);
+
+      await db.typed
+          .updateTable(DocumentsTable.table)
+          .set(const DocumentsUpdate(status: SqlValue('published')))
+          .where(
+            DocumentsTable.id.equals('5a33f896-175c-4c21-81c7-89b73729ec73'),
+          )
+          .execute();
+
+      expect(
+        db.statement.sql,
+        contains('"status" = @p1::"public"."document_status"'),
+      );
+      expect(db.statement.sql, contains('"id" = @p2::uuid'));
+    },
+  );
+}
+
+final class _RecordingExecutor implements SqlExecutor {
+  _RecordingExecutor(this.dialect);
+
+  @override
+  final SqlDialect dialect;
+
+  late SqlStatement statement;
+
+  @override
+  Future<SqlResult> execute(SqlStatement statement) async {
+    this.statement = statement;
+    return SqlResult();
+  }
+}
+
+final class DocumentsInsert {
+  const DocumentsInsert({
+    required this.id,
+    required this.status,
+    required this.publishTime,
+  });
+
+  final String id;
+  final String status;
+  final String publishTime;
+
+  Map<String, Object?> toColumns() => <String, Object?>{
+    'id': id,
+    'status': status,
+    'publish_time': publishTime,
+  };
+}
+
+final class DocumentsUpdate {
+  const DocumentsUpdate({
+    this.id = const SqlValue.absent(),
+    this.status = const SqlValue.absent(),
+    this.publishTime = const SqlValue.absent(),
+  });
+
+  final SqlValue<String> id;
+  final SqlValue<String> status;
+  final SqlValue<String> publishTime;
+
+  Map<String, Object?> toColumns() => <String, Object?>{
+    if (id.isPresent) 'id': id.value,
+    if (status.isPresent) 'status': status.value,
+    if (publishTime.isPresent) 'publish_time': publishTime.value,
+  };
+}
+
+final class DocumentsTable
+    extends SqlTable<SqlRow, DocumentsInsert, DocumentsUpdate> {
+  const DocumentsTable._();
+
+  static const table = DocumentsTable._();
+
+  static const id = SqlColumn<String>(
+    table: table,
+    name: 'id',
+    databaseType: 'uuid',
+  );
+
+  static const status = SqlColumn<String>(
+    table: table,
+    name: 'status',
+    databaseType: 'public.document_status',
+  );
+
+  static const publishTime = SqlColumn<String>(
+    table: table,
+    name: 'publish_time',
+    databaseType: 'time',
+  );
+
+  @override
+  String get name => 'documents';
+
+  @override
+  String? get schema => 'public';
+
+  @override
+  List<SqlColumn<Object?>> get columns => <SqlColumn<Object?>>[
+    id.asObjectColumn,
+    status.asObjectColumn,
+    publishTime.asObjectColumn,
+  ];
+
+  @override
+  Map<String, Object?> encodeInsert(DocumentsInsert value) => value.toColumns();
+
+  @override
+  Map<String, Object?> encodeUpdate(DocumentsUpdate value) => value.toColumns();
+
+  @override
+  SqlRow mapRow(SqlRow row, {String prefix = ''}) => row;
+}

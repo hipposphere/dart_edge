@@ -1,3 +1,7 @@
+## 0.3.9
+
+- Add optional database type metadata to SQL column descriptors.
+
 ## 0.3.8
 
 - Add route-local decoders for path parameters and query parameters.

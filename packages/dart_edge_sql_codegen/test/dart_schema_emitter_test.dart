@@ -143,6 +143,8 @@ void main() {
     expect(usersTable, contains('UsersUpdate copyWith({'));
     expect(usersTable, contains('SqlValue<DateTime>? createdAt,'));
     expect(usersTable, contains("if (id.isPresent) 'id': id.value,"));
+    expect(usersTable, contains("databaseType: 'INTEGER',"));
+    expect(usersTable, contains("databaseType: 'TEXT',"));
     expect(
       usersTable,
       contains("'created_at': createdAt.value?.toIso8601String(),"),
@@ -350,6 +352,7 @@ void main() {
     expect(usersTable, contains("import '../enums/user_status.g.dart';"));
     expect(usersTable, contains('final UserStatus status;'));
     expect(usersTable, contains("static final status = SqlColumn<String>("));
+    expect(usersTable, contains("databaseType: 'public.user_status',"));
     expect(usersTable, contains("status: UserStatus.fromDatabase("));
     expect(usersTable, contains("'status': status.value,"));
     expect(

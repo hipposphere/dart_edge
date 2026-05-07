@@ -44,6 +44,7 @@ final class SqlColumn<TValue> {
     required this.table,
     required this.name,
     this.nullable = false,
+    this.databaseType,
   });
 
   /// Table that owns the column.
@@ -54,6 +55,9 @@ final class SqlColumn<TValue> {
 
   /// Whether the column may contain `NULL`.
   final bool nullable;
+
+  /// Database-native column type name, when known.
+  final String? databaseType;
 
   /// Fully qualified column name.
   String get qualifiedName => '${table.qualifiedName}.$name';
@@ -83,8 +87,17 @@ final class SqlRawTable
   List<SqlColumn<Object?>> get columns => const <SqlColumn<Object?>>[];
 
   /// Creates a column descriptor attached to this raw table expression.
-  SqlColumn<TValue> column<TValue>(String name, {bool nullable = false}) {
-    return SqlColumn<TValue>(table: this, name: name, nullable: nullable);
+  SqlColumn<TValue> column<TValue>(
+    String name, {
+    bool nullable = false,
+    String? databaseType,
+  }) {
+    return SqlColumn<TValue>(
+      table: this,
+      name: name,
+      nullable: nullable,
+      databaseType: databaseType,
+    );
   }
 
   @override
