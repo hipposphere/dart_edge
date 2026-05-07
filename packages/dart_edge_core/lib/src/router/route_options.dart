@@ -5,6 +5,9 @@ import '../http/response_set.dart';
 import '../http/response_spec.dart';
 import 'route_exposure.dart';
 
+/// Decodes string request values into an application type.
+typedef RequestValueDecoder = Object? Function(Map<String, String> values);
+
 /// Convenience options for inline `Router.get`/`post`/`put` style handlers.
 final class RouteOptions {
   const RouteOptions({
@@ -14,7 +17,9 @@ final class RouteOptions {
     this.deprecated = false,
     this.exposure = RouteExposure.all,
     this.params,
+    this.paramsDecoder,
     this.query,
+    this.queryDecoder,
     this.headers,
     this.body,
     this.success,
@@ -39,8 +44,14 @@ final class RouteOptions {
   /// Schema for decoded path parameters.
   final JsonSchema? params;
 
+  /// Optional route-local decoder for path parameters.
+  final RequestValueDecoder? paramsDecoder;
+
   /// Schema for decoded query parameters.
   final JsonSchema? query;
+
+  /// Optional route-local decoder for query parameters.
+  final RequestValueDecoder? queryDecoder;
 
   /// Schema for decoded request headers.
   final JsonSchema? headers;
@@ -75,7 +86,9 @@ final class RouteOptions {
       deprecated: deprecated,
       exposure: exposure,
       params: params,
+      paramsDecoder: paramsDecoder,
       query: query,
+      queryDecoder: queryDecoder,
       headers: headers,
       body: body,
       success: success ?? ResponseSpec.json(),

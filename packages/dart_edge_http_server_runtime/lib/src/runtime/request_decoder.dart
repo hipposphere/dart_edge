@@ -14,16 +14,20 @@ Future<RequestInput> decodeRequestInput(
   required String? paramsSchemaId,
   required String? querySchemaId,
   required String? headersSchemaId,
+  RequestValueDecoder? paramsDecoder,
+  RequestValueDecoder? queryDecoder,
   required RequestBody? body,
 }) async {
   final paramsValue = _decodeStringMap(
     request.pathParams,
     schemaId: paramsSchemaId,
+    decoder: paramsDecoder,
     codecs: codecs,
   );
   final queryValue = _decodeStringMap(
     request.query,
     schemaId: querySchemaId,
+    decoder: queryDecoder,
     codecs: codecs,
   );
   final headerValue = _decodeStringMap(
@@ -49,16 +53,19 @@ Future<RequestInput> decodeRequestInput(
 Object? _decodeStringMap(
   Map<String, String> values, {
   required String? schemaId,
+  RequestValueDecoder? decoder,
   required DartEdgeCodecRegistry codecs,
 }) {
   if (values.isEmpty) {
     return null;
   }
 
-  return codecs.decodeValueOrRaw(
-    schemaId,
-    Map<String, String>.unmodifiable(values),
-  );
+  final decodedValues = Map<String, String>.unmodifiable(values);
+  if (decoder case final decoder?) {
+    return decoder(decodedValues);
+  }
+
+  return codecs.decodeValueOrRaw(schemaId, decodedValues);
 }
 
 Object? _decodeBody(

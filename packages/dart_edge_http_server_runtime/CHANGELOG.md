@@ -1,3 +1,9 @@
+## 0.3.13
+
+- Decode path parameters and query parameters with route-local decoders before
+  falling back to schema-id codecs.
+- Require `dart_edge_core` 0.3.8.
+
 ## 0.3.7
 
 - Bump the native artifact version to 0.1.2 for rebuilt prebuilts.

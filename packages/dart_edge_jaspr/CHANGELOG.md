@@ -1,3 +1,9 @@
+## 0.3.4
+
+- Preserve route-local path parameter and query parameter decoders when
+  normalizing Jaspr route options.
+- Update Dart Edge dependency constraints for the latest core and runtime APIs.
+
 ## 0.3.2
 
 - Update development constraint for rebuilt HTTP runtime native artifacts.

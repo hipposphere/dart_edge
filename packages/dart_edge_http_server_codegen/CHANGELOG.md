@@ -1,3 +1,9 @@
+## 0.3.16
+
+- Preserve route-local path parameter and query parameter decoders when
+  deriving effective route options.
+- Require `dart_edge_core` 0.3.8.
+
 ## 0.3.8
 
 - Update `dart_edge_http_server_runtime` constraint for rebuilt native artifacts.

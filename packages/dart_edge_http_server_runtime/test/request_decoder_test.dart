@@ -128,6 +128,43 @@ void main() {
     expect(input.body<CreateUserInput>().name, 'Ada');
   });
 
+  test('decodes params and query with route-local decoders', () async {
+    final codecs = DartEdgeCodecRegistry.empty
+        .withCodec<UserPath>(
+          'UserPath',
+          DartEdgeCodec<UserPath>(
+            encode: (value) => {'id': value.id},
+            decode: (_) => const UserPath(id: 'codec-path'),
+          ),
+        )
+        .withCodec<UserQuery>(
+          'UserQuery',
+          DartEdgeCodec<UserQuery>(
+            encode: (value) => {'search': value.search},
+            decode: (_) => const UserQuery(search: 'codec-query'),
+          ),
+        );
+
+    final input = await decodeRequestInput(
+      TransportRequest(
+        routeId: 'route_0',
+        pathParams: const {'id': '42'},
+        query: const {'search': 'Ada'},
+        headers: const <String, String>{},
+      ),
+      codecs: codecs,
+      paramsSchemaId: 'UserPath',
+      querySchemaId: 'UserQuery',
+      headersSchemaId: null,
+      paramsDecoder: (values) => UserPath(id: values['id']!),
+      queryDecoder: (values) => UserQuery(search: values['search']),
+      body: null,
+    );
+
+    expect(input.params<UserPath>().id, '42');
+    expect(input.query<UserQuery>().search, 'Ada');
+  });
+
   test('does not use inline schema ids as body codec targets', () async {
     final codecs = DartEdgeCodecRegistry.empty.withCodec<CreateUserInput>(
       'CreateUserInput',
