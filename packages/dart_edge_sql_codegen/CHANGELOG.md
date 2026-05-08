@@ -1,3 +1,9 @@
+## 0.3.16
+
+- Reuse `dart_edge_sql` PostgreSQL type-name normalization when mapping
+  introspected database types to Dart model field types.
+- Require `dart_edge_sql` 0.3.12.
+
 ## 0.3.15
 
 - Emit database type metadata on generated SQL columns for PostgreSQL casts.

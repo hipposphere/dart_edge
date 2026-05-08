@@ -2,6 +2,17 @@ import 'package:dart_edge_sql/dart_edge_sql.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test('casts generated integer alias values in postgres inserts', () async {
+    final db = _RecordingExecutor(SqlDialect.postgres);
+
+    await db.typed
+        .insertInto(PhoneCallsTable.table)
+        .values(const PhoneCallInsert(durationSeconds: '35'))
+        .execute();
+
+    expect(db.statement.sql, contains('@p1::int4'));
+  });
+
   test('casts generated special type values in postgres inserts', () async {
     final db = _RecordingExecutor(SqlDialect.postgres);
 
@@ -56,6 +67,59 @@ final class _RecordingExecutor implements SqlExecutor {
     this.statement = statement;
     return SqlResult();
   }
+}
+
+final class PhoneCallInsert {
+  const PhoneCallInsert({required this.durationSeconds});
+
+  final Object? durationSeconds;
+
+  Map<String, Object?> toColumns() => <String, Object?>{
+    'duration_seconds': durationSeconds,
+  };
+}
+
+final class PhoneCallUpdate {
+  const PhoneCallUpdate({this.durationSeconds = const SqlValue.absent()});
+
+  final SqlValue<Object?> durationSeconds;
+
+  Map<String, Object?> toColumns() => <String, Object?>{
+    if (durationSeconds.isPresent) 'duration_seconds': durationSeconds.value,
+  };
+}
+
+final class PhoneCallsTable
+    extends SqlTable<SqlRow, PhoneCallInsert, PhoneCallUpdate> {
+  const PhoneCallsTable._();
+
+  static const table = PhoneCallsTable._();
+
+  static const durationSeconds = SqlColumn<Object?>(
+    table: table,
+    name: 'duration_seconds',
+    databaseType: 'integer',
+  );
+
+  @override
+  String get name => 'phone_calls';
+
+  @override
+  String? get schema => 'public';
+
+  @override
+  List<SqlColumn<Object?>> get columns => <SqlColumn<Object?>>[
+    durationSeconds.asObjectColumn,
+  ];
+
+  @override
+  Map<String, Object?> encodeInsert(PhoneCallInsert value) => value.toColumns();
+
+  @override
+  Map<String, Object?> encodeUpdate(PhoneCallUpdate value) => value.toColumns();
+
+  @override
+  SqlRow mapRow(SqlRow row, {String prefix = ''}) => row;
 }
 
 final class DocumentsInsert {

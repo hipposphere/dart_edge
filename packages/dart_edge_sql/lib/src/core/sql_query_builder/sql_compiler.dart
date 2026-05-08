@@ -50,7 +50,8 @@ final class _SqlCompiler {
     };
     _buffer.write('$placeholderPrefix$parameterName');
     if (dialect == SqlDialect.postgres) {
-      if (_postgresParameterCast(column) case final cast?) {
+      if (PostgresTypeMapping.parameterCastFor(column?.databaseType)
+          case final cast?) {
         _buffer.write('::$cast');
       }
     }
@@ -248,59 +249,6 @@ final class _SqlCompiler {
       Map<String, Object?>.unmodifiable(_parameters),
     );
   }
-}
-
-String? _postgresParameterCast(SqlColumn<dynamic>? column) {
-  final type = column?.databaseType?.trim();
-  if (type == null || type.isEmpty) {
-    return null;
-  }
-
-  final normalized = type.toLowerCase();
-  return switch (normalized) {
-    'uuid' ||
-    'date' ||
-    'time' ||
-    'timetz' ||
-    'timestamp' ||
-    'timestamptz' => normalized,
-    _ when _isPostgresUserType(normalized) => _quotePostgresTypeName(type),
-    _ => null,
-  };
-}
-
-bool _isPostgresUserType(String type) {
-  if (type.startsWith('_')) {
-    return false;
-  }
-  const builtInTypes = {
-    'bool',
-    'int2',
-    'int4',
-    'int8',
-    'serial',
-    'bigserial',
-    'float4',
-    'float8',
-    'numeric',
-    'decimal',
-    'money',
-    'text',
-    'varchar',
-    'bpchar',
-    'citext',
-    'json',
-    'jsonb',
-    'bytea',
-  };
-  return !builtInTypes.contains(type);
-}
-
-String _quotePostgresTypeName(String type) {
-  return type
-      .split('.')
-      .map((part) => '"${part.replaceAll('"', '""')}"')
-      .join('.');
 }
 
 bool _startsWith(String value, int index, String pattern) {

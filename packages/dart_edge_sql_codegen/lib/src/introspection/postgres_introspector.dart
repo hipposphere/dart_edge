@@ -528,9 +528,9 @@ END AS routine_kind''',
 }
 
 String _mapPostgresType(String databaseType) {
-  final normalized = databaseType.toLowerCase();
+  final normalized = PostgresTypeMapping.normalizeTypeName(databaseType);
   return switch (normalized) {
-    'int2' || 'int4' || 'int8' || 'serial' || 'bigserial' => 'int',
+    'int2' || 'int4' || 'int8' => 'int',
     'float4' || 'float8' => 'double',
     'numeric' || 'decimal' || 'money' => 'num',
     'bool' => 'bool',

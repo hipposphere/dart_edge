@@ -1,3 +1,10 @@
+## 0.3.12
+
+- Centralize PostgreSQL type-name normalization and parameter cast helpers.
+- Cast PostgreSQL integer aliases such as `integer`, `smallint`, and `bigint`
+  for generated table inserts and updates.
+- Export `PostgresTypeMapping` for SQL codegen and package integrations.
+
 ## 0.3.11
 
 - Bind PostgreSQL `dateTime` parameters as native timestamps so generated table
