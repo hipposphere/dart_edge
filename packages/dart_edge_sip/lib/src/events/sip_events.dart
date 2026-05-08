@@ -127,14 +127,14 @@ final class SipCallEvent extends SipEvent {
 
   factory SipCallEvent.fromJson(Map<String, Object?> json) {
     return SipCallEvent(
-      callId: json['callId'] as String,
+      callId: _readRequiredText(json, 'callId'),
       direction: SipCallDirection.parse(json['direction'] as String),
       state: SipCallState.parse(json['state'] as String),
       timestamp: _readTimestamp(json),
-      fromUri: json['fromUri'] as String?,
-      toUri: json['toUri'] as String?,
-      relatedCallId: json['relatedCallId'] as String?,
-      mediaAppId: json['mediaAppId'] as String?,
+      fromUri: _readOptionalText(json, 'fromUri'),
+      toUri: _readOptionalText(json, 'toUri'),
+      relatedCallId: _readOptionalText(json, 'relatedCallId'),
+      mediaAppId: _readOptionalText(json, 'mediaAppId'),
       metadata: _readMetadata(json),
     );
   }
@@ -160,10 +160,10 @@ final class SipRegistrationEvent extends SipEvent {
 
   factory SipRegistrationEvent.fromJson(Map<String, Object?> json) {
     return SipRegistrationEvent(
-      endpointId: json['endpointId'] as String,
+      endpointId: _readRequiredText(json, 'endpointId'),
       state: SipRegistrationState.parse(json['state'] as String),
       timestamp: _readTimestamp(json),
-      contactUri: json['contactUri'] as String?,
+      contactUri: _readOptionalText(json, 'contactUri'),
       metadata: _readMetadata(json),
     );
   }
@@ -189,10 +189,10 @@ final class SipTrunkEvent extends SipEvent {
 
   factory SipTrunkEvent.fromJson(Map<String, Object?> json) {
     return SipTrunkEvent(
-      trunkId: json['trunkId'] as String,
+      trunkId: _readRequiredText(json, 'trunkId'),
       state: SipTrunkState.parse(json['state'] as String),
       timestamp: _readTimestamp(json),
-      details: json['details'] as String?,
+      details: _readOptionalText(json, 'details'),
       metadata: _readMetadata(json),
     );
   }
@@ -219,11 +219,11 @@ final class SipRecordingEvent extends SipEvent {
 
   factory SipRecordingEvent.fromJson(Map<String, Object?> json) {
     return SipRecordingEvent(
-      callId: json['callId'] as String,
-      recordingId: json['recordingId'] as String,
+      callId: _readRequiredText(json, 'callId'),
+      recordingId: _readRequiredText(json, 'recordingId'),
       state: SipRecordingState.parse(json['state'] as String),
       timestamp: _readTimestamp(json),
-      storageUri: json['storageUri'] as String?,
+      storageUri: _readOptionalText(json, 'storageUri'),
       metadata: _readMetadata(json),
     );
   }
@@ -253,12 +253,12 @@ final class SipVoicemailEvent extends SipEvent {
 
   factory SipVoicemailEvent.fromJson(Map<String, Object?> json) {
     return SipVoicemailEvent(
-      callId: json['callId'] as String,
-      mailbox: json['mailbox'] as String,
+      callId: _readRequiredText(json, 'callId'),
+      mailbox: _readRequiredText(json, 'mailbox'),
       state: SipVoicemailState.parse(json['state'] as String),
       timestamp: _readTimestamp(json),
-      messageId: json['messageId'] as String?,
-      storageUri: json['storageUri'] as String?,
+      messageId: _readOptionalText(json, 'messageId'),
+      storageUri: _readOptionalText(json, 'storageUri'),
       metadata: _readMetadata(json),
     );
   }
@@ -277,13 +277,48 @@ DateTime _readTimestamp(Map<String, Object?> json) {
   return DateTime.now().toUtc();
 }
 
+String _readRequiredText(Map<String, Object?> json, String key) {
+  return _sipEventText(json[key] as String);
+}
+
+String? _readOptionalText(Map<String, Object?> json, String key) {
+  final value = json[key];
+  return value is String ? _sipEventText(value) : null;
+}
+
 Map<String, Object?> _readMetadata(Map<String, Object?> json) {
   final value = json['metadata'];
   if (value is Map<String, Object?>) {
-    return value;
+    return {
+      for (final entry in value.entries)
+        _sipEventText(entry.key): _sanitizeSipEventJson(entry.value),
+    };
   }
   if (value is Map) {
-    return {for (final entry in value.entries) '${entry.key}': entry.value};
+    return {
+      for (final entry in value.entries)
+        _sipEventText('${entry.key}'): _sanitizeSipEventJson(entry.value),
+    };
   }
   return const <String, Object?>{};
 }
+
+Object? _sanitizeSipEventJson(Object? value) {
+  return switch (value) {
+    final String text => _sipEventText(text),
+    final List<Object?> list => [
+      for (final value in list) _sanitizeSipEventJson(value),
+    ],
+    final Map<String, Object?> map => {
+      for (final entry in map.entries)
+        _sipEventText(entry.key): _sanitizeSipEventJson(entry.value),
+    },
+    final Map<Object?, Object?> map => {
+      for (final entry in map.entries)
+        _sipEventText('${entry.key}'): _sanitizeSipEventJson(entry.value),
+    },
+    _ => value,
+  };
+}
+
+String _sipEventText(String value) => value.replaceAll('\u0000', '');

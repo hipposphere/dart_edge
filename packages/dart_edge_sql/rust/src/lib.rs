@@ -406,6 +406,8 @@ async fn execute_postgres_pool(
     pool: &PgPool,
     statement: &SqlStatement,
 ) -> Result<SqlResult, String> {
+    validate_postgres_statement(statement)?;
+
     if statement_returns_rows(&statement.sql) {
         let mut query = sqlx::query(&statement.sql);
         for value in &statement.parameters {
@@ -472,6 +474,8 @@ async fn execute_postgres_connection(
     connection: &mut PoolConnection<Postgres>,
     statement: &SqlStatement,
 ) -> Result<SqlResult, String> {
+    validate_postgres_statement(statement)?;
+
     if statement_returns_rows(&statement.sql) {
         let mut query = sqlx::query(&statement.sql);
         for value in &statement.parameters {
@@ -551,6 +555,52 @@ fn bind_postgres_value<'q>(
         },
         SqlValue::Json(value) => query.bind(sqlx::types::Json(value.clone())),
     }
+}
+
+fn validate_postgres_statement(statement: &SqlStatement) -> Result<(), String> {
+    for (index, value) in statement.parameters.iter().enumerate() {
+        validate_postgres_value(value, &format!("parameter {}", index + 1))?;
+    }
+    Ok(())
+}
+
+fn validate_postgres_value(value: &SqlValue, location: &str) -> Result<(), String> {
+    match value {
+        SqlValue::String(value) | SqlValue::DateTime(value) => {
+            validate_postgres_text(value, location)
+        }
+        SqlValue::Json(value) => validate_postgres_json(value, location),
+        _ => Ok(()),
+    }
+}
+
+fn validate_postgres_json(value: &serde_json::Value, location: &str) -> Result<(), String> {
+    match value {
+        serde_json::Value::String(value) => validate_postgres_text(value, location),
+        serde_json::Value::Array(values) => {
+            for (index, value) in values.iter().enumerate() {
+                validate_postgres_json(value, &format!("{location}[{index}]"))?;
+            }
+            Ok(())
+        }
+        serde_json::Value::Object(values) => {
+            for (key, value) in values {
+                validate_postgres_text(key, &format!("{location} key"))?;
+                validate_postgres_json(value, &format!("{location}.{key}"))?;
+            }
+            Ok(())
+        }
+        _ => Ok(()),
+    }
+}
+
+fn validate_postgres_text(value: &str, location: &str) -> Result<(), String> {
+    if value.contains('\0') {
+        return Err(format!(
+            "PostgreSQL text/json value contains NUL byte at {location}."
+        ));
+    }
+    Ok(())
 }
 
 fn parse_datetime_value(value: &str) -> Option<DateTime<Utc>> {
@@ -898,5 +948,47 @@ mod tests {
     #[test]
     fn rejects_malformed_datetime_values() {
         assert!(parse_datetime_value("not-a-date").is_none());
+    }
+
+    #[test]
+    fn rejects_postgres_text_parameters_with_nul_bytes() {
+        let statement = SqlStatement::with_parameters(
+            "INSERT INTO calls (caller_number) VALUES ($1)",
+            vec![SqlValue::String("123\0".to_string())],
+        );
+
+        let error = validate_postgres_statement(&statement).expect_err("NUL byte rejected");
+
+        assert_eq!(
+            error,
+            "PostgreSQL text/json value contains NUL byte at parameter 1."
+        );
+    }
+
+    #[test]
+    fn rejects_nested_postgres_json_strings_with_nul_bytes() {
+        let statement = SqlStatement::with_parameters(
+            "INSERT INTO calls (metadata) VALUES ($1::jsonb)",
+            vec![SqlValue::Json(serde_json::json!({
+                "from_uri": "sip:1000\0@pbx.example.com",
+            }))],
+        );
+
+        let error = validate_postgres_statement(&statement).expect_err("NUL byte rejected");
+
+        assert_eq!(
+            error,
+            "PostgreSQL text/json value contains NUL byte at parameter 1.from_uri."
+        );
+    }
+
+    #[test]
+    fn allows_postgres_byte_parameters_with_nul_bytes() {
+        let statement = SqlStatement::with_parameters(
+            "INSERT INTO blobs (payload) VALUES ($1)",
+            vec![SqlValue::Bytes(BASE64.encode([0, 1, 2]))],
+        );
+
+        validate_postgres_statement(&statement).expect("bytes are not text");
     }
 }
