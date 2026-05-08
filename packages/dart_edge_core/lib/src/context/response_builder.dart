@@ -138,6 +138,20 @@ final class ResponseBuilder {
     );
   }
 
+  /// Sends already encoded binary bytes for [contentType].
+  RawResponse binary({required String contentType, required List<int> body}) {
+    _contentType = contentType;
+    _hasExplicitContentType = true;
+    _isEncodedBody = true;
+    _setBody(body);
+    return _toRawResponse(
+      status: _status ?? 200,
+      contentType: contentType,
+      body: body,
+      isEncodedBody: true,
+    );
+  }
+
   /// Sends a server-sent events response.
   SseResponse sse(
     Stream<SseEvent> events, {

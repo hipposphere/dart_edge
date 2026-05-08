@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import '../http.dart';
 import '../web_socket.dart';
 
@@ -36,13 +39,34 @@ final class DartEdgeClientResponse {
     required this.status,
     required this.contentType,
     this.headers = const <String, String>{},
-    required this.body,
-  });
+    String? body,
+    List<int>? bodyBytes,
+  }) : _body = body,
+       _bodyBytes = bodyBytes;
 
   final int status;
   final String contentType;
   final Map<String, String> headers;
-  final String body;
+  final String? _body;
+  final List<int>? _bodyBytes;
+
+  /// Response body decoded as UTF-8 text.
+  String get body {
+    final body = _body;
+    if (body != null) {
+      return body;
+    }
+    return utf8.decode(bodyBytes, allowMalformed: true);
+  }
+
+  /// Raw response body bytes.
+  Uint8List get bodyBytes {
+    final bytes = _bodyBytes;
+    if (bytes != null) {
+      return Uint8List.fromList(bytes);
+    }
+    return Uint8List.fromList(utf8.encode(_body ?? ''));
+  }
 }
 
 /// Transport abstraction used by generated clients.

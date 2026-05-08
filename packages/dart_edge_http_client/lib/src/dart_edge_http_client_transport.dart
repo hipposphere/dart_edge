@@ -51,7 +51,7 @@ final class DartEdgeHttpClientTransport implements DartEdgeClientTransport {
       status: response.statusCode,
       contentType: response.headers['content-type'] ?? '',
       headers: response.headers,
-      body: response.body,
+      bodyBytes: response.bodyBytes,
     );
   }
 

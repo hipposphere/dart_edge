@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import '../http.dart';
 import 'dart_edge_client_transport.dart';
@@ -43,6 +44,7 @@ abstract base class DartEdgeHttpClientBase {
         contentType: response.contentType,
         headers: response.headers,
         rawBody: response.body,
+        rawBodyBytes: response.bodyBytes,
         data: _decodeResponse<TResponse>(response, success: invocation.success),
       );
     }
@@ -55,6 +57,7 @@ abstract base class DartEdgeHttpClientBase {
       contentType: response.contentType,
       headers: response.headers,
       rawBody: response.body,
+      rawBodyBytes: response.bodyBytes,
       error: DartEdgeClientError(
         status: response.status,
         code: documentedError?.code,
@@ -64,6 +67,7 @@ abstract base class DartEdgeHttpClientBase {
         contentType: response.contentType,
         headers: response.headers,
         rawBody: response.body,
+        rawBodyBytes: response.bodyBytes,
         body: _decodeErrorBody(response),
       ),
     );
@@ -168,6 +172,10 @@ abstract base class DartEdgeHttpClientBase {
       return response.body as T;
     }
 
+    if (_isBinaryContentType(success.contentType)) {
+      return response.bodyBytes as T;
+    }
+
     if (success.decoder case final decoder?) {
       return decoder(response.body);
     }
@@ -184,6 +192,9 @@ abstract base class DartEdgeHttpClientBase {
     }
     if (_isTextContentType(response.contentType)) {
       return response.body;
+    }
+    if (_isBinaryContentType(response.contentType)) {
+      return response.bodyBytes;
     }
     return response.body;
   }
@@ -309,6 +320,14 @@ abstract base class DartEdgeHttpClientBase {
 
   bool _isTextContentType(String value) {
     return value.toLowerCase().startsWith('text/plain');
+  }
+
+  bool _isBinaryContentType(String value) {
+    final mimeType = value.split(';').first.trim().toLowerCase();
+    return mimeType == 'application/octet-stream' ||
+        mimeType.startsWith('audio/') ||
+        mimeType.startsWith('image/') ||
+        mimeType.startsWith('video/');
   }
 }
 
@@ -469,9 +488,10 @@ final class DartEdgeClientResponseObject<T> {
     required this.contentType,
     this.headers = const <String, String>{},
     required this.rawBody,
+    Uint8List? rawBodyBytes,
     this.data,
     this.error,
-  });
+  }) : _rawBodyBytes = rawBodyBytes;
 
   /// Actual HTTP response status.
   final int status;
@@ -484,6 +504,16 @@ final class DartEdgeClientResponseObject<T> {
 
   /// Raw transport response body.
   final String rawBody;
+  final Uint8List? _rawBodyBytes;
+
+  /// Raw transport response body bytes.
+  Uint8List get rawBodyBytes {
+    final bytes = _rawBodyBytes;
+    if (bytes != null) {
+      return Uint8List.fromList(bytes);
+    }
+    return Uint8List.fromList(utf8.encode(rawBody));
+  }
 
   /// Decoded success payload when [isSuccess] is true.
   final T? data;
@@ -518,8 +548,9 @@ final class DartEdgeClientError {
     required this.contentType,
     this.headers = const <String, String>{},
     required this.rawBody,
+    Uint8List? rawBodyBytes,
     this.body,
-  });
+  }) : _rawBodyBytes = rawBodyBytes;
 
   /// Actual HTTP response status.
   final int status;
@@ -538,6 +569,16 @@ final class DartEdgeClientError {
 
   /// Raw transport response body.
   final String rawBody;
+  final Uint8List? _rawBodyBytes;
+
+  /// Raw transport response body bytes.
+  Uint8List get rawBodyBytes {
+    final bytes = _rawBodyBytes;
+    if (bytes != null) {
+      return Uint8List.fromList(bytes);
+    }
+    return Uint8List.fromList(utf8.encode(rawBody));
+  }
 
   /// Generic decoded error body.
   final Object? body;

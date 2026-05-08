@@ -39,6 +39,7 @@ void main() {
         expect(response.status, 200);
         expect(response.contentType, 'text/plain; charset=utf-8');
         expect(response.body, 'ok');
+        expect(response.bodyBytes, utf8.encode('ok'));
       },
     );
   });

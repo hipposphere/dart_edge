@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:dart_edge_core/dart_edge_core.dart';
 import 'package:dart_edge_http_server_codegen/dart_edge_http_server_codegen.dart';
@@ -72,6 +73,55 @@ void main() {
       expect(source, contains("pathTemplate: '/rooms/<id>/socket'"));
       expect(source, contains('connectWebSocket<RoomPath, Never, Never>'));
     });
+
+    test('emits Uint8List bindings for binary response contracts', () {
+      final source = const DartEdgeClientGenerator().generate(
+        const DartEdgeClientLibrarySpec(
+          className: 'AudioClient',
+          operations: [
+            DartEdgeClientOperation(
+              method: HttpMethod.get,
+              path: '/tone.wav',
+              options: RouteOptions(
+                operationId: 'getTone',
+                success: ResponseSpec.binary(contentType: 'audio/wav'),
+              ),
+              successType: 'Uint8List',
+            ),
+          ],
+        ),
+      );
+
+      expect(source, contains("import 'dart:typed_data';"));
+      expect(
+        source,
+        contains('Future<DartEdgeClientResponseObject<Uint8List>> getTone()'),
+      );
+      expect(source, contains('DartEdgeClientResponseSpec<Uint8List>'));
+      expect(source, isNot(contains('Uint8List.decode')));
+    });
+
+    test(
+      'infers Uint8List for generated clients from binary response specs',
+      () {
+        final router = Router<void>();
+        router.get(
+          '/tone.wav',
+          options: const RouteOptions(
+            operationId: 'getTone',
+            success: ResponseSpec.binary(contentType: 'audio/wav'),
+          ),
+          handler: (_) => Uint8List(0),
+        );
+
+        final spec = DartEdgeClientLibrarySpec.fromRouter(
+          className: 'AudioClient',
+          router: router,
+        );
+
+        expect(spec.operations.single.successType, 'Uint8List');
+      },
+    );
 
     test('emits split client library and bindings parts', () {
       final spec = DartEdgeClientLibrarySpec(
@@ -794,6 +844,43 @@ void main() {
         expect(() => response.requireData, throwsStateError);
       },
     );
+
+    test('decodes binary responses from transport body bytes', () async {
+      final bytes = Uint8List.fromList([0, 255, 1, 128, 2]);
+      final client = _TestClient(
+        baseUri: Uri.parse('https://api.example.test'),
+        transport: _FakeTransport(
+          onSend: (_) async => DartEdgeClientResponse(
+            status: 200,
+            contentType: 'audio/wav',
+            bodyBytes: bytes,
+          ),
+        ),
+      );
+
+      final response = await client
+          .invoke<Uint8List, Never, Never, Never, Never>(
+            const DartEdgeClientInvocation<
+              Uint8List,
+              Never,
+              Never,
+              Never,
+              Never
+            >(
+              method: HttpMethod.get,
+              pathTemplate: '/tone.wav',
+              success: DartEdgeClientResponseSpec<Uint8List>(
+                status: 200,
+                contentType: 'audio/wav',
+              ),
+            ),
+          );
+
+      expect(response.isSuccess, isTrue);
+      expect(response.rawBodyBytes, bytes);
+      expect(response.data, bytes);
+      expect(response.requireData, bytes);
+    });
 
     test('builds websocket connection requests', () async {
       final transport = _FakeWebSocketTransport(

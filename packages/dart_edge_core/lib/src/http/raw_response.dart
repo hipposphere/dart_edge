@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 /// One raw HTTP header attached to a [RawResponse].
 final class HttpHeader {
   const HttpHeader(this.name, this.value);
@@ -67,6 +69,22 @@ final class RawResponse {
     required int status,
     required String contentType,
     String body = '',
+    List<HttpHeader> headers = const <HttpHeader>[],
+  }) {
+    return RawResponse(
+      status: status,
+      contentType: contentType,
+      body: body,
+      headers: headers,
+      isEncodedBody: true,
+    );
+  }
+
+  /// Creates a binary response whose bytes are already encoded for [contentType].
+  factory RawResponse.binary({
+    required int status,
+    required String contentType,
+    required Uint8List body,
     List<HttpHeader> headers = const <HttpHeader>[],
   }) {
     return RawResponse(

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:dart_edge_core/dart_edge_core.dart';
 
@@ -6,14 +7,18 @@ final class EncodedResponse {
   const EncodedResponse({
     required this.status,
     required this.contentType,
-    required this.body,
+    required Uint8List bodyBytes,
     this.headers = const <HttpHeader>[],
-  });
+  }) : _bodyBytes = bodyBytes;
 
   final int status;
   final String contentType;
-  final String body;
   final List<HttpHeader> headers;
+  final Uint8List _bodyBytes;
+
+  Uint8List get bodyBytes => Uint8List.fromList(_bodyBytes);
+
+  String get body => utf8.decode(_bodyBytes, allowMalformed: true);
 }
 
 EncodedResponse encodeResponse({
@@ -39,7 +44,7 @@ EncodedResponse encodeResponse({
     return EncodedResponse(
       status: effectiveStatus,
       contentType: effectiveContentType,
-      body: effectiveBody?.toString() ?? '',
+      bodyBytes: _encodedBodyBytes(effectiveBody),
       headers: headers,
     );
   }
@@ -48,7 +53,7 @@ EncodedResponse encodeResponse({
     return EncodedResponse(
       status: effectiveStatus,
       contentType: effectiveContentType,
-      body: jsonEncode(_normalizeJson(effectiveBody)),
+      bodyBytes: _textBytes(jsonEncode(_normalizeJson(effectiveBody))),
       headers: headers,
     );
   }
@@ -56,7 +61,7 @@ EncodedResponse encodeResponse({
   return EncodedResponse(
     status: effectiveStatus,
     contentType: effectiveContentType,
-    body: effectiveBody?.toString() ?? '',
+    bodyBytes: _encodedBodyBytes(effectiveBody),
     headers: headers,
   );
 }
@@ -66,7 +71,7 @@ EncodedResponse _encodeRawResponse(RawResponse response) {
     return EncodedResponse(
       status: response.status,
       contentType: response.contentType,
-      body: response.body?.toString() ?? '',
+      bodyBytes: _encodedBodyBytes(response.body),
       headers: response.headers,
     );
   }
@@ -75,7 +80,7 @@ EncodedResponse _encodeRawResponse(RawResponse response) {
     return EncodedResponse(
       status: response.status,
       contentType: response.contentType,
-      body: jsonEncode(_normalizeJson(response.body)),
+      bodyBytes: _textBytes(jsonEncode(_normalizeJson(response.body))),
       headers: response.headers,
     );
   }
@@ -83,18 +88,30 @@ EncodedResponse _encodeRawResponse(RawResponse response) {
   return EncodedResponse(
     status: response.status,
     contentType: response.contentType,
-    body: response.body?.toString() ?? '',
+    bodyBytes: _encodedBodyBytes(response.body),
     headers: response.headers,
   );
 }
 
 EncodedResponse encodeServerError() {
-  return const EncodedResponse(
+  return EncodedResponse(
     status: 500,
     contentType: 'text/plain; charset=utf-8',
-    body: 'Internal Server Error',
+    bodyBytes: _textBytes('Internal Server Error'),
   );
 }
+
+Uint8List _encodedBodyBytes(Object? body) {
+  return switch (body) {
+    null => Uint8List(0),
+    Uint8List() => Uint8List.fromList(body),
+    List<int>() => Uint8List.fromList(body),
+    String() => _textBytes(body),
+    _ => _textBytes(body.toString()),
+  };
+}
+
+Uint8List _textBytes(String body) => Uint8List.fromList(utf8.encode(body));
 
 Object? _normalizeJson(Object? value) {
   switch (value) {

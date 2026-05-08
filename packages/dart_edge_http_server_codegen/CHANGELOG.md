@@ -1,3 +1,8 @@
+## 0.3.17
+
+- Generate `Uint8List` client bindings for binary response contracts.
+- Require `dart_edge_core` 0.3.10.
+
 ## 0.3.16
 
 - Preserve route-local path parameter and query parameter decoders when

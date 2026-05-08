@@ -1,6 +1,6 @@
 name: dart_edge_http_client
 description: HTTP and WebSocket transports for generated Dart Edge clients.
-version: 0.1.0
+version: 0.1.1
 publish_to: "https://registry.hippolabs.org/pub/internal-pub/"
 repository: https://github.com/hipposphere/dart_edge/tree/main/packages/dart_edge_http_client
 
@@ -12,7 +12,7 @@ resolution: workspace
 dependencies:
   dart_edge_core:
     hosted: "https://registry.hippolabs.org/pub/internal-pub/"
-    version: ^0.3.5
+    version: ^0.3.10
   http: ^1.6.0
   web_socket_client: ^0.2.1
 

@@ -1,3 +1,9 @@
+## 0.3.10
+
+- Add binary response contracts with `RawResponse.binary`,
+  `ResponseSpec.binary`, generated-client response bytes, and response-builder
+  binary helpers.
+
 ## 0.3.9
 
 - Add optional database type metadata to SQL column descriptors.

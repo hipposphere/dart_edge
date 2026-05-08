@@ -104,12 +104,18 @@ abstract final class DartEdgeNative {
     int requestId, {
     required int status,
     required String contentType,
-    required String body,
+    required List<int> body,
     List<HttpHeader> headers = const <HttpHeader>[],
   }) {
     final contentTypePtr = contentType.toNativeUtf8();
-    final bodyPtr = body.toNativeUtf8();
+    final bytes = Uint8List.fromList(body);
+    final bodyPtr = calloc<Uint8>(bytes.length);
+    final nativeBytesPtr = calloc<core_ffi.NativeBytes>();
     try {
+      bodyPtr.asTypedList(bytes.length).setAll(0, bytes);
+      nativeBytesPtr.ref
+        ..ptr = bodyPtr
+        ..len = bytes.length;
       return _withNativeHeaders(
         headers,
         (headerStorage, headerCount) =>
@@ -117,13 +123,14 @@ abstract final class DartEdgeNative {
               requestId,
               status,
               contentTypePtr.cast<Char>(),
-              bodyPtr.cast<Char>(),
+              nativeBytesPtr.ref,
               headerCount,
               headerStorage,
             ),
       );
     } finally {
       calloc.free(contentTypePtr);
+      calloc.free(nativeBytesPtr);
       calloc.free(bodyPtr);
     }
   }

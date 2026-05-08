@@ -1,3 +1,10 @@
+## 0.3.14
+
+- Send normal HTTP responses through the native runtime as bytes instead of
+  UTF-8 strings, enabling true binary responses such as `audio/wav`.
+- Require `dart_edge_core` 0.3.10.
+- Bump the native artifact version to 0.1.7 for the response ABI change.
+
 ## 0.3.13
 
 - Decode path parameters and query parameters with route-local decoders before

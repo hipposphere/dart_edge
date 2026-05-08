@@ -246,7 +246,7 @@ class DartEdge<TServices> extends Router<TServices> {
           requestId,
           status: response.status,
           contentType: response.contentType,
-          body: response.body,
+          body: response.bodyBytes,
           headers: response.headers,
         );
         return;
@@ -270,7 +270,7 @@ class DartEdge<TServices> extends Router<TServices> {
       requestId,
       status: response.status,
       contentType: response.contentType,
-      body: response.body,
+      body: response.bodyBytes,
       headers: response.headers,
     );
   }
@@ -312,7 +312,7 @@ class DartEdge<TServices> extends Router<TServices> {
           requestId,
           status: response.status,
           contentType: response.contentType,
-          body: response.body,
+          body: response.bodyBytes,
           headers: response.headers,
         );
         return;
@@ -481,7 +481,7 @@ class DartEdge<TServices> extends Router<TServices> {
       requestId,
       status: response.status,
       contentType: response.contentType,
-      body: response.body,
+      body: response.bodyBytes,
       headers: response.headers,
     );
   }

@@ -1,3 +1,8 @@
+## 0.3.9
+
+- Update `dart_edge_http_server_runtime` constraint for binary response
+  support.
+
 ## 0.3.6
 
 - Update `dart_edge_http_server_runtime` constraint for rebuilt native artifacts.

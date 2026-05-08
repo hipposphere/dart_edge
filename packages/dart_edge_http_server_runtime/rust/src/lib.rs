@@ -182,7 +182,7 @@ struct TransportRequest {
 struct TransportResponse {
     status: u16,
     content_type: String,
-    body: String,
+    body: Vec<u8>,
     headers: Vec<(String, String)>,
 }
 
@@ -563,7 +563,7 @@ pub extern "C" fn dart_edge_http_server_runtime_stop_server() {
                 .send(PendingResponseMessage::Http(TransportResponse {
                     status: 503,
                     content_type: "text/plain; charset=utf-8".to_string(),
-                    body: "Server stopped".to_string(),
+                    body: b"Server stopped".to_vec(),
                     headers: Vec::new(),
                 }));
             let _ = request.response_tx.send(PendingResponseMessage::Close);
@@ -879,12 +879,12 @@ pub extern "C" fn dart_edge_http_server_runtime_send_response(
     request_id: i64,
     status: i32,
     content_type: *const c_char,
-    body: *const c_char,
+    body: NativeBytes,
     header_count: isize,
     headers: *const NativePair,
 ) -> bool {
     let content_type = unsafe { read_c_string(content_type) };
-    let body = unsafe { read_c_string(body) };
+    let body = unsafe { read_native_bytes(body) };
     let Some(content_type) = content_type else {
         return false;
     };
@@ -898,7 +898,7 @@ pub extern "C" fn dart_edge_http_server_runtime_send_response(
         PendingResponseMessage::Http(TransportResponse {
             status: status as u16,
             content_type,
-            body,
+            body: body.to_vec(),
             headers,
         }),
         true,
@@ -1067,12 +1067,12 @@ async fn handle_http_request(
     };
 
     match response_rx.recv().await {
-        Some(PendingResponseMessage::Http(transport_response)) => response_with_headers(
+        Some(PendingResponseMessage::Http(transport_response)) => response_body_with_headers(
             StatusCode::from_u16(transport_response.status)
                 .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
             &transport_response.content_type,
             &transport_response.headers,
-            transport_response.body,
+            Body::from(transport_response.body),
         ),
         Some(PendingResponseMessage::SseStart { status, headers }) => {
             let stream = async_stream::stream! {
@@ -1268,12 +1268,12 @@ async fn handle_web_socket_request(
     };
 
     match response_rx.recv().await {
-        Some(PendingResponseMessage::Http(transport_response)) => response_with_headers(
+        Some(PendingResponseMessage::Http(transport_response)) => response_body_with_headers(
             StatusCode::from_u16(transport_response.status)
                 .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
             &transport_response.content_type,
             &transport_response.headers,
-            transport_response.body,
+            Body::from(transport_response.body),
         ),
         Some(PendingResponseMessage::WebSocketAccept {
             headers: response_headers,

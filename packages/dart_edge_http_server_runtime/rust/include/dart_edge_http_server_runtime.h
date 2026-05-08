@@ -134,7 +134,7 @@ bool dart_edge_http_server_runtime_send_response(
     int64_t request_id,
     int32_t status,
     const char* content_type,
-    const char* body,
+    NativeBytes body,
     intptr_t header_count,
     const NativePair* headers);
 

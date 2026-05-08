@@ -75,7 +75,7 @@ dart_edge_http_server_runtime_parse_multipart(
     ffi.Int64,
     ffi.Int32,
     ffi.Pointer<ffi.Char>,
-    ffi.Pointer<ffi.Char>,
+    imp$1.NativeBytes,
     ffi.IntPtr,
     ffi.Pointer<imp$1.NativePair>,
   )
@@ -84,7 +84,7 @@ external bool dart_edge_http_server_runtime_send_response(
   int request_id,
   int status,
   ffi.Pointer<ffi.Char> content_type,
-  ffi.Pointer<ffi.Char> body,
+  imp$1.NativeBytes body,
   int header_count,
   ffi.Pointer<imp$1.NativePair> headers,
 );

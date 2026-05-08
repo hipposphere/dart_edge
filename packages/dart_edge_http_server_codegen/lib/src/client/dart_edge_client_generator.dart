@@ -277,8 +277,11 @@ final class DartEdgeClientGenerator {
         ..comments.add('GENERATED CODE - DO NOT MODIFY BY HAND.')
         ..directives.add(
           Directive.import('package:dart_edge_core/dart_edge_core.dart'),
-        )
-        ..body.addAll([..._modelSpecs(spec), ...buildSpecs(spec)]);
+        );
+      if (_needsTypedDataImport(spec)) {
+        builder.directives.add(Directive.import('dart:typed_data'));
+      }
+      builder.body.addAll([..._modelSpecs(spec), ...buildSpecs(spec)]);
 
       for (final import in spec.additionalImports) {
         builder.directives.add(Directive.import(import));
@@ -299,6 +302,9 @@ final class DartEdgeClientGenerator {
         ..directives.add(
           Directive.import('package:dart_edge_core/dart_edge_core.dart'),
         );
+      if (_needsTypedDataImport(spec)) {
+        builder.directives.add(Directive.import('dart:typed_data'));
+      }
 
       for (final import in spec.additionalImports) {
         builder.directives.add(Directive.import(import));
@@ -976,6 +982,7 @@ Expression? _nullableEncoderFor(String type) {
 bool _isRawTransportType(String type) {
   return type == 'Map<String, Object?>' ||
       type == 'Map<String, String>' ||
+      type == 'Uint8List' ||
       type == 'String' ||
       type == 'int' ||
       type == 'double' ||
@@ -1211,7 +1218,31 @@ String _defaultSuccessType(ResponseSpec? response) {
   if (contentType.startsWith('text/plain')) {
     return 'String';
   }
+  if (_isBinaryContentType(contentType)) {
+    return 'Uint8List';
+  }
   return 'Object?';
+}
+
+bool _isBinaryContentType(String contentType) {
+  final mimeType = contentType.split(';').first.trim().toLowerCase();
+  return mimeType == 'application/octet-stream' ||
+      mimeType.startsWith('audio/') ||
+      mimeType.startsWith('image/') ||
+      mimeType.startsWith('video/');
+}
+
+bool _needsTypedDataImport(DartEdgeClientLibrarySpec spec) {
+  for (final operation in spec.operations) {
+    if (operation.successType == 'Uint8List' ||
+        operation.paramsType == 'Uint8List' ||
+        operation.queryType == 'Uint8List' ||
+        operation.headersType == 'Uint8List' ||
+        operation.bodyType == 'Uint8List') {
+      return true;
+    }
+  }
+  return false;
 }
 
 bool _matchesPathPrefix(String path, String prefix) {

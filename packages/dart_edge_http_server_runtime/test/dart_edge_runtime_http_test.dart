@@ -56,6 +56,42 @@ void main() {
     expect(body, containsPair('status', 'ok'));
   });
 
+  test('serves raw binary responses without UTF-8 string encoding', () async {
+    final app = DartEdge<void>(services: () {});
+    final bytes = Uint8List.fromList([0, 255, 1, 2, 128, 3]);
+    app.get(
+      '/tone.wav',
+      options: const RouteOptions(
+        operationId: 'getTone',
+        success: ResponseSpec.binary(contentType: 'audio/wav'),
+      ),
+      handler: (_) => RawResponse.binary(
+        status: HttpStatus.ok,
+        contentType: 'audio/wav',
+        body: bytes,
+      ),
+    );
+
+    final server = await app.listen(port: 0);
+    final client = HttpClient();
+
+    addTearDown(() async {
+      client.close(force: true);
+      await server.close();
+    });
+
+    final response = await (await client.getUrl(
+      Uri.http('127.0.0.1:${server.port}', '/tone.wav'),
+    )).close();
+    expect(response.statusCode, HttpStatus.ok);
+    expect(response.headers.contentType?.mimeType, 'audio/wav');
+    final body = await response.fold<List<int>>(
+      <int>[],
+      (buffer, chunk) => buffer..addAll(chunk),
+    );
+    expect(body, bytes);
+  });
+
   test('handles CORS preflight and adds CORS headers to responses', () async {
     final app = DartEdge<void>(
       services: () {},
