@@ -26,11 +26,12 @@ final class DartEdgeS3Client {
 
   /// Opens one reusable S3 client instance.
   static Future<DartEdgeS3Client> open(S3ClientConfig config) async {
-    _validateConfig(config);
+    final resolvedConfig = config.resolveDefaults();
+    _validateConfig(resolvedConfig);
     final handle = await Isolate.run(
-      () => DartEdgeS3ClientNative.create(config),
+      () => DartEdgeS3ClientNative.create(resolvedConfig),
     );
-    return DartEdgeS3Client._(config, handle);
+    return DartEdgeS3Client._(resolvedConfig, handle);
   }
 
   /// Uploads in-memory [request.bytes] to the configured S3 endpoint.

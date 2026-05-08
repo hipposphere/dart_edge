@@ -28,7 +28,7 @@ abstract final class DartEdgeS3ClientNative {
 
     try {
       final nativeConfig = configPtr.ref;
-      nativeConfig.region = allocations.optionalString(config.region);
+      nativeConfig.region = allocations.optionalString(config.resolvedRegion);
       nativeConfig.endpoint = allocations.optionalString(config.endpoint);
       nativeConfig.access_key_id = allocations.optionalString(
         config.accessKeyId,

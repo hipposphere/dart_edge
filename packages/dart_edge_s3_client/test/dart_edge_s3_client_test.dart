@@ -28,7 +28,7 @@ void main() {
     expect(object.toJson()['versionId'], 'v1');
   });
 
-  test('serializes S3-compatible endpoint config without region', () {
+  test('defaults S3-compatible endpoint config without region', () {
     const config = S3ClientConfig(
       endpoint: 'http://127.0.0.1:9000',
       accessKeyId: 'key',
@@ -37,7 +37,19 @@ void main() {
       allowHttp: true,
     );
 
-    expect(config.toJson(), isNot(contains('region')));
+    expect(config.resolvedRegion, 'us-east-1');
+    expect(config.resolveDefaults().region, 'us-east-1');
+    expect(config.toJson()['region'], 'us-east-1');
     expect(config.toJson()['endpoint'], 'http://127.0.0.1:9000');
+  });
+
+  test('does not default region without endpoint', () {
+    const config = S3ClientConfig(
+      accessKeyId: 'key',
+      secretAccessKey: 'secret',
+    );
+
+    expect(config.resolvedRegion, isNull);
+    expect(config.toJson(), isNot(contains('region')));
   });
 }
