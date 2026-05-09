@@ -186,6 +186,29 @@ void main() {
     expect(route['paramsSchemaId'], 'UserPath');
     expect(route['querySchemaId'], 'UserQuery');
   });
+
+  test('includes websocket params schema refs in the native manifest', () {
+    final app = DartEdge<void>(services: () {});
+    app.websocket(
+      '/calls/<id>/live',
+      options: const WebSocketOptions(
+        operationId: 'connectLiveCall',
+        params: JsonSchema.ref('IdParams'),
+      ),
+      onConnect: (_) async {},
+    );
+
+    final compiledRoutes = CompiledRouteTable.fromRegistrations(
+      app.routeRegistry.registrations,
+    );
+    final manifest =
+        jsonDecode(compiledRoutes.nativeManifestJson()) as Map<String, Object?>;
+    final routes = manifest['routes']! as List<Object?>;
+    final route = routes.single as Map<String, Object?>;
+
+    expect(route['kind'], 'webSocket');
+    expect(route['paramsSchemaId'], 'IdParams');
+  });
 }
 
 final class _SchemaRoute

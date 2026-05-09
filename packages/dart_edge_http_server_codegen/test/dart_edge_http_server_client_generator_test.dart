@@ -274,8 +274,11 @@ void main() {
         handler: (_) => const UserDto(id: '42', name: 'Ada'),
       );
       router.websocket(
-        '/events',
-        options: const WebSocketOptions(operationId: 'connectEvents'),
+        '/events/<id>',
+        options: const WebSocketOptions(
+          operationId: 'connectEvents',
+          params: JsonSchema.ref('RoomPath'),
+        ),
         onConnect: (_) async {},
       );
       router.webtransport(
@@ -321,6 +324,13 @@ void main() {
         contains('Future<DartEdgeClientResponseObject<UserDto>> createUser({'),
       );
       expect(source, contains('Future<DartEdgeClientWebSocket> connectEvents'));
+      expect(
+        source,
+        contains('Future<DartEdgeClientWebSocket> connectEvents({'),
+      );
+      expect(source, contains('required RoomPath params'));
+      expect(source, contains("pathTemplate: '/events/<id>'"));
+      expect(source, contains("schemaId: 'RoomPath'"));
       expect(
         source,
         contains('Future<DartEdgeClientWebTransportSession> connectDatagrams'),

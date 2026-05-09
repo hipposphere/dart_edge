@@ -9,6 +9,8 @@ void main() {
     ).normalized();
     final webSocketOptions = const WebSocketOptions(
       operationId: 'connectEvents',
+      params: JsonSchema.ref('EventPath'),
+      paramsDecoder: _decodeEventPath,
     ).normalized();
     final webTransportOptions = const WebTransportOptions(
       operationId: 'connectDatagrams',
@@ -16,6 +18,8 @@ void main() {
 
     expect(routeOptions.exposure, RouteExposure.all);
     expect(webSocketOptions.exposure, RouteExposure.all);
+    expect(webSocketOptions.params, const JsonSchema.ref('EventPath'));
+    expect(webSocketOptions.paramsDecoder, same(_decodeEventPath));
     expect(webTransportOptions.exposure, RouteExposure.all);
   });
 
@@ -44,3 +48,5 @@ void main() {
     expect(registration.exposure, RouteExposure.none);
   });
 }
+
+Object? _decodeEventPath(Map<String, String> values) => values;

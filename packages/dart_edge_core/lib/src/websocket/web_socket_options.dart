@@ -1,4 +1,6 @@
+import '../http/json_schema.dart';
 import '../router/route_exposure.dart';
+import '../router/route_options.dart';
 
 /// Convenience options for inline `Router.websocket` handlers.
 final class WebSocketOptions {
@@ -8,6 +10,8 @@ final class WebSocketOptions {
     this.tags = const <String>[],
     this.deprecated = false,
     this.exposure = RouteExposure.all,
+    this.params,
+    this.paramsDecoder,
   });
 
   /// Optional stable identifier used in generated output and manifests.
@@ -29,6 +33,12 @@ final class WebSocketOptions {
   /// options and future WebSocket documentation support.
   final RouteExposure exposure;
 
+  /// Schema for decoded path parameters.
+  final JsonSchema? params;
+
+  /// Optional route-local decoder for path parameters.
+  final RequestValueDecoder? paramsDecoder;
+
   /// Returns a normalized options object suitable for runtime execution.
   WebSocketOptions normalized({String? defaultOperationId}) {
     final resolvedOperationId = operationId ?? defaultOperationId;
@@ -46,6 +56,8 @@ final class WebSocketOptions {
       tags: List<String>.unmodifiable(tags),
       deprecated: deprecated,
       exposure: exposure,
+      params: params,
+      paramsDecoder: paramsDecoder,
     );
   }
 }

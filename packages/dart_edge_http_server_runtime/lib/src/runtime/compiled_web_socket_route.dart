@@ -1,6 +1,7 @@
 import 'package:dart_edge_core/dart_edge_core.dart';
 
 import 'compiled_route.dart';
+import 'json_schema_route_id.dart';
 
 final class CompiledWebSocketRoute<TServices> {
   const CompiledWebSocketRoute({
@@ -54,7 +55,7 @@ final class CompiledWebSocketRoute<TServices> {
     'path': path,
     'operationId': options.operationId,
     'pathSegments': patternSegments.map((segment) => segment.toJson()).toList(),
-    'paramsSchemaId': null,
+    'paramsSchemaId': jsonSchemaRouteId(options.params),
     'querySchemaId': null,
     'headersSchemaId': null,
     'requestBody': null,
@@ -71,6 +72,8 @@ WebSocketOptions _effectiveOptions<TServices>(
     tags: _mergeTags(registration.tags, options.tags),
     deprecated: options.deprecated,
     exposure: registration.exposure.restrict(options.exposure),
+    params: options.params,
+    paramsDecoder: options.paramsDecoder,
   );
 }
 

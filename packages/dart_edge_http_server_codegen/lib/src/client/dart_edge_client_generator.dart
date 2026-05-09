@@ -124,10 +124,12 @@ final class DartEdgeClientLibrarySpec {
               options.ignoresOperation(webSocketOptions.operationId!)) {
             continue;
           }
+          discoveredSchemas.addWebSocketOptions(webSocketOptions);
           webSockets.add(
-            DartEdgeClientWebSocketOperation(
+            _webSocketOperationFromOptions(
               path: fullPath,
-              operationId: webSocketOptions.operationId!,
+              options: webSocketOptions,
+              schemaTypes: schemaTypes,
               methodName:
                   _prefixedMethodName(
                     registration.prefix,
@@ -281,6 +283,7 @@ final class DartEdgeClientWebSocketOperation {
     required this.path,
     required this.operationId,
     this.methodName,
+    this.params,
     this.paramsType,
     this.queryType,
     this.headersType,
@@ -289,6 +292,7 @@ final class DartEdgeClientWebSocketOperation {
   final String path;
   final String operationId;
   final String? methodName;
+  final JsonSchema? params;
   final String? paramsType;
   final String? queryType;
   final String? headersType;
@@ -451,6 +455,16 @@ final class DartEdgeClientGenerator {
       addType(operation.queryType);
       addType(operation.headersType);
       addType(operation.bodyType);
+    }
+    for (final operation in spec.webSockets) {
+      addType(operation.paramsType);
+      addType(operation.queryType);
+      addType(operation.headersType);
+    }
+    for (final operation in spec.webTransports) {
+      addType(operation.paramsType);
+      addType(operation.queryType);
+      addType(operation.headersType);
     }
 
     while (pending.isNotEmpty) {
@@ -720,7 +734,7 @@ $entries
                   if (operation.paramsType != null)
                     'params': _requestValueExpression(
                       type: operation.paramsType!,
-                      schemaId: null,
+                      schemaId: jsonSchemaRouteId(operation.params),
                       value: refer('params'),
                       encode: _encoderFor(operation.paramsType!),
                     ),
@@ -1136,6 +1150,10 @@ final class _ClientSchemaCollector {
     add(options.responses.success.schema);
   }
 
+  void addWebSocketOptions(WebSocketOptions options) {
+    add(options.params);
+  }
+
   void add(JsonSchema? schema) {
     if (schema == null) {
       return;
@@ -1214,6 +1232,28 @@ DartEdgeClientOperation _operationFromOptions({
   );
 }
 
+DartEdgeClientWebSocketOperation _webSocketOperationFromOptions({
+  required String path,
+  required WebSocketOptions options,
+  required Map<String, String> schemaTypes,
+  String? methodName,
+}) {
+  final operationId = options.operationId!;
+  return DartEdgeClientWebSocketOperation(
+    path: path,
+    operationId: operationId,
+    methodName: methodName,
+    params: options.params,
+    paramsType: _schemaTypeForOperation(
+      operationId: operationId,
+      path: path,
+      field: 'params',
+      schema: options.params,
+      schemaTypes: schemaTypes,
+    ),
+  );
+}
+
 RouteOptions _effectiveRouteOptions<TServices>(
   RouteRegistration<TServices> registration,
   RouteOptions options,
@@ -1245,6 +1285,8 @@ WebSocketOptions _effectiveWebSocketOptions<TServices>(
     tags: _mergeTags(registration.tags, options.tags),
     deprecated: options.deprecated,
     exposure: registration.exposure.restrict(options.exposure),
+    params: options.params,
+    paramsDecoder: options.paramsDecoder,
   );
 }
 
@@ -1376,6 +1418,20 @@ bool _needsTypedDataImport(DartEdgeClientLibrarySpec spec) {
         operation.queryType == 'Uint8List' ||
         operation.headersType == 'Uint8List' ||
         operation.bodyType == 'Uint8List') {
+      return true;
+    }
+  }
+  for (final operation in spec.webSockets) {
+    if (operation.paramsType == 'Uint8List' ||
+        operation.queryType == 'Uint8List' ||
+        operation.headersType == 'Uint8List') {
+      return true;
+    }
+  }
+  for (final operation in spec.webTransports) {
+    if (operation.paramsType == 'Uint8List' ||
+        operation.queryType == 'Uint8List' ||
+        operation.headersType == 'Uint8List') {
       return true;
     }
   }

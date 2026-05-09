@@ -325,9 +325,10 @@ class DartEdge<TServices> extends Router<TServices> {
       request,
       codecs: _codecRegistry,
       nativeRequest: null,
-      paramsSchemaId: null,
+      paramsSchemaId: jsonSchemaRouteId(compiledRoute.options.params),
       querySchemaId: null,
       headersSchemaId: null,
+      paramsDecoder: compiledRoute.options.paramsDecoder,
       body: null,
     );
     final ctx = RequestContext<TServices>(
