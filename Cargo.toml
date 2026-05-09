@@ -17,6 +17,7 @@ exclude = [
     "packages/dart_edge_sip/rust",
     "packages/dart_edge_sql/rust",
     "packages/dart_edge_sql_pglite/rust",
+    "packages/dart_edge_webtransport/rust",
 ]
 
 [profile.dev]

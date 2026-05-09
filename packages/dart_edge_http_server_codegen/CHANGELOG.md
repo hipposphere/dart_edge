@@ -1,3 +1,9 @@
+## 0.3.18
+
+- Generate WebTransport client connection methods and support sessions with
+  datagrams and reliable stream payloads.
+- Require `dart_edge_core` 0.3.11.
+
 ## 0.3.17
 
 - Generate `Uint8List` client bindings for binary response contracts.

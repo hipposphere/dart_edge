@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:ffi';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:dart_edge_core/dart_edge_core.dart';
 
@@ -21,6 +22,10 @@ const _transportEventRequestReady = 1;
 const _transportEventWebSocketOpened = 2;
 const _transportEventWebSocketMessageReady = 3;
 const _transportEventWebSocketClosed = 4;
+const _transportEventWebTransportOpened = 5;
+const _transportEventWebTransportDatagramReady = 6;
+const _transportEventWebTransportClosed = 7;
+const _transportEventWebTransportStreamReady = 8;
 
 /// Main application object for a Dart Edge server.
 ///
@@ -52,6 +57,10 @@ class DartEdge<TServices> extends Router<TServices> {
       <int, RequestContext<TServices>>{};
   final Map<int, _ActiveWebSocketSession> _activeWebSocketSessions =
       <int, _ActiveWebSocketSession>{};
+  final Map<int, RequestContext<TServices>> _pendingWebTransportContexts =
+      <int, RequestContext<TServices>>{};
+  final Map<int, _ActiveWebTransportSession> _activeWebTransportSessions =
+      <int, _ActiveWebTransportSession>{};
 
   /// Installed JSON Schema registry used for validation and manifests.
   JsonSchemaRegistry? get schemaRegistry => _schemaRegistry;
@@ -146,6 +155,12 @@ class DartEdge<TServices> extends Router<TServices> {
           await session.messages.close();
         }
         _activeWebSocketSessions.clear();
+        _pendingWebTransportContexts.clear();
+        for (final session in _activeWebTransportSessions.values.toList()) {
+          unawaited(session.datagrams.close());
+          unawaited(session.streams.close());
+        }
+        _activeWebTransportSessions.clear();
       },
     );
   }
@@ -168,6 +183,18 @@ class DartEdge<TServices> extends Router<TServices> {
       case _transportEventWebSocketClosed:
         await _handleWebSocketClosed(eventId);
         return;
+      case _transportEventWebTransportOpened:
+        await _handleWebTransportOpened(eventId, compiledRoutes);
+        return;
+      case _transportEventWebTransportDatagramReady:
+        _drainWebTransportDatagrams(eventId);
+        return;
+      case _transportEventWebTransportClosed:
+        await _handleWebTransportClosed(eventId);
+        return;
+      case _transportEventWebTransportStreamReady:
+        _drainWebTransportStreams(eventId);
+        return;
     }
   }
 
@@ -189,6 +216,13 @@ class DartEdge<TServices> extends Router<TServices> {
           return;
         case TransportRequestKind.webSocket:
           await _handleWebSocketHandshake(
+            requestId,
+            requestLease,
+            compiledRoutes,
+          );
+          return;
+        case TransportRequestKind.webTransport:
+          await _handleWebTransportHandshake(
             requestId,
             requestLease,
             compiledRoutes,
@@ -414,6 +448,166 @@ class DartEdge<TServices> extends Router<TServices> {
     await session?.messages.close();
   }
 
+  Future<void> _handleWebTransportHandshake(
+    int requestId,
+    NativeTransportRequestLease requestLease,
+    CompiledRouteTable<TServices> compiledRoutes,
+  ) async {
+    final request = requestLease.request;
+    final compiledRoute =
+        compiledRoutes.webTransportRoutesById[request.routeId];
+    if (compiledRoute == null) {
+      _respondServerError(requestId);
+      return;
+    }
+
+    final input = await decodeRequestInput(
+      request,
+      codecs: _codecRegistry,
+      nativeRequest: null,
+      paramsSchemaId: null,
+      querySchemaId: null,
+      headersSchemaId: null,
+      body: null,
+    );
+    final ctx = RequestContext<TServices>(
+      services: _createServices(),
+      req: input,
+    );
+    for (final guard in compiledRoute.guards) {
+      final decision = await Future.sync(() => guard.authorize(ctx));
+      if (!decision.isAllowed) {
+        final response = encodeResponse(
+          spec: ResponseSpec.text(),
+          body: decision.response,
+          response: ctx.res,
+        );
+        DartEdgeNative.tryRespond(
+          requestId,
+          status: response.status,
+          contentType: response.contentType,
+          body: response.bodyBytes,
+          headers: response.headers,
+        );
+        return;
+      }
+    }
+
+    _pendingWebTransportContexts[requestId] = ctx;
+    final accepted = DartEdgeNative.acceptWebTransport(
+      requestId,
+      headers: ctx.res.headers,
+    );
+    if (!accepted) {
+      _pendingWebTransportContexts.remove(requestId);
+      _respondServerError(requestId);
+    }
+  }
+
+  Future<void> _handleWebTransportOpened(
+    int sessionId,
+    CompiledRouteTable<TServices> compiledRoutes,
+  ) async {
+    final connection = DartEdgeNative.takeWebTransportConnection(sessionId);
+    if (connection == null) {
+      return;
+    }
+
+    final compiledRoute =
+        compiledRoutes.webTransportRoutesById[connection.routeId];
+    if (compiledRoute == null) {
+      DartEdgeNative.webTransportClose(
+        sessionId,
+        reason:
+            'No Dart WebTransport route registered for ${connection.routeId}.',
+      );
+      return;
+    }
+
+    final requestContext =
+        _pendingWebTransportContexts.remove(connection.requestId) ??
+        RequestContext<TServices>(
+          services: _createServices(),
+          req: RequestInput(
+            params: Map<String, String>.unmodifiable(connection.pathParams),
+            query: Map<String, String>.unmodifiable(connection.query),
+            headers: Map<String, String>.unmodifiable(connection.headers),
+          ),
+        );
+
+    final activeSession = _ActiveWebTransportSession(
+      StreamController<Uint8List>(),
+      StreamController<Uint8List>(),
+    );
+    _activeWebTransportSessions[sessionId] = activeSession;
+
+    final transport = WebTransportContext<TServices>.fromRequest(
+      request: requestContext,
+      datagrams: IncomingWebTransportDatagrams(activeSession.datagrams.stream),
+      streams: IncomingWebTransportStreams(activeSession.streams.stream),
+      sendDatagram: (value) => _sendWebTransportDatagram(sessionId, value),
+      sendStream: (value) => _sendWebTransportStream(sessionId, value),
+      close: ([code, reason]) async {
+        DartEdgeNative.webTransportClose(sessionId, code: code, reason: reason);
+      },
+    );
+
+    activeSession.task =
+        Future.sync(() => compiledRoute.route.onConnect(transport))
+            .catchError((Object error, StackTrace stackTrace) {
+              stderr.writeln(
+                'dart_edge_http_server_runtime webtransport handling failed '
+                'for ${compiledRoute.options.operationId}: $error',
+              );
+              stderr.writeln(stackTrace);
+            })
+            .whenComplete(() async {
+              final session = _activeWebTransportSessions.remove(sessionId);
+              await session?.datagrams.close();
+              await session?.streams.close();
+              DartEdgeNative.webTransportClose(sessionId);
+            });
+
+    _drainWebTransportDatagrams(sessionId);
+    _drainWebTransportStreams(sessionId);
+  }
+
+  void _drainWebTransportDatagrams(int sessionId) {
+    final session = _activeWebTransportSessions[sessionId];
+    if (session == null || session.datagrams.isClosed) {
+      return;
+    }
+
+    while (true) {
+      final datagram = DartEdgeNative.takeWebTransportDatagram(sessionId);
+      if (datagram == null) {
+        return;
+      }
+      session.datagrams.add(datagram.body);
+    }
+  }
+
+  Future<void> _handleWebTransportClosed(int sessionId) async {
+    final session = _activeWebTransportSessions.remove(sessionId);
+    await session?.datagrams.close();
+    await session?.streams.close();
+  }
+
+  void _drainWebTransportStreams(int sessionId) {
+    final session = _activeWebTransportSessions[sessionId];
+    if (session == null || session.streams.isClosed) {
+      return;
+    }
+
+    while (true) {
+      final stream = DartEdgeNative.takeWebTransportStream(sessionId);
+      if (stream == null) {
+        return;
+      }
+      session.streams.add(stream.body);
+    }
+  }
+
   SseResponse? _resolveSseResponse(Object? body, ResponseBuilder response) {
     if (body case final SseResponse response) {
       return response;
@@ -469,6 +663,11 @@ class DartEdge<TServices> extends Router<TServices> {
           TransportRequestKind.webSocket =>
             compiledRoutes
                 .webSocketRoutesById[request.routeId]
+                ?.options
+                .operationId,
+          TransportRequestKind.webTransport =>
+            compiledRoutes
+                .webTransportRoutesById[request.routeId]
                 ?.options
                 .operationId,
         } ??
@@ -545,6 +744,18 @@ Future<void> _sendWebSocketJson(int sessionId, Object? value) async {
   final encoded = jsonEncode(_normalizeWebSocketJson(value));
   if (!DartEdgeNative.webSocketSendText(sessionId, encoded)) {
     throw StateError('Failed to send WebSocket JSON frame for $sessionId.');
+  }
+}
+
+Future<void> _sendWebTransportDatagram(int sessionId, List<int> value) async {
+  if (!DartEdgeNative.webTransportSendDatagram(sessionId, value)) {
+    throw StateError('Failed to send WebTransport datagram for $sessionId.');
+  }
+}
+
+Future<void> _sendWebTransportStream(int sessionId, List<int> value) async {
+  if (!DartEdgeNative.webTransportSendStream(sessionId, value)) {
+    throw StateError('Failed to send WebTransport stream for $sessionId.');
   }
 }
 
@@ -653,5 +864,13 @@ final class _ActiveWebSocketSession {
   _ActiveWebSocketSession(this.messages);
 
   final StreamController<WebSocketMessage> messages;
+  Future<void>? task;
+}
+
+final class _ActiveWebTransportSession {
+  _ActiveWebTransportSession(this.datagrams, this.streams);
+
+  final StreamController<Uint8List> datagrams;
+  final StreamController<Uint8List> streams;
   Future<void>? task;
 }

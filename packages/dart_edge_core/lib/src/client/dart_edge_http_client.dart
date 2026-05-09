@@ -10,12 +10,14 @@ abstract base class DartEdgeHttpClientBase {
     required this.baseUri,
     required this.transport,
     this.webSocketTransport,
+    this.webTransportTransport,
     this.defaultHeaders = const <String, String>{},
   });
 
   final Uri baseUri;
   final DartEdgeClientTransport transport;
   final DartEdgeClientWebSocketTransport? webSocketTransport;
+  final DartEdgeClientWebTransportTransport? webTransportTransport;
   final Map<String, String> defaultHeaders;
 
   Future<DartEdgeClientResponseObject<TResponse>>
@@ -96,6 +98,33 @@ abstract base class DartEdgeHttpClientBase {
           body: null,
         ),
         protocols: invocation.protocols,
+      ),
+    );
+  }
+
+  Future<DartEdgeClientWebTransportSession>
+  connectWebTransport<TParams, TQuery, THeaders>(
+    DartEdgeClientWebTransportInvocation<TParams, TQuery, THeaders> invocation,
+  ) {
+    final transport = webTransportTransport;
+    if (transport == null) {
+      throw StateError(
+        'No DartEdgeClientWebTransportTransport configured for this client.',
+      );
+    }
+
+    final httpUri = _buildUri(
+      invocation.pathTemplate,
+      params: invocation.params,
+      query: invocation.query,
+    );
+    return transport.connect(
+      DartEdgeClientWebTransportRequest(
+        uri: _httpsUri(httpUri),
+        headers: _buildHeaders<THeaders, Never>(
+          headers: invocation.headers,
+          body: null,
+        ),
       ),
     );
   }
@@ -314,6 +343,20 @@ abstract base class DartEdgeHttpClientBase {
     );
   }
 
+  Uri _httpsUri(Uri uri) {
+    return uri.replace(
+      scheme: switch (uri.scheme) {
+        'https' => 'https',
+        'http' => 'https',
+        final scheme => throw ArgumentError.value(
+          scheme,
+          'baseUri.scheme',
+          'Expected http or https.',
+        ),
+      },
+    );
+  }
+
   bool _isJsonContentType(String value) {
     return value.toLowerCase().startsWith('application/json');
   }
@@ -401,6 +444,28 @@ final class DartEdgeClientWebSocketInvocation<TParams, TQuery, THeaders> {
 
   /// Optional WebSocket subprotocols.
   final List<String> protocols;
+}
+
+/// Fully described generated-client WebTransport invocation.
+final class DartEdgeClientWebTransportInvocation<TParams, TQuery, THeaders> {
+  const DartEdgeClientWebTransportInvocation({
+    required this.pathTemplate,
+    this.params,
+    this.query,
+    this.headers,
+  });
+
+  /// Route path template using Dart Edge parameter syntax.
+  final String pathTemplate;
+
+  /// Optional path-parameter payload.
+  final DartEdgeClientRequestValue<TParams>? params;
+
+  /// Optional query payload.
+  final DartEdgeClientRequestValue<TQuery>? query;
+
+  /// Optional header payload.
+  final DartEdgeClientRequestValue<THeaders>? headers;
 }
 
 /// Schema-backed generated-client request value.

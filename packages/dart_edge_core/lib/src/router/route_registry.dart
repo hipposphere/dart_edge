@@ -1,6 +1,8 @@
 import '../http/http_method.dart';
 import '../websocket/web_socket_route_definition.dart';
 import '../websocket/web_socket_route_mount.dart';
+import '../webtransport/web_transport_route_definition.dart';
+import '../webtransport/web_transport_route_mount.dart';
 import 'guard.dart';
 import 'http_route_definition.dart';
 import 'http_route_mount.dart';
@@ -39,6 +41,25 @@ final class RouteRegistry<TServices> {
     required List<Guard<TServices>> guards,
     required RouteExposure exposure,
     required WebSocketRouteMount<TServices> mount,
+  }) {
+    registrations.add(
+      RouteRegistration(
+        prefix: prefix,
+        tags: tags,
+        guards: guards,
+        exposure: exposure,
+        route: mount.route,
+        httpPath: mount.path,
+      ),
+    );
+  }
+
+  void registerWebTransport({
+    required String prefix,
+    required List<String> tags,
+    required List<Guard<TServices>> guards,
+    required RouteExposure exposure,
+    required WebTransportRouteMount<TServices> mount,
   }) {
     registrations.add(
       RouteRegistration(
@@ -145,6 +166,23 @@ final class RouteRegistration<TServices> {
         final routeTags = _mergeTags(tags, options.tags);
         final parts = <String>[
           'WS $fullPath',
+          'operationId: ${options.operationId}',
+          if (routeTags.isNotEmpty) 'tags: $routeTags',
+          if (guards.isNotEmpty) 'guards: $guards',
+          if (exposure != RouteExposure.all) 'exposure: $exposure',
+          'route: $route',
+        ];
+        return 'RouteRegistration(${parts.join(', ')})';
+      case final WebTransportRouteDefinition<TServices> route:
+        final path = httpPath;
+        if (path == null) {
+          return 'RouteRegistration(prefix: $prefix, tags: $tags, guards: $guards, route: $route)';
+        }
+        final fullPath = joinRoutePath(prefix, path);
+        final options = route.options.normalized();
+        final routeTags = _mergeTags(tags, options.tags);
+        final parts = <String>[
+          'WT $fullPath',
           'operationId: ${options.operationId}',
           if (routeTags.isNotEmpty) 'tags: $routeTags',
           if (guards.isNotEmpty) 'guards: $guards',

@@ -43,6 +43,7 @@ DecodedNativeTransportRequest decodeNativeTransportRequest(
       nativeBody: nativeBody,
       requestKind: switch (request.request_kind) {
         1 => TransportRequestKind.webSocket,
+        2 => TransportRequestKind.webTransport,
         _ => TransportRequestKind.http,
       },
       bodyKind: switch (request.body_kind) {

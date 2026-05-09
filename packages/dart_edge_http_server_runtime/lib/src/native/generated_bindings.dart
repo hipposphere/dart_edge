@@ -21,6 +21,15 @@ external bool dart_edge_http_server_runtime_accept_web_socket(
   ffi.Pointer<imp$1.NativePair> headers,
 );
 
+@ffi.Native<
+  ffi.Bool Function(ffi.Int64, ffi.IntPtr, ffi.Pointer<imp$1.NativePair>)
+>()
+external bool dart_edge_http_server_runtime_accept_web_transport(
+  int request_id,
+  int header_count,
+  ffi.Pointer<imp$1.NativePair> headers,
+);
+
 @ffi.Native<ffi.Bool Function(ffi.Int64)>()
 external bool dart_edge_http_server_runtime_finish_sse_response(int request_id);
 
@@ -53,6 +62,21 @@ external void dart_edge_http_server_runtime_free_web_socket_connection(
 )
 external void dart_edge_http_server_runtime_free_web_socket_message(
   ffi.Pointer<NativeWebSocketMessage> value,
+);
+
+@ffi.Native<ffi.Void Function(ffi.Pointer<NativeWebTransportConnection>)>()
+external void dart_edge_http_server_runtime_free_web_transport_connection(
+  ffi.Pointer<NativeWebTransportConnection> value,
+);
+
+@ffi.Native<ffi.Void Function(ffi.Pointer<NativeWebTransportDatagram>)>()
+external void dart_edge_http_server_runtime_free_web_transport_datagram(
+  ffi.Pointer<NativeWebTransportDatagram> value,
+);
+
+@ffi.Native<ffi.Void Function(ffi.Pointer<NativeWebTransportStream>)>()
+external void dart_edge_http_server_runtime_free_web_transport_stream(
+  ffi.Pointer<NativeWebTransportStream> value,
 );
 
 @ffi.Native<ffi.Int32 Function()>(isLeaf: true)
@@ -147,6 +171,18 @@ dart_edge_http_server_runtime_take_web_socket_connection(int session_id);
 external ffi.Pointer<NativeWebSocketMessage>
 dart_edge_http_server_runtime_take_web_socket_message(int session_id);
 
+@ffi.Native<ffi.Pointer<NativeWebTransportConnection> Function(ffi.Int64)>()
+external ffi.Pointer<NativeWebTransportConnection>
+dart_edge_http_server_runtime_take_web_transport_connection(int session_id);
+
+@ffi.Native<ffi.Pointer<NativeWebTransportDatagram> Function(ffi.Int64)>()
+external ffi.Pointer<NativeWebTransportDatagram>
+dart_edge_http_server_runtime_take_web_transport_datagram(int session_id);
+
+@ffi.Native<ffi.Pointer<NativeWebTransportStream> Function(ffi.Int64)>()
+external ffi.Pointer<NativeWebTransportStream>
+dart_edge_http_server_runtime_take_web_transport_stream(int session_id);
+
 @ffi.Native<ffi.Bool Function(ffi.Int64, ffi.Int32, ffi.Pointer<ffi.Char>)>()
 external bool dart_edge_http_server_runtime_web_socket_close(
   int session_id,
@@ -164,6 +200,25 @@ external bool dart_edge_http_server_runtime_web_socket_send_binary(
 external bool dart_edge_http_server_runtime_web_socket_send_text(
   int session_id,
   ffi.Pointer<ffi.Char> text,
+);
+
+@ffi.Native<ffi.Bool Function(ffi.Int64, ffi.Int32, ffi.Pointer<ffi.Char>)>()
+external bool dart_edge_http_server_runtime_web_transport_close(
+  int session_id,
+  int code,
+  ffi.Pointer<ffi.Char> reason,
+);
+
+@ffi.Native<ffi.Bool Function(ffi.Int64, imp$1.NativeBytes)>()
+external bool dart_edge_http_server_runtime_web_transport_send_datagram(
+  int session_id,
+  imp$1.NativeBytes body,
+);
+
+@ffi.Native<ffi.Bool Function(ffi.Int64, imp$1.NativeBytes)>()
+external bool dart_edge_http_server_runtime_web_transport_send_stream(
+  int session_id,
+  imp$1.NativeBytes body,
 );
 
 final class NativeHttpRequest extends ffi.Struct {
@@ -285,6 +340,45 @@ final class NativeWebSocketMessage extends ffi.Struct {
 
   @ffi.Uint8()
   external int kind;
+
+  external imp$1.NativeBytes body;
+}
+
+final class NativeWebTransportConnection extends ffi.Struct {
+  @ffi.Int64()
+  external int session_id;
+
+  @ffi.Int64()
+  external int request_id;
+
+  external imp$1.NativeBytes route_id;
+
+  @ffi.IntPtr()
+  external int path_param_count;
+
+  external ffi.Pointer<imp$1.NativePair> path_params;
+
+  @ffi.IntPtr()
+  external int query_count;
+
+  external ffi.Pointer<imp$1.NativePair> query;
+
+  @ffi.IntPtr()
+  external int header_count;
+
+  external ffi.Pointer<imp$1.NativePair> headers;
+}
+
+final class NativeWebTransportDatagram extends ffi.Struct {
+  @ffi.Int64()
+  external int session_id;
+
+  external imp$1.NativeBytes body;
+}
+
+final class NativeWebTransportStream extends ffi.Struct {
+  @ffi.Int64()
+  external int session_id;
 
   external imp$1.NativeBytes body;
 }

@@ -74,6 +74,31 @@ void main() {
       expect(source, contains('connectWebSocket<RoomPath, Never, Never>'));
     });
 
+    test('emits webtransport connect methods', () {
+      final source = const DartEdgeClientGenerator().generate(
+        const DartEdgeClientLibrarySpec(
+          className: 'RealtimeClient',
+          operations: [],
+          webTransports: [
+            DartEdgeClientWebTransportOperation(
+              path: '/rooms/<id>/transport',
+              operationId: 'connectRoomTransport',
+              paramsType: 'RoomPath',
+            ),
+          ],
+        ),
+      );
+
+      expect(
+        source,
+        contains(
+          'Future<DartEdgeClientWebTransportSession> connectRoomTransport',
+        ),
+      );
+      expect(source, contains("pathTemplate: '/rooms/<id>/transport'"));
+      expect(source, contains('connectWebTransport<RoomPath, Never, Never>'));
+    });
+
     test('emits Uint8List bindings for binary response contracts', () {
       final source = const DartEdgeClientGenerator().generate(
         const DartEdgeClientLibrarySpec(
@@ -253,6 +278,11 @@ void main() {
         options: const WebSocketOptions(operationId: 'connectEvents'),
         onConnect: (_) async {},
       );
+      router.webtransport(
+        '/datagrams',
+        options: const WebTransportOptions(operationId: 'connectDatagrams'),
+        onConnect: (_) async {},
+      );
       final auth = router.router('/auth');
       auth.post(
         '/delete-user',
@@ -291,6 +321,10 @@ void main() {
         contains('Future<DartEdgeClientResponseObject<UserDto>> createUser({'),
       );
       expect(source, contains('Future<DartEdgeClientWebSocket> connectEvents'));
+      expect(
+        source,
+        contains('Future<DartEdgeClientWebTransportSession> connectDatagrams'),
+      );
       expect(source, contains('authDeleteUser'));
       expect(source, contains("pathTemplate: '/auth/delete-user'"));
       expect(
@@ -914,6 +948,37 @@ void main() {
         ),
       );
     });
+
+    test('builds webtransport connection requests', () async {
+      final transport = _FakeWebTransportTransport(
+        onConnect: (request) async {
+          expect(
+            request.uri,
+            Uri.parse('https://api.example.test/v1/rooms/42/transport'),
+          );
+          expect(request.headers, {'authorization': 'Bearer token'});
+          return const _FakeWebTransportSession();
+        },
+      );
+      final client = _TestClient(
+        baseUri: Uri.parse('https://api.example.test/v1'),
+        transport: _FakeTransport(
+          onSend: (_) => throw StateError('HTTP transport should not run.'),
+        ),
+        webTransportTransport: transport,
+        defaultHeaders: const {'authorization': 'Bearer token'},
+      );
+
+      await client.connectWebTransport<RoomPath, Never, Never>(
+        const DartEdgeClientWebTransportInvocation<RoomPath, Never, Never>(
+          pathTemplate: '/rooms/<id>/transport',
+          params: DartEdgeClientRequestValue<RoomPath>(
+            value: RoomPath(id: '42'),
+            encoder: RoomPath.toJson,
+          ),
+        ),
+      );
+    });
   });
 }
 
@@ -922,6 +987,7 @@ final class _TestClient extends DartEdgeHttpClientBase {
     required super.baseUri,
     required super.transport,
     super.webSocketTransport,
+    super.webTransportTransport,
     super.defaultHeaders,
   });
 }
@@ -972,6 +1038,43 @@ final class _FakeWebSocket implements DartEdgeClientWebSocket {
 
   @override
   Future<void> sendText(String value) async {}
+}
+
+final class _FakeWebTransportTransport
+    implements DartEdgeClientWebTransportTransport {
+  const _FakeWebTransportTransport({required this.onConnect});
+
+  final Future<DartEdgeClientWebTransportSession> Function(
+    DartEdgeClientWebTransportRequest request,
+  )
+  onConnect;
+
+  @override
+  Future<DartEdgeClientWebTransportSession> connect(
+    DartEdgeClientWebTransportRequest request,
+  ) {
+    return onConnect(request);
+  }
+}
+
+final class _FakeWebTransportSession
+    implements DartEdgeClientWebTransportSession {
+  const _FakeWebTransportSession();
+
+  @override
+  Stream<Uint8List> get datagrams => const Stream.empty();
+
+  @override
+  Stream<Uint8List> get streams => const Stream.empty();
+
+  @override
+  Future<void> close([int? code, String? reason]) async {}
+
+  @override
+  Future<void> sendDatagram(List<int> value) async {}
+
+  @override
+  Future<void> sendStream(List<int> value) async {}
 }
 
 final class RoomPath {

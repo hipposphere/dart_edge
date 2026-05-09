@@ -2,7 +2,7 @@ import 'package:dart_edge_core/dart_edge_core.dart';
 import 'package:test/test.dart';
 
 void main() {
-  test('route and websocket options default to all generated surfaces', () {
+  test('route realtime options default to all generated surfaces', () {
     final routeOptions = RouteOptions(
       operationId: 'getHealth',
       success: ResponseSpec.text(),
@@ -10,9 +10,13 @@ void main() {
     final webSocketOptions = const WebSocketOptions(
       operationId: 'connectEvents',
     ).normalized();
+    final webTransportOptions = const WebTransportOptions(
+      operationId: 'connectDatagrams',
+    ).normalized();
 
     expect(routeOptions.exposure, RouteExposure.all);
     expect(webSocketOptions.exposure, RouteExposure.all);
+    expect(webTransportOptions.exposure, RouteExposure.all);
   });
 
   test('router exposure is inherited restrictively', () {

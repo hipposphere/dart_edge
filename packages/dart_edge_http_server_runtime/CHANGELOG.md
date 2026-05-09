@@ -1,3 +1,10 @@
+## 0.3.15
+
+- Add WebTransport route runtime support over QUIC/HTTP3 with datagram and
+  reliable stream payload handling.
+- Require `dart_edge_core` 0.3.11.
+- Bump the native artifact version to 0.1.10 for the WebTransport ABI.
+
 ## 0.3.14
 
 - Send normal HTTP responses through the native runtime as bytes instead of

@@ -3,6 +3,10 @@ import '../websocket/handler_web_socket_route_definition.dart';
 import '../websocket/web_socket_options.dart';
 import '../websocket/web_socket_route_definition.dart';
 import '../websocket/web_socket_route_mount.dart';
+import '../webtransport/handler_web_transport_route_definition.dart';
+import '../webtransport/web_transport_options.dart';
+import '../webtransport/web_transport_route_definition.dart';
+import '../webtransport/web_transport_route_mount.dart';
 import 'guard.dart';
 import 'handler_http_route_definition.dart';
 import 'http_route_definition.dart';
@@ -103,6 +107,14 @@ class Router<TServices> {
     List<Guard<TServices>>? guards,
   }) {
     _registerWebSocketRouteMount(route, guards: guards);
+  }
+
+  /// Mounts one explicit WebTransport route mount.
+  void mountWebTransportRoute(
+    WebTransportRouteMount<TServices> route, {
+    List<Guard<TServices>>? guards,
+  }) {
+    _registerWebTransportRouteMount(route, guards: guards);
   }
 
   /// Mounts one native HTTP route.
@@ -362,6 +374,39 @@ class Router<TServices> {
     );
   }
 
+  /// Registers an inline WebTransport handler.
+  void webtransport(
+    String path, {
+    WebTransportOptions options = const WebTransportOptions(),
+    List<Guard<TServices>>? guards,
+    required WebTransportRouteHandler<TServices> onConnect,
+  }) {
+    mountWebTransportRoute(
+      WebTransportRouteMount<TServices>(
+        path: path,
+        route: HandlerWebTransportRouteDefinition<TServices>(
+          options: options.normalized(
+            defaultOperationId: _defaultWebTransportOperationId(path: path),
+          ),
+          handler: onConnect,
+        ),
+      ),
+      guards: guards,
+    );
+  }
+
+  /// Registers an explicit WebTransport route class.
+  void routeWebTransport(
+    String path,
+    WebTransportRouteDefinition<TServices> route, {
+    List<Guard<TServices>>? guards,
+  }) {
+    mountWebTransportRoute(
+      WebTransportRouteMount<TServices>(path: path, route: route),
+      guards: guards,
+    );
+  }
+
   void _registerHttpRoute<TSuccess>({
     required HttpMethod method,
     required String path,
@@ -424,6 +469,19 @@ class Router<TServices> {
     );
   }
 
+  void _registerWebTransportRouteMount(
+    WebTransportRouteMount<TServices> mount, {
+    List<Guard<TServices>>? guards,
+  }) {
+    routeRegistry.registerWebTransport(
+      prefix: prefix,
+      tags: tags,
+      guards: [...this.guards, ...?guards],
+      exposure: exposure,
+      mount: mount,
+    );
+  }
+
   String _defaultOperationId({
     required HttpMethod method,
     required String path,
@@ -443,6 +501,15 @@ class Router<TServices> {
     }
 
     return 'webSocket${words.map(_capitalize).join()}';
+  }
+
+  String _defaultWebTransportOperationId({required String path}) {
+    final words = _defaultPathWords(path);
+    if (words.isEmpty) {
+      return 'webTransportRoot';
+    }
+
+    return 'webTransport${words.map(_capitalize).join()}';
   }
 
   List<String> _defaultPathWords(String path) {

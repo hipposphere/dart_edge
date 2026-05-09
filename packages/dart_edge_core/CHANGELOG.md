@@ -1,3 +1,8 @@
+## 0.3.11
+
+- Add WebTransport core route, context, generated-client, datagram, and
+  reliable stream payload contracts.
+
 ## 0.3.10
 
 - Add binary response contracts with `RawResponse.binary`,

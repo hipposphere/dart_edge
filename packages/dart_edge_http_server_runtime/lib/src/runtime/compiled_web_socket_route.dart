@@ -43,7 +43,7 @@ final class CompiledWebSocketRoute<TServices> {
       guards: registration.guards,
       options: _effectiveOptions(registration, options),
       path: path,
-      patternSegments: _parsePattern(path),
+      patternSegments: parseRealtimePattern(path),
     );
   }
 
@@ -74,7 +74,7 @@ WebSocketOptions _effectiveOptions<TServices>(
   );
 }
 
-List<RouteSegment> _parsePattern(String path) {
+List<RouteSegment> parseRealtimePattern(String path) {
   if (path == '/') {
     return const <RouteSegment>[];
   }

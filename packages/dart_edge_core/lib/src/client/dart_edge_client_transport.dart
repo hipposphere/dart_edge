@@ -107,6 +107,37 @@ abstract interface class DartEdgeClientWebSocketTransport {
   );
 }
 
+/// One outbound WebTransport connection request emitted by a generated client.
+final class DartEdgeClientWebTransportRequest {
+  const DartEdgeClientWebTransportRequest({
+    required this.uri,
+    this.headers = const <String, String>{},
+  });
+
+  final Uri uri;
+  final Map<String, String> headers;
+}
+
+/// Active WebTransport session returned by a generated client.
+abstract interface class DartEdgeClientWebTransportSession {
+  Stream<Uint8List> get datagrams;
+
+  Stream<Uint8List> get streams;
+
+  Future<void> sendDatagram(List<int> value);
+
+  Future<void> sendStream(List<int> value);
+
+  Future<void> close([int? code, String? reason]);
+}
+
+/// Transport abstraction used by generated WebTransport client methods.
+abstract interface class DartEdgeClientWebTransportTransport {
+  Future<DartEdgeClientWebTransportSession> connect(
+    DartEdgeClientWebTransportRequest request,
+  );
+}
+
 /// Raised when a response does not match the generated route contract.
 final class DartEdgeClientResponseException implements Exception {
   const DartEdgeClientResponseException({

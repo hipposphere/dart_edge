@@ -12,6 +12,7 @@ final class DartEdgeClientLibrarySpec {
     required this.className,
     required this.operations,
     this.webSockets = const <DartEdgeClientWebSocketOperation>[],
+    this.webTransports = const <DartEdgeClientWebTransportOperation>[],
     this.schemas = const <JsonSchema>[],
     this.schemaTypes = const <String, String>{},
     this.externalSchemaIds = const <String>{},
@@ -21,6 +22,7 @@ final class DartEdgeClientLibrarySpec {
   final String className;
   final List<DartEdgeClientOperation> operations;
   final List<DartEdgeClientWebSocketOperation> webSockets;
+  final List<DartEdgeClientWebTransportOperation> webTransports;
   final List<JsonSchema> schemas;
   final Map<String, String> schemaTypes;
   final Set<String> externalSchemaIds;
@@ -38,6 +40,7 @@ final class DartEdgeClientLibrarySpec {
   }) {
     final operations = <DartEdgeClientOperation>[];
     final webSockets = <DartEdgeClientWebSocketOperation>[];
+    final webTransports = <DartEdgeClientWebTransportOperation>[];
     final discoveredSchemas = _ClientSchemaCollector(schemas);
 
     for (final registration in router.routeRegistry.registrations) {
@@ -137,6 +140,31 @@ final class DartEdgeClientLibrarySpec {
                   ),
             ),
           );
+        case final WebTransportRouteDefinition<dynamic> route:
+          final webTransportOptions = _effectiveWebTransportOptions(
+            registration,
+            route.options.normalized(),
+          );
+          if (!webTransportOptions.exposure.client ||
+              options.ignoresOperation(webTransportOptions.operationId!)) {
+            continue;
+          }
+          webTransports.add(
+            DartEdgeClientWebTransportOperation(
+              path: fullPath,
+              operationId: webTransportOptions.operationId!,
+              methodName:
+                  _prefixedMethodName(
+                    registration.prefix,
+                    webTransportOptions.operationId!,
+                  ) ??
+                  _pathPrefixedMethodName(
+                    fullPath,
+                    webTransportOptions.operationId!,
+                    options.methodNamePathPrefixes,
+                  ),
+            ),
+          );
       }
     }
 
@@ -144,6 +172,7 @@ final class DartEdgeClientLibrarySpec {
       className: className,
       operations: operations,
       webSockets: webSockets,
+      webTransports: webTransports,
       schemas: discoveredSchemas.schemas,
       schemaTypes: schemaTypes,
       externalSchemaIds: externalSchemaIds,
@@ -249,6 +278,27 @@ final class DartEdgeClientOperation {
 /// Build-time description of one generated WebSocket client method.
 final class DartEdgeClientWebSocketOperation {
   const DartEdgeClientWebSocketOperation({
+    required this.path,
+    required this.operationId,
+    this.methodName,
+    this.paramsType,
+    this.queryType,
+    this.headersType,
+  });
+
+  final String path;
+  final String operationId;
+  final String? methodName;
+  final String? paramsType;
+  final String? queryType;
+  final String? headersType;
+
+  String get resolvedMethodName => methodName ?? _lowerCamel(operationId);
+}
+
+/// Build-time description of one generated WebTransport client method.
+final class DartEdgeClientWebTransportOperation {
+  const DartEdgeClientWebTransportOperation({
     required this.path,
     required this.operationId,
     this.methodName,
@@ -582,6 +632,7 @@ $entries
         ..methods.addAll([
           ...spec.operations.map(_operationMethod),
           ...spec.webSockets.map(_webSocketMethod),
+          ...spec.webTransports.map(_webTransportMethod),
         ]);
     });
   }
@@ -592,6 +643,7 @@ $entries
         _superParameter('baseUri', required: true),
         _superParameter('transport', required: true),
         _superParameter('webSocketTransport'),
+        _superParameter('webTransportTransport'),
         _superParameter(
           'defaultHeaders',
           defaultTo: literalConstMap(
@@ -712,6 +764,78 @@ $entries
 
   List<Reference> _webSocketInvocationTypes(
     DartEdgeClientWebSocketOperation operation,
+  ) {
+    return <Reference>[
+      refer(operation.paramsType ?? 'Never'),
+      refer(operation.queryType == null ? 'Never' : '${operation.queryType}?'),
+      refer(
+        operation.headersType == null ? 'Never' : '${operation.headersType}?',
+      ),
+    ];
+  }
+
+  Method _webTransportMethod(DartEdgeClientWebTransportOperation operation) {
+    final invocationTypes = _webTransportInvocationTypes(operation);
+    return Method((builder) {
+      builder
+        ..returns = _type('Future', [
+          refer('DartEdgeClientWebTransportSession'),
+        ])
+        ..name = operation.resolvedMethodName
+        ..optionalParameters.addAll(_webTransportParameters(operation))
+        ..body = refer('connectWebTransport')
+            .call(
+              [
+                refer(
+                  'DartEdgeClientWebTransportInvocation',
+                ).newInstance(const <Expression>[], {
+                  'pathTemplate': literalString(operation.path),
+                  if (operation.paramsType != null)
+                    'params': _requestValueExpression(
+                      type: operation.paramsType!,
+                      schemaId: null,
+                      value: refer('params'),
+                      encode: _encoderFor(operation.paramsType!),
+                    ),
+                  if (operation.queryType != null)
+                    'query': _requestValueExpression(
+                      type: '${operation.queryType}?',
+                      schemaId: null,
+                      value: refer('query'),
+                      encode: _nullableEncoderFor(operation.queryType!),
+                    ),
+                  if (operation.headersType != null)
+                    'headers': _requestValueExpression(
+                      type: '${operation.headersType}?',
+                      schemaId: null,
+                      value: refer('headers'),
+                      encode: _nullableEncoderFor(operation.headersType!),
+                    ),
+                }, invocationTypes),
+              ],
+              const <String, Expression>{},
+              invocationTypes,
+            )
+            .returned
+            .statement;
+    });
+  }
+
+  Iterable<Parameter> _webTransportParameters(
+    DartEdgeClientWebTransportOperation operation,
+  ) {
+    return <Parameter>[
+      if (operation.paramsType case final type?)
+        _namedParameter('params', type: refer(type), required: true),
+      if (operation.queryType case final type?)
+        _namedParameter('query', type: refer('$type?')),
+      if (operation.headersType case final type?)
+        _namedParameter('headers', type: refer('$type?')),
+    ];
+  }
+
+  List<Reference> _webTransportInvocationTypes(
+    DartEdgeClientWebTransportOperation operation,
   ) {
     return <Reference>[
       refer(operation.paramsType ?? 'Never'),
@@ -1116,6 +1240,19 @@ WebSocketOptions _effectiveWebSocketOptions<TServices>(
   WebSocketOptions options,
 ) {
   return WebSocketOptions(
+    operationId: options.operationId,
+    summary: options.summary,
+    tags: _mergeTags(registration.tags, options.tags),
+    deprecated: options.deprecated,
+    exposure: registration.exposure.restrict(options.exposure),
+  );
+}
+
+WebTransportOptions _effectiveWebTransportOptions<TServices>(
+  RouteRegistration<TServices> registration,
+  WebTransportOptions options,
+) {
+  return WebTransportOptions(
     operationId: options.operationId,
     summary: options.summary,
     tags: _mergeTags(registration.tags, options.tags),

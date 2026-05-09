@@ -11,3 +11,5 @@ export 'router/route_registry.dart';
 export 'router/router.dart';
 export 'websocket/handler_web_socket_route_definition.dart';
 export 'websocket/web_socket_options.dart';
+export 'webtransport/handler_web_transport_route_definition.dart';
+export 'webtransport/web_transport_options.dart';

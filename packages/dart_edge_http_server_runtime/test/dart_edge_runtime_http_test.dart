@@ -30,6 +30,24 @@ void main() {
     },
   );
 
+  test('starts with webtransport routes in the native manifest', () async {
+    final app = DartEdge<void>(services: () {});
+    app.webtransport(
+      '/events',
+      options: const WebTransportOptions(operationId: 'connectEvents'),
+      onConnect: (transport) async {
+        await for (final datagram in transport.datagrams.datagrams()) {
+          await transport.sendDatagram(datagram);
+        }
+      },
+    );
+
+    final server = await app.listen(port: 0);
+
+    addTearDown(server.close);
+    expect(server.port, isPositive);
+  });
+
   test('binds to an explicit deploy host and serves requests', () async {
     final app = DartEdge<void>(services: () {});
     app.get('/health', handler: (_) => const {'status': 'ok'});

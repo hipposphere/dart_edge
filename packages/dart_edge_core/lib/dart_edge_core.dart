@@ -12,3 +12,4 @@ export 'src/http.dart';
 export 'src/router.dart';
 export 'src/sql.dart';
 export 'src/web_socket.dart';
+export 'src/web_transport.dart';

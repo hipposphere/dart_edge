@@ -3,7 +3,7 @@ import 'dart:typed_data';
 import 'native_request.dart';
 
 /// Transport request kind received from the native runtime.
-enum TransportRequestKind { http, webSocket }
+enum TransportRequestKind { http, webSocket, webTransport }
 
 /// Encoded request body kind received from the native transport.
 enum TransportRequestBodyKind { none, text, json, multipart }

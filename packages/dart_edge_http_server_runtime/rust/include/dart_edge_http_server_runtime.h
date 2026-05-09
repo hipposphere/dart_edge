@@ -43,6 +43,28 @@ typedef struct NativeWebSocketMessage {
   NativeBytes body;
 } NativeWebSocketMessage;
 
+typedef struct NativeWebTransportConnection {
+  int64_t session_id;
+  int64_t request_id;
+  NativeBytes route_id;
+  intptr_t path_param_count;
+  const NativePair* path_params;
+  intptr_t query_count;
+  const NativePair* query;
+  intptr_t header_count;
+  const NativePair* headers;
+} NativeWebTransportConnection;
+
+typedef struct NativeWebTransportDatagram {
+  int64_t session_id;
+  NativeBytes body;
+} NativeWebTransportDatagram;
+
+typedef struct NativeWebTransportStream {
+  int64_t session_id;
+  NativeBytes body;
+} NativeWebTransportStream;
+
 typedef struct NativeMultipartField {
   NativeBytes name;
   NativeBytes value;
@@ -83,6 +105,11 @@ bool dart_edge_http_server_runtime_accept_web_socket(
     intptr_t header_count,
     const NativePair* headers);
 
+bool dart_edge_http_server_runtime_accept_web_transport(
+    int64_t request_id,
+    intptr_t header_count,
+    const NativePair* headers);
+
 bool dart_edge_http_server_runtime_start_sse_response(
     int64_t request_id,
     int32_t status,
@@ -112,6 +139,37 @@ NativeWebSocketMessage* dart_edge_http_server_runtime_take_web_socket_message(
 
 void dart_edge_http_server_runtime_free_web_socket_message(
     NativeWebSocketMessage* value);
+
+NativeWebTransportConnection* dart_edge_http_server_runtime_take_web_transport_connection(
+    int64_t session_id);
+
+void dart_edge_http_server_runtime_free_web_transport_connection(
+    NativeWebTransportConnection* value);
+
+NativeWebTransportDatagram* dart_edge_http_server_runtime_take_web_transport_datagram(
+    int64_t session_id);
+
+void dart_edge_http_server_runtime_free_web_transport_datagram(
+    NativeWebTransportDatagram* value);
+
+NativeWebTransportStream* dart_edge_http_server_runtime_take_web_transport_stream(
+    int64_t session_id);
+
+void dart_edge_http_server_runtime_free_web_transport_stream(
+    NativeWebTransportStream* value);
+
+bool dart_edge_http_server_runtime_web_transport_send_datagram(
+    int64_t session_id,
+    NativeBytes body);
+
+bool dart_edge_http_server_runtime_web_transport_send_stream(
+    int64_t session_id,
+    NativeBytes body);
+
+bool dart_edge_http_server_runtime_web_transport_close(
+    int64_t session_id,
+    int32_t code,
+    const char* reason);
 
 bool dart_edge_http_server_runtime_web_socket_send_text(
     int64_t session_id,

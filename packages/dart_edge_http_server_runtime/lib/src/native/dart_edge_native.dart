@@ -12,6 +12,7 @@ import '../runtime/transport_request.dart';
 import 'generated_bindings.dart' as gen;
 import 'native_transport_request.dart';
 import 'native_transport_web_socket.dart';
+import 'native_transport_web_transport.dart';
 
 typedef NativeTransportEvent = Void Function(Int32, Int64);
 
@@ -45,7 +46,7 @@ abstract final class DartEdgeNative {
       gen.dart_edge_http_server_runtime_native_abi_version();
 
   /// Whether the current process can load the bundled runtime asset.
-  static bool get hasBundledRuntime => abiVersion >= 11;
+  static bool get hasBundledRuntime => abiVersion >= 12;
 
   /// Starts the native HTTP server.
   static int startServer(
@@ -151,6 +152,22 @@ abstract final class DartEdgeNative {
     );
   }
 
+  /// Accepts a pending WebTransport CONNECT request.
+  static bool acceptWebTransport(
+    int requestId, {
+    List<HttpHeader> headers = const <HttpHeader>[],
+  }) {
+    return _withNativeHeaders(
+      headers,
+      (headerStorage, headerCount) =>
+          gen.dart_edge_http_server_runtime_accept_web_transport(
+            requestId,
+            headerCount,
+            headerStorage,
+          ),
+    );
+  }
+
   /// Starts an SSE response for a previously taken request.
   static bool startSseResponse(
     int requestId, {
@@ -219,6 +236,57 @@ abstract final class DartEdgeNative {
     }
   }
 
+  /// Reads one queued WebTransport connection open event from the native runtime.
+  static NativeWebTransportConnection? takeWebTransportConnection(
+    int sessionId,
+  ) {
+    final connectionPtr = gen
+        .dart_edge_http_server_runtime_take_web_transport_connection(sessionId);
+    if (connectionPtr == nullptr) {
+      return null;
+    }
+
+    try {
+      return decodeNativeWebTransportConnection(connectionPtr);
+    } finally {
+      gen.dart_edge_http_server_runtime_free_web_transport_connection(
+        connectionPtr,
+      );
+    }
+  }
+
+  /// Reads one queued WebTransport datagram from the native runtime.
+  static NativeWebTransportDatagram? takeWebTransportDatagram(int sessionId) {
+    final datagramPtr = gen
+        .dart_edge_http_server_runtime_take_web_transport_datagram(sessionId);
+    if (datagramPtr == nullptr) {
+      return null;
+    }
+
+    try {
+      return decodeNativeWebTransportDatagram(datagramPtr);
+    } finally {
+      gen.dart_edge_http_server_runtime_free_web_transport_datagram(
+        datagramPtr,
+      );
+    }
+  }
+
+  /// Reads one queued WebTransport reliable stream payload from the native runtime.
+  static NativeWebTransportStream? takeWebTransportStream(int sessionId) {
+    final streamPtr = gen
+        .dart_edge_http_server_runtime_take_web_transport_stream(sessionId);
+    if (streamPtr == nullptr) {
+      return null;
+    }
+
+    try {
+      return decodeNativeWebTransportStream(streamPtr);
+    } finally {
+      gen.dart_edge_http_server_runtime_free_web_transport_stream(streamPtr);
+    }
+  }
+
   /// Sends a text frame over an active WebSocket session.
   static bool webSocketSendText(int sessionId, String text) {
     final textPtr = text.toNativeUtf8();
@@ -257,6 +325,65 @@ abstract final class DartEdgeNative {
     final reasonPtr = reason?.toNativeUtf8();
     try {
       return gen.dart_edge_http_server_runtime_web_socket_close(
+        sessionId,
+        code ?? 0,
+        reasonPtr?.cast<Char>() ?? nullptr,
+      );
+    } finally {
+      if (reasonPtr != null) {
+        calloc.free(reasonPtr);
+      }
+    }
+  }
+
+  /// Sends one datagram over an active WebTransport session.
+  static bool webTransportSendDatagram(int sessionId, List<int> body) {
+    return _withNativeBody(
+      body,
+      (nativeBytes) =>
+          gen.dart_edge_http_server_runtime_web_transport_send_datagram(
+            sessionId,
+            nativeBytes,
+          ),
+    );
+  }
+
+  /// Sends one reliable payload over a new WebTransport stream.
+  static bool webTransportSendStream(int sessionId, List<int> body) {
+    return _withNativeBody(
+      body,
+      (nativeBytes) =>
+          gen.dart_edge_http_server_runtime_web_transport_send_stream(
+            sessionId,
+            nativeBytes,
+          ),
+    );
+  }
+
+  static bool _withNativeBody(
+    List<int> body,
+    bool Function(core_ffi.NativeBytes body) run,
+  ) {
+    final bytes = Uint8List.fromList(body);
+    final bodyPtr = calloc<Uint8>(bytes.length);
+    final nativeBytesPtr = calloc<core_ffi.NativeBytes>();
+    try {
+      bodyPtr.asTypedList(bytes.length).setAll(0, bytes);
+      nativeBytesPtr.ref
+        ..ptr = bodyPtr
+        ..len = bytes.length;
+      return run(nativeBytesPtr.ref);
+    } finally {
+      calloc.free(nativeBytesPtr);
+      calloc.free(bodyPtr);
+    }
+  }
+
+  /// Closes an active WebTransport session.
+  static bool webTransportClose(int sessionId, {int? code, String? reason}) {
+    final reasonPtr = reason?.toNativeUtf8();
+    try {
+      return gen.dart_edge_http_server_runtime_web_transport_close(
         sessionId,
         code ?? 0,
         reasonPtr?.cast<Char>() ?? nullptr,

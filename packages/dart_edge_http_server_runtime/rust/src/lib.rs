@@ -1,8 +1,10 @@
 use std::collections::{HashMap, VecDeque};
 use std::ffi::{CStr, CString, c_char};
+use std::net::{IpAddr, SocketAddr};
 use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::{Mutex, RwLock};
 use std::thread;
+use std::time::Duration;
 
 use axum::Router;
 use axum::body::{Body, Bytes};
@@ -25,22 +27,29 @@ use once_cell::sync::Lazy;
 use serde::Deserialize;
 use serde_json::Value;
 use tokio::net::TcpListener;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{mpsc, watch};
 use tower_http::cors::{Any, CorsLayer};
+use wtransport::{
+    Connection as WebTransportConnection, Endpoint as WebTransportEndpoint, Identity,
+    ServerConfig as WebTransportServerConfig, VarInt,
+};
 
-const DART_EDGE_HTTP_SERVER_RUNTIME_NATIVE_ABI_VERSION: i32 = 11;
+const DART_EDGE_HTTP_SERVER_RUNTIME_NATIVE_ABI_VERSION: i32 = 12;
 const SCHEMA_REGISTRY_URI: &str = "urn:dart-edge:schema-registry";
 
 type TransportEventCallback = extern "C" fn(i32, i64);
 
 static NEXT_REQUEST_ID: AtomicI64 = AtomicI64::new(1);
 static NEXT_WEB_SOCKET_SESSION_ID: AtomicI64 = AtomicI64::new(1);
+static NEXT_WEB_TRANSPORT_SESSION_ID: AtomicI64 = AtomicI64::new(1);
 static LAST_ERROR: Lazy<Mutex<Option<String>>> = Lazy::new(|| Mutex::new(None));
 static TRANSPORT_EVENT_CALLBACK: Lazy<Mutex<Option<TransportEventCallback>>> =
     Lazy::new(|| Mutex::new(None));
 static PENDING_REQUESTS: Lazy<Mutex<HashMap<i64, PendingRequest>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
 static WEB_SOCKET_SESSIONS: Lazy<Mutex<HashMap<i64, WebSocketSessionState>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
+static WEB_TRANSPORT_SESSIONS: Lazy<Mutex<HashMap<i64, WebTransportSessionState>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
 static SERVER_STATE: Lazy<Mutex<Option<ServerState>>> = Lazy::new(|| Mutex::new(None));
 static COMPILED_ROUTES: Lazy<RwLock<Vec<CompiledRoute>>> = Lazy::new(|| RwLock::new(Vec::new()));
@@ -53,7 +62,7 @@ struct PendingRequest {
 }
 
 struct ServerState {
-    shutdown_tx: Option<oneshot::Sender<()>>,
+    shutdown_tx: Option<watch::Sender<bool>>,
     join_handle: Option<thread::JoinHandle<()>>,
 }
 
@@ -114,6 +123,31 @@ pub struct NativeWebSocketMessage {
 }
 
 #[repr(C)]
+pub struct NativeWebTransportConnection {
+    session_id: i64,
+    request_id: i64,
+    route_id: NativeBytes,
+    path_param_count: isize,
+    path_params: *const NativePair,
+    query_count: isize,
+    query: *const NativePair,
+    header_count: isize,
+    headers: *const NativePair,
+}
+
+#[repr(C)]
+pub struct NativeWebTransportDatagram {
+    session_id: i64,
+    body: NativeBytes,
+}
+
+#[repr(C)]
+pub struct NativeWebTransportStream {
+    session_id: i64,
+    body: NativeBytes,
+}
+
+#[repr(C)]
 struct NativeTransportRequestHandle {
     request: NativeTransportRequest,
     route_id: OwnedBytes,
@@ -153,6 +187,30 @@ struct NativeWebSocketMessageHandle {
     body: OwnedBytes,
 }
 
+#[repr(C)]
+struct NativeWebTransportConnectionHandle {
+    connection: NativeWebTransportConnection,
+    route_id: OwnedBytes,
+    path_params: Vec<OwnedPair>,
+    path_param_pairs: Box<[NativePair]>,
+    query: Vec<OwnedPair>,
+    query_pairs: Box<[NativePair]>,
+    headers: Vec<OwnedPair>,
+    header_pairs: Box<[NativePair]>,
+}
+
+#[repr(C)]
+struct NativeWebTransportDatagramHandle {
+    datagram: NativeWebTransportDatagram,
+    body: OwnedBytes,
+}
+
+#[repr(C)]
+struct NativeWebTransportStreamHandle {
+    stream: NativeWebTransportStream,
+    body: OwnedBytes,
+}
+
 #[repr(u8)]
 #[derive(Clone, Copy)]
 enum NativeBodyKind {
@@ -167,6 +225,7 @@ enum NativeBodyKind {
 enum NativeRequestKind {
     Http = 0,
     WebSocket = 1,
+    WebTransport = 2,
 }
 
 struct TransportRequest {
@@ -220,6 +279,32 @@ struct WebSocketIncomingMessage {
     body: Vec<u8>,
 }
 
+struct WebTransportSessionState {
+    connection: Option<WebTransportConnectionInfo>,
+    datagrams: VecDeque<WebTransportIncomingDatagram>,
+    streams: VecDeque<WebTransportIncomingStream>,
+    command_tx: mpsc::UnboundedSender<WebTransportCommand>,
+}
+
+struct WebTransportConnectionInfo {
+    session_id: i64,
+    request_id: i64,
+    route_id: String,
+    path_params: HashMap<String, String>,
+    query: HashMap<String, String>,
+    headers: HashMap<String, String>,
+}
+
+struct WebTransportIncomingDatagram {
+    session_id: i64,
+    body: Vec<u8>,
+}
+
+struct WebTransportIncomingStream {
+    session_id: i64,
+    body: Vec<u8>,
+}
+
 #[derive(Clone, Copy)]
 enum WebSocketMessageKind {
     Text = 1,
@@ -231,6 +316,15 @@ enum WebSocketCommand {
     SendBinary(Vec<u8>),
     Close {
         code: Option<u16>,
+        reason: Option<String>,
+    },
+}
+
+enum WebTransportCommand {
+    SendDatagram(Vec<u8>),
+    SendStream(Vec<u8>),
+    Close {
+        code: Option<u32>,
         reason: Option<String>,
     },
 }
@@ -249,6 +343,7 @@ enum RouteTransportKind {
     Http,
     NativeHttp,
     WebSocket,
+    WebTransport,
 }
 
 #[derive(Deserialize)]
@@ -423,6 +518,10 @@ enum TransportEventKind {
     WebSocketOpened = 2,
     WebSocketMessageReady = 3,
     WebSocketClosed = 4,
+    WebTransportOpened = 5,
+    WebTransportDatagramReady = 6,
+    WebTransportClosed = 7,
+    WebTransportStreamReady = 8,
 }
 
 #[unsafe(no_mangle)]
@@ -474,7 +573,7 @@ pub extern "C" fn dart_edge_http_server_runtime_start_server(
     *TRANSPORT_EVENT_CALLBACK.lock().unwrap() = Some(callback);
 
     let (ready_tx, ready_rx) = std::sync::mpsc::channel();
-    let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
+    let (shutdown_tx, shutdown_rx) = watch::channel(false);
     let bind_host = host;
     let requested_port = port as u16;
     let worker_count = worker_count.max(1) as usize;
@@ -489,7 +588,14 @@ pub extern "C" fn dart_edge_http_server_runtime_start_server(
         };
 
         runtime.block_on(async move {
-            let listener = match TcpListener::bind((bind_host.as_str(), requested_port)).await {
+            let bind_address = match resolve_bind_address(&bind_host, requested_port) {
+                Ok(address) => address,
+                Err(error) => {
+                    let _ = ready_tx.send(Err(error));
+                    return;
+                }
+            };
+            let listener = match TcpListener::bind(bind_address).await {
                 Ok(listener) => listener,
                 Err(error) => {
                     let _ = ready_tx.send(Err(error.to_string()));
@@ -505,6 +611,8 @@ pub extern "C" fn dart_edge_http_server_runtime_start_server(
                 }
             };
             let _ = ready_tx.send(Ok(local_port));
+            let mut axum_shutdown_rx = shutdown_rx.clone();
+            let web_transport_shutdown_rx = shutdown_rx.clone();
 
             let mut app = Router::new()
                 .fallback(any(handle_validated_request))
@@ -513,11 +621,23 @@ pub extern "C" fn dart_edge_http_server_runtime_start_server(
                 app = app.layer(cors_layer);
             }
             let server = axum::serve(listener, app).with_graceful_shutdown(async move {
-                let _ = shutdown_rx.await;
+                let _ = axum_shutdown_rx.changed().await;
             });
 
-            if let Err(error) = server.await {
-                eprintln!("dart_edge_http_server_runtime transport server failed: {error}");
+            tokio::select! {
+                result = server => {
+                    if let Err(error) = result {
+                        eprintln!("dart_edge_http_server_runtime transport server failed: {error}");
+                    }
+                }
+                result = run_web_transport_listener(
+                    SocketAddr::new(bind_address.ip(), local_port),
+                    web_transport_shutdown_rx,
+                ) => {
+                    if let Err(error) = result {
+                        eprintln!("dart_edge_http_server_runtime WebTransport listener failed: {error}");
+                    }
+                }
             }
         });
     });
@@ -580,14 +700,22 @@ pub extern "C" fn dart_edge_http_server_runtime_stop_server() {
         }
     }
 
+    {
+        let mut sessions = WEB_TRANSPORT_SESSIONS.lock().unwrap();
+        for (_, session) in sessions.drain() {
+            let _ = session.command_tx.send(WebTransportCommand::Close {
+                code: Some(1012),
+                reason: Some("Server stopped".to_string()),
+            });
+        }
+    }
+
     let server_state = SERVER_STATE.lock().unwrap().take();
     if let Some(mut state) = server_state {
         if let Some(shutdown_tx) = state.shutdown_tx.take() {
-            let _ = shutdown_tx.send(());
+            let _ = shutdown_tx.send(true);
         }
-        if let Some(join_handle) = state.join_handle.take() {
-            let _ = join_handle.join();
-        }
+        let _ = state.join_handle.take();
     }
 }
 
@@ -622,6 +750,20 @@ pub extern "C" fn dart_edge_http_server_runtime_free_request(value: *mut NativeT
 
 #[unsafe(no_mangle)]
 pub extern "C" fn dart_edge_http_server_runtime_accept_web_socket(
+    request_id: i64,
+    header_count: isize,
+    headers: *const NativePair,
+) -> bool {
+    let headers = unsafe { read_pairs_vec(headers, header_count) };
+    send_pending_response_message(
+        request_id,
+        PendingResponseMessage::WebSocketAccept { headers },
+        true,
+    )
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_http_server_runtime_accept_web_transport(
     request_id: i64,
     header_count: isize,
     headers: *const NativePair,
@@ -786,6 +928,160 @@ pub extern "C" fn dart_edge_http_server_runtime_free_web_socket_message(
     unsafe {
         let _ = Box::from_raw(value.cast::<NativeWebSocketMessageHandle>());
     }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_http_server_runtime_take_web_transport_connection(
+    session_id: i64,
+) -> *mut NativeWebTransportConnection {
+    let mut sessions = WEB_TRANSPORT_SESSIONS.lock().unwrap();
+    let Some(session) = sessions.get_mut(&session_id) else {
+        return std::ptr::null_mut();
+    };
+    let Some(connection) = session.connection.take() else {
+        return std::ptr::null_mut();
+    };
+
+    let handle = Box::new(NativeWebTransportConnectionHandle::from_connection(
+        connection,
+    ));
+    Box::into_raw(handle).cast::<NativeWebTransportConnection>()
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_http_server_runtime_free_web_transport_connection(
+    value: *mut NativeWebTransportConnection,
+) {
+    if value.is_null() {
+        return;
+    }
+
+    unsafe {
+        let _ = Box::from_raw(value.cast::<NativeWebTransportConnectionHandle>());
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_http_server_runtime_take_web_transport_datagram(
+    session_id: i64,
+) -> *mut NativeWebTransportDatagram {
+    let mut sessions = WEB_TRANSPORT_SESSIONS.lock().unwrap();
+    let Some(session) = sessions.get_mut(&session_id) else {
+        return std::ptr::null_mut();
+    };
+    let Some(datagram) = session.datagrams.pop_front() else {
+        return std::ptr::null_mut();
+    };
+
+    let handle = Box::new(NativeWebTransportDatagramHandle::from_datagram(datagram));
+    Box::into_raw(handle).cast::<NativeWebTransportDatagram>()
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_http_server_runtime_take_web_transport_stream(
+    session_id: i64,
+) -> *mut NativeWebTransportStream {
+    let mut sessions = WEB_TRANSPORT_SESSIONS.lock().unwrap();
+    let Some(session) = sessions.get_mut(&session_id) else {
+        return std::ptr::null_mut();
+    };
+    let Some(stream) = session.streams.pop_front() else {
+        return std::ptr::null_mut();
+    };
+
+    let handle = Box::new(NativeWebTransportStreamHandle::from_stream(stream));
+    Box::into_raw(handle).cast::<NativeWebTransportStream>()
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_http_server_runtime_free_web_transport_stream(
+    value: *mut NativeWebTransportStream,
+) {
+    if value.is_null() {
+        return;
+    }
+
+    unsafe {
+        let _ = Box::from_raw(value.cast::<NativeWebTransportStreamHandle>());
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_http_server_runtime_free_web_transport_datagram(
+    value: *mut NativeWebTransportDatagram,
+) {
+    if value.is_null() {
+        return;
+    }
+
+    unsafe {
+        let _ = Box::from_raw(value.cast::<NativeWebTransportDatagramHandle>());
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_http_server_runtime_web_transport_send_datagram(
+    session_id: i64,
+    body: NativeBytes,
+) -> bool {
+    let Some(body) = (unsafe { read_native_bytes(body) }) else {
+        return false;
+    };
+    let command_tx = {
+        let sessions = WEB_TRANSPORT_SESSIONS.lock().unwrap();
+        let Some(session) = sessions.get(&session_id) else {
+            return false;
+        };
+        session.command_tx.clone()
+    };
+
+    command_tx
+        .send(WebTransportCommand::SendDatagram(body.to_vec()))
+        .is_ok()
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_http_server_runtime_web_transport_send_stream(
+    session_id: i64,
+    body: NativeBytes,
+) -> bool {
+    let Some(body) = (unsafe { read_native_bytes(body) }) else {
+        return false;
+    };
+    let command_tx = {
+        let sessions = WEB_TRANSPORT_SESSIONS.lock().unwrap();
+        let Some(session) = sessions.get(&session_id) else {
+            return false;
+        };
+        session.command_tx.clone()
+    };
+
+    command_tx
+        .send(WebTransportCommand::SendStream(body.to_vec()))
+        .is_ok()
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_http_server_runtime_web_transport_close(
+    session_id: i64,
+    code: i32,
+    reason: *const c_char,
+) -> bool {
+    let reason = unsafe { read_optional_c_string(reason) };
+    let command_tx = {
+        let sessions = WEB_TRANSPORT_SESSIONS.lock().unwrap();
+        let Some(session) = sessions.get(&session_id) else {
+            return false;
+        };
+        session.command_tx.clone()
+    };
+
+    command_tx
+        .send(WebTransportCommand::Close {
+            code: if code <= 0 { None } else { Some(code as u32) },
+            reason,
+        })
+        .is_ok()
 }
 
 #[unsafe(no_mangle)]
@@ -987,7 +1283,7 @@ async fn validate_request_middleware(request: Request<Body>, next: Next) -> Resp
             });
             next.run(request).await
         }
-        RouteTransportKind::WebSocket => {
+        RouteTransportKind::WebSocket | RouteTransportKind::WebTransport => {
             let mut request = Request::from_parts(parts, body);
             request.extensions_mut().insert(ValidatedRouteRequest {
                 route_match,
@@ -1042,6 +1338,11 @@ async fn handle_validated_request(mut request: Request<Body>) -> Response<Body> 
             )
             .await
         }
+        RouteTransportKind::WebTransport => response(
+            StatusCode::NOT_IMPLEMENTED,
+            "text/plain; charset=utf-8",
+            "WebTransport routes require the HTTP/3 transport listener.".to_string(),
+        ),
     }
 }
 
@@ -1393,6 +1694,232 @@ async fn handle_web_socket_session(
     notify_transport_event(TransportEventKind::WebSocketClosed, session_id);
 }
 
+async fn run_web_transport_listener(
+    bind_address: SocketAddr,
+    mut shutdown_rx: watch::Receiver<bool>,
+) -> Result<(), String> {
+    let identity = Identity::self_signed(["localhost", "127.0.0.1", "::1"])
+        .map_err(|error| format!("Failed to create WebTransport TLS identity: {error}"))?;
+    let config = WebTransportServerConfig::builder()
+        .with_bind_address(bind_address)
+        .with_identity(identity)
+        .keep_alive_interval(Some(Duration::from_secs(3)))
+        .build();
+    let endpoint = WebTransportEndpoint::server(config)
+        .map_err(|error| format!("Failed to bind WebTransport UDP listener: {error}"))?;
+
+    loop {
+        tokio::select! {
+            _ = shutdown_rx.changed() => {
+                endpoint.close(VarInt::from_u32(0), b"Server stopped");
+                return Ok(());
+            }
+            incoming_session = endpoint.accept() => {
+                tokio::spawn(async move {
+                    if let Err(error) = handle_web_transport_incoming_session(incoming_session).await {
+                        eprintln!("dart_edge_http_server_runtime WebTransport session failed: {error}");
+                    }
+                });
+            }
+        }
+    }
+}
+
+async fn handle_web_transport_incoming_session(
+    incoming_session: wtransport::endpoint::IncomingSession,
+) -> Result<(), String> {
+    let session_request = incoming_session
+        .await
+        .map_err(|error| format!("Failed to read WebTransport session request: {error}"))?;
+    let (path, query) = split_web_transport_path(session_request.path());
+    let route_match = match match_route("GET", &path, RouteTransportKind::WebTransport) {
+        Some(route_match) => route_match,
+        None => {
+            session_request.forbidden().await;
+            return Ok(());
+        }
+    };
+    let headers = session_request.headers().clone();
+    let headers = collect_web_transport_headers(headers);
+    let query = parse_query(query);
+
+    if validate_string_map(
+        &route_match.path_params,
+        route_match.params_schema_id.as_deref(),
+        "Path parameters",
+    )
+    .is_err()
+        || validate_string_map(&query, route_match.query_schema_id.as_deref(), "Query parameters")
+            .is_err()
+        || validate_string_map(
+            &headers,
+            route_match.headers_schema_id.as_deref(),
+            "Headers",
+        )
+        .is_err()
+    {
+        session_request.forbidden().await;
+        return Ok(());
+    }
+
+    let route_id = route_match.route_id;
+    let path_params = route_match.path_params;
+    let transport_request = TransportRequest {
+        route_id: route_id.clone(),
+        path_params: path_params.clone(),
+        query: query.clone(),
+        headers: headers.clone(),
+        body: None,
+        request_kind: NativeRequestKind::WebTransport,
+        body_kind: NativeBodyKind::None,
+    };
+
+    let (request_id, mut response_rx) = match dispatch_request_to_dart(transport_request) {
+        Ok(value) => value,
+        Err(_) => {
+            session_request.forbidden().await;
+            return Ok(());
+        }
+    };
+
+    match response_rx.recv().await {
+        Some(PendingResponseMessage::Http(_)) => {
+            session_request.forbidden().await;
+        }
+        Some(PendingResponseMessage::WebSocketAccept {
+            headers: response_headers,
+        }) => {
+            let connection = session_request
+                .accept_with_headers(response_headers)
+                .await
+                .map_err(|error| format!("Failed to accept WebTransport session: {error}"))?;
+            handle_web_transport_session(
+                connection,
+                request_id,
+                route_id,
+                path_params,
+                query,
+                headers,
+            )
+            .await;
+        }
+        _ => {
+            session_request.forbidden().await;
+        }
+    }
+
+    Ok(())
+}
+
+async fn handle_web_transport_session(
+    connection: WebTransportConnection,
+    request_id: i64,
+    route_id: String,
+    path_params: HashMap<String, String>,
+    query: HashMap<String, String>,
+    headers: HashMap<String, String>,
+) {
+    let session_id = NEXT_WEB_TRANSPORT_SESSION_ID.fetch_add(1, Ordering::Relaxed);
+    let (command_tx, mut command_rx) = mpsc::unbounded_channel::<WebTransportCommand>();
+    {
+        let mut sessions = WEB_TRANSPORT_SESSIONS.lock().unwrap();
+        sessions.insert(
+            session_id,
+            WebTransportSessionState {
+                connection: Some(WebTransportConnectionInfo {
+                    session_id,
+                    request_id,
+                    route_id,
+                    path_params,
+                    query,
+                    headers,
+                }),
+                datagrams: VecDeque::new(),
+                streams: VecDeque::new(),
+                command_tx,
+            },
+        );
+    }
+    notify_transport_event(TransportEventKind::WebTransportOpened, session_id);
+
+    loop {
+        tokio::select! {
+            incoming = connection.receive_datagram() => {
+                match incoming {
+                    Ok(datagram) => {
+                        push_web_transport_datagram(
+                            session_id,
+                            WebTransportIncomingDatagram {
+                                session_id,
+                                body: datagram.payload().to_vec(),
+                            },
+                        );
+                        notify_transport_event(
+                            TransportEventKind::WebTransportDatagramReady,
+                            session_id,
+                        );
+                    }
+                    Err(_) => break,
+                }
+            }
+            incoming = connection.accept_uni() => {
+                match incoming {
+                    Ok(stream) => {
+                        match read_web_transport_stream_payload(stream).await {
+                            Ok(body) => {
+                                push_web_transport_stream(
+                                    session_id,
+                                    WebTransportIncomingStream { session_id, body },
+                                );
+                                notify_transport_event(
+                                    TransportEventKind::WebTransportStreamReady,
+                                    session_id,
+                                );
+                            }
+                            Err(_) => break,
+                        }
+                    }
+                    Err(_) => break,
+                }
+            }
+            command = command_rx.recv() => {
+                match command {
+                    Some(WebTransportCommand::SendDatagram(body)) => {
+                        if connection.send_datagram(body).is_err() {
+                            break;
+                        }
+                    }
+                    Some(WebTransportCommand::SendStream(body)) => {
+                        match connection.open_uni().await {
+                            Ok(opening) => match opening.await {
+                                Ok(mut stream) => {
+                                    if stream.write_all(&body).await.is_err()
+                                        || stream.finish().await.is_err()
+                                    {
+                                        break;
+                                    }
+                                }
+                                Err(_) => break,
+                            },
+                            Err(_) => break,
+                        }
+                    }
+                    Some(WebTransportCommand::Close { code, reason }) => {
+                        let code = code.map(VarInt::from_u32).unwrap_or_else(|| VarInt::from_u32(0));
+                        let reason = reason.unwrap_or_default();
+                        connection.close(code, reason.as_bytes());
+                        break;
+                    }
+                    None => break,
+                }
+            }
+        }
+    }
+
+    let _ = WEB_TRANSPORT_SESSIONS.lock().unwrap().remove(&session_id);
+    notify_transport_event(TransportEventKind::WebTransportClosed, session_id);
+}
+
 fn dispatch_request_to_dart(
     transport_request: TransportRequest,
 ) -> Result<(i64, mpsc::UnboundedReceiver<PendingResponseMessage>), Response<Body>> {
@@ -1501,6 +2028,55 @@ fn push_web_socket_message(session_id: i64, message: WebSocketIncomingMessage) {
     if let Some(session) = sessions.get_mut(&session_id) {
         session.messages.push_back(message);
     }
+}
+
+fn push_web_transport_datagram(session_id: i64, datagram: WebTransportIncomingDatagram) {
+    let mut sessions = WEB_TRANSPORT_SESSIONS.lock().unwrap();
+    if let Some(session) = sessions.get_mut(&session_id) {
+        session.datagrams.push_back(datagram);
+    }
+}
+
+fn push_web_transport_stream(session_id: i64, stream: WebTransportIncomingStream) {
+    let mut sessions = WEB_TRANSPORT_SESSIONS.lock().unwrap();
+    if let Some(session) = sessions.get_mut(&session_id) {
+        session.streams.push_back(stream);
+    }
+}
+
+async fn read_web_transport_stream_payload(
+    mut stream: wtransport::stream::RecvStream,
+) -> Result<Vec<u8>, String> {
+    let mut payload = Vec::new();
+    let mut buffer = [0u8; 16 * 1024];
+    loop {
+        match stream.read(&mut buffer).await {
+            Ok(Some(bytes_read)) => payload.extend_from_slice(&buffer[..bytes_read]),
+            Ok(None) => return Ok(payload),
+            Err(error) => return Err(error.to_string()),
+        }
+    }
+}
+
+fn resolve_bind_address(host: &str, port: u16) -> Result<SocketAddr, String> {
+    let ip = host
+        .parse::<IpAddr>()
+        .map_err(|error| format!("Invalid bind host '{host}': {error}"))?;
+    Ok(SocketAddr::new(ip, port))
+}
+
+fn split_web_transport_path(value: &str) -> (String, Option<&str>) {
+    match value.split_once('?') {
+        Some((path, query)) => (path.to_string(), Some(query)),
+        None => (value.to_string(), None),
+    }
+}
+
+fn collect_web_transport_headers(headers: HashMap<String, String>) -> HashMap<String, String> {
+    headers
+        .into_iter()
+        .map(|(name, value)| (name.to_ascii_lowercase(), value))
+        .collect()
 }
 
 async fn try_send_web_socket_close(
@@ -1691,7 +2267,7 @@ fn compile_route(
                     schema_id: request_body.schema_id,
                 })
         }
-        RouteTransportKind::WebSocket => None,
+        RouteTransportKind::WebSocket | RouteTransportKind::WebTransport => None,
     };
     let handler_path_segments = route.handler_path_segments.map(compile_route_segments);
     let native_handler = match route.kind {
@@ -1770,6 +2346,7 @@ fn build_runtime(worker_count: usize) -> Result<tokio::runtime::Runtime, std::io
     if worker_count == 1 {
         return tokio::runtime::Builder::new_current_thread()
             .enable_io()
+            .enable_time()
             .build();
     }
 
@@ -1778,6 +2355,7 @@ fn build_runtime(worker_count: usize) -> Result<tokio::runtime::Runtime, std::io
         .max_blocking_threads(worker_count)
         .thread_stack_size(1024 * 1024)
         .enable_io()
+        .enable_time()
         .build()
 }
 
@@ -1868,6 +2446,71 @@ impl NativeWebSocketMessageHandle {
 
         Self {
             message: native_message,
+            body,
+        }
+    }
+}
+
+impl NativeWebTransportConnectionHandle {
+    fn from_connection(connection: WebTransportConnectionInfo) -> Self {
+        let route_id = OwnedBytes::from_string(connection.route_id);
+        let path_params = owned_pairs_from_map(connection.path_params);
+        let path_param_pairs = native_pairs_from_owned(&path_params);
+        let query = owned_pairs_from_map(connection.query);
+        let query_pairs = native_pairs_from_owned(&query);
+        let headers = owned_pairs_from_map(connection.headers);
+        let header_pairs = native_pairs_from_owned(&headers);
+
+        let native_connection = NativeWebTransportConnection {
+            session_id: connection.session_id,
+            request_id: connection.request_id,
+            route_id: route_id.as_native(),
+            path_param_count: path_param_pairs.len() as isize,
+            path_params: boxed_pairs_ptr(&path_param_pairs),
+            query_count: query_pairs.len() as isize,
+            query: boxed_pairs_ptr(&query_pairs),
+            header_count: header_pairs.len() as isize,
+            headers: boxed_pairs_ptr(&header_pairs),
+        };
+
+        Self {
+            connection: native_connection,
+            route_id,
+            path_params,
+            path_param_pairs,
+            query,
+            query_pairs,
+            headers,
+            header_pairs,
+        }
+    }
+}
+
+impl NativeWebTransportDatagramHandle {
+    fn from_datagram(datagram: WebTransportIncomingDatagram) -> Self {
+        let body = OwnedBytes::from_vec(datagram.body);
+        let native_datagram = NativeWebTransportDatagram {
+            session_id: datagram.session_id,
+            body: body.as_native(),
+        };
+
+        Self {
+            datagram: native_datagram,
+            body,
+        }
+    }
+}
+
+impl NativeWebTransportStreamHandle {
+    fn from_stream(stream: WebTransportIncomingStream) -> Self {
+        let body = OwnedBytes::from_vec(stream.body);
+        let native_stream = NativeWebTransportStream {
+            session_id: stream.session_id,
+            body: body.as_native(),
+        };
+
+        Self {
+            stream: native_stream,
             body,
         }
     }
@@ -2046,6 +2689,7 @@ fn route_kind_matches(route_kind: RouteTransportKind, requested_kind: RouteTrans
         }
         RouteTransportKind::NativeHttp => false,
         RouteTransportKind::WebSocket => route_kind == RouteTransportKind::WebSocket,
+        RouteTransportKind::WebTransport => route_kind == RouteTransportKind::WebTransport,
     }
 }
 
