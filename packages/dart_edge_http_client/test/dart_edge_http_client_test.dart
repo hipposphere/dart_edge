@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:dart_edge_core/dart_edge_core.dart';
 import 'package:dart_edge_http_client/dart_edge_http_client.dart';
+import 'package:dart_edge_http_client/src/web_socket_message_converter.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:test/test.dart';
@@ -78,6 +80,27 @@ void main() {
       final second = await echo.future.timeout(const Duration(seconds: 5));
       expect(second.kind, WebSocketMessageKind.text);
       expect(jsonDecode(second.text), {'ok': true});
+    });
+
+    test('maps typed binary payloads to binary messages', () async {
+      final fromBytes = await webSocketMessageFromPayload(<int>[1, 2, 3]);
+      expect(fromBytes.kind, WebSocketMessageKind.binary);
+      expect(fromBytes.bytes, [1, 2, 3]);
+
+      final byteData = ByteData(3)
+        ..setUint8(0, 4)
+        ..setUint8(1, 5)
+        ..setUint8(2, 6);
+      final fromByteData = await webSocketMessageFromPayload(byteData);
+      expect(fromByteData.kind, WebSocketMessageKind.binary);
+      expect(fromByteData.bytes, [4, 5, 6]);
+    });
+
+    test('rejects unsupported payloads instead of stringifying them', () {
+      expect(
+        webSocketMessageFromPayload(Object()),
+        throwsA(isA<UnsupportedError>()),
+      );
     });
   });
 }

@@ -4,6 +4,8 @@ import 'dart:typed_data';
 import 'package:dart_edge_core/dart_edge_core.dart';
 import 'package:web_socket_client/web_socket_client.dart' as web_socket_client;
 
+import 'web_socket_message_converter.dart';
+
 /// Creates `web_socket_client` sockets for generated Dart Edge clients.
 typedef DartEdgeWebSocketFactory =
     web_socket_client.WebSocket Function(
@@ -23,7 +25,7 @@ final class DartEdgeWebSocketClientTransport
     this.pingInterval,
     this.backoff,
     this.timeout,
-    this.binaryType,
+    this.binaryType = 'arraybuffer',
     DartEdgeWebSocketFactory? socketFactory,
   }) : _socketFactory = socketFactory ?? web_socket_client.WebSocket.new;
 
@@ -62,7 +64,8 @@ final class DartEdgeWebSocketClient implements DartEdgeClientWebSocket {
   final web_socket_client.WebSocket socket;
 
   @override
-  Stream<WebSocketMessage> get messages => socket.messages.map(_messageFrom);
+  Stream<WebSocketMessage> get messages =>
+      socket.messages.asyncMap(webSocketMessageFromPayload);
 
   @override
   Future<void> close([int? code, String? reason]) async {
@@ -83,17 +86,4 @@ final class DartEdgeWebSocketClient implements DartEdgeClientWebSocket {
   Future<void> sendText(String value) async {
     socket.send(value);
   }
-}
-
-WebSocketMessage _messageFrom(Object? value) {
-  return switch (value) {
-    final String text => WebSocketMessage.text(text),
-    final List<int> bytes => WebSocketMessage.binary(bytes),
-    final ByteBuffer buffer => WebSocketMessage.binary(buffer.asUint8List()),
-    final ByteData data => WebSocketMessage.binary(
-      data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
-    ),
-    null => WebSocketMessage.text(''),
-    _ => WebSocketMessage.text(value.toString()),
-  };
 }
