@@ -1,3 +1,10 @@
+## 0.3.17
+
+- Decode WebSocket handshake query parameters through route query schemas and
+  route-local query decoders.
+- Include WebSocket query schema refs in the native route manifest.
+- Require `dart_edge_core` 0.3.13.
+
 ## 0.3.15
 
 - Add WebTransport route runtime support over QUIC/HTTP3 with datagram and

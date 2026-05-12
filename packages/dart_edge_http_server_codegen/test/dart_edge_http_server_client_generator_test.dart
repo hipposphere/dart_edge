@@ -63,7 +63,10 @@ void main() {
             DartEdgeClientWebSocketOperation(
               path: '/rooms/<id>/socket',
               operationId: 'connectRoom',
+              params: JsonSchema.ref('RoomPath'),
               paramsType: 'RoomPath',
+              query: JsonSchema.ref('RoomQuery'),
+              queryType: 'RoomQuery',
             ),
           ],
         ),
@@ -71,7 +74,9 @@ void main() {
 
       expect(source, contains('Future<DartEdgeClientWebSocket> connectRoom'));
       expect(source, contains("pathTemplate: '/rooms/<id>/socket'"));
-      expect(source, contains('connectWebSocket<RoomPath, Never, Never>'));
+      expect(source, contains('RoomQuery? query'));
+      expect(source, contains('connectWebSocket<RoomPath, RoomQuery?, Never>'));
+      expect(source, contains("schemaId: 'RoomQuery'"));
     });
 
     test('emits webtransport connect methods', () {
@@ -278,6 +283,7 @@ void main() {
         options: const WebSocketOptions(
           operationId: 'connectEvents',
           params: JsonSchema.ref('RoomPath'),
+          query: JsonSchema.ref('UserQuery'),
         ),
         onConnect: (_) async {},
       );
@@ -329,8 +335,10 @@ void main() {
         contains('Future<DartEdgeClientWebSocket> connectEvents({'),
       );
       expect(source, contains('required RoomPath params'));
+      expect(source, contains('UserQuery? query'));
       expect(source, contains("pathTemplate: '/events/<id>'"));
       expect(source, contains("schemaId: 'RoomPath'"));
+      expect(source, contains("schemaId: 'UserQuery'"));
       expect(
         source,
         contains('Future<DartEdgeClientWebTransportSession> connectDatagrams'),
@@ -931,7 +939,10 @@ void main() {
         onConnect: (request) async {
           expect(
             request.uri,
-            Uri.parse('wss://api.example.test/v1/rooms/42/socket'),
+            Uri.parse(
+              'wss://api.example.test/v1/rooms/42/socket'
+              '?includeDeleted=true&tags=alpha&tags=beta',
+            ),
           );
           expect(request.headers, {'authorization': 'Bearer token'});
           expect(request.protocols, ['chat']);
@@ -947,12 +958,16 @@ void main() {
         defaultHeaders: const {'authorization': 'Bearer token'},
       );
 
-      await client.connectWebSocket<RoomPath, Never, Never>(
-        const DartEdgeClientWebSocketInvocation<RoomPath, Never, Never>(
+      await client.connectWebSocket<RoomPath, UserQuery?, Never>(
+        DartEdgeClientWebSocketInvocation<RoomPath, UserQuery?, Never>(
           pathTemplate: '/rooms/<id>/socket',
-          params: DartEdgeClientRequestValue<RoomPath>(
+          params: const DartEdgeClientRequestValue<RoomPath>(
             value: RoomPath(id: '42'),
             encoder: RoomPath.toJson,
+          ),
+          query: DartEdgeClientRequestValue<UserQuery?>(
+            value: UserQuery(includeDeleted: true, tags: ['alpha', 'beta']),
+            encoder: (value) => value == null ? null : UserQuery.toJson(value),
           ),
           protocols: ['chat'],
         ),

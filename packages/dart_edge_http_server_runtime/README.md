@@ -73,22 +73,27 @@ being handled. Copy bytes if data needs to outlive the handler.
 
 ## WebSocket Frames
 
-WebSocket routes can handle JSON control messages, raw text, binary streams, or
-mixed protocols:
+WebSocket routes can decode typed handshake query parameters and handle JSON
+control messages, raw text, binary streams, or mixed protocols:
 
 ```dart
-app.websocket('/stream', onConnect: (socket) async {
-  await socket.sendText('ready');
+app.websocket(
+  '/stream',
+  options: const WebSocketOptions(query: JsonSchema.ref('StreamQuery')),
+  onConnect: (socket) async {
+    final query = socket.req.query<StreamQuery>();
+    await socket.sendText('ready:${query.streamId}');
 
-  await for (final frame in socket.messages.frames()) {
-    switch (frame.kind) {
-      case WebSocketMessageKind.text:
-        await socket.sendJson({'echo': frame.text});
-      case WebSocketMessageKind.binary:
-        await socket.sendBinary(frame.bytes);
+    await for (final frame in socket.messages.frames()) {
+      switch (frame.kind) {
+        case WebSocketMessageKind.text:
+          await socket.sendJson({'echo': frame.text});
+        case WebSocketMessageKind.binary:
+          await socket.sendBinary(frame.bytes);
+      }
     }
-  }
-});
+  },
+);
 ```
 
 See [example/native_probe.dart](example/native_probe.dart) for the native asset

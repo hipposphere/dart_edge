@@ -1,3 +1,8 @@
+## 0.3.12
+
+- Update `dart_edge_http_server_runtime` constraint for WebSocket route query
+  parameter support.
+
 ## 0.3.10
 
 - Update `dart_edge_http_server_runtime` constraint for WebTransport route

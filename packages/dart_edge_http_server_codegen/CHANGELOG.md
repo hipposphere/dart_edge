@@ -1,3 +1,10 @@
+## 0.3.20
+
+- Generate WebSocket client query parameters from `WebSocketOptions.query`.
+- Discover WebSocket query schemas from router registries for generated client
+  models.
+- Require `dart_edge_core` 0.3.13.
+
 ## 0.3.18
 
 - Generate WebTransport client connection methods and support sessions with

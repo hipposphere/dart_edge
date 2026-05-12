@@ -11,6 +11,8 @@ void main() {
       operationId: 'connectEvents',
       params: JsonSchema.ref('EventPath'),
       paramsDecoder: _decodeEventPath,
+      query: JsonSchema.ref('EventQuery'),
+      queryDecoder: _decodeEventQuery,
     ).normalized();
     final webTransportOptions = const WebTransportOptions(
       operationId: 'connectDatagrams',
@@ -20,6 +22,8 @@ void main() {
     expect(webSocketOptions.exposure, RouteExposure.all);
     expect(webSocketOptions.params, const JsonSchema.ref('EventPath'));
     expect(webSocketOptions.paramsDecoder, same(_decodeEventPath));
+    expect(webSocketOptions.query, const JsonSchema.ref('EventQuery'));
+    expect(webSocketOptions.queryDecoder, same(_decodeEventQuery));
     expect(webTransportOptions.exposure, RouteExposure.all);
   });
 
@@ -50,3 +54,5 @@ void main() {
 }
 
 Object? _decodeEventPath(Map<String, String> values) => values;
+
+Object? _decodeEventQuery(Map<String, String> values) => values;

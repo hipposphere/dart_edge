@@ -12,6 +12,8 @@ final class WebSocketOptions {
     this.exposure = RouteExposure.all,
     this.params,
     this.paramsDecoder,
+    this.query,
+    this.queryDecoder,
   });
 
   /// Optional stable identifier used in generated output and manifests.
@@ -39,6 +41,12 @@ final class WebSocketOptions {
   /// Optional route-local decoder for path parameters.
   final RequestValueDecoder? paramsDecoder;
 
+  /// Schema for decoded query parameters.
+  final JsonSchema? query;
+
+  /// Optional route-local decoder for query parameters.
+  final RequestValueDecoder? queryDecoder;
+
   /// Returns a normalized options object suitable for runtime execution.
   WebSocketOptions normalized({String? defaultOperationId}) {
     final resolvedOperationId = operationId ?? defaultOperationId;
@@ -58,6 +66,8 @@ final class WebSocketOptions {
       exposure: exposure,
       params: params,
       paramsDecoder: paramsDecoder,
+      query: query,
+      queryDecoder: queryDecoder,
     );
   }
 }

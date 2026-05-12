@@ -285,6 +285,7 @@ final class DartEdgeClientWebSocketOperation {
     this.methodName,
     this.params,
     this.paramsType,
+    this.query,
     this.queryType,
     this.headersType,
   });
@@ -294,6 +295,7 @@ final class DartEdgeClientWebSocketOperation {
   final String? methodName;
   final JsonSchema? params;
   final String? paramsType;
+  final JsonSchema? query;
   final String? queryType;
   final String? headersType;
 
@@ -741,7 +743,7 @@ $entries
                   if (operation.queryType != null)
                     'query': _requestValueExpression(
                       type: '${operation.queryType}?',
-                      schemaId: null,
+                      schemaId: jsonSchemaRouteId(operation.query),
                       value: refer('query'),
                       encode: _nullableEncoderFor(operation.queryType!),
                     ),
@@ -1152,6 +1154,7 @@ final class _ClientSchemaCollector {
 
   void addWebSocketOptions(WebSocketOptions options) {
     add(options.params);
+    add(options.query);
   }
 
   void add(JsonSchema? schema) {
@@ -1251,6 +1254,14 @@ DartEdgeClientWebSocketOperation _webSocketOperationFromOptions({
       schema: options.params,
       schemaTypes: schemaTypes,
     ),
+    query: options.query,
+    queryType: _schemaTypeForOperation(
+      operationId: operationId,
+      path: path,
+      field: 'query',
+      schema: options.query,
+      schemaTypes: schemaTypes,
+    ),
   );
 }
 
@@ -1287,6 +1298,8 @@ WebSocketOptions _effectiveWebSocketOptions<TServices>(
     exposure: registration.exposure.restrict(options.exposure),
     params: options.params,
     paramsDecoder: options.paramsDecoder,
+    query: options.query,
+    queryDecoder: options.queryDecoder,
   );
 }
 

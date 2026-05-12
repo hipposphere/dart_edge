@@ -194,6 +194,8 @@ void main() {
       options: const WebSocketOptions(
         operationId: 'connectLiveCall',
         params: JsonSchema.ref('IdParams'),
+        query: JsonSchema.ref('LiveCallQuery'),
+        queryDecoder: _decodeLiveCallQuery,
       ),
       onConnect: (_) async {},
     );
@@ -205,11 +207,16 @@ void main() {
         jsonDecode(compiledRoutes.nativeManifestJson()) as Map<String, Object?>;
     final routes = manifest['routes']! as List<Object?>;
     final route = routes.single as Map<String, Object?>;
+    final compiledRoute = compiledRoutes.webSocketRoutes.single;
 
     expect(route['kind'], 'webSocket');
     expect(route['paramsSchemaId'], 'IdParams');
+    expect(route['querySchemaId'], 'LiveCallQuery');
+    expect(compiledRoute.options.queryDecoder, same(_decodeLiveCallQuery));
   });
 }
+
+Object? _decodeLiveCallQuery(Map<String, String> values) => values;
 
 final class _SchemaRoute
     extends HttpRouteDefinition<void, Map<String, Object?>> {

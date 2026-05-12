@@ -68,15 +68,21 @@ storing it beyond the handler.
 
 ## WebSocket Routes
 
-Use `messages.json<T>()` for JSON text protocols and `messages.binary()` or
-`messages.frames()` when the route needs raw binary data:
+Use `WebSocketOptions.query` for typed handshake query parameters.
+`messages.json<T>()` handles JSON text protocols, and `messages.binary()` or
+`messages.frames()` handle raw binary data:
 
 ```dart
-app.websocket('/audio', onConnect: (socket) async {
-  await socket.sendJson({'ready': true});
+app.websocket(
+  '/audio',
+  options: const WebSocketOptions(query: JsonSchema.ref('AudioQuery')),
+  onConnect: (socket) async {
+    final query = socket.req.query<AudioQuery>();
+    await socket.sendJson({'ready': true, 'room': query.room});
 
-  await for (final bytes in socket.messages.binary()) {
-    await socket.sendBinary(bytes);
-  }
-});
+    await for (final bytes in socket.messages.binary()) {
+      await socket.sendBinary(bytes);
+    }
+  },
+);
 ```

@@ -1,0 +1,25 @@
+name: dart_edge_docs
+description: Jaspr documentation app primitives for MDX-backed structured wikis.
+version: 0.1.0
+publish_to: "https://registry.hippolabs.org/pub/internal-pub/"
+repository: https://github.com/hipposphere/dart_edge/tree/main/packages/dart_edge_docs
+
+environment:
+  sdk: ">=3.11.0 <4.0.0"
+
+resolution: workspace
+
+dependencies:
+  jaspr: ^0.23.1
+  jaspr_content: ^0.5.2
+  jaspr_router: ^0.8.2
+  shadcn_jaspr: ^0.4.3
+
+dev_dependencies:
+  dart_edge_jaspr:
+    hosted: "https://registry.hippolabs.org/pub/internal-pub/"
+    version: ^0.3.4
+  test: ^1.30.0
+
+jaspr:
+  mode: server

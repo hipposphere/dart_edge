@@ -56,7 +56,7 @@ final class CompiledWebSocketRoute<TServices> {
     'operationId': options.operationId,
     'pathSegments': patternSegments.map((segment) => segment.toJson()).toList(),
     'paramsSchemaId': jsonSchemaRouteId(options.params),
-    'querySchemaId': null,
+    'querySchemaId': jsonSchemaRouteId(options.query),
     'headersSchemaId': null,
     'requestBody': null,
   };
@@ -74,6 +74,8 @@ WebSocketOptions _effectiveOptions<TServices>(
     exposure: registration.exposure.restrict(options.exposure),
     params: options.params,
     paramsDecoder: options.paramsDecoder,
+    query: options.query,
+    queryDecoder: options.queryDecoder,
   );
 }
 

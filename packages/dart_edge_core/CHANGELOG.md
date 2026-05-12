@@ -1,3 +1,7 @@
+## 0.3.13
+
+- Add WebSocket route query schema and query decoder options.
+
 ## 0.3.11
 
 - Add WebTransport core route, context, generated-client, datagram, and
