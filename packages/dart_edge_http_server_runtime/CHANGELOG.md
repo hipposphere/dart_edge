@@ -1,3 +1,8 @@
+## 0.3.18
+
+- Add final wildcard route segment support for catch-all HTTP routes.
+- Bump the native artifact version to 0.1.11 for the route matcher change.
+
 ## 0.3.17
 
 - Decode WebSocket handshake query parameters through route query schemas and

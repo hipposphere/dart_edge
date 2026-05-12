@@ -1,3 +1,7 @@
+## 0.3.13
+
+- Update `dart_edge_http_server_runtime` constraint for catch-all route support.
+
 ## 0.3.12
 
 - Update `dart_edge_http_server_runtime` constraint for WebSocket route query

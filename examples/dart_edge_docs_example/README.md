@@ -8,5 +8,6 @@ dart pub get
 dart run web/main.dart
 ```
 
-The app serves content from `content/` and uses `DartEdgeDocsApp` from the
-workspace package.
+The example starts a `DartEdge` HTTP server and mounts the complete docs app
+with `app.mountDartEdgeDocs(docs)`. Content is loaded from `content/` through
+`DartEdgeDocsApp`; the stylesheet is served by Jaspr from `web/styles.css`.

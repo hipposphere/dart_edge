@@ -369,6 +369,8 @@ struct RouteManifestEntry {
 struct RouteSegmentManifest {
     value: String,
     is_parameter: bool,
+    #[serde(default)]
+    is_wildcard: bool,
 }
 
 #[derive(Clone, Deserialize)]
@@ -403,6 +405,7 @@ struct CompiledNativeHttpHandler {
 enum CompiledRouteSegment {
     Literal(String),
     Parameter(String),
+    Wildcard(String),
 }
 
 #[derive(Clone)]
@@ -1539,6 +1542,14 @@ fn native_handler_path(
                 };
                 path.push_str(value);
             }
+            CompiledRouteSegment::Wildcard(name) => {
+                let Some(value) = path_params.get(name) else {
+                    return Err(format!(
+                        "Native route handler path references missing wildcard parameter '{name}'."
+                    ));
+                };
+                path.push_str(value);
+            }
         }
     }
 
@@ -1749,8 +1760,12 @@ async fn handle_web_transport_incoming_session(
         "Path parameters",
     )
     .is_err()
-        || validate_string_map(&query, route_match.query_schema_id.as_deref(), "Query parameters")
-            .is_err()
+        || validate_string_map(
+            &query,
+            route_match.query_schema_id.as_deref(),
+            "Query parameters",
+        )
+        .is_err()
         || validate_string_map(
             &headers,
             route_match.headers_schema_id.as_deref(),
@@ -2318,7 +2333,9 @@ fn compile_route_segments(segments: Vec<RouteSegmentManifest>) -> Vec<CompiledRo
     segments
         .into_iter()
         .map(|segment| {
-            if segment.is_parameter {
+            if segment.is_wildcard {
+                CompiledRouteSegment::Wildcard(segment.value)
+            } else if segment.is_parameter {
                 CompiledRouteSegment::Parameter(segment.value)
             } else {
                 CompiledRouteSegment::Literal(segment.value)
@@ -2640,24 +2657,31 @@ fn match_route(
         if route.method.as_str() != method {
             continue;
         }
-        if route.path_segments.len() != request_segments.len() {
+        if !route_segment_count_matches(&route.path_segments, request_segments.len()) {
             continue;
         }
 
         let mut path_params = HashMap::new();
         let mut matched = true;
 
-        for (route_segment, request_segment) in
-            route.path_segments.iter().zip(request_segments.iter())
-        {
+        for (index, route_segment) in route.path_segments.iter().enumerate() {
             match route_segment {
-                CompiledRouteSegment::Literal(literal) if literal == request_segment => {}
+                CompiledRouteSegment::Literal(literal)
+                    if request_segments.get(index) == Some(&literal.as_str()) => {}
                 CompiledRouteSegment::Literal(_) => {
                     matched = false;
                     break;
                 }
                 CompiledRouteSegment::Parameter(name) => {
+                    let Some(request_segment) = request_segments.get(index) else {
+                        matched = false;
+                        break;
+                    };
                     path_params.insert(name.clone(), (*request_segment).to_string());
+                }
+                CompiledRouteSegment::Wildcard(name) => {
+                    path_params.insert(name.clone(), request_segments[index..].join("/"));
+                    break;
                 }
             }
         }
@@ -2677,6 +2701,18 @@ fn match_route(
     }
 
     None
+}
+
+fn route_segment_count_matches(
+    route_segments: &[CompiledRouteSegment],
+    request_segment_count: usize,
+) -> bool {
+    match route_segments.last() {
+        Some(CompiledRouteSegment::Wildcard(_)) => {
+            request_segment_count >= route_segments.len() - 1
+        }
+        _ => route_segments.len() == request_segment_count,
+    }
 }
 
 fn route_kind_matches(route_kind: RouteTransportKind, requested_kind: RouteTransportKind) -> bool {

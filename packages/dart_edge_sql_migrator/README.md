@@ -127,9 +127,37 @@ final migrator = await DartEdgeSqlMigrator.fromDataAsset(
 );
 ```
 
+## Embedded Dart Manifest Generation
+
+If you want to embed the migration manifest as Dart source instead of a data
+asset, use the reusable generator:
+
+```dart
+import 'dart:io';
+
+import 'package:dart_edge_sql_migrator/dart_edge_migration_manifest_generator.dart';
+
+Future<void> main() async {
+  await const DartEdgeMigrationManifestGenerator().writePackageManifest(
+    packageRoot: Directory.current,
+    config: const DartEdgeMigrationManifestGeneratorConfig(
+      package: 'db_migrator',
+      manifestFieldName: 'calloDbMigrationManifest',
+      migrationsDirectory: 'migrations',
+      outputFile: 'lib/src/embedded_migration_manifest.dart',
+      sorting: SqlMigrationFileSorting.flyway(),
+    ),
+  );
+}
+```
+
+The generated file contains a `const SqlMigrationManifest`, skips empty `.sql`
+files by default, and preserves deterministic filename ordering.
+
 ## Main Types
 
 - `DartEdgeSqlMigrator` runs migrations and tracks metadata
+- `DartEdgeMigrationManifestGenerator` emits an embedded Dart manifest library
 - `SqlMigration` describes one ordered migration
 - `SqlMigrationManifest` describes SQL files embedded in one Dart data asset
 - `SqlMigrationPlan` contains shared and dialect-specific statements

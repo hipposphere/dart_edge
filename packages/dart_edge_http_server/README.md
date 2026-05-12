@@ -15,7 +15,8 @@ from `dart_edge_http_server_runtime`, and app-facing helpers in one import.
   route definitions
 - `OpenApiHelpers` for mounting helper endpoints alongside your app
 - WebSocket handlers with text, JSON, binary, and mixed-frame streams
-- `JasprRenderer` and `getJaspr` / `postJaspr` style helpers for HTML routes
+- `dart_edge_shelf` and `dart_edge_jaspr` helpers for mounting Shelf and Jaspr
+  apps
 - `dart_edge_jaspr_helpers` components for reusable Jaspr-backed page and email
   scaffolds
 

@@ -19,18 +19,20 @@ template.
 
 ```dart
 import 'package:dart_edge_http_server/dart_edge_http_server.dart';
+import 'package:dart_edge_jaspr/dart_edge_jaspr.dart';
 import 'package:dart_edge_jaspr_helpers/dart_edge_jaspr_helpers.dart';
 
 Future<void> main() async {
   final app = DartEdge<void>(services: () {});
 
-  app.getJaspr(
-    '/preview/reset-password',
-    handler: (_) => const DartEdgePasswordResetEmail(
+  app.mountJasprApp(
+    const DartEdgePasswordResetEmail(
       resetUrl: 'https://example.com/reset?token=demo',
       expiresInText: '30 minutes',
       supportEmail: 'support@example.com',
     ),
+    catchAllPath: '/<previewPath*>',
+    paths: const [],
   );
 
   await app.listen(port: 8080);

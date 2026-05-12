@@ -1,6 +1,6 @@
 name: dart_edge_jaspr_helpers
 description: Higher-level Jaspr page and email components for Dart Edge.
-version: 0.3.1
+version: 0.3.2
 publish_to: "https://registry.hippolabs.org/pub/internal-pub/"
 repository: https://github.com/hipposphere/dart_edge/tree/main/packages/dart_edge_jaspr_helpers
 
@@ -12,7 +12,7 @@ resolution: workspace
 dependencies:
   dart_edge_jaspr:
     hosted: "https://registry.hippolabs.org/pub/internal-pub/"
-    version: ^0.3.0
+    version: ^0.3.5
   jaspr: ^0.23.1
 
 dev_dependencies:

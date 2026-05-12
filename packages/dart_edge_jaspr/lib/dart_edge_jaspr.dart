@@ -6,4 +6,4 @@
 library;
 
 export 'src/jaspr_renderer.dart';
-export 'src/router_jaspr.dart';
+export 'src/mount_jaspr_app.dart';

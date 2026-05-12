@@ -8,38 +8,33 @@ import 'package:jaspr/server.dart' as jaspr_server show Document;
 import 'package:test/test.dart';
 
 void main() {
-  test('renders Jaspr documents into HTML responses', () async {
-    final response = await JasprRenderer.document(
-      title: 'Welcome',
-      base: null,
-      body: div([Component.text('Hello from Jaspr')]),
-    );
-
-    expect(response.status, 200);
-    expect(response.contentType, 'text/html; charset=utf-8');
-    expect(response.body, contains('<title>Welcome</title>'));
-    expect(response.body, contains('Hello from Jaspr'));
-  });
-
-  test('registers Jaspr-backed HTML routes on a DartEdge app', () async {
-    final app = DartEdge<void>(services: () {});
-
-    app.getJaspr(
-      '/preview',
-      options: const RouteOptions(summary: 'Preview an HTML page.'),
-      handler: (_) => jaspr_server.Document(
-        title: 'Preview',
+  test('renders Jaspr components into HTML strings', () async {
+    final html = await JasprRenderer.renderString(
+      jaspr_server.Document(
+        title: 'Welcome',
         base: null,
-        body: div([Component.text('Preview body')]),
+        body: div([Component.text('Hello from Jaspr')]),
       ),
     );
 
-    final registration = app.routeRegistry.registrations.single;
-    final options =
-        (registration.route as HttpRouteDefinition<void, dynamic>).options;
+    expect(html, contains('<title>Welcome</title>'));
+    expect(html, contains('Hello from Jaspr'));
+  });
 
-    expect(options.summary, 'Preview an HTML page.');
-    expect(options.responses.success.contentType, 'text/html; charset=utf-8');
+  test('mounts a Jaspr app as one catch-all Shelf-backed route', () async {
+    final app = DartEdge<void>(services: () {});
+    app.mountJasprApp(
+      jaspr_server.Document(
+        title: 'Mounted',
+        base: null,
+        body: div([Component.text('Mounted body')]),
+      ),
+      catchAllPath: '/<jasprPath*>',
+      paths: const [],
+    );
+
+    expect(app.routeRegistry.registrations, hasLength(1));
+    expect(app.routeRegistry.registrations.single.httpPath, '/<jasprPath*>');
 
     final server = await app.listen(port: 0);
     final client = HttpClient();
@@ -51,14 +46,11 @@ void main() {
 
     final baseUri = Uri.http('127.0.0.1:${server.port}');
     final response = await (await client.getUrl(
-      baseUri.resolve('/preview'),
+      baseUri.resolve('/nested/page'),
     )).close();
+    final html = await response.transform(SystemEncoding().decoder).join();
 
     expect(response.statusCode, HttpStatus.ok);
-    expect(response.headers.contentType?.mimeType, 'text/html');
-
-    final html = await response.transform(SystemEncoding().decoder).join();
-    expect(html, contains('<title>Preview</title>'));
-    expect(html, contains('Preview body'));
+    expect(html, contains('Mounted body'));
   });
 }

@@ -56,7 +56,46 @@ Use normal links for wiki navigation.
 <Badge variant="secondary">Preview</Badge>
 ```
 
-`shadcn_jaspr` components expect Tailwind and the shadcn CSS variables. This
-package includes `web/styles/globals.tw.css` as a starter Tailwind entrypoint;
-compile it to the `stylesheetHref` used by `DartEdgeDocsApp`, which defaults to
-`/styles.css`.
+`DartEdgeDocsApp` also forwards `templateEngine` to `jaspr_content`, so docs can
+use `MustacheTemplateEngine`, `LiquidTemplateEngine`, or a custom
+`TemplateEngine` for preprocessing content before Markdown/MDX parsing.
+
+`DartEdgeDocsApp` links `stylesheetHref`, which defaults to `/styles.css`.
+The package ships a precompiled default stylesheet at `web/styles.css`.
+Serve that stylesheet through the consuming Jaspr app's normal static asset
+setup, or point `stylesheetHref` at your own Tailwind/shadcn bundle.
+
+The layout also includes package-owned fallback styles by default for the docs
+shell and the shadcn primitives used by the built-in MDX components. Set
+`includeFallbackStyles: false` when the consuming app serves a complete
+Tailwind/shadcn stylesheet and wants that bundle to own all component styling.
+
+For Tailwind-based apps, `web/styles/globals.tw.css` remains available as a
+starter Tailwind entrypoint.
+
+## Dart Edge Mounting
+
+```dart
+final app = DartEdge<void>(services: () {});
+
+app.mountDartEdgeDocs(
+  const DartEdgeDocsApp(
+    wiki: DartEdgeDocsWiki(
+      title: 'Dart Edge',
+      sections: [
+        DartEdgeDocsSection(
+          title: 'Guide',
+          pages: [
+            DartEdgeDocsPage(title: 'Overview', href: '/'),
+            DartEdgeDocsPage(title: 'Routing', href: '/routing'),
+          ],
+        ),
+      ],
+    ),
+  ),
+);
+```
+
+The helper mounts a single catch-all Jaspr app route. Static files are handled
+by Jaspr's app handler, so app-local files under `web/` are served the same way
+they are in a normal Jaspr server.

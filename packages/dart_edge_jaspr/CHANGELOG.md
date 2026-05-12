@@ -1,3 +1,12 @@
+## 0.3.5
+
+- Remove direct Dart Edge HTML route helpers in favor of mounting Jaspr's Shelf
+  handler through `dart_edge_shelf`.
+- Remove custom static asset fallback plumbing from `mountJasprApp(...)`;
+  static assets are handled by Jaspr's app handler.
+- Keep `JasprRenderer.renderString(...)` for tests, previews, and email
+  rendering.
+
 ## 0.3.4
 
 - Preserve route-local path parameter and query parameter decoders when

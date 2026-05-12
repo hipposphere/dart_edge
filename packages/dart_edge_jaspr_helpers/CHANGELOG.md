@@ -1,3 +1,8 @@
+## 0.3.2
+
+- Update `dart_edge_jaspr` constraint for the Shelf-backed Jaspr app mounting
+  API.
+
 ## 0.3.0
 
 - Declare internal Dart Edge dependencies with the internal hosted registry.

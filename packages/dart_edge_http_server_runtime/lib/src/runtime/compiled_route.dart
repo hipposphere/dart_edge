@@ -108,10 +108,15 @@ RouteOptions effectiveRouteOptions<TServices>(
 }
 
 final class RouteSegment {
-  const RouteSegment._({required this.value, required this.isParameter});
+  const RouteSegment._({
+    required this.value,
+    required this.isParameter,
+    this.isWildcard = false,
+  });
 
   final String value;
   final bool isParameter;
+  final bool isWildcard;
 
   factory RouteSegment.literal(String value) {
     return RouteSegment._(value: value, isParameter: false);
@@ -121,7 +126,15 @@ final class RouteSegment {
     return RouteSegment._(value: value, isParameter: true);
   }
 
-  Map<String, Object?> toJson() => {'value': value, 'isParameter': isParameter};
+  factory RouteSegment.wildcard(String value) {
+    return RouteSegment._(value: value, isParameter: true, isWildcard: true);
+  }
+
+  Map<String, Object?> toJson() => {
+    'value': value,
+    'isParameter': isParameter,
+    if (isWildcard) 'isWildcard': true,
+  };
 }
 
 List<RouteSegment> parseRoutePattern(String path) {
@@ -129,17 +142,28 @@ List<RouteSegment> parseRoutePattern(String path) {
     return const <RouteSegment>[];
   }
 
-  return path
+  final segments = path
       .split('/')
       .where((segment) => segment.isNotEmpty)
       .map((segment) {
-        final parameterName = _parameterName(segment);
-        if (parameterName != null) {
+        if (_wildcardName(segment) case final wildcardName?) {
+          return RouteSegment.wildcard(wildcardName);
+        }
+        if (_parameterName(segment) case final parameterName?) {
           return RouteSegment.parameter(parameterName);
         }
         return RouteSegment.literal(segment);
       })
       .toList(growable: false);
+  final wildcardIndex = segments.indexWhere((segment) => segment.isWildcard);
+  if (wildcardIndex != -1 && wildcardIndex != segments.length - 1) {
+    throw ArgumentError.value(
+      path,
+      'path',
+      'Wildcard route segments must be the final path segment.',
+    );
+  }
+  return segments;
 }
 
 String openApiPathForSegments(List<RouteSegment> segments) {
@@ -161,6 +185,16 @@ String? _parameterName(String segment) {
   }
   if (segment.startsWith(':') && segment.length > 1) {
     return segment.substring(1);
+  }
+  return null;
+}
+
+String? _wildcardName(String segment) {
+  if (segment.startsWith('<') && segment.endsWith('*>')) {
+    return segment.substring(1, segment.length - 2);
+  }
+  if (segment.startsWith(':') && segment.endsWith('*') && segment.length > 2) {
+    return segment.substring(1, segment.length - 1);
   }
   return null;
 }

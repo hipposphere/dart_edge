@@ -1,0 +1,19 @@
+name: dart_edge_shelf
+description: Shelf handler integration for Dart Edge HTTP servers.
+version: 0.1.1
+publish_to: "https://registry.hippolabs.org/pub/internal-pub/"
+repository: https://github.com/hipposphere/dart_edge/tree/main/packages/dart_edge_shelf
+
+environment:
+  sdk: ">=3.11.0 <4.0.0"
+
+resolution: workspace
+
+dependencies:
+  dart_edge_http_server:
+    hosted: "https://registry.hippolabs.org/pub/internal-pub/"
+    version: ^0.3.13
+  shelf: ^1.4.2
+
+dev_dependencies:
+  test: ^1.30.0

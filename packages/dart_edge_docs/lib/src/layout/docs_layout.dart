@@ -1,71 +1,22 @@
 import 'package:jaspr/dom.dart';
 import 'package:jaspr/jaspr.dart';
-import 'package:jaspr/server.dart';
 import 'package:jaspr_content/jaspr_content.dart';
 import 'package:shadcn_jaspr/shadcn_jaspr.dart';
 
-import 'mdx.dart';
-import 'wiki.dart';
-
-/// A Jaspr documentation app for file-system-backed `.md` and `.mdx` pages.
-final class DartEdgeDocsApp extends StatelessComponent {
-  const DartEdgeDocsApp({
-    required this.wiki,
-    this.contentDirectory = 'content',
-    this.dataDirectory = 'content/_data',
-    this.stylesheetHref = '/styles.css',
-    this.eagerlyLoadAllPages = true,
-    this.additionalComponents = const [],
-    this.debugPrintRoutes = false,
-    super.key,
-  });
-
-  /// Structured wiki navigation shown in the shell.
-  final DartEdgeDocsWiki wiki;
-
-  /// Directory containing `.md` and `.mdx` files.
-  final String contentDirectory;
-
-  /// Directory containing optional `jaspr_content` data files.
-  final String dataDirectory;
-
-  /// Compiled stylesheet path. Projects using `shadcn_jaspr` should compile
-  /// their Tailwind entrypoint to this URL.
-  final String stylesheetHref;
-
-  /// Whether all pages should be loaded before rendering.
-  final bool eagerlyLoadAllPages;
-
-  /// Extra MDX components available to documentation pages.
-  final List<CustomComponent> additionalComponents;
-
-  /// Prints generated route information while developing.
-  final bool debugPrintRoutes;
-
-  @override
-  Component build(BuildContext context) {
-    return ContentApp(
-      directory: contentDirectory,
-      dataDirectory: dataDirectory,
-      eagerlyLoadAllPages: eagerlyLoadAllPages,
-      parsers: DartEdgeDocsMdx.parsers(),
-      extensions: DartEdgeDocsMdx.extensions(),
-      components: DartEdgeDocsMdx.components(additional: additionalComponents),
-      layouts: [DartEdgeDocsLayout(wiki: wiki, stylesheetHref: stylesheetHref)],
-      debugPrint: debugPrintRoutes,
-    );
-  }
-}
+import '../styles/docs_styles.dart';
+import '../wiki/wiki.dart';
 
 /// Documentation page layout with shadcn navigation primitives.
 final class DartEdgeDocsLayout extends PageLayoutBase {
   const DartEdgeDocsLayout({
     required this.wiki,
     this.stylesheetHref = '/styles.css',
+    this.includeFallbackStyles = true,
   });
 
   final DartEdgeDocsWiki wiki;
   final String stylesheetHref;
+  final bool includeFallbackStyles;
 
   @override
   String get name => 'docs';
@@ -74,7 +25,9 @@ final class DartEdgeDocsLayout extends PageLayoutBase {
   Iterable<Component> buildHead(Page page) sync* {
     yield* super.buildHead(page);
     yield link(rel: 'stylesheet', href: stylesheetHref);
-    yield Style(styles: _styles);
+    if (includeFallbackStyles) {
+      yield Style(styles: dartEdgeDocsStyles);
+    }
   }
 
   @override
@@ -224,74 +177,3 @@ String _normalizeComparableHref(String href) {
   if (href == '/') return '/';
   return href.endsWith('/') ? href.substring(0, href.length - 1) : href;
 }
-
-List<StyleRule> get _styles => [
-  css('.de-docs-header').styles(
-    position: Position.sticky(top: Unit.zero),
-    zIndex: ZIndex(10),
-  ),
-  css('.de-docs-header-inner').styles(
-    display: Display.flex,
-    alignItems: AlignItems.center,
-    gap: Gap(column: 0.75.rem),
-    minHeight: 3.5.rem,
-    padding: Padding.symmetric(horizontal: 1.rem),
-  ),
-  css('.de-docs-brand').styles(textDecoration: TextDecoration.none),
-  css('.de-docs-header-spacer').styles(flex: Flex(grow: 1)),
-  css('.de-docs-header-link').styles(textDecoration: TextDecoration.none),
-  css('.de-docs-layout').styles(
-    display: Display.grid,
-    raw: {'grid-template-columns': '17rem minmax(0, 1fr)'},
-  ),
-  css('.de-docs-sidebar').styles(
-    position: Position.sticky(top: 3.5.rem),
-    overflow: Overflow.auto,
-    padding: Padding.all(1.rem),
-    raw: {'height': 'calc(100vh - 3.5rem)'},
-  ),
-  css(
-    '.de-docs-nav-section + .de-docs-nav-section',
-  ).styles(margin: Margin.only(top: 1.25.rem)),
-  css('.de-docs-nav-title').styles(margin: Margin.only(bottom: 0.5.rem)),
-  css('.de-docs-nav-list').styles(
-    listStyle: ListStyle.none,
-    margin: Margin.zero,
-    padding: Padding.zero,
-  ),
-  css(
-    '.de-docs-nav-link',
-  ).styles(display: Display.block, textDecoration: TextDecoration.none),
-  css('.de-docs-main').styles(
-    minWidth: Unit.zero,
-    maxWidth: 56.rem,
-    padding: Padding.symmetric(horizontal: 2.rem, vertical: 2.rem),
-  ),
-  css('.de-docs-content').styles(margin: Margin.only(top: 2.rem)),
-  css(
-    '.de-docs-content :is(h1, h2, h3)',
-  ).styles(raw: {'scroll-margin-top': '5rem'}),
-  css('.de-docs-pager').styles(
-    display: Display.grid,
-    gap: Gap(column: 1.rem),
-    margin: Margin.only(top: 3.rem),
-    raw: {'grid-template-columns': 'minmax(0, 1fr) minmax(0, 1fr)'},
-  ),
-  css('.de-docs-pager a').styles(
-    display: Display.grid,
-    gap: Gap(row: 0.25.rem),
-    textDecoration: TextDecoration.none,
-  ),
-  css('.de-docs-pager-label').styles(fontSize: 0.75.rem),
-  css('.de-docs-pager-title').styles(fontWeight: FontWeight.w600),
-  css.media(MediaQuery.all(maxWidth: 860.px), [
-    css('.de-docs-layout').styles(display: Display.block),
-    css('.de-docs-sidebar').styles(
-      position: Position.relative(),
-      height: Unit.auto,
-      border: Border.only(bottom: BorderSide(width: 1.px)),
-      raw: {'top': '0'},
-    ),
-    css('.de-docs-main').styles(padding: Padding.all(1.rem)),
-  ]),
-];
