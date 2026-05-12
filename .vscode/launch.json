@@ -1,11 +1,18 @@
 {
     "configurations": [
-    {
-        "name": "Dart",
-        "type": "dart",
-        "request": "launch",
-        "cwd": "examples/simple_test",
-        "program": "bin/main.dart"
-    }
+        {
+            "name": "Dart Edge Simple Test Server",
+            "type": "dart",
+            "request": "launch",
+            "cwd": "examples/simple_test_server",
+            "program": "bin/main.dart"
+        },
+        {
+            "name": "Dart Edge Docs Example",
+            "type": "dart",
+            "request": "launch",
+            "cwd": "examples/dart_edge_docs_example",
+            "program": "web/main.dart"
+        }
     ]
 }

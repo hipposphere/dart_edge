@@ -1,0 +1,16 @@
+name: dart_edge_docs_example
+description: Runnable Jaspr documentation wiki example for dart_edge_docs.
+publish_to: none
+
+environment:
+  sdk: ">=3.11.0 <4.0.0"
+
+resolution: workspace
+
+dependencies:
+  dart_edge_docs:
+    path: ../../packages/dart_edge_docs
+  jaspr: ^0.23.1
+
+jaspr:
+  mode: server

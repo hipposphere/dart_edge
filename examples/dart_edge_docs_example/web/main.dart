@@ -23,7 +23,7 @@ void main() {
           ),
         ],
       ),
-      contentDirectory: 'example/content',
+      contentDirectory: 'content',
     ),
   );
 }
