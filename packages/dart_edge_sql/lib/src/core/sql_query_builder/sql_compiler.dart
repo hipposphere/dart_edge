@@ -43,7 +43,10 @@ final class _SqlCompiler {
 
   void writeValue(Object? value, {SqlColumn<dynamic>? column}) {
     final parameterName = 'p${++_parameterIndex}';
-    _parameters[parameterName] = value;
+    _parameters[parameterName] = switch (dialect) {
+      SqlDialect.postgres => _encodePostgresParameterValue(value, column),
+      SqlDialect.sqlite => value,
+    };
     final placeholderPrefix = switch (dialect) {
       SqlDialect.sqlite => ':',
       SqlDialect.postgres => '@',
@@ -217,7 +220,12 @@ final class _SqlCompiler {
       return end;
     }
     final parameterName = 'p${++_parameterIndex}';
-    _parameters[parameterName] = parameters[name];
+    final value = parameters[name];
+    _parameters[parameterName] = switch (dialect) {
+      SqlDialect.postgres when _hasJsonCast(sql, end) =>
+        _encodeJsonTextParameter(value),
+      _ => value,
+    };
     write(switch (dialect) {
       SqlDialect.sqlite => ':$parameterName',
       SqlDialect.postgres => '@$parameterName',
@@ -279,6 +287,56 @@ bool _isIdentifierPart(String? char) {
   }
   final code = char.codeUnitAt(0);
   return _isIdentifierStart(char) || (code >= 48 && code <= 57);
+}
+
+Object? _encodePostgresParameterValue(
+  Object? value,
+  SqlColumn<dynamic>? column,
+) {
+  if (!PostgresTypeMapping.usesJsonTextParameter(column?.databaseType)) {
+    return value;
+  }
+  return _encodeJsonTextParameter(value);
+}
+
+Object? _encodeJsonTextParameter(Object? value) {
+  return switch (value) {
+    final Map<String, Object?> value => jsonEncode(value),
+    final List<Object?> value => jsonEncode(value),
+    _ => value,
+  };
+}
+
+bool _hasJsonCast(String sql, int index) {
+  if (!_startsWith(sql, index, '::')) {
+    return false;
+  }
+  var typeStart = index + 2;
+  while (_peek(sql, typeStart) == ' ') {
+    typeStart += 1;
+  }
+  final typeEnd = _readCastTypeEnd(sql, typeStart);
+  if (typeEnd == typeStart) {
+    return false;
+  }
+  final type = sql.substring(typeStart, typeEnd).replaceAll('"', '');
+  return switch (PostgresTypeMapping.normalizeTypeName(type)) {
+    'json' || 'jsonb' => true,
+    _ => false,
+  };
+}
+
+int _readCastTypeEnd(String sql, int start) {
+  var index = start;
+  while (index < sql.length) {
+    final char = sql[index];
+    if (_isIdentifierPart(char) || char == '.' || char == '"') {
+      index += 1;
+      continue;
+    }
+    break;
+  }
+  return index;
 }
 
 _SelectedProjection _normalizeProjection(Object value) {

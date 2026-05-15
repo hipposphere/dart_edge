@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'postgres_type_mapping.dart';
 import 'sql_dialect.dart';
 import 'sql_executor.dart';

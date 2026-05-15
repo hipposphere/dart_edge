@@ -1,4 +1,5 @@
 import 'package:dart_edge_sql/dart_edge_sql.dart';
+import 'package:dart_edge_sql/src/drivers/shared/compiled_sql_statement.dart';
 import 'package:test/test.dart';
 
 void main() {
@@ -52,6 +53,45 @@ void main() {
       expect(db.statement.sql, contains('"id" = @p2::uuid'));
     },
   );
+
+  test('encodes generated jsonb column parameters as JSON text', () async {
+    final db = _RecordingExecutor(SqlDialect.postgres);
+    final definition = <String, Object?>{
+      'name': 'seeded',
+      'steps': [
+        {'kind': 'extract', 'required': true},
+      ],
+    };
+
+    await db.typed
+        .insertInto(BlueprintsTable.table)
+        .values(BlueprintInsert(definition: definition))
+        .execute();
+
+    expect(db.statement.sql, contains('@p1::jsonb'));
+    expect(db.statement.namedParameters, {
+      'p1': '{"name":"seeded","steps":[{"kind":"extract","required":true}]}',
+    });
+  });
+
+  test('encodes explicitly cast raw jsonb parameters as JSON text', () {
+    final statement = compileSqlStatement(
+      SqlDialect.postgres,
+      SqlStatement.named('SELECT @definition::jsonb', {
+        'definition': {
+          'name': 'seeded',
+          'steps': [
+            {'kind': 'extract', 'required': true},
+          ],
+        },
+      }),
+    );
+
+    expect(statement.sql, r'SELECT $1::jsonb');
+    expect(statement.positionalParameters, [
+      '{"name":"seeded","steps":[{"kind":"extract","required":true}]}',
+    ]);
+  });
 }
 
 final class _RecordingExecutor implements SqlExecutor {
@@ -200,6 +240,59 @@ final class DocumentsTable
 
   @override
   Map<String, Object?> encodeUpdate(DocumentsUpdate value) => value.toColumns();
+
+  @override
+  SqlRow mapRow(SqlRow row, {String prefix = ''}) => row;
+}
+
+final class BlueprintInsert {
+  const BlueprintInsert({required this.definition});
+
+  final Map<String, Object?> definition;
+
+  Map<String, Object?> toColumns() => <String, Object?>{
+    'definition': definition,
+  };
+}
+
+final class BlueprintUpdate {
+  const BlueprintUpdate({this.definition = const SqlValue.absent()});
+
+  final SqlValue<Map<String, Object?>> definition;
+
+  Map<String, Object?> toColumns() => <String, Object?>{
+    if (definition.isPresent) 'definition': definition.value,
+  };
+}
+
+final class BlueprintsTable
+    extends SqlTable<SqlRow, BlueprintInsert, BlueprintUpdate> {
+  const BlueprintsTable._();
+
+  static const table = BlueprintsTable._();
+
+  static const definition = SqlColumn<Map<String, Object?>>(
+    table: table,
+    name: 'definition',
+    databaseType: 'jsonb',
+  );
+
+  @override
+  String get name => 'blueprints';
+
+  @override
+  String? get schema => 'public';
+
+  @override
+  List<SqlColumn<Object?>> get columns => <SqlColumn<Object?>>[
+    definition.asObjectColumn,
+  ];
+
+  @override
+  Map<String, Object?> encodeInsert(BlueprintInsert value) => value.toColumns();
+
+  @override
+  Map<String, Object?> encodeUpdate(BlueprintUpdate value) => value.toColumns();
 
   @override
   SqlRow mapRow(SqlRow row, {String prefix = ''}) => row;

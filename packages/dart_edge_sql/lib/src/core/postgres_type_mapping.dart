@@ -19,9 +19,23 @@ abstract final class PostgresTypeMapping {
       'time' ||
       'timetz' ||
       'timestamp' ||
-      'timestamptz' => normalized,
+      'timestamptz' ||
+      'json' ||
+      'jsonb' => normalized,
       _ when isUserDefinedType(normalized) => quoteTypeName(type),
       _ => null,
+    };
+  }
+
+  /// Whether a PostgreSQL type should receive JSON text parameters.
+  static bool usesJsonTextParameter(String? databaseType) {
+    final type = databaseType?.trim();
+    if (type == null || type.isEmpty) {
+      return false;
+    }
+    return switch (normalizeTypeName(type)) {
+      'json' || 'jsonb' => true,
+      _ => false,
     };
   }
 

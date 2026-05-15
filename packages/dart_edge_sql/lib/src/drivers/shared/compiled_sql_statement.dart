@@ -1,3 +1,6 @@
+import 'dart:convert';
+
+import '../../core/postgres_type_mapping.dart';
 import '../../core/sql_dialect.dart';
 import '../../core/sql_statement.dart';
 
@@ -108,7 +111,12 @@ SqlStatement compileSqlStatement(SqlDialect dialect, SqlStatement statement) {
       );
     }
 
-    positionalParameters.add(value);
+    positionalParameters.add(switch (dialect) {
+      SqlDialect.postgres
+          when _hasJsonCast(statement.sql, placeholder.endIndex + 1) =>
+        _encodeJsonTextParameter(value),
+      _ => value,
+    });
     buffer.write(switch (dialect) {
       SqlDialect.postgres => '\$${positionalParameters.length}',
       SqlDialect.sqlite => '?',
@@ -168,4 +176,56 @@ bool _isAlpha(String value) {
 bool _isDigit(String value) {
   final codeUnit = value.codeUnitAt(0);
   return codeUnit >= 48 && codeUnit <= 57;
+}
+
+Object? _encodeJsonTextParameter(Object? value) {
+  return switch (value) {
+    final Map<String, Object?> value => jsonEncode(value),
+    final List<Object?> value => jsonEncode(value),
+    _ => value,
+  };
+}
+
+bool _hasJsonCast(String sql, int index) {
+  if (!_startsWith(sql, index, '::')) {
+    return false;
+  }
+  var typeStart = index + 2;
+  while (_peek(sql, typeStart) == ' ') {
+    typeStart += 1;
+  }
+  final typeEnd = _readCastTypeEnd(sql, typeStart);
+  if (typeEnd == typeStart) {
+    return false;
+  }
+  final type = sql.substring(typeStart, typeEnd).replaceAll('"', '');
+  return switch (PostgresTypeMapping.normalizeTypeName(type)) {
+    'json' || 'jsonb' => true,
+    _ => false,
+  };
+}
+
+int _readCastTypeEnd(String sql, int start) {
+  var index = start;
+  while (index < sql.length) {
+    final char = sql[index];
+    if (_isIdentifierPart(char) || char == '.' || char == '"') {
+      index += 1;
+      continue;
+    }
+    break;
+  }
+  return index;
+}
+
+bool _startsWith(String value, int index, String pattern) {
+  return index + pattern.length <= value.length &&
+      value.substring(index, index + pattern.length) == pattern;
+}
+
+String? _peek(String value, int index) {
+  if (index < 0 || index >= value.length) {
+    return null;
+  }
+  return value[index];
 }
