@@ -11,6 +11,7 @@ use serde::Serialize;
 use sqlx::pool::PoolConnection;
 use sqlx::postgres::{PgPool, PgPoolOptions, PgRow};
 use sqlx::sqlite::{SqlitePool, SqlitePoolOptions, SqliteRow};
+use sqlx::types::Uuid;
 use sqlx::types::chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
 use sqlx::{Column, Postgres, Row, Sqlite, TypeInfo};
 use tokio::runtime::{Builder, Runtime};
@@ -717,6 +718,11 @@ fn decode_postgres_value(
             Ok(None) => SqlValue::Null,
             Err(error) => return Err(format!("Failed to decode PostgreSQL date: {error}")),
         },
+        "UUID" => match row.try_get::<Option<Uuid>, usize>(index) {
+            Ok(Some(value)) => SqlValue::String(value.to_string()),
+            Ok(None) => SqlValue::Null,
+            Err(error) => return Err(format!("Failed to decode PostgreSQL uuid: {error}")),
+        },
         "BOOL[]" => decode_postgres_array::<bool>(row, index, "bool array")?,
         "INT2[]" => decode_postgres_array::<i16>(row, index, "int2 array")?,
         "INT4[]" => decode_postgres_array::<i32>(row, index, "int4 array")?,
@@ -742,9 +748,10 @@ fn decode_postgres_value(
             Err(error) => return Err(format!("Failed to decode PostgreSQL float4 array: {error}")),
         },
         "FLOAT8[]" => decode_postgres_array::<f64>(row, index, "float8 array")?,
-        "TEXT[]" | "VARCHAR[]" | "CHAR[]" | "NAME[]" | "UUID[]" => {
+        "TEXT[]" | "VARCHAR[]" | "CHAR[]" | "NAME[]" => {
             decode_postgres_array::<String>(row, index, "text array")?
         }
+        "UUID[]" => decode_postgres_uuid_array(row, index)?,
         "JSON[]" | "JSONB[]" => {
             match row
                 .try_get::<Option<Vec<Option<sqlx::types::Json<serde_json::Value>>>>, usize>(index)
@@ -762,10 +769,7 @@ fn decode_postgres_value(
             }
         }
         _ => {
-            if matches!(
-                type_name,
-                "TIME" | "UUID" | "TEXT" | "VARCHAR" | "BPCHAR" | "NAME"
-            ) {
+            if matches!(type_name, "TIME" | "TEXT" | "VARCHAR" | "BPCHAR" | "NAME") {
                 match row.try_get::<Option<String>, usize>(index) {
                     Ok(Some(value)) => SqlValue::String(value),
                     Ok(None) => SqlValue::Null,
@@ -778,6 +782,19 @@ fn decode_postgres_value(
     };
 
     Ok(value)
+}
+
+fn decode_postgres_uuid_array(row: &PgRow, index: usize) -> Result<SqlValue, String> {
+    match row.try_get::<Option<Vec<Option<Uuid>>>, usize>(index) {
+        Ok(Some(value)) => Ok(SqlValue::Json(
+            value
+                .into_iter()
+                .map(|value| value.map(|uuid| uuid.to_string()))
+                .collect(),
+        )),
+        Ok(None) => Ok(SqlValue::Null),
+        Err(error) => Err(format!("Failed to decode PostgreSQL uuid array: {error}")),
+    }
 }
 
 fn decode_postgres_array<T>(row: &PgRow, index: usize, label: &str) -> Result<SqlValue, String>
