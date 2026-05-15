@@ -70,7 +70,9 @@ void main() {
     expect(
       () => compileSqlStatement(
         SqlDialect.postgres,
-        SqlStatement.named('SELECT @value', {'value': const SqlValue.absent()}),
+        SqlStatement.named('SELECT @value', {
+          'value': const SqlValue<Object?>.absent(),
+        }),
       ),
       throwsArgumentError,
     );
