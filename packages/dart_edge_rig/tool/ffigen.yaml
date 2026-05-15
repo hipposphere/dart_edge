@@ -1,0 +1,35 @@
+name: DartEdgeRigNativeBindings
+description: Generated C ABI bindings for dart_edge_rig.
+output: ../lib/src/native/generated_bindings.dart
+headers:
+  entry-points:
+    - ../rust/include/dart_edge_rig.h
+functions:
+  include:
+    - dart_edge_rig_.*
+  leaf:
+    include:
+      - dart_edge_rig_dispose_handle
+      - dart_edge_rig_free_handle_result
+      - dart_edge_rig_free_prompt_result
+      - dart_edge_rig_native_abi_version
+structs:
+  include:
+    - NativeRigAgentConfig
+    - NativeRigHandleResult
+    - NativeRigPromptResult
+    - NativeRigStreamEvent
+    - NativeRigStreamOptions
+    - NativeRigStringPair
+    - NativeRigToolDefinition
+typedefs:
+  include:
+    - NativeRigStreamCallback
+exclude-all-by-default: true
+sort: true
+use-supported-typedefs: true
+comments: false
+preamble: |
+  // ignore_for_file: camel_case_types, non_constant_identifier_names
+ffi-native:
+  asset-id: package:dart_edge_rig/dart_edge_rig.dart

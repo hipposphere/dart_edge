@@ -13,6 +13,7 @@ exclude = [
     "packages/dart_edge_auth/rust",
     "packages/dart_edge_bluetooth_server/rust",
     "packages/dart_edge_http_server_runtime/rust",
+    "packages/dart_edge_rig/rust",
     "packages/dart_edge_s3_client/rust",
     "packages/dart_edge_sip/rust",
     "packages/dart_edge_sql/rust",
