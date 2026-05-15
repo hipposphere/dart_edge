@@ -301,9 +301,26 @@ Object? _encodePostgresParameterValue(
 
 Object? _encodeJsonTextParameter(Object? value) {
   return switch (value) {
-    final Map<String, Object?> value => jsonEncode(value),
-    final List<Object?> value => jsonEncode(value),
-    _ => value,
+    null || String() => value,
+    _ => jsonEncode(_normalizeJsonValue(value)),
+  };
+}
+
+Object? _normalizeJsonValue(Object? value) {
+  return switch (value) {
+    null || String() || bool() || num() => value,
+    final Map<Object?, Object?> value => <String, Object?>{
+      for (final entry in value.entries)
+        entry.key.toString(): _normalizeJsonValue(entry.value),
+    },
+    final Iterable<Object?> value => [
+      for (final item in value) _normalizeJsonValue(item),
+    ],
+    final Object value => throw ArgumentError.value(
+      value,
+      'value',
+      'Unsupported JSON parameter value.',
+    ),
   };
 }
 

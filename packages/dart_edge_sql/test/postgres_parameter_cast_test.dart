@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:dart_edge_sql/dart_edge_sql.dart';
 import 'package:dart_edge_sql/src/drivers/shared/compiled_sql_statement.dart';
 import 'package:test/test.dart';
@@ -91,6 +93,36 @@ void main() {
     expect(statement.positionalParameters, [
       '{"name":"seeded","steps":[{"kind":"extract","required":true}]}',
     ]);
+  });
+
+  test('encodes jsonb map parameters with loose runtime types', () {
+    final value = jsonDecode(
+      '{"type":"object","properties":{"name":{"type":"string"}}}',
+    );
+
+    final statement = compileSqlStatement(
+      SqlDialect.postgres,
+      SqlStatement.named('insert into t (payload) values (@payload::jsonb)', {
+        'payload': value,
+      }),
+    );
+
+    expect(statement.positionalParameters.single, isA<String>());
+    expect(
+      statement.positionalParameters.single,
+      '{"type":"object","properties":{"name":{"type":"string"}}}',
+    );
+  });
+
+  test('keeps jsonb string parameters as provided', () {
+    final statement = compileSqlStatement(
+      SqlDialect.postgres,
+      SqlStatement.named('SELECT @definition::jsonb', {
+        'definition': '{"name":"seeded"}',
+      }),
+    );
+
+    expect(statement.positionalParameters.single, '{"name":"seeded"}');
   });
 }
 
