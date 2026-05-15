@@ -43,9 +43,13 @@ final class _SqlCompiler {
 
   void writeValue(Object? value, {SqlColumn<dynamic>? column}) {
     final parameterName = 'p${++_parameterIndex}';
+    final parameterValue = _unwrapSqlParameterValue(value);
     _parameters[parameterName] = switch (dialect) {
-      SqlDialect.postgres => _encodePostgresParameterValue(value, column),
-      SqlDialect.sqlite => value,
+      SqlDialect.postgres => _encodePostgresParameterValue(
+        parameterValue,
+        column,
+      ),
+      SqlDialect.sqlite => parameterValue,
     };
     final placeholderPrefix = switch (dialect) {
       SqlDialect.sqlite => ':',
@@ -297,6 +301,18 @@ Object? _encodePostgresParameterValue(
     return value;
   }
   return _encodeJsonTextParameter(value);
+}
+
+Object? _unwrapSqlParameterValue(Object? value) {
+  return switch (value) {
+    final SqlValue<dynamic> value when value.isPresent => value.value,
+    final SqlValue<dynamic> value => throw ArgumentError.value(
+      value,
+      'value',
+      'Absent SQL values cannot be used as query parameters.',
+    ),
+    _ => value,
+  };
 }
 
 Object? _encodeJsonTextParameter(Object? value) {

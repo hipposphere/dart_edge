@@ -35,6 +35,47 @@ void main() {
     expect(db.statement.sql, contains('@p3::time'));
   });
 
+  test('unwraps present sql values in generated postgres inserts', () async {
+    final db = _RecordingExecutor(SqlDialect.postgres);
+
+    await db.typed
+        .insertInto(PhoneCallsTable.table)
+        .values(const PhoneCallInsert(durationSeconds: SqlValue(35)))
+        .execute();
+
+    expect(db.statement.namedParameters, {'p1': 35});
+  });
+
+  test('unwraps present sql values in compiled statements', () {
+    final statement = compileSqlStatement(
+      SqlDialect.postgres,
+      SqlStatement.named('SELECT @value', {
+        'value': const SqlValue('responses'),
+      }),
+    );
+
+    expect(statement.positionalParameters.single, 'responses');
+  });
+
+  test('unwraps present sql values in positional statements', () {
+    final statement = compileSqlStatement(
+      SqlDialect.postgres,
+      SqlStatement.positional('SELECT \$1', [const SqlValue('responses')]),
+    );
+
+    expect(statement.positionalParameters.single, 'responses');
+  });
+
+  test('rejects absent sql values in compiled statements', () {
+    expect(
+      () => compileSqlStatement(
+        SqlDialect.postgres,
+        SqlStatement.named('SELECT @value', {'value': const SqlValue.absent()}),
+      ),
+      throwsArgumentError,
+    );
+  });
+
   test(
     'casts generated special type values in postgres updates and filters',
     () async {

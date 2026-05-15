@@ -3,11 +3,18 @@ import 'dart:convert';
 import '../../core/postgres_type_mapping.dart';
 import '../../core/sql_dialect.dart';
 import '../../core/sql_statement.dart';
+import '../../core/sql_value.dart';
 
 SqlStatement compileSqlStatement(SqlDialect dialect, SqlStatement statement) {
   final namedParameters = statement.namedParameters;
   if (namedParameters == null) {
-    return statement;
+    if (statement.parameters == null) {
+      return statement;
+    }
+    return SqlStatement.positional(statement.sql, [
+      for (final value in statement.positionalParameters)
+        _unwrapSqlParameterValue(value),
+    ]);
   }
 
   final positionalParameters = <Object?>[];
@@ -102,7 +109,7 @@ SqlStatement compileSqlStatement(SqlDialect dialect, SqlStatement statement) {
       continue;
     }
 
-    final value = namedParameters[placeholder.name];
+    final value = _unwrapSqlParameterValue(namedParameters[placeholder.name]);
     if (!namedParameters.containsKey(placeholder.name)) {
       throw ArgumentError.value(
         placeholder.name,
@@ -182,6 +189,18 @@ Object? _encodeJsonTextParameter(Object? value) {
   return switch (value) {
     null || String() => value,
     _ => jsonEncode(_normalizeJsonValue(value)),
+  };
+}
+
+Object? _unwrapSqlParameterValue(Object? value) {
+  return switch (value) {
+    final SqlValue<dynamic> value when value.isPresent => value.value,
+    final SqlValue<dynamic> value => throw ArgumentError.value(
+      value,
+      'value',
+      'Absent SQL values cannot be used as query parameters.',
+    ),
+    _ => value,
   };
 }
 
