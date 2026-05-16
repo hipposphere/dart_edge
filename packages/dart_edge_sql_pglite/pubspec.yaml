@@ -13,7 +13,7 @@ dependencies:
   code_assets: ^1.0.0
   dart_edge_sql:
     hosted: "https://registry.hippolabs.org/pub/internal-pub/"
-    version: ^0.3.10
+    version: ^0.3.18
   dart_edge_native_assets:
     hosted: "https://registry.hippolabs.org/pub/internal-pub/"
     version: ^0.1.2

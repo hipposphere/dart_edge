@@ -13,6 +13,7 @@ abstract final class PostgresTypeMapping {
 
     final normalized = normalizeTypeName(type);
     return switch (normalized) {
+      'bool' => normalized,
       'int2' || 'int4' || 'int8' => normalized,
       'uuid' ||
       'date' ||
@@ -20,8 +21,14 @@ abstract final class PostgresTypeMapping {
       'timetz' ||
       'timestamp' ||
       'timestamptz' ||
+      'float4' ||
+      'float8' ||
+      'numeric' ||
+      'decimal' ||
+      'money' ||
       'json' ||
-      'jsonb' => normalized,
+      'jsonb' ||
+      'bytea' => normalized,
       _ when isUserDefinedType(normalized) => quoteTypeName(type),
       _ => null,
     };

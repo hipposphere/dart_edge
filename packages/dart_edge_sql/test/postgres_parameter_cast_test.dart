@@ -35,6 +35,40 @@ void main() {
     expect(db.statement.sql, contains('@p3::time'));
   });
 
+  test('casts generated nullable boolean values in postgres inserts', () async {
+    final db = _RecordingExecutor(SqlDialect.postgres);
+
+    await db.typed
+        .insertInto(AgentsTable.table)
+        .values(const AgentInsert(includeThinkingSummaries: null))
+        .execute();
+
+    expect(db.statement.sql, contains('@p1::bool'));
+    expect(db.statement.namedParameters, {'p1': null});
+  });
+
+  test('casts generated nullable scalar values in postgres inserts', () async {
+    final db = _RecordingExecutor(SqlDialect.postgres);
+
+    await db.typed
+        .insertInto(ScalarSamplesTable.table)
+        .values(const ScalarSampleInsert())
+        .execute();
+
+    expect(db.statement.sql, contains('@p1::float4'));
+    expect(db.statement.sql, contains('@p2::float8'));
+    expect(db.statement.sql, contains('@p3::numeric'));
+    expect(db.statement.sql, contains('@p4::money'));
+    expect(db.statement.sql, contains('@p5::bytea'));
+    expect(db.statement.namedParameters, {
+      'p1': null,
+      'p2': null,
+      'p3': null,
+      'p4': null,
+      'p5': null,
+    });
+  });
+
   test('unwraps present sql values in generated postgres inserts', () async {
     final db = _RecordingExecutor(SqlDialect.postgres);
 
@@ -368,6 +402,158 @@ final class BlueprintsTable
 
   @override
   Map<String, Object?> encodeUpdate(BlueprintUpdate value) => value.toColumns();
+
+  @override
+  SqlRow mapRow(SqlRow row, {String prefix = ''}) => row;
+}
+
+final class AgentInsert {
+  const AgentInsert({required this.includeThinkingSummaries});
+
+  final bool? includeThinkingSummaries;
+
+  Map<String, Object?> toColumns() => <String, Object?>{
+    'include_thinking_summaries': includeThinkingSummaries,
+  };
+}
+
+final class AgentUpdate {
+  const AgentUpdate({this.includeThinkingSummaries = const SqlValue.absent()});
+
+  final SqlValue<bool?> includeThinkingSummaries;
+
+  Map<String, Object?> toColumns() => <String, Object?>{
+    if (includeThinkingSummaries.isPresent)
+      'include_thinking_summaries': includeThinkingSummaries.value,
+  };
+}
+
+final class AgentsTable extends SqlTable<SqlRow, AgentInsert, AgentUpdate> {
+  const AgentsTable._();
+
+  static const table = AgentsTable._();
+
+  static const includeThinkingSummaries = SqlColumn<bool>(
+    table: table,
+    name: 'include_thinking_summaries',
+    nullable: true,
+    databaseType: 'bool',
+  );
+
+  @override
+  String get name => 'agent';
+
+  @override
+  String? get schema => 'agento';
+
+  @override
+  List<SqlColumn<Object?>> get columns => <SqlColumn<Object?>>[
+    includeThinkingSummaries.asObjectColumn,
+  ];
+
+  @override
+  Map<String, Object?> encodeInsert(AgentInsert value) => value.toColumns();
+
+  @override
+  Map<String, Object?> encodeUpdate(AgentUpdate value) => value.toColumns();
+
+  @override
+  SqlRow mapRow(SqlRow row, {String prefix = ''}) => row;
+}
+
+final class ScalarSampleInsert {
+  const ScalarSampleInsert({
+    this.realValue,
+    this.doubleValue,
+    this.numericValue,
+    this.moneyValue,
+    this.bytesValue,
+  });
+
+  final double? realValue;
+  final double? doubleValue;
+  final num? numericValue;
+  final num? moneyValue;
+  final List<int>? bytesValue;
+
+  Map<String, Object?> toColumns() => <String, Object?>{
+    'real_value': realValue,
+    'double_value': doubleValue,
+    'numeric_value': numericValue,
+    'money_value': moneyValue,
+    'bytes_value': bytesValue,
+  };
+}
+
+final class ScalarSampleUpdate {
+  const ScalarSampleUpdate();
+
+  Map<String, Object?> toColumns() => const <String, Object?>{};
+}
+
+final class ScalarSamplesTable
+    extends SqlTable<SqlRow, ScalarSampleInsert, ScalarSampleUpdate> {
+  const ScalarSamplesTable._();
+
+  static const table = ScalarSamplesTable._();
+
+  static const realValue = SqlColumn<double>(
+    table: table,
+    name: 'real_value',
+    nullable: true,
+    databaseType: 'float4',
+  );
+
+  static const doubleValue = SqlColumn<double>(
+    table: table,
+    name: 'double_value',
+    nullable: true,
+    databaseType: 'float8',
+  );
+
+  static const numericValue = SqlColumn<num>(
+    table: table,
+    name: 'numeric_value',
+    nullable: true,
+    databaseType: 'numeric',
+  );
+
+  static const moneyValue = SqlColumn<num>(
+    table: table,
+    name: 'money_value',
+    nullable: true,
+    databaseType: 'money',
+  );
+
+  static const bytesValue = SqlColumn<List<int>>(
+    table: table,
+    name: 'bytes_value',
+    nullable: true,
+    databaseType: 'bytea',
+  );
+
+  @override
+  String get name => 'scalar_samples';
+
+  @override
+  String? get schema => 'public';
+
+  @override
+  List<SqlColumn<Object?>> get columns => <SqlColumn<Object?>>[
+    realValue.asObjectColumn,
+    doubleValue.asObjectColumn,
+    numericValue.asObjectColumn,
+    moneyValue.asObjectColumn,
+    bytesValue.asObjectColumn,
+  ];
+
+  @override
+  Map<String, Object?> encodeInsert(ScalarSampleInsert value) =>
+      value.toColumns();
+
+  @override
+  Map<String, Object?> encodeUpdate(ScalarSampleUpdate value) =>
+      value.toColumns();
 
   @override
   SqlRow mapRow(SqlRow row, {String prefix = ''}) => row;
