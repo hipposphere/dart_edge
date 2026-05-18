@@ -57,6 +57,11 @@ external ffi.Pointer<NativeRigHandleResult> dart_edge_rig_create_agent(
 @ffi.Native<ffi.Void Function(ffi.Int64)>(isLeaf: true)
 external void dart_edge_rig_dispose_handle(int handle);
 
+@ffi.Native<ffi.Void Function(ffi.Pointer<NativeRigBytesResult>)>(isLeaf: true)
+external void dart_edge_rig_free_bytes_result(
+  ffi.Pointer<NativeRigBytesResult> value,
+);
+
 @ffi.Native<ffi.Void Function(ffi.Pointer<NativeRigHandleResult>)>(isLeaf: true)
 external void dart_edge_rig_free_handle_result(
   ffi.Pointer<NativeRigHandleResult> value,
@@ -72,8 +77,30 @@ external void dart_edge_rig_free_stream_event(
   ffi.Pointer<NativeRigStreamEvent> value,
 );
 
+@ffi.Native<
+  ffi.Pointer<NativeRigBytesResult> Function(
+    ffi.Pointer<NativeRigModelConfig>,
+    ffi.Pointer<NativeRigImageGenerationRequest>,
+  )
+>()
+external ffi.Pointer<NativeRigBytesResult> dart_edge_rig_generate_image(
+  ffi.Pointer<NativeRigModelConfig> config,
+  ffi.Pointer<NativeRigImageGenerationRequest> request,
+);
+
 @ffi.Native<ffi.Int32 Function()>(isLeaf: true)
 external int dart_edge_rig_native_abi_version();
+
+@ffi.Native<
+  ffi.Pointer<NativeRigPromptResult> Function(
+    ffi.Pointer<NativeRigModelConfig>,
+    ffi.Pointer<NativeRigTranscriptionRequest>,
+  )
+>()
+external ffi.Pointer<NativeRigPromptResult> dart_edge_rig_transcribe(
+  ffi.Pointer<NativeRigModelConfig> config,
+  ffi.Pointer<NativeRigTranscriptionRequest> request,
+);
 
 final class NativeRigAgentConfig extends ffi.Struct {
   external ffi.Pointer<ffi.Char> provider;
@@ -120,6 +147,15 @@ final class NativeRigAgentConfig extends ffi.Struct {
   external int headers_len;
 }
 
+final class NativeRigBytesResult extends ffi.Struct {
+  external ffi.Pointer<ffi.Uint8> data;
+
+  @ffi.IntPtr()
+  external int data_len;
+
+  external ffi.Pointer<ffi.Char> error;
+}
+
 final class NativeRigHandleResult extends ffi.Struct {
   @ffi.Int64()
   external int handle;
@@ -127,6 +163,30 @@ final class NativeRigHandleResult extends ffi.Struct {
   external ffi.Pointer<ffi.Char> name;
 
   external ffi.Pointer<ffi.Char> error;
+}
+
+final class NativeRigImageGenerationRequest extends ffi.Struct {
+  external ffi.Pointer<ffi.Char> prompt;
+
+  @ffi.Uint32()
+  external int width;
+
+  @ffi.Uint32()
+  external int height;
+
+  external ffi.Pointer<ffi.Char> additional_params_json;
+}
+
+final class NativeRigModelConfig extends ffi.Struct {
+  external ffi.Pointer<ffi.Char> provider;
+
+  external ffi.Pointer<ffi.Char> model;
+
+  external ffi.Pointer<ffi.Char> api_key;
+
+  external ffi.Pointer<ffi.Char> base_url;
+
+  external ffi.Pointer<ffi.Char> additional_params_json;
 }
 
 final class NativeRigPromptResult extends ffi.Struct {
@@ -182,4 +242,25 @@ final class NativeRigToolDefinition extends ffi.Struct {
   external ffi.Pointer<ffi.Char> description;
 
   external ffi.Pointer<ffi.Char> parameters_json;
+}
+
+final class NativeRigTranscriptionRequest extends ffi.Struct {
+  external ffi.Pointer<ffi.Uint8> data;
+
+  @ffi.IntPtr()
+  external int data_len;
+
+  external ffi.Pointer<ffi.Char> filename;
+
+  external ffi.Pointer<ffi.Char> language;
+
+  external ffi.Pointer<ffi.Char> prompt;
+
+  @ffi.Bool()
+  external bool has_temperature;
+
+  @ffi.Double()
+  external double temperature;
+
+  external ffi.Pointer<ffi.Char> additional_params_json;
 }

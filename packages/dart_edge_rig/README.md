@@ -100,6 +100,69 @@ final agent = await RigAgent.openGeminiInteractions(
 );
 ```
 
+## Transcription
+
+Use `RigTranscriptionModel` when you want Rig's direct transcription models
+without opening an agent:
+
+```dart
+import 'dart:io';
+
+import 'package:dart_edge_rig/dart_edge_rig.dart';
+
+Future<void> main() async {
+  final model = RigTranscriptionModel.openAi(
+    apiKey: Platform.environment['OPENAI_API_KEY']!,
+  );
+
+  final transcript = await model.transcribeFile('meeting.mp3');
+  print(transcript.text);
+}
+```
+
+Transcription is exposed for OpenAI and Gemini-backed Rig models:
+
+```dart
+final model = RigTranscriptionModel.gemini(
+  model: 'gemini-2.5-flash',
+  apiKey: Platform.environment['GEMINI_API_KEY']!,
+);
+
+final audioBytes = await File('clip.wav').readAsBytes();
+final transcript = await model.transcribeBytes(
+  audioBytes,
+  filename: 'clip.wav',
+);
+```
+
+## Image Generation
+
+Use `RigImageGenerationModel` for OpenAI image generation models:
+
+```dart
+import 'dart:io';
+
+import 'package:dart_edge_rig/dart_edge_rig.dart';
+
+Future<void> main() async {
+  final model = RigImageGenerationModel.openAi(
+    apiKey: Platform.environment['OPENAI_API_KEY']!,
+  );
+
+  final image = await model.generate(
+    'A clean product render of a stainless steel espresso machine',
+    width: 1024,
+    height: 1024,
+  );
+
+  await File('espresso.png').writeAsBytes(image.bytes);
+}
+```
+
+Image generation currently follows Rig's OpenAI image generation provider
+support. Gemini transcription is available, but Gemini image generation is not
+exposed by Rig's current Gemini client.
+
 ## Streaming
 
 `stream` emits text, reasoning/thinking, tool-call, tool-result, and final-response events. Final responses include token usage when Rig receives it from the provider, including `reasoningTokens`.

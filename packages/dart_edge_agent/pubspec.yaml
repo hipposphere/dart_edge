@@ -1,6 +1,6 @@
 name: dart_edge_agent
 description: Agent harness primitives for Dart Edge applications.
-version: 0.1.0
+version: 0.1.1
 publish_to: "https://registry.hippolabs.org/pub/internal-pub/"
 repository: https://github.com/hipposphere/dart_edge/tree/main/packages/dart_edge_agent
 
@@ -15,7 +15,7 @@ dependencies:
     version: ^0.3.13
   dart_edge_rig:
     hosted: "https://registry.hippolabs.org/pub/internal-pub/"
-    version: ^0.1.0
+    version: ^0.1.2
 
 dev_dependencies:
   test: ^1.30.0

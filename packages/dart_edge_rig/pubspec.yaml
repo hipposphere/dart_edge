@@ -1,6 +1,6 @@
 name: dart_edge_rig
 description: Native-backed Dart bindings for Rig-powered LLM agents.
-version: 0.1.0
+version: 0.1.2
 publish_to: "https://registry.hippolabs.org/pub/internal-pub/"
 repository: https://github.com/hipposphere/dart_edge/tree/main/packages/dart_edge_rig
 

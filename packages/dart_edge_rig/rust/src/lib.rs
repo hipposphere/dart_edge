@@ -1,9 +1,12 @@
 use futures::StreamExt;
 use once_cell::sync::Lazy;
 use rig::agent::MultiTurnStreamItem;
+use rig::client::image_generation::ImageGenerationClient;
 use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::{Chat, CompletionModel, GetTokenUsage, Message, Prompt};
+use rig::image_generation::ImageGenerationModel as _;
 use rig::message::ReasoningContent;
+use rig::prelude::TranscriptionClient;
 use rig::providers::gemini::interactions_api::{
     AdditionalParameters, Content, CreateInteractionRequest, FunctionResultContent,
     InteractionInput, InteractionSseEvent, TextContent, Tool, Turn,
@@ -12,6 +15,7 @@ use rig::providers::{gemini, openai};
 use rig::streaming::{
     StreamedAssistantContent, StreamedUserContent, StreamingChat, StreamingPrompt,
 };
+use rig::transcription::TranscriptionModel as _;
 use serde_json::{Map, Value};
 use std::collections::HashMap;
 use std::ffi::{CStr, CString};
@@ -19,13 +23,14 @@ use std::future::Future;
 use std::os::raw::c_char;
 use std::pin::Pin;
 use std::ptr;
+use std::slice;
 use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 use std::sync::{Arc, Mutex};
-use std::{error::Error, fmt};
+use std::{error::Error, fmt, mem};
 use tokio::runtime::{Builder, Runtime};
 use tokio::sync::{oneshot, watch};
 
-const ABI_VERSION: i32 = 1;
+const ABI_VERSION: i32 = 2;
 
 type PromptFuture = Pin<Box<dyn Future<Output = Result<String, String>> + Send>>;
 type PromptFunction = dyn Fn(Vec<Message>) -> PromptFuture + Send + Sync;
@@ -52,6 +57,35 @@ pub struct NativeRigToolDefinition {
     pub name: *const c_char,
     pub description: *const c_char,
     pub parameters_json: *const c_char,
+}
+
+#[repr(C)]
+pub struct NativeRigModelConfig {
+    pub provider: *const c_char,
+    pub model: *const c_char,
+    pub api_key: *const c_char,
+    pub base_url: *const c_char,
+    pub additional_params_json: *const c_char,
+}
+
+#[repr(C)]
+pub struct NativeRigTranscriptionRequest {
+    pub data: *const u8,
+    pub data_len: isize,
+    pub filename: *const c_char,
+    pub language: *const c_char,
+    pub prompt: *const c_char,
+    pub has_temperature: bool,
+    pub temperature: f64,
+    pub additional_params_json: *const c_char,
+}
+
+#[repr(C)]
+pub struct NativeRigImageGenerationRequest {
+    pub prompt: *const c_char,
+    pub width: u32,
+    pub height: u32,
+    pub additional_params_json: *const c_char,
 }
 
 #[repr(C)]
@@ -96,6 +130,13 @@ pub struct NativeRigPromptResult {
 }
 
 #[repr(C)]
+pub struct NativeRigBytesResult {
+    pub data: *mut u8,
+    pub data_len: isize,
+    pub error: *mut c_char,
+}
+
+#[repr(C)]
 pub struct NativeRigStreamEvent {
     pub kind: i32,
     pub call_sequence: i64,
@@ -124,6 +165,31 @@ struct AgentSettings {
     output_schema: Option<schemars::Schema>,
     additional_params: Option<serde_json::Value>,
     tools: Vec<DartToolDefinition>,
+}
+
+#[derive(Clone)]
+struct ModelSettings {
+    provider: String,
+    model: String,
+    api_key: Option<String>,
+    base_url: Option<String>,
+    additional_params: Option<serde_json::Value>,
+}
+
+struct TranscriptionInput {
+    data: Vec<u8>,
+    filename: String,
+    language: Option<String>,
+    prompt: Option<String>,
+    temperature: Option<f64>,
+    additional_params: Option<serde_json::Value>,
+}
+
+struct ImageGenerationInput {
+    prompt: String,
+    width: u32,
+    height: u32,
+    additional_params: Option<serde_json::Value>,
 }
 
 #[derive(Clone)]
@@ -393,6 +459,71 @@ pub extern "C" fn dart_edge_rig_agent_stream_prompt_message(
 }
 
 #[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_rig_transcribe(
+    config: *const NativeRigModelConfig,
+    request: *const NativeRigTranscriptionRequest,
+) -> *mut NativeRigPromptResult {
+    if config.is_null() {
+        return Box::into_raw(Box::new(prompt_error("model config is null")));
+    }
+    if request.is_null() {
+        return Box::into_raw(Box::new(prompt_error("transcription request is null")));
+    }
+
+    let settings = match read_model_settings(unsafe { &*config }) {
+        Ok(settings) => settings,
+        Err(error) => {
+            return Box::into_raw(Box::new(prompt_error(error)));
+        }
+    };
+    let input = match read_transcription_input(unsafe { &*request }) {
+        Ok(input) => input,
+        Err(error) => {
+            return Box::into_raw(Box::new(prompt_error(error)));
+        }
+    };
+
+    match RUNTIME.block_on(transcribe(settings, input)) {
+        Ok(text) => Box::into_raw(Box::new(NativeRigPromptResult {
+            output: into_c_string(Some(text)),
+            error: ptr::null_mut(),
+        })),
+        Err(error) => Box::into_raw(Box::new(prompt_error(error))),
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_rig_generate_image(
+    config: *const NativeRigModelConfig,
+    request: *const NativeRigImageGenerationRequest,
+) -> *mut NativeRigBytesResult {
+    if config.is_null() {
+        return Box::into_raw(Box::new(bytes_error("model config is null")));
+    }
+    if request.is_null() {
+        return Box::into_raw(Box::new(bytes_error("image generation request is null")));
+    }
+
+    let settings = match read_model_settings(unsafe { &*config }) {
+        Ok(settings) => settings,
+        Err(error) => {
+            return Box::into_raw(Box::new(bytes_error(error)));
+        }
+    };
+    let input = match read_image_generation_input(unsafe { &*request }) {
+        Ok(input) => input,
+        Err(error) => {
+            return Box::into_raw(Box::new(bytes_error(error)));
+        }
+    };
+
+    match RUNTIME.block_on(generate_image(settings, input)) {
+        Ok(bytes) => bytes_result(bytes),
+        Err(error) => Box::into_raw(Box::new(bytes_error(error))),
+    }
+}
+
+#[unsafe(no_mangle)]
 pub extern "C" fn dart_edge_rig_complete_tool_call(
     call_sequence: i64,
     result: *const c_char,
@@ -471,6 +602,22 @@ pub extern "C" fn dart_edge_rig_free_prompt_result(value: *mut NativeRigPromptRe
 }
 
 #[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_rig_free_bytes_result(value: *mut NativeRigBytesResult) {
+    if value.is_null() {
+        return;
+    }
+
+    let value = unsafe { Box::from_raw(value) };
+    if !value.data.is_null() && value.data_len > 0 {
+        let slice = unsafe { slice::from_raw_parts_mut(value.data, value.data_len as usize) };
+        unsafe {
+            drop(Box::from_raw(slice as *mut [u8]));
+        }
+    }
+    free_string(value.error);
+}
+
+#[unsafe(no_mangle)]
 pub extern "C" fn dart_edge_rig_free_stream_event(value: *mut NativeRigStreamEvent) {
     if value.is_null() {
         return;
@@ -523,19 +670,88 @@ fn create_agent(config: &NativeRigAgentConfig) -> Result<StoredAgent, String> {
     }
 }
 
+fn read_model_settings(config: &NativeRigModelConfig) -> Result<ModelSettings, String> {
+    let provider = read_optional_string(config.provider)
+        .unwrap_or_else(|| "openai".to_owned())
+        .to_ascii_lowercase();
+    let model = read_required_string(config.model, "model")?;
+    let additional_params =
+        read_json_value(config.additional_params_json, "additional_params_json")?;
+
+    Ok(ModelSettings {
+        provider,
+        model,
+        api_key: read_optional_string(config.api_key),
+        base_url: read_optional_string(config.base_url),
+        additional_params,
+    })
+}
+
+fn read_transcription_input(
+    request: &NativeRigTranscriptionRequest,
+) -> Result<TranscriptionInput, String> {
+    if request.data_len <= 0 {
+        return Err("transcription data must not be empty.".to_owned());
+    }
+    if request.data.is_null() {
+        return Err("transcription data pointer is null.".to_owned());
+    }
+
+    let data = unsafe { slice::from_raw_parts(request.data, request.data_len as usize) }.to_vec();
+    let filename = read_optional_string(request.filename).unwrap_or_else(|| "audio".to_owned());
+    if filename.is_empty() {
+        return Err("transcription filename must not be empty.".to_owned());
+    }
+    let temperature = request.has_temperature.then_some(request.temperature);
+    if let Some(temperature) = temperature
+        && !temperature.is_finite()
+    {
+        return Err("transcription temperature must be finite.".to_owned());
+    }
+
+    Ok(TranscriptionInput {
+        data,
+        filename,
+        language: read_optional_string(request.language),
+        prompt: read_optional_string(request.prompt),
+        temperature,
+        additional_params: read_json_value(
+            request.additional_params_json,
+            "transcription additional_params_json",
+        )?,
+    })
+}
+
+fn read_image_generation_input(
+    request: &NativeRigImageGenerationRequest,
+) -> Result<ImageGenerationInput, String> {
+    let prompt = read_required_string(request.prompt, "prompt")?;
+    if prompt.is_empty() {
+        return Err("image generation prompt must not be empty.".to_owned());
+    }
+    if request.width == 0 || request.height == 0 {
+        return Err("image generation dimensions must be greater than zero.".to_owned());
+    }
+
+    Ok(ImageGenerationInput {
+        prompt,
+        width: request.width,
+        height: request.height,
+        additional_params: read_json_value(
+            request.additional_params_json,
+            "image generation additional_params_json",
+        )?,
+    })
+}
+
 fn read_agent_settings(config: &NativeRigAgentConfig) -> Result<AgentSettings, String> {
     let default_max_turns = if config.max_turns >= 0 {
         Some(config.max_turns as usize)
     } else {
         None
     };
-    let additional_params = match read_optional_string(config.additional_params_json) {
-        Some(json) => Some(
-            serde_json::from_str(&json)
-                .map_err(|error| format!("additional_params_json is not valid JSON: {error}"))?,
-        ),
-        None => None,
-    };
+    let additional_params =
+        read_json_value(config.additional_params_json, "additional_params_json")?;
     let output_schema =
         match read_optional_string(config.output_schema_json) {
             Some(json) => Some(serde_json::from_str::<schemars::Schema>(&json).map_err(
@@ -553,6 +769,49 @@ fn read_agent_settings(config: &NativeRigAgentConfig) -> Result<AgentSettings, S
         additional_params,
         tools,
     })
+}
+
+fn read_json_value(
+    pointer: *const c_char,
+    name: &str,
+) -> Result<Option<serde_json::Value>, String> {
+    match read_optional_string(pointer) {
+        Some(json) => serde_json::from_str(&json)
+            .map(Some)
+            .map_err(|error| format!("{name} is not valid JSON: {error}")),
+        None => Ok(None),
+    }
+}
+
+fn merge_optional_json(
+    left: Option<serde_json::Value>,
+    right: Option<serde_json::Value>,
+) -> Option<serde_json::Value> {
+    match (left, right) {
+        (Some(mut left), Some(right)) => {
+            merge_json_values(&mut left, right);
+            Some(left)
+        }
+        (Some(left), None) => Some(left),
+        (None, Some(right)) => Some(right),
+        (None, None) => None,
+    }
+}
+
+fn merge_json_values(left: &mut serde_json::Value, right: serde_json::Value) {
+    match (left, right) {
+        (serde_json::Value::Object(left), serde_json::Value::Object(right)) => {
+            for (key, value) in right {
+                match left.get_mut(&key) {
+                    Some(existing) => merge_json_values(existing, value),
+                    None => {
+                        left.insert(key, value);
+                    }
+                }
+            }
+        }
+        (left, right) => *left = right,
+    }
 }
 
 fn read_tool_definitions(
@@ -846,6 +1105,110 @@ fn create_gemini_interactions_agent(
     ))
 }
 
+async fn transcribe(settings: ModelSettings, input: TranscriptionInput) -> Result<String, String> {
+    match settings.provider.as_str() {
+        "openai" => transcribe_openai(settings, input).await,
+        "gemini" => transcribe_gemini(settings, input).await,
+        provider => Err(format!(
+            "unsupported Rig transcription provider `{provider}`"
+        )),
+    }
+}
+
+async fn transcribe_openai(
+    settings: ModelSettings,
+    input: TranscriptionInput,
+) -> Result<String, String> {
+    let client = openai_responses_client(settings.api_key, settings.base_url)?;
+    let model = client.transcription_model(settings.model);
+    let mut builder = model
+        .transcription_request()
+        .data(input.data)
+        .filename(Some(input.filename));
+    if let Some(language) = input.language {
+        builder = builder.language(language);
+    }
+    if let Some(prompt) = input.prompt {
+        builder = builder.prompt(prompt);
+    }
+    if let Some(temperature) = input.temperature {
+        builder = builder.temperature(temperature);
+    }
+    if let Some(params) = merge_optional_json(settings.additional_params, input.additional_params) {
+        builder = builder.additional_params(params);
+    }
+
+    builder
+        .send()
+        .await
+        .map(|response| response.text)
+        .map_err(|error| error.to_string())
+}
+
+async fn transcribe_gemini(
+    settings: ModelSettings,
+    input: TranscriptionInput,
+) -> Result<String, String> {
+    let client = gemini_client(settings.api_key, settings.base_url)?;
+    let model = client.transcription_model(settings.model);
+    let mut builder = model
+        .transcription_request()
+        .data(input.data)
+        .filename(Some(input.filename));
+    if let Some(language) = input.language {
+        builder = builder.language(language);
+    }
+    if let Some(prompt) = input.prompt {
+        builder = builder.prompt(prompt);
+    }
+    if let Some(temperature) = input.temperature {
+        builder = builder.temperature(temperature);
+    }
+    if let Some(params) = merge_optional_json(settings.additional_params, input.additional_params) {
+        builder = builder.additional_params(params);
+    }
+
+    builder
+        .send()
+        .await
+        .map(|response| response.text)
+        .map_err(|error| error.to_string())
+}
+
+async fn generate_image(
+    settings: ModelSettings,
+    input: ImageGenerationInput,
+) -> Result<Vec<u8>, String> {
+    match settings.provider.as_str() {
+        "openai" => generate_openai_image(settings, input).await,
+        provider => Err(format!(
+            "unsupported Rig image generation provider `{provider}`"
+        )),
+    }
+}
+
+async fn generate_openai_image(
+    settings: ModelSettings,
+    input: ImageGenerationInput,
+) -> Result<Vec<u8>, String> {
+    let client = openai_responses_client(settings.api_key, settings.base_url)?;
+    let model = client.image_generation_model(settings.model);
+    let mut builder = model
+        .image_generation_request()
+        .prompt(&input.prompt)
+        .width(input.width)
+        .height(input.height);
+    if let Some(params) = merge_optional_json(settings.additional_params, input.additional_params) {
+        builder = builder.additional_params(params);
+    }
+
+    builder
+        .send()
+        .await
+        .map(|response| response.image)
+        .map_err(|error| error.to_string())
+}
+
 fn openai_responses_client(
     api_key: Option<String>,
     base_url: Option<String>,
@@ -861,6 +1224,18 @@ fn openai_responses_client(
             client_builder.build().map_err(|error| error.to_string())
         }
     }
+}
+
+fn gemini_client(
+    api_key: Option<String>,
+    base_url: Option<String>,
+) -> Result<gemini::Client, String> {
+    let api_key = require_configured_api_key(api_key, "Gemini")?;
+    let mut client_builder = gemini::Client::builder().api_key(&api_key);
+    if let Some(base_url) = base_url.as_deref() {
+        client_builder = client_builder.base_url(base_url);
+    }
+    client_builder.build().map_err(|error| error.to_string())
 }
 
 fn openai_completions_client(
@@ -1654,6 +2029,35 @@ fn handle_error(error: impl Into<String>) -> NativeRigHandleResult {
 fn prompt_error(error: impl Into<String>) -> NativeRigPromptResult {
     NativeRigPromptResult {
         output: ptr::null_mut(),
+        error: into_c_string(Some(error.into())),
+    }
+}
+
+fn bytes_result(bytes: Vec<u8>) -> *mut NativeRigBytesResult {
+    if bytes.is_empty() {
+        return Box::into_raw(Box::new(NativeRigBytesResult {
+            data: ptr::null_mut(),
+            data_len: 0,
+            error: ptr::null_mut(),
+        }));
+    }
+
+    let mut bytes = bytes.into_boxed_slice();
+    let data_len = bytes.len() as isize;
+    let data = bytes.as_mut_ptr();
+    mem::forget(bytes);
+
+    Box::into_raw(Box::new(NativeRigBytesResult {
+        data,
+        data_len,
+        error: ptr::null_mut(),
+    }))
+}
+
+fn bytes_error(error: impl Into<String>) -> NativeRigBytesResult {
+    NativeRigBytesResult {
+        data: ptr::null_mut(),
+        data_len: 0,
         error: into_c_string(Some(error.into())),
     }
 }

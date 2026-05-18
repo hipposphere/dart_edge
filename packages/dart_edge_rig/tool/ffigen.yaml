@@ -10,17 +10,22 @@ functions:
   leaf:
     include:
       - dart_edge_rig_dispose_handle
+      - dart_edge_rig_free_bytes_result
       - dart_edge_rig_free_handle_result
       - dart_edge_rig_free_prompt_result
       - dart_edge_rig_native_abi_version
 structs:
   include:
     - NativeRigAgentConfig
+    - NativeRigBytesResult
     - NativeRigHandleResult
+    - NativeRigImageGenerationRequest
+    - NativeRigModelConfig
     - NativeRigPromptResult
     - NativeRigStreamEvent
     - NativeRigStreamOptions
     - NativeRigStringPair
+    - NativeRigTranscriptionRequest
     - NativeRigToolDefinition
 typedefs:
   include:

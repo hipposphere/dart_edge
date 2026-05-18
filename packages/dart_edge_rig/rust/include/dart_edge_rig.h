@@ -16,6 +16,32 @@ typedef struct NativeRigToolDefinition {
   const char* parameters_json;
 } NativeRigToolDefinition;
 
+typedef struct NativeRigModelConfig {
+  const char* provider;
+  const char* model;
+  const char* api_key;
+  const char* base_url;
+  const char* additional_params_json;
+} NativeRigModelConfig;
+
+typedef struct NativeRigTranscriptionRequest {
+  const uint8_t* data;
+  intptr_t data_len;
+  const char* filename;
+  const char* language;
+  const char* prompt;
+  bool has_temperature;
+  double temperature;
+  const char* additional_params_json;
+} NativeRigTranscriptionRequest;
+
+typedef struct NativeRigImageGenerationRequest {
+  const char* prompt;
+  uint32_t width;
+  uint32_t height;
+  const char* additional_params_json;
+} NativeRigImageGenerationRequest;
+
 typedef struct NativeRigAgentConfig {
   const char* provider;
   const char* api;
@@ -52,6 +78,12 @@ typedef struct NativeRigPromptResult {
   char* error;
 } NativeRigPromptResult;
 
+typedef struct NativeRigBytesResult {
+  uint8_t* data;
+  intptr_t data_len;
+  char* error;
+} NativeRigBytesResult;
+
 typedef struct NativeRigStreamEvent {
   int32_t kind;
   int64_t call_sequence;
@@ -83,6 +115,14 @@ NativeRigPromptResult* dart_edge_rig_agent_stream_prompt_message(
     NativeRigStreamCallback callback,
     int64_t user_data);
 
+NativeRigPromptResult* dart_edge_rig_transcribe(
+    const NativeRigModelConfig* config,
+    const NativeRigTranscriptionRequest* request);
+
+NativeRigBytesResult* dart_edge_rig_generate_image(
+    const NativeRigModelConfig* config,
+    const NativeRigImageGenerationRequest* request);
+
 void dart_edge_rig_complete_tool_call(
     int64_t call_sequence,
     const char* result,
@@ -95,6 +135,8 @@ void dart_edge_rig_dispose_handle(int64_t handle);
 void dart_edge_rig_free_handle_result(NativeRigHandleResult* value);
 
 void dart_edge_rig_free_prompt_result(NativeRigPromptResult* value);
+
+void dart_edge_rig_free_bytes_result(NativeRigBytesResult* value);
 
 void dart_edge_rig_free_stream_event(NativeRigStreamEvent* value);
 

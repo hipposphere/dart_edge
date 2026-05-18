@@ -5,7 +5,7 @@ import 'package:test/test.dart';
 
 void main() {
   test('exposes native ABI version', () {
-    expect(DartEdgeRigNative.abiVersion, 1);
+    expect(DartEdgeRigNative.abiVersion, 2);
   });
 
   test('validates agent config before native create', () {
@@ -61,6 +61,75 @@ void main() {
       contains('thinking'),
     );
     expect(gemini.tools.single.name, 'lookup');
+  });
+
+  test('builds direct model config values', () {
+    final openAiTranscription = RigTranscriptionModel.openAi(
+      apiKey: 'openai-key',
+      baseUrl: 'https://api.openai.example/v1',
+    );
+    expect(openAiTranscription.config.provider, 'openai');
+    expect(
+      openAiTranscription.config.model,
+      RigOpenAiTranscriptionModels.whisper1,
+    );
+    expect(openAiTranscription.config.apiKey, 'openai-key');
+    expect(openAiTranscription.config.baseUrl, 'https://api.openai.example/v1');
+
+    final geminiTranscription = RigTranscriptionModel.gemini(
+      model: 'gemini-2.5-flash',
+      apiKey: 'gemini-key',
+    );
+    expect(geminiTranscription.config.provider, 'gemini');
+    expect(geminiTranscription.config.model, 'gemini-2.5-flash');
+
+    final image = RigImageGenerationModel.openAi(apiKey: 'openai-key');
+    expect(image.config.provider, 'openai');
+    expect(image.config.model, RigOpenAiImageModels.gptImage2);
+  });
+
+  test('validates transcription model calls before native execution', () {
+    expect(
+      RigTranscriptionModel.openAi().transcribeBytes(<int>[]),
+      throwsA(isA<ArgumentError>()),
+    );
+    expect(
+      RigTranscriptionModel.openAi().transcribeBytes(<int>[1], filename: ''),
+      throwsA(isA<ArgumentError>()),
+    );
+    expect(
+      RigTranscriptionModel.openAi().transcribeBytes(<int>[
+        1,
+      ], temperature: double.infinity),
+      throwsA(isA<ArgumentError>()),
+    );
+    expect(
+      const RigTranscriptionModel(
+        RigModelConfig(provider: 'other', model: 'model'),
+      ).transcribeBytes(<int>[1]),
+      throwsA(isA<ArgumentError>()),
+    );
+  });
+
+  test('validates image generation model calls before native execution', () {
+    expect(
+      RigImageGenerationModel.openAi().generate(''),
+      throwsA(isA<ArgumentError>()),
+    );
+    expect(
+      RigImageGenerationModel.openAi().generate('draw', width: 0),
+      throwsA(isA<ArgumentError>()),
+    );
+    expect(
+      RigImageGenerationModel.openAi().generate('draw', height: 0),
+      throwsA(isA<ArgumentError>()),
+    );
+    expect(
+      const RigImageGenerationModel(
+        RigModelConfig.gemini(model: 'gemini-2.5-flash', apiKey: 'key'),
+      ).generate('draw'),
+      throwsA(isA<ArgumentError>()),
+    );
   });
 
   test('merges typed provider thinking config into additional params', () {

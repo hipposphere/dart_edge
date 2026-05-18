@@ -3,12 +3,14 @@ import 'dart:convert';
 import 'dart:ffi';
 import 'dart:isolate';
 import 'dart:math';
+import 'dart:typed_data';
 
 import 'package:dart_edge_native_bridge/dart_edge_native_bridge.dart'
     as core_ffi;
 import 'package:ffi/ffi.dart';
 
 import '../rig_agent_config.dart';
+import '../rig_model_config.dart';
 import '../rig_prompt_message.dart';
 import '../rig_provider_api_config.dart';
 import '../rig_stream_event.dart';
@@ -113,6 +115,104 @@ abstract final class DartEdgeRigNative {
       geminiInteractions: config.geminiInteractions,
       geminiGenerateContent: config.geminiGenerateContent,
     );
+  }
+
+  /// Transcribes audio bytes through a direct Rig transcription model.
+  static String transcribe(
+    RigModelConfig config,
+    Uint8List data, {
+    required String filename,
+    String? language,
+    String? prompt,
+    double? temperature,
+    String? additionalParamsJson,
+  }) {
+    final allocations = core_ffi.NativeAllocations();
+    final configPtr = calloc<gen.NativeRigModelConfig>();
+    final requestPtr = calloc<gen.NativeRigTranscriptionRequest>();
+    final Pointer<Uint8> dataPtr = data.isEmpty
+        ? nullptr
+        : calloc<Uint8>(data.length);
+
+    try {
+      if (dataPtr != nullptr) {
+        dataPtr.asTypedList(data.length).setAll(0, data);
+      }
+
+      _writeModelConfig(configPtr, config, allocations);
+      requestPtr.ref
+        ..data = dataPtr
+        ..data_len = data.length
+        ..filename = allocations.requiredString(filename)
+        ..language = allocations.optionalString(language)
+        ..prompt = allocations.optionalString(prompt)
+        ..has_temperature = temperature != null
+        ..temperature = temperature ?? 0
+        ..additional_params_json = allocations.optionalString(
+          additionalParamsJson,
+        );
+
+      final resultPtr = gen.dart_edge_rig_transcribe(configPtr, requestPtr);
+      if (resultPtr == nullptr) {
+        throw StateError('dart_edge_rig transcribe returned null.');
+      }
+
+      try {
+        final result = resultPtr.ref;
+        _throwIfError(result.error);
+        return core_ffi.requiredNativeString(result.output, 'output');
+      } finally {
+        gen.dart_edge_rig_free_prompt_result(resultPtr);
+      }
+    } finally {
+      if (dataPtr != nullptr) {
+        calloc.free(dataPtr);
+      }
+      calloc.free(requestPtr);
+      calloc.free(configPtr);
+      allocations.free();
+    }
+  }
+
+  /// Generates an image through a direct Rig image generation model.
+  static Uint8List generateImage(
+    RigModelConfig config, {
+    required String prompt,
+    required int width,
+    required int height,
+    String? additionalParamsJson,
+  }) {
+    final allocations = core_ffi.NativeAllocations();
+    final configPtr = calloc<gen.NativeRigModelConfig>();
+    final requestPtr = calloc<gen.NativeRigImageGenerationRequest>();
+
+    try {
+      _writeModelConfig(configPtr, config, allocations);
+      requestPtr.ref
+        ..prompt = allocations.requiredString(prompt)
+        ..width = width
+        ..height = height
+        ..additional_params_json = allocations.optionalString(
+          additionalParamsJson,
+        );
+
+      final resultPtr = gen.dart_edge_rig_generate_image(configPtr, requestPtr);
+      if (resultPtr == nullptr) {
+        throw StateError('dart_edge_rig generate image returned null.');
+      }
+
+      try {
+        final result = resultPtr.ref;
+        _throwIfError(result.error);
+        return _copyBytes(result);
+      } finally {
+        gen.dart_edge_rig_free_bytes_result(resultPtr);
+      }
+    } finally {
+      calloc.free(requestPtr);
+      calloc.free(configPtr);
+      allocations.free();
+    }
   }
 
   /// Sends rich user content to a native Rig agent.
@@ -272,6 +372,28 @@ abstract final class DartEdgeRigNative {
   /// Cancels an active native stream run.
   static void cancelStream(int streamId) {
     gen.dart_edge_rig_cancel_stream(streamId);
+  }
+
+  static void _writeModelConfig(
+    Pointer<gen.NativeRigModelConfig> nativeConfigPtr,
+    RigModelConfig config,
+    core_ffi.NativeAllocations allocations,
+  ) {
+    nativeConfigPtr.ref
+      ..provider = allocations.requiredString(config.provider)
+      ..model = allocations.requiredString(config.model)
+      ..api_key = allocations.optionalString(config.apiKey)
+      ..base_url = allocations.optionalString(config.baseUrl)
+      ..additional_params_json = allocations.optionalString(
+        config.additionalParamsJson,
+      );
+  }
+
+  static Uint8List _copyBytes(gen.NativeRigBytesResult result) {
+    if (result.data_len <= 0 || result.data == nullptr) {
+      return Uint8List(0);
+    }
+    return Uint8List.fromList(result.data.asTypedList(result.data_len));
   }
 
   static core_ffi.NativeStringPairs<gen.NativeRigToolDefinition> _writeTools(
