@@ -20,9 +20,9 @@ final class NativeTransportRequestLease {
   NativeTransportRequestLease._({
     required this.request,
     required this.nativeRequest,
-    required Pointer<gen.NativeTransportRequest> requestPtr,
+    required this._requestPtr,
     this.releaseNativeBody,
-  }) : _requestPtr = requestPtr;
+  });
 
   final TransportRequest request;
   final NativeRequest nativeRequest;

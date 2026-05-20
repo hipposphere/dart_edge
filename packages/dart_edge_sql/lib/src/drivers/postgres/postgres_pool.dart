@@ -11,10 +11,9 @@ import 'pglite_endpoint.dart';
 final class PostgresPool implements SqlPool {
   PostgresPool._({
     required this.connectionString,
-    required NativeSqlPoolDelegate delegate,
-    Future<void> Function()? closeEndpoint,
-  }) : _delegate = delegate,
-       _closeEndpoint = closeEndpoint;
+    required this._delegate,
+    this._closeEndpoint,
+  });
 
   /// Opens a PostgreSQL pool from a libpq-style connection string.
   factory PostgresPool.withUrl(

@@ -25,10 +25,9 @@ typedef SipAttachMediaApp =
 final class SipCallSession {
   SipCallSession.internal({
     required this.id,
-    required SipCallCommand execute,
-    required SipAttachMediaApp attachMediaApp,
-  }) : _execute = execute,
-       _attachMediaApp = attachMediaApp;
+    required this._execute,
+    required this._attachMediaApp,
+  });
 
   final String id;
   final SipCallCommand _execute;

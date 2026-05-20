@@ -553,10 +553,10 @@ final class DartEdgeClientResponseObject<T> {
     required this.contentType,
     this.headers = const <String, String>{},
     required this.rawBody,
-    Uint8List? rawBodyBytes,
+    this._rawBodyBytes,
     this.data,
     this.error,
-  }) : _rawBodyBytes = rawBodyBytes;
+  });
 
   /// Actual HTTP response status.
   final int status;
@@ -613,9 +613,9 @@ final class DartEdgeClientError {
     required this.contentType,
     this.headers = const <String, String>{},
     required this.rawBody,
-    Uint8List? rawBodyBytes,
+    this._rawBodyBytes,
     this.body,
-  }) : _rawBodyBytes = rawBodyBytes;
+  });
 
   /// Actual HTTP response status.
   final int status;

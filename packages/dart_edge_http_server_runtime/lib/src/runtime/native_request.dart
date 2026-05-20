@@ -158,11 +158,10 @@ final class NativeRequest {
     required Map<String, String> query,
     required Map<String, String> headers,
     this.body,
-    MultipartLoader? multipartLoader,
+    this._multipartLoader,
   }) : pathParams = Map.unmodifiable(pathParams),
        query = Map.unmodifiable(query),
-       headers = Map.unmodifiable(headers),
-       _multipartLoader = multipartLoader;
+       headers = Map.unmodifiable(headers);
 
   /// Runtime route identifier resolved by the native router.
   final String routeId;

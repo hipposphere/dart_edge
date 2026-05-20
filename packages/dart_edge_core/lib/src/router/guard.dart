@@ -28,8 +28,7 @@ typedef GuardHandler<TServices> =
 
 /// Concrete [Guard] backed by a closure.
 final class HandlerGuard<TServices> implements Guard<TServices> {
-  HandlerGuard({required GuardHandler<TServices> handler, this.debugName})
-    : _handler = handler;
+  HandlerGuard({required this._handler, this.debugName});
 
   final GuardHandler<TServices> _handler;
   final String? debugName;

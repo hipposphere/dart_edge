@@ -6,8 +6,7 @@ import '../../native/dart_edge_sql_native.dart';
 import 'compiled_sql_statement.dart';
 
 final class NativeSqlPoolDelegate implements SqlPool {
-  NativeSqlPoolDelegate._({required this.dialect, required int handle})
-    : _handle = handle;
+  NativeSqlPoolDelegate._({required this.dialect, required this._handle});
 
   factory NativeSqlPoolDelegate.openPostgres(
     String connectionString, {
@@ -135,8 +134,7 @@ final class NativeSqlSession implements SqlSession {
 }
 
 final class NativeSqlTransaction implements SqlTransaction {
-  NativeSqlTransaction({required this.dialect, required int handle})
-    : _handle = handle;
+  NativeSqlTransaction({required this.dialect, required this._handle});
 
   @override
   final SqlDialect dialect;

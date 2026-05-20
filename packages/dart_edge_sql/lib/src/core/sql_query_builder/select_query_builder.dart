@@ -252,11 +252,7 @@ final class SelectQueryBuilder<TRow, TInsert, TUpdate> {
   }) : _from = from,
        _raw = SqlRawSelectQueryBuilder._(executor: executor, from: from);
 
-  const SelectQueryBuilder._fromRaw({
-    required SqlTable<TRow, TInsert, TUpdate> from,
-    required SqlRawSelectQueryBuilder raw,
-  }) : _from = from,
-       _raw = raw;
+  const SelectQueryBuilder._fromRaw({required this._from, required this._raw});
 
   final SqlTable<TRow, TInsert, TUpdate> _from;
   final SqlRawSelectQueryBuilder _raw;
@@ -413,10 +409,9 @@ final class SelectQueryBuilder<TRow, TInsert, TUpdate> {
 /// Builder for a completed selection shape that can be executed.
 final class SelectedSelectQueryBuilder<TSelection> {
   const SelectedSelectQueryBuilder._({
-    required _SqlSelectCore core,
-    required _SqlSelection<TSelection> selection,
-  }) : _core = core,
-       _selection = selection;
+    required this._core,
+    required this._selection,
+  });
 
   final _SqlSelectCore _core;
   final _SqlSelection<TSelection> _selection;

@@ -2,12 +2,10 @@ part of '../sql_query_builder.dart';
 
 final class InsertQueryBuilder<TRow, TInsert, TUpdate> {
   InsertQueryBuilder._({
-    required SqlExecutor executor,
-    required SqlTable<TRow, TInsert, TUpdate> table,
+    required this._executor,
+    required this._table,
     List<TInsert> values = const [],
-  }) : _executor = executor,
-       _table = table,
-       _values = List<TInsert>.unmodifiable(values);
+  }) : _values = List<TInsert>.unmodifiable(values);
 
   final SqlExecutor _executor;
   final SqlTable<TRow, TInsert, TUpdate> _table;
@@ -51,12 +49,10 @@ final class InsertQueryBuilder<TRow, TInsert, TUpdate> {
 /// Builder for a `DELETE` query.
 final class DeleteQueryBuilder<TRow, TInsert, TUpdate> {
   DeleteQueryBuilder._({
-    required SqlExecutor executor,
-    required SqlTable<TRow, TInsert, TUpdate> table,
-    SqlPredicate? where,
-  }) : _executor = executor,
-       _table = table,
-       _where = where;
+    required this._executor,
+    required this._table,
+    this._where,
+  });
 
   final SqlExecutor _executor;
   final SqlTable<TRow, TInsert, TUpdate> _table;
@@ -95,16 +91,13 @@ final class DeleteQueryBuilder<TRow, TInsert, TUpdate> {
 /// Builder for an `UPDATE` query.
 final class UpdateQueryBuilder<TRow, TInsert, TUpdate> {
   UpdateQueryBuilder._({
-    required SqlExecutor executor,
-    required SqlTable<TRow, TInsert, TUpdate> table,
+    required this._executor,
+    required this._table,
     Map<String, Object?>? values,
-    SqlPredicate? where,
-  }) : _executor = executor,
-       _table = table,
-       _values = values == null
+    this._where,
+  }) : _values = values == null
            ? null
-           : Map<String, Object?>.unmodifiable(values),
-       _where = where;
+           : Map<String, Object?>.unmodifiable(values);
 
   final SqlExecutor _executor;
   final SqlTable<TRow, TInsert, TUpdate> _table;

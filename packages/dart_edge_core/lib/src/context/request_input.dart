@@ -29,21 +29,16 @@ final class RequestInput {
   }
 
   const RequestInput._({
-    Object? paramsValue,
-    Object? queryValue,
-    Object? headerValue,
-    Object? bodyValue,
+    this._paramsValue,
+    this._queryValue,
+    this._headerValue,
+    this._bodyValue,
     this.paramsMap = const <String, String>{},
     this.queryMap = const <String, String>{},
     this.headersMap = const <String, String>{},
-    Future<Object?> Function()? multipartLoader,
-    Object? nativeBody,
-  }) : _paramsValue = paramsValue,
-       _queryValue = queryValue,
-       _headerValue = headerValue,
-       _bodyValue = bodyValue,
-       _nativeBody = nativeBody,
-       _multipartLoader = multipartLoader;
+    this._multipartLoader,
+    this._nativeBody,
+  });
 
   static const empty = RequestInput._();
 

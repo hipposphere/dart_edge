@@ -10,8 +10,8 @@ final class SqliteDatabase implements SqlPool {
     required this.path,
     required this.maxSessions,
     required this.isInMemory,
-    required NativeSqlPoolDelegate delegate,
-  }) : _delegate = delegate;
+    required this._delegate,
+  });
 
   /// Opens a SQLite database from [path].
   factory SqliteDatabase.open(String path, {int maxSessions = 1}) {

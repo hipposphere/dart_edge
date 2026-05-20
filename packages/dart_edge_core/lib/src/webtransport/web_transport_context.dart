@@ -18,32 +18,26 @@ final class WebTransportContext<TServices> {
     this.datagrams = const IncomingWebTransportDatagrams(),
     this.streams = const IncomingWebTransportStreams(),
     this.telemetry = const RequestTelemetry(),
-    WebTransportDatagramSender? sendDatagram,
-    WebTransportStreamSender? sendStream,
-    WebTransportCloser? close,
+    this._sendDatagram,
+    this._sendStream,
+    this._close,
   }) : _requestContext = RequestContext<TServices>(
          services: services,
          req: req,
          telemetry: telemetry,
-       ),
-       _sendDatagram = sendDatagram,
-       _sendStream = sendStream,
-       _close = close;
+       );
 
   WebTransportContext.fromRequest({
     required RequestContext<TServices> request,
     this.datagrams = const IncomingWebTransportDatagrams(),
     this.streams = const IncomingWebTransportStreams(),
-    WebTransportDatagramSender? sendDatagram,
-    WebTransportStreamSender? sendStream,
-    WebTransportCloser? close,
+    this._sendDatagram,
+    this._sendStream,
+    this._close,
   }) : services = request.services,
        req = request.req,
        telemetry = request.telemetry,
-       _requestContext = request,
-       _sendDatagram = sendDatagram,
-       _sendStream = sendStream,
-       _close = close;
+       _requestContext = request;
 
   /// Fresh services instance for the WebTransport session.
   final TServices services;

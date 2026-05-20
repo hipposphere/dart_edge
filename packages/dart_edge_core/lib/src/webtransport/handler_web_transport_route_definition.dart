@@ -12,10 +12,9 @@ typedef WebTransportRouteHandler<TServices> =
 final class HandlerWebTransportRouteDefinition<TServices>
     extends WebTransportRouteDefinition<TServices> {
   HandlerWebTransportRouteDefinition({
-    required WebTransportOptions options,
-    required WebTransportRouteHandler<TServices> handler,
-  }) : _options = options,
-       _handler = handler;
+    required this._options,
+    required this._handler,
+  });
 
   final WebTransportOptions _options;
   final WebTransportRouteHandler<TServices> _handler;

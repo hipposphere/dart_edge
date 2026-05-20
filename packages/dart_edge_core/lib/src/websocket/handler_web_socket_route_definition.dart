@@ -12,10 +12,9 @@ typedef WebSocketRouteHandler<TServices> =
 final class HandlerWebSocketRouteDefinition<TServices>
     extends WebSocketRouteDefinition<TServices> {
   HandlerWebSocketRouteDefinition({
-    required WebSocketOptions options,
-    required WebSocketRouteHandler<TServices> handler,
-  }) : _options = options,
-       _handler = handler;
+    required this._options,
+    required this._handler,
+  });
 
   final WebSocketOptions _options;
   final WebSocketRouteHandler<TServices> _handler;

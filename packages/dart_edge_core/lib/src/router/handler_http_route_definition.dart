@@ -11,11 +11,7 @@ typedef HttpRouteHandler<TServices, TSuccess> =
 /// Concrete [HttpRouteDefinition] backed by an inline [HttpRouteHandler].
 final class HandlerHttpRouteDefinition<TServices, TSuccess>
     extends HttpRouteDefinition<TServices, TSuccess> {
-  HandlerHttpRouteDefinition({
-    required RouteOptions options,
-    required HttpRouteHandler<TServices, TSuccess> handler,
-  }) : _options = options,
-       _handler = handler;
+  HandlerHttpRouteDefinition({required this._options, required this._handler});
 
   final RouteOptions _options;
   final HttpRouteHandler<TServices, TSuccess> _handler;

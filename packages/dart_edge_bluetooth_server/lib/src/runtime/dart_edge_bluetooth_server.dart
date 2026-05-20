@@ -9,10 +9,9 @@ import '../native/dart_edge_bluetooth_server_native.dart';
 
 final class DartEdgeBluetoothServer {
   DartEdgeBluetoothServer({
-    required BluetoothServerConfig config,
-    Duration eventPollInterval = const Duration(milliseconds: 200),
-  }) : _config = config,
-       _eventPollInterval = eventPollInterval;
+    required this._config,
+    this._eventPollInterval = const Duration(milliseconds: 200),
+  });
 
   final BluetoothServerConfig _config;
   final Duration _eventPollInterval;

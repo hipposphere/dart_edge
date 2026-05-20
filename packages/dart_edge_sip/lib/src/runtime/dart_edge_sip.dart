@@ -14,15 +14,13 @@ import 'sip_call_session.dart';
 final class DartEdgeSip {
   DartEdgeSip({
     required SipServerConfig config,
-    SipDialplan? dialplan,
+    this._dialplan,
     List<SipMediaApp> mediaApps = const <SipMediaApp>[],
-    Duration eventPollInterval = const Duration(milliseconds: 200),
+    this._eventPollInterval = const Duration(milliseconds: 200),
   }) : _config = config,
-       _dialplan = dialplan,
        _mediaApps = List<SipMediaApp>.unmodifiable(mediaApps),
        _mediaAppsById = _indexMediaApps(mediaApps),
-       _trunks = List<SipTrunkConfig>.of(config.trunks),
-       _eventPollInterval = eventPollInterval;
+       _trunks = List<SipTrunkConfig>.of(config.trunks);
 
   final SipServerConfig _config;
   final SipDialplan? _dialplan;

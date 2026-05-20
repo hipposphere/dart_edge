@@ -39,10 +39,9 @@ final class DartEdgeClientResponse {
     required this.status,
     required this.contentType,
     this.headers = const <String, String>{},
-    String? body,
-    List<int>? bodyBytes,
-  }) : _body = body,
-       _bodyBytes = bodyBytes;
+    this._body,
+    this._bodyBytes,
+  });
 
   final int status;
   final String contentType;

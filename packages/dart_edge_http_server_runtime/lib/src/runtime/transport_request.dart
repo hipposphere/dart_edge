@@ -19,10 +19,10 @@ final class TransportRequest {
     required this.query,
     required this.headers,
     this.requestKind = TransportRequestKind.http,
-    Uint8List? bodyBytes,
+    this._bodyBytes,
     this.nativeBody,
     this.bodyKind = TransportRequestBodyKind.none,
-  }) : _bodyBytes = bodyBytes;
+  });
 
   /// Runtime route identifier resolved by the native router.
   final String routeId;

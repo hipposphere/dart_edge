@@ -7,9 +7,9 @@ final class EncodedResponse {
   const EncodedResponse({
     required this.status,
     required this.contentType,
-    required Uint8List bodyBytes,
+    required this._bodyBytes,
     this.headers = const <HttpHeader>[],
-  }) : _bodyBytes = bodyBytes;
+  });
 
   final int status;
   final String contentType;

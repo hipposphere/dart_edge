@@ -5,10 +5,10 @@ import 'native/dart_edge_sql_pglite_native.dart';
 /// Embedded PGlite database exposed as a PostgreSQL endpoint.
 final class PgliteDatabase implements PgliteEndpoint {
   PgliteDatabase._({
-    required int handle,
+    required this._handle,
     required this.connectionString,
     required this.storagePath,
-  }) : _handle = handle;
+  });
 
   /// Starts a temporary PGlite database.
   factory PgliteDatabase.temporary() {

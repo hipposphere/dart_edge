@@ -18,35 +18,27 @@ final class WebSocketContext<TServices> {
     this.req = RequestInput.empty,
     this.messages = const IncomingWebSocketMessages(),
     this.telemetry = const RequestTelemetry(),
-    WebSocketTextSender? sendText,
-    WebSocketBinarySender? sendBinary,
-    WebSocketJsonSender? sendJson,
-    WebSocketCloser? close,
+    this._sendText,
+    this._sendBinary,
+    this._sendJson,
+    this._close,
   }) : _requestContext = RequestContext<TServices>(
          services: services,
          req: req,
          telemetry: telemetry,
-       ),
-       _sendText = sendText,
-       _sendBinary = sendBinary,
-       _sendJson = sendJson,
-       _close = close;
+       );
 
   WebSocketContext.fromRequest({
     required RequestContext<TServices> request,
     this.messages = const IncomingWebSocketMessages(),
-    WebSocketTextSender? sendText,
-    WebSocketBinarySender? sendBinary,
-    WebSocketJsonSender? sendJson,
-    WebSocketCloser? close,
+    this._sendText,
+    this._sendBinary,
+    this._sendJson,
+    this._close,
   }) : services = request.services,
        req = request.req,
        telemetry = request.telemetry,
-       _requestContext = request,
-       _sendText = sendText,
-       _sendBinary = sendBinary,
-       _sendJson = sendJson,
-       _close = close;
+       _requestContext = request;
 
   /// Fresh services instance for the socket connection.
   final TServices services;

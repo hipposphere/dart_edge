@@ -11,10 +11,10 @@ import 'sip_audio.dart';
 
 final class SipOwnedAudioFrame {
   SipOwnedAudioFrame._({
-    required Uint8List bytes,
+    required this._bytes,
     required this.format,
     required this.sequence,
-  }) : _bytes = bytes;
+  });
 
   final Uint8List _bytes;
   Pointer<core_ffi.NativeBytes>? _nativeBytesStorage;
@@ -91,10 +91,9 @@ final class SipRealtimeMediaSession {
     required this.callId,
     required this.mediaAppId,
     required this.format,
-    required int handle,
-    required Future<void> Function() detach,
-  }) : _handle = handle,
-       _detach = detach;
+    required this._handle,
+    required this._detach,
+  });
 
   final String callId;
   final String mediaAppId;
