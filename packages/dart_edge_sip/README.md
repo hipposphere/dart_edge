@@ -84,7 +84,7 @@ source:
 sudo apt update
 sudo apt install build-essential curl pkg-config
 
-version="2.16"
+version="2.17"
 curl -fsSL "https://github.com/pjsip/pjproject/archive/refs/tags/$version.tar.gz" \
   -o "pjproject-$version.tar.gz"
 tar -xzf "pjproject-$version.tar.gz"

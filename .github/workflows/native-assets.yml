@@ -143,7 +143,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          version="2.16"
+          version="2.17"
           prefix="$RUNNER_TEMP/pjproject-headers"
           source="$RUNNER_TEMP/pjproject-$version"
           archive="$RUNNER_TEMP/pjproject-$version.tar.gz"

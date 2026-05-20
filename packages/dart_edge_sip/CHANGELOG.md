@@ -1,3 +1,7 @@
+## 0.4.8
+
+- Build SIP native artifacts against PJSIP 2.17 headers.
+
 ## 0.4.6
 
 - Bump the native artifact version to 0.1.2 for rebuilt prebuilts.

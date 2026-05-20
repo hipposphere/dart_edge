@@ -15,4 +15,4 @@ dependencies:
     path: ../simple_test_db_models
   hippo_auth_backend:
     hosted: "https://registry.hippolabs.org/pub/internal-pub/"
-    version: 0.1.5
+    version: 0.1.6
