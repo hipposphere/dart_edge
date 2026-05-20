@@ -17,3 +17,4 @@ export 'src/core/sql_value.dart';
 export 'src/drivers/postgres/pglite_endpoint.dart';
 export 'src/drivers/postgres/postgres_pool.dart';
 export 'src/drivers/sqlite/sqlite_database.dart';
+export 'src/tracing/tracing_sql_pool.dart';
