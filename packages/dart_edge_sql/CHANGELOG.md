@@ -1,3 +1,8 @@
+## 0.3.18
+
+- Bump the native artifact version to 0.1.6 for Rust 1.95 and dependency
+  updates.
+
 ## 0.3.12
 
 - Centralize PostgreSQL type-name normalization and parameter cast helpers.

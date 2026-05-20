@@ -2,6 +2,8 @@
 
 - Add final wildcard route segment support for catch-all HTTP routes.
 - Bump the native artifact version to 0.1.11 for the route matcher change.
+- Bump the native artifact version to 0.1.12 for Rust 1.95 and dependency
+  updates.
 
 ## 0.3.17
 

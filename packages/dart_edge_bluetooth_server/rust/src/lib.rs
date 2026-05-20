@@ -26,12 +26,18 @@ impl EventQueue {
         let Ok(serialized) = serde_json::to_string(&value) else {
             return;
         };
-        let mut events = self.events.lock().unwrap_or_else(|poison| poison.into_inner());
+        let mut events = self
+            .events
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
         events.push_back(serialized);
     }
 
     fn poll(&self) -> Option<String> {
-        let mut events = self.events.lock().unwrap_or_else(|poison| poison.into_inner());
+        let mut events = self
+            .events
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
         events.pop_front()
     }
 }
@@ -335,8 +341,10 @@ impl SharedBluetoothState {
                             descriptor_id: descriptor.id.clone(),
                         },
                         value: Arc::new(RwLock::new(descriptor.initial_value.clone())),
-                        emit_read_events: descriptor.read.enabled && descriptor.read.emit_read_events,
-                        emit_write_events: descriptor.write.enabled() && descriptor.write.emit_write_events,
+                        emit_read_events: descriptor.read.enabled
+                            && descriptor.read.emit_read_events,
+                        emit_write_events: descriptor.write.enabled()
+                            && descriptor.write.emit_write_events,
                         persist_written_value: descriptor.write.persist_written_value,
                         events: events.clone(),
                     });
@@ -349,8 +357,7 @@ impl SharedBluetoothState {
                         ),
                         descriptor_state.clone(),
                     );
-                    characteristic_descriptors
-                        .insert(descriptor.id.clone(), descriptor_state);
+                    characteristic_descriptors.insert(descriptor.id.clone(), descriptor_state);
                 }
 
                 let characteristic_state = Arc::new(CharacteristicState {
@@ -595,9 +602,9 @@ async fn start_linux_server(
         .map_err(|error| format!("Failed to open BlueZ session: {error}"))?;
 
     let adapter = if let Some(adapter_name) = config.adapter_name.as_deref() {
-        session
-            .adapter(adapter_name)
-            .map_err(|error| format!("Failed to access Bluetooth adapter '{adapter_name}': {error}"))?
+        session.adapter(adapter_name).map_err(|error| {
+            format!("Failed to access Bluetooth adapter '{adapter_name}': {error}")
+        })?
     } else {
         session
             .default_adapter()
@@ -606,10 +613,12 @@ async fn start_linux_server(
     };
 
     if config.auto_power_adapter {
-        adapter
-            .set_powered(true)
-            .await
-            .map_err(|error| format!("Failed to power Bluetooth adapter '{}': {error}", adapter.name()))?;
+        adapter.set_powered(true).await.map_err(|error| {
+            format!(
+                "Failed to power Bluetooth adapter '{}': {error}",
+                adapter.name()
+            )
+        })?;
     }
 
     let advertisement = build_linux_advertisement(&config.advertisement)?;
@@ -690,9 +699,7 @@ fn build_linux_service(
     let characteristics = service
         .characteristics
         .iter()
-        .map(|characteristic| {
-            build_linux_characteristic(service, characteristic, shared.clone())
-        })
+        .map(|characteristic| build_linux_characteristic(service, characteristic, shared.clone()))
         .collect::<Result<Vec<_>, _>>()?;
 
     Ok(bluer::gatt::local::Service {
@@ -766,8 +773,7 @@ fn build_linux_characteristic(
             write: characteristic.write.allow_write_request,
             write_without_response: characteristic.write.allow_write_command,
             reliable_write: characteristic.write.allow_reliable_write,
-            authenticated_signed_writes: characteristic.write
-                .allow_authenticated_signed_write,
+            authenticated_signed_writes: characteristic.write.allow_authenticated_signed_write,
             encrypt_write: characteristic.write.requires_encryption,
             encrypt_authenticated_write: characteristic.write.requires_authentication,
             secure_write: characteristic.write.requires_secure_connection,
@@ -1267,7 +1273,9 @@ pub extern "C" fn dart_edge_bluetooth_server_poll_event(handle: i64) -> *mut c_c
 
 #[unsafe(no_mangle)]
 pub extern "C" fn dart_edge_bluetooth_server_take_last_error() -> *mut c_char {
-    let mut last_error = LAST_ERROR.lock().unwrap_or_else(|poison| poison.into_inner());
+    let mut last_error = LAST_ERROR
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner());
     match last_error.take() {
         Some(error) => error.into_raw(),
         None => std::ptr::null_mut(),
@@ -1360,7 +1368,11 @@ unsafe fn read_c_string(value: *const c_char) -> Option<String> {
     if value.is_null() {
         return None;
     }
-    Some(unsafe { CStr::from_ptr(value) }.to_string_lossy().into_owned())
+    Some(
+        unsafe { CStr::from_ptr(value) }
+            .to_string_lossy()
+            .into_owned(),
+    )
 }
 
 fn set_last_error(error: impl Into<String>) {
@@ -1368,11 +1380,15 @@ fn set_last_error(error: impl Into<String>) {
     let c_string = CString::new(error).unwrap_or_else(|_| {
         CString::new("dart_edge_bluetooth_server native error").expect("valid static string")
     });
-    let mut last_error = LAST_ERROR.lock().unwrap_or_else(|poison| poison.into_inner());
+    let mut last_error = LAST_ERROR
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner());
     *last_error = Some(c_string);
 }
 
 fn clear_last_error() {
-    let mut last_error = LAST_ERROR.lock().unwrap_or_else(|poison| poison.into_inner());
+    let mut last_error = LAST_ERROR
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner());
     *last_error = None;
 }

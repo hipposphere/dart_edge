@@ -342,7 +342,9 @@ unsafe fn read_payload(bytes: *const u8, length: i64) -> Result<Vec<u8>, String>
     Ok(unsafe { std::slice::from_raw_parts(bytes, length as usize) }.to_vec())
 }
 
-async fn read_stream_payload(mut stream: wtransport::stream::RecvStream) -> Result<Vec<u8>, String> {
+async fn read_stream_payload(
+    mut stream: wtransport::stream::RecvStream,
+) -> Result<Vec<u8>, String> {
     let mut payload = Vec::new();
     let mut buffer = [0u8; 16 * 1024];
     loop {

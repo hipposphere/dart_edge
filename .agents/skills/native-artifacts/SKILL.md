@@ -55,7 +55,7 @@ Other targets intentionally fall back to local Rust source builds.
 - `dart_edge_bluetooth_server` needs `pkg-config` and `libdbus-1-dev` on Linux
   CI runners.
 - CI must read `packages/<package>/rust/rust-toolchain.toml` and run Cargo via
-  `rustup run <channel>`; `dart_edge_sql_pglite` currently requires Rust 1.92.
+  `rustup run <channel>`; native packages currently pin Rust 1.95.
 - `dart_edge_sip` requires installed PJSIP headers for compilation and shared
   PJSIP libraries at runtime; it never bundles or directly links PJSIP.
 - Linux CI prepares PJSIP headers from the pjproject source release, copies the

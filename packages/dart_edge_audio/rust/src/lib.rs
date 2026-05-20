@@ -5,22 +5,24 @@ use std::io::Cursor;
 use std::path::Path;
 use std::sync::Mutex;
 
+use audioadapter_buffers::direct::SequentialSliceOfVecs;
 use dart_edge_core::{NativeOwnedBytes, free_owned_bytes, into_native_owned_bytes};
 use hound::{SampleFormat, WavSpec, WavWriter};
 use once_cell::sync::Lazy;
-use rubato::{FastFixedIn, PolynomialDegree, Resampler};
+use rubato::{Async, FixedAsync, PolynomialDegree, Resampler};
 use serde::{Deserialize, Serialize};
-use symphonia::core::audio::SampleBuffer;
-use symphonia::core::codecs::{
-    CODEC_TYPE_FLAC, CODEC_TYPE_MP3, CODEC_TYPE_NULL, CODEC_TYPE_PCM_F32LE, CODEC_TYPE_PCM_F64LE,
-    CODEC_TYPE_PCM_S16LE, CODEC_TYPE_PCM_S24LE, CODEC_TYPE_PCM_S32LE, CODEC_TYPE_PCM_U16LE,
-    CODEC_TYPE_PCM_U24LE, CODEC_TYPE_PCM_U32LE, CODEC_TYPE_VORBIS, CodecType, DecoderOptions,
+use symphonia::core::codecs::CodecParameters;
+use symphonia::core::codecs::audio::well_known::{
+    CODEC_ID_FLAC, CODEC_ID_MP3, CODEC_ID_PCM_F32LE, CODEC_ID_PCM_F64LE, CODEC_ID_PCM_S16LE,
+    CODEC_ID_PCM_S24LE, CODEC_ID_PCM_S32LE, CODEC_ID_PCM_U16LE, CODEC_ID_PCM_U24LE,
+    CODEC_ID_PCM_U32LE, CODEC_ID_VORBIS,
 };
+use symphonia::core::codecs::audio::{AudioCodecId, AudioDecoderOptions, CODEC_ID_NULL_AUDIO};
 use symphonia::core::errors::Error as SymphoniaError;
-use symphonia::core::formats::{FormatOptions, FormatReader};
+use symphonia::core::formats::probe::Hint;
+use symphonia::core::formats::{FormatOptions, FormatReader, TrackType};
 use symphonia::core::io::MediaSourceStream;
-use symphonia::core::meta::{MetadataOptions, StandardTagKey};
-use symphonia::core::probe::{Hint, ProbedMetadata};
+use symphonia::core::meta::{MetadataOptions, StandardTag};
 use symphonia::default::{get_codecs, get_probe};
 
 const DART_EDGE_AUDIO_NATIVE_ABI_VERSION: i32 = 1;
@@ -395,32 +397,32 @@ fn decode_audio(
     }
 
     let media_stream = MediaSourceStream::new(Box::new(Cursor::new(bytes)), Default::default());
-    let mut probed = get_probe()
-        .format(
+    let mut format = get_probe()
+        .probe(
             &hint,
             media_stream,
-            &FormatOptions::default(),
-            &MetadataOptions::default(),
+            FormatOptions::default(),
+            MetadataOptions::default(),
         )
         .map_err(|error| format!("Failed to probe audio input: {error}"))?;
-    let mut tags = collect_probed_tags(&mut probed.metadata);
-    let mut format = probed.format;
+    let mut tags = collect_tags(&mut *format);
 
     let (track_id, codec_params) = {
-        let Some(track) = format.default_track().or_else(|| {
-            format
-                .tracks()
-                .iter()
-                .find(|track| track.codec_params.codec != CODEC_TYPE_NULL)
-        }) else {
+        let Some(track) = format
+            .first_track_known_codec(TrackType::Audio)
+            .or_else(|| format.first_track(TrackType::Audio))
+        else {
+            return Err("No supported audio track found.".to_string());
+        };
+        let Some(CodecParameters::Audio(codec_params)) = &track.codec_params else {
             return Err("No supported audio track found.".to_string());
         };
 
-        (track.id, track.codec_params.clone())
+        (track.id, codec_params.clone())
     };
 
     let mut decoder = get_codecs()
-        .make(&codec_params, &DecoderOptions::default())
+        .make_audio_decoder(&codec_params, &AudioDecoderOptions::default())
         .map_err(|error| format!("Failed to create audio decoder: {error}"))?;
 
     let mut sample_rate = codec_params.sample_rate.unwrap_or(0);
@@ -433,12 +435,13 @@ fn decode_audio(
     } else {
         vec![Vec::new(); channel_count]
     };
-    let bit_depth = codec_params.bits_per_sample.map(u32::from);
+    let bit_depth = codec_params.bits_per_sample;
     tags.extend(collect_tags(&mut *format));
 
     loop {
         let packet = match format.next_packet() {
-            Ok(packet) => packet,
+            Ok(Some(packet)) => packet,
+            Ok(None) => break,
             Err(SymphoniaError::IoError(error))
                 if error.kind() == std::io::ErrorKind::UnexpectedEof =>
             {
@@ -452,20 +455,20 @@ fn decode_audio(
             }
         };
 
-        if packet.track_id() != track_id {
+        if packet.track_id != track_id {
             continue;
         }
 
         let decoded = decoder
             .decode(&packet)
             .map_err(|error| format!("Failed to decode audio packet: {error}"))?;
-        let spec = *decoded.spec();
+        let spec = decoded.spec();
 
         if sample_rate == 0 {
-            sample_rate = spec.rate;
+            sample_rate = spec.rate();
         }
 
-        let decoded_channels = spec.channels.count();
+        let decoded_channels = spec.channels().count();
         if channel_count == 0 {
             channel_count = decoded_channels;
             samples = vec![Vec::new(); channel_count];
@@ -473,10 +476,10 @@ fn decode_audio(
             return Err("Audio stream changed channel count during decode.".to_string());
         }
 
-        let mut sample_buffer = SampleBuffer::<f32>::new(decoded.capacity() as u64, spec);
-        sample_buffer.copy_interleaved_ref(decoded);
+        let mut interleaved = Vec::with_capacity(decoded.samples_interleaved());
+        decoded.copy_to_vec_interleaved::<f32>(&mut interleaved);
 
-        for frame in sample_buffer.samples().chunks(channel_count) {
+        for frame in interleaved.chunks(channel_count) {
             for (index, sample) in frame.iter().enumerate() {
                 samples[index].push(*sample);
             }
@@ -601,18 +604,30 @@ fn resample(
         return Err("Audio input does not contain any frames to resample.".to_string());
     }
 
-    let mut resampler = FastFixedIn::<f32>::new(
+    let mut resampler = Async::<f32>::new_poly(
         output_rate as f64 / input_rate as f64,
         1.0,
         PolynomialDegree::Septic,
         samples[0].len(),
         samples.len(),
+        FixedAsync::Input,
     )
     .map_err(|error| format!("Failed to create audio resampler: {error}"))?;
 
-    resampler
-        .process(&samples, None)
-        .map_err(|error| format!("Failed to resample audio: {error}"))
+    let input = SequentialSliceOfVecs::new(&samples, samples.len(), samples[0].len())
+        .map_err(|error| format!("Failed to prepare audio resampler input: {error}"))?;
+    let output = resampler
+        .process(&input, 0, None)
+        .map_err(|error| format!("Failed to resample audio: {error}"))?;
+
+    let channel_count = samples.len();
+    let mut resampled = vec![Vec::new(); channel_count];
+    for frame in output.take_data().chunks(channel_count) {
+        for (index, sample) in frame.iter().enumerate() {
+            resampled[index].push(*sample);
+        }
+    }
+    Ok(resampled)
 }
 
 fn encode_wav(audio: &ConvertedAudio) -> Result<Vec<u8>, String> {
@@ -660,26 +675,19 @@ fn collect_tags(format: &mut dyn FormatReader) -> BTreeMap<String, String> {
     collect_metadata_tags(revision)
 }
 
-fn collect_probed_tags(metadata: &mut ProbedMetadata) -> BTreeMap<String, String> {
-    let Some(mut metadata) = metadata.get() else {
-        return BTreeMap::new();
-    };
-    let revision = metadata.skip_to_latest();
-    collect_metadata_tags(revision)
-}
-
 fn collect_metadata_tags(
     revision: Option<&symphonia::core::meta::MetadataRevision>,
 ) -> BTreeMap<String, String> {
     let mut tags = BTreeMap::new();
     if let Some(revision) = revision {
-        for tag in revision.tags() {
+        for tag in &revision.media.tags {
             let key = tag
-                .std_key
+                .std
+                .as_ref()
                 .and_then(standard_tag_name)
                 .map(ToOwned::to_owned)
-                .unwrap_or_else(|| tag.key.to_string().trim().to_lowercase());
-            let value = tag.value.to_string();
+                .unwrap_or_else(|| tag.raw.key.trim().to_lowercase());
+            let value = tag.raw.value.to_string();
             let value = value.trim_matches(char::from(0)).trim().to_string();
             if key.is_empty() || value.trim().is_empty() {
                 continue;
@@ -691,20 +699,22 @@ fn collect_metadata_tags(
     tags
 }
 
-fn standard_tag_name(key: StandardTagKey) -> Option<&'static str> {
+fn standard_tag_name(key: &StandardTag) -> Option<&'static str> {
     match key {
-        StandardTagKey::TrackTitle => Some("title"),
-        StandardTagKey::Artist => Some("artist"),
-        StandardTagKey::Album => Some("album"),
-        StandardTagKey::AlbumArtist => Some("albumArtist"),
-        StandardTagKey::Genre => Some("genre"),
-        StandardTagKey::Comment => Some("comment"),
-        StandardTagKey::Composer => Some("composer"),
-        StandardTagKey::TrackNumber => Some("trackNumber"),
-        StandardTagKey::TrackTotal => Some("trackTotal"),
-        StandardTagKey::DiscNumber => Some("discNumber"),
-        StandardTagKey::DiscTotal => Some("discTotal"),
-        StandardTagKey::Date | StandardTagKey::ReleaseDate => Some("date"),
+        StandardTag::TrackTitle(_) => Some("title"),
+        StandardTag::Artist(_) => Some("artist"),
+        StandardTag::Album(_) => Some("album"),
+        StandardTag::AlbumArtist(_) => Some("albumArtist"),
+        StandardTag::Genre(_) => Some("genre"),
+        StandardTag::Comment(_) => Some("comment"),
+        StandardTag::Composer(_) => Some("composer"),
+        StandardTag::TrackNumber(_) => Some("trackNumber"),
+        StandardTag::TrackTotal(_) => Some("trackTotal"),
+        StandardTag::DiscNumber(_) => Some("discNumber"),
+        StandardTag::DiscTotal(_) => Some("discTotal"),
+        StandardTag::RecordingDate(_)
+        | StandardTag::OriginalReleaseDate(_)
+        | StandardTag::ReleaseDate(_) => Some("date"),
         _ => None,
     }
 }
@@ -745,17 +755,17 @@ fn normalize_container_from_mime(value: &str) -> Option<String> {
     }
 }
 
-fn guess_codec_name(codec: CodecType) -> Option<String> {
+fn guess_codec_name(codec: AudioCodecId) -> Option<String> {
     match codec {
-        CODEC_TYPE_MP3 => Some("mp3".to_string()),
-        CODEC_TYPE_FLAC => Some("flac".to_string()),
-        CODEC_TYPE_VORBIS => Some("vorbis".to_string()),
-        CODEC_TYPE_PCM_S16LE | CODEC_TYPE_PCM_U16LE => Some("pcm_s16le".to_string()),
-        CODEC_TYPE_PCM_S24LE | CODEC_TYPE_PCM_U24LE => Some("pcm_s24le".to_string()),
-        CODEC_TYPE_PCM_S32LE | CODEC_TYPE_PCM_U32LE => Some("pcm_s32le".to_string()),
-        CODEC_TYPE_PCM_F32LE => Some("pcm_f32le".to_string()),
-        CODEC_TYPE_PCM_F64LE => Some("pcm_f64le".to_string()),
-        CODEC_TYPE_NULL => None,
+        CODEC_ID_MP3 => Some("mp3".to_string()),
+        CODEC_ID_FLAC => Some("flac".to_string()),
+        CODEC_ID_VORBIS => Some("vorbis".to_string()),
+        CODEC_ID_PCM_S16LE | CODEC_ID_PCM_U16LE => Some("pcm_s16le".to_string()),
+        CODEC_ID_PCM_S24LE | CODEC_ID_PCM_U24LE => Some("pcm_s24le".to_string()),
+        CODEC_ID_PCM_S32LE | CODEC_ID_PCM_U32LE => Some("pcm_s32le".to_string()),
+        CODEC_ID_PCM_F32LE => Some("pcm_f32le".to_string()),
+        CODEC_ID_PCM_F64LE => Some("pcm_f64le".to_string()),
+        CODEC_ID_NULL_AUDIO => None,
         _ => Some(format!("{codec:?}").to_ascii_lowercase()),
     }
 }

@@ -1,3 +1,8 @@
+## 0.2.7
+
+- Bump the native artifact version to 0.1.3 for Rust 1.95 and dependency
+  updates.
+
 ## 0.2.4
 
 - Bump the native artifact version to 0.1.2 for rebuilt prebuilts.

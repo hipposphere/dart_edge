@@ -1,6 +1,8 @@
 ## 0.4.9
 
 - Build SIP native artifacts against PJSIP 2.17 headers.
+- Bump the native artifact version to 0.1.4 for Rust 1.95 and dependency
+  updates.
 
 ## 0.4.6
 
