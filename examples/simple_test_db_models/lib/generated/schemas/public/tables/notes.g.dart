@@ -1,7 +1,7 @@
 import 'package:dart_edge_core/dart_edge_core.dart';
 
-final class NotesRow implements JsonEncodable {
-  const NotesRow({
+final class PublicNotesRow implements JsonEncodable {
+  const PublicNotesRow({
     required this.id,
     required this.title,
     required this.body,
@@ -9,23 +9,24 @@ final class NotesRow implements JsonEncodable {
     required this.createdAt,
   });
 
-  factory NotesRow.fromSqlRow(SqlRow row, {String prefix = ''}) => NotesRow(
-    id: row.read<int>('${prefix}id'),
-    title: row.read<String>('${prefix}title'),
-    body: row.read<String>('${prefix}body'),
-    ownerId: row.read<int>('${prefix}owner_id'),
-    createdAt: row.read<String>('${prefix}created_at'),
-  );
+  factory PublicNotesRow.fromSqlRow(SqlRow row, {String prefix = ''}) =>
+      PublicNotesRow(
+        id: row.read<int>('${prefix}id'),
+        title: row.read<String>('${prefix}title'),
+        body: row.read<String>('${prefix}body'),
+        ownerId: row.read<int>('${prefix}owner_id'),
+        createdAt: row.read<String>('${prefix}created_at'),
+      );
 
-  factory NotesRow.fromColumns(
+  factory PublicNotesRow.fromColumns(
     Map<String, Object?> columns, {
     String prefix = '',
-  }) => NotesRow.fromSqlRow(SqlRow(columns), prefix: prefix);
+  }) => PublicNotesRow.fromSqlRow(SqlRow(columns), prefix: prefix);
 
-  factory NotesRow.decode(Object? value) =>
-      NotesRow.fromJson(readJsonObject(value));
+  factory PublicNotesRow.decode(Object? value) =>
+      PublicNotesRow.fromJson(readJsonObject(value));
 
-  factory NotesRow.fromJson(Map<String, Object?> json) => NotesRow(
+  factory PublicNotesRow.fromJson(Map<String, Object?> json) => PublicNotesRow(
     id: (json['id'] as num).toInt(),
     title: (json['title'] as String),
     body: (json['body'] as String),
@@ -33,7 +34,7 @@ final class NotesRow implements JsonEncodable {
     createdAt: (json['created_at'] as String),
   );
 
-  static const schemaId = 'NotesRow';
+  static const schemaId = 'PublicNotesRow';
 
   static const schemaRef = JsonSchema.componentRef(schemaId);
 
@@ -60,14 +61,14 @@ final class NotesRow implements JsonEncodable {
 
   final String createdAt;
 
-  NotesRow copyWith({
+  PublicNotesRow copyWith({
     int? id,
     String? title,
     String? body,
     int? ownerId,
     String? createdAt,
   }) {
-    return NotesRow(
+    return PublicNotesRow(
       id: id ?? this.id,
       title: title ?? this.title,
       body: body ?? this.body,
@@ -95,11 +96,11 @@ final class NotesRow implements JsonEncodable {
 
   @override
   String toString() =>
-      'NotesRow(id: $id, title: $title, body: $body, ownerId: $ownerId, createdAt: $createdAt)';
+      'PublicNotesRow(id: $id, title: $title, body: $body, ownerId: $ownerId, createdAt: $createdAt)';
 }
 
-final class NotesInsert implements JsonEncodable {
-  const NotesInsert({
+final class PublicNotesInsert implements JsonEncodable {
+  const PublicNotesInsert({
     this.id = const SqlValue.absent(),
     required this.title,
     required this.body,
@@ -107,22 +108,23 @@ final class NotesInsert implements JsonEncodable {
     this.createdAt = const SqlValue.absent(),
   });
 
-  factory NotesInsert.decode(Object? value) =>
-      NotesInsert.fromJson(readJsonObject(value));
+  factory PublicNotesInsert.decode(Object? value) =>
+      PublicNotesInsert.fromJson(readJsonObject(value));
 
-  factory NotesInsert.fromJson(Map<String, Object?> json) => NotesInsert(
-    id: json.containsKey('id')
-        ? SqlValue<int>((json['id'] as num).toInt())
-        : const SqlValue.absent(),
-    title: (json['title'] as String),
-    body: (json['body'] as String),
-    ownerId: (json['owner_id'] as num).toInt(),
-    createdAt: json.containsKey('created_at')
-        ? SqlValue<String>((json['created_at'] as String))
-        : const SqlValue.absent(),
-  );
+  factory PublicNotesInsert.fromJson(Map<String, Object?> json) =>
+      PublicNotesInsert(
+        id: json.containsKey('id')
+            ? SqlValue<int>((json['id'] as num).toInt())
+            : const SqlValue.absent(),
+        title: (json['title'] as String),
+        body: (json['body'] as String),
+        ownerId: (json['owner_id'] as num).toInt(),
+        createdAt: json.containsKey('created_at')
+            ? SqlValue<String>((json['created_at'] as String))
+            : const SqlValue.absent(),
+      );
 
-  static const schemaId = 'NotesInsert';
+  static const schemaId = 'PublicNotesInsert';
 
   static const schemaRef = JsonSchema.componentRef(schemaId);
 
@@ -149,14 +151,14 @@ final class NotesInsert implements JsonEncodable {
 
   final SqlValue<String> createdAt;
 
-  NotesInsert copyWith({
+  PublicNotesInsert copyWith({
     SqlValue<int>? id,
     String? title,
     String? body,
     int? ownerId,
     SqlValue<String>? createdAt,
   }) {
-    return NotesInsert(
+    return PublicNotesInsert(
       id: id ?? this.id,
       title: title ?? this.title,
       body: body ?? this.body,
@@ -184,11 +186,11 @@ final class NotesInsert implements JsonEncodable {
 
   @override
   String toString() =>
-      'NotesInsert(id: $id, title: $title, body: $body, ownerId: $ownerId, createdAt: $createdAt)';
+      'PublicNotesInsert(id: $id, title: $title, body: $body, ownerId: $ownerId, createdAt: $createdAt)';
 }
 
-final class NotesUpdate implements JsonEncodable {
-  const NotesUpdate({
+final class PublicNotesUpdate implements JsonEncodable {
+  const PublicNotesUpdate({
     this.id = const SqlValue.absent(),
     this.title = const SqlValue.absent(),
     this.body = const SqlValue.absent(),
@@ -196,28 +198,29 @@ final class NotesUpdate implements JsonEncodable {
     this.createdAt = const SqlValue.absent(),
   });
 
-  factory NotesUpdate.decode(Object? value) =>
-      NotesUpdate.fromJson(readJsonObject(value));
+  factory PublicNotesUpdate.decode(Object? value) =>
+      PublicNotesUpdate.fromJson(readJsonObject(value));
 
-  factory NotesUpdate.fromJson(Map<String, Object?> json) => NotesUpdate(
-    id: json.containsKey('id')
-        ? SqlValue<int>((json['id'] as num).toInt())
-        : const SqlValue.absent(),
-    title: json.containsKey('title')
-        ? SqlValue<String>((json['title'] as String))
-        : const SqlValue.absent(),
-    body: json.containsKey('body')
-        ? SqlValue<String>((json['body'] as String))
-        : const SqlValue.absent(),
-    ownerId: json.containsKey('owner_id')
-        ? SqlValue<int>((json['owner_id'] as num).toInt())
-        : const SqlValue.absent(),
-    createdAt: json.containsKey('created_at')
-        ? SqlValue<String>((json['created_at'] as String))
-        : const SqlValue.absent(),
-  );
+  factory PublicNotesUpdate.fromJson(Map<String, Object?> json) =>
+      PublicNotesUpdate(
+        id: json.containsKey('id')
+            ? SqlValue<int>((json['id'] as num).toInt())
+            : const SqlValue.absent(),
+        title: json.containsKey('title')
+            ? SqlValue<String>((json['title'] as String))
+            : const SqlValue.absent(),
+        body: json.containsKey('body')
+            ? SqlValue<String>((json['body'] as String))
+            : const SqlValue.absent(),
+        ownerId: json.containsKey('owner_id')
+            ? SqlValue<int>((json['owner_id'] as num).toInt())
+            : const SqlValue.absent(),
+        createdAt: json.containsKey('created_at')
+            ? SqlValue<String>((json['created_at'] as String))
+            : const SqlValue.absent(),
+      );
 
-  static const schemaId = 'NotesUpdate';
+  static const schemaId = 'PublicNotesUpdate';
 
   static const schemaRef = JsonSchema.componentRef(schemaId);
 
@@ -244,14 +247,14 @@ final class NotesUpdate implements JsonEncodable {
 
   final SqlValue<String> createdAt;
 
-  NotesUpdate copyWith({
+  PublicNotesUpdate copyWith({
     SqlValue<int>? id,
     SqlValue<String>? title,
     SqlValue<String>? body,
     SqlValue<int>? ownerId,
     SqlValue<String>? createdAt,
   }) {
-    return NotesUpdate(
+    return PublicNotesUpdate(
       id: id ?? this.id,
       title: title ?? this.title,
       body: body ?? this.body,
@@ -279,38 +282,48 @@ final class NotesUpdate implements JsonEncodable {
 
   @override
   String toString() =>
-      'NotesUpdate(id: $id, title: $title, body: $body, ownerId: $ownerId, createdAt: $createdAt)';
+      'PublicNotesUpdate(id: $id, title: $title, body: $body, ownerId: $ownerId, createdAt: $createdAt)';
 }
 
-final class NotesTable extends SqlTable<NotesRow, NotesInsert, NotesUpdate> {
-  const NotesTable._();
+final class PublicNotesTable
+    extends SqlTable<PublicNotesRow, PublicNotesInsert, PublicNotesUpdate> {
+  const PublicNotesTable._();
 
-  static const table = NotesTable._();
+  static const table = PublicNotesTable._();
 
-  static final id = SqlColumn<int>(table: table, name: 'id', nullable: false);
+  static final id = SqlColumn<int>(
+    table: table,
+    name: 'id',
+    nullable: false,
+    databaseType: 'int4',
+  );
 
   static final title = SqlColumn<String>(
     table: table,
     name: 'title',
     nullable: false,
+    databaseType: 'text',
   );
 
   static final body = SqlColumn<String>(
     table: table,
     name: 'body',
     nullable: false,
+    databaseType: 'text',
   );
 
   static final ownerId = SqlColumn<int>(
     table: table,
     name: 'owner_id',
     nullable: false,
+    databaseType: 'int4',
   );
 
   static final createdAt = SqlColumn<String>(
     table: table,
     name: 'created_at',
     nullable: false,
+    databaseType: 'text',
   );
 
   @override
@@ -329,12 +342,14 @@ final class NotesTable extends SqlTable<NotesRow, NotesInsert, NotesUpdate> {
   ];
 
   @override
-  NotesRow mapRow(SqlRow row, {String prefix = ''}) =>
-      NotesRow.fromSqlRow(row, prefix: prefix);
+  PublicNotesRow mapRow(SqlRow row, {String prefix = ''}) =>
+      PublicNotesRow.fromSqlRow(row, prefix: prefix);
 
   @override
-  Map<String, Object?> encodeInsert(NotesInsert value) => value.toColumns();
+  Map<String, Object?> encodeInsert(PublicNotesInsert value) =>
+      value.toColumns();
 
   @override
-  Map<String, Object?> encodeUpdate(NotesUpdate value) => value.toColumns();
+  Map<String, Object?> encodeUpdate(PublicNotesUpdate value) =>
+      value.toColumns();
 }

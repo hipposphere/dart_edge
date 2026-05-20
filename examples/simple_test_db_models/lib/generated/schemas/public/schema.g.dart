@@ -11,17 +11,17 @@ final class PublicSchema {
 
   static const schemaName = 'public';
 
-  static const notes = NotesTable.table;
+  static const notes = PublicNotesTable.table;
 
-  static const people = PeopleTable.table;
+  static const people = PublicPeopleTable.table;
 
   static const List<JsonSchema> schemas = <JsonSchema>[
-    NotesRow.jsonSchema,
-    NotesInsert.jsonSchema,
-    NotesUpdate.jsonSchema,
-    PeopleRow.jsonSchema,
-    PeopleInsert.jsonSchema,
-    PeopleUpdate.jsonSchema,
+    PublicNotesRow.jsonSchema,
+    PublicNotesInsert.jsonSchema,
+    PublicNotesUpdate.jsonSchema,
+    PublicPeopleRow.jsonSchema,
+    PublicPeopleInsert.jsonSchema,
+    PublicPeopleUpdate.jsonSchema,
   ];
 
   static const JsonSchemaRegistry jsonSchemas = JsonSchemaRegistry(

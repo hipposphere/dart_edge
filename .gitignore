@@ -6,6 +6,7 @@ coverage/
 .venv/
 
 .DS_Store
+db.pglite
 
 packages/**/pubspec.lock
 packages/**/.dart_tool/

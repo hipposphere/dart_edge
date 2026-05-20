@@ -42,6 +42,7 @@ Future<void> main(List<String> args) async {
   final emission = emitDartSchema(
     database,
     databaseClassName: options.value('class') ?? 'GeneratedDatabaseSchema',
+    naming: _namingFromStyle(options.value('model-name-style')),
   );
   final outputDirectory = options.value('out') ?? 'lib/generated';
   emission.writeToDirectory(outputDirectory);
@@ -59,6 +60,18 @@ Set<String> _csv(String? value) {
       .map((part) => part.trim())
       .where((part) => part.isNotEmpty)
       .toSet();
+}
+
+DartSchemaNaming _namingFromStyle(String? style) {
+  return switch (style) {
+    null || 'default' => DartSchemaNaming.defaults,
+    'schema_prefixed' => DartSchemaNaming.schemaPrefixed,
+    'unprefixed' || 'legacy' => DartSchemaNaming.unprefixed,
+    _ => throw FormatException(
+      'Unsupported --model-name-style "$style". Expected default, '
+      'schema_prefixed, or unprefixed.',
+    ),
+  };
 }
 
 final class _Options {
@@ -145,6 +158,8 @@ Usage:
 Options:
   --out <dir>       Output directory. Defaults to lib/generated.
   --class <name>    Root schema class. Defaults to GeneratedDatabaseSchema.
+  --model-name-style <style>
+                   Model class naming: default/schema_prefixed or unprefixed.
   --schemas <csv>   Comma-separated PostgreSQL schemas.
   --include <csv>   Comma-separated table allow-list.
   --exclude <csv>   Comma-separated table block-list.

@@ -64,7 +64,10 @@ final class DartSchemaEmission {
 DartSchemaEmission emitDartSchema(
   IntrospectedDatabase database, {
   String databaseClassName = 'GeneratedDatabaseSchema',
+  DartSchemaNaming? naming,
 }) {
+  final effectiveNaming = naming ?? DartSchemaNaming.defaults;
+  database = _withGeneratedConstrainedTextTypes(database, effectiveNaming);
   final schemaGroups = _groupBySchema(database);
   final entrypointFileName = '${_fileStem(databaseClassName)}.g.dart';
   final files = <DartSchemaEmissionFile>[
@@ -91,7 +94,7 @@ DartSchemaEmission emitDartSchema(
     files.add(
       DartSchemaEmissionFile(
         relativePath: '$schemaFolder/schema.g.dart',
-        contents: _emitSchemaLibrary(group),
+        contents: _emitSchemaLibrary(group, effectiveNaming),
       ),
     );
 
@@ -99,7 +102,12 @@ DartSchemaEmission emitDartSchema(
       files.add(
         DartSchemaEmissionFile(
           relativePath: '$schemaFolder/tables/${_tableFileName(table)}',
-          contents: _emitTableLibrary(table, group, schemaGroups),
+          contents: _emitTableLibrary(
+            table,
+            group,
+            schemaGroups,
+            effectiveNaming,
+          ),
         ),
       );
     }
@@ -134,7 +142,10 @@ DartSchemaEmission emitDartSchema(
 String emitDartSchemaLibrary(
   IntrospectedDatabase database, {
   String databaseClassName = 'GeneratedDatabaseSchema',
+  DartSchemaNaming? naming,
 }) {
+  final effectiveNaming = naming ?? DartSchemaNaming.defaults;
+  database = _withGeneratedConstrainedTextTypes(database, effectiveNaming);
   final schemaGroups = _groupBySchema(database);
   final library = Library((builder) {
     builder
@@ -143,7 +154,9 @@ String emitDartSchemaLibrary(
         Directive.import('package:dart_edge_core/dart_edge_core.dart'),
       )
       ..body.add(_databaseClass(databaseClassName, schemaGroups))
-      ..body.addAll(schemaGroups.map(_schemaClass));
+      ..body.addAll(
+        schemaGroups.map((group) => _schemaClass(group, effectiveNaming)),
+      );
 
     if (schemaGroups.any((group) => group.routines.isNotEmpty)) {
       builder.directives.add(
@@ -156,7 +169,7 @@ String emitDartSchemaLibrary(
         builder.body.add(_enumSpec(value));
       }
       for (final table in group.tables) {
-        builder.body.addAll(_tableSpecs(table));
+        builder.body.addAll(_tableSpecs(table, effectiveNaming));
       }
       if (group.routines.isNotEmpty) {
         builder.body.add(_routinesClass(group));

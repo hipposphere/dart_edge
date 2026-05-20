@@ -3,16 +3,19 @@ import 'package:simple_test_db_models/simple_test_db_models.dart';
 
 Future<void> seedSimpleTestDatabase(PostgresPool database) async {
   final owner = await database.typed
-      .insertInto(PeopleTable.table)
+      .insertInto(PublicPeopleTable.table)
       .values(
-        const PeopleInsert(name: 'Ada Lovelace', email: 'ada@example.com'),
+        const PublicPeopleInsert(
+          name: 'Ada Lovelace',
+          email: 'ada@example.com',
+        ),
       )
       .executeReturningFirstOrNull();
 
   final result = await database.typed
-      .insertInto(NotesTable.table)
+      .insertInto(PublicNotesTable.table)
       .values(
-        NotesInsert(
+        PublicNotesInsert(
           title: 'First note',
           body: 'This is the body of the first note.',
           ownerId: owner!.id,
@@ -21,12 +24,12 @@ Future<void> seedSimpleTestDatabase(PostgresPool database) async {
       .executeReturningFirstOrNull();
 
   final results = await database.typed
-      .from(NotesTable.table)
+      .from(PublicNotesTable.table)
       .innerJoin(
-        PeopleTable.table,
-        on: NotesTable.ownerId.equalsColumn(PeopleTable.id),
+        PublicPeopleTable.table,
+        on: PublicNotesTable.ownerId.equalsColumn(PublicPeopleTable.id),
       )
-      .select([NotesTable.title, PeopleTable.id])
+      .select([PublicNotesTable.title, PublicPeopleTable.id])
       .execute();
   print('Seeded note with ID: ${result?.id}');
   print('Seeded notes in database: $results');

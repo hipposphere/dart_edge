@@ -7,6 +7,7 @@ final class SimpleTestClient extends DartEdgeHttpClientBase {
     required super.baseUri,
     required super.transport,
     super.webSocketTransport,
+    super.webTransportTransport,
     super.defaultHeaders = const <String, String>{},
   });
 
@@ -522,15 +523,15 @@ final class SimpleTestClient extends DartEdgeHttpClientBase {
   }
 
   Future<DartEdgeClientResponseObject<CreateNoteResponse>> createNote({
-    required NotesInsert body,
+    required PublicNotesInsert body,
   }) {
-    return invoke<CreateNoteResponse, Never, Never, Never, NotesInsert>(
+    return invoke<CreateNoteResponse, Never, Never, Never, PublicNotesInsert>(
       DartEdgeClientInvocation<
         CreateNoteResponse,
         Never,
         Never,
         Never,
-        NotesInsert
+        PublicNotesInsert
       >(
         method: HttpMethod.post,
         pathTemplate: '/notes',
@@ -540,9 +541,9 @@ final class SimpleTestClient extends DartEdgeHttpClientBase {
           schemaId: 'CreateNoteResponse',
           decoder: CreateNoteResponse.decode,
         ),
-        body: DartEdgeClientRequestBody<NotesInsert>(
+        body: DartEdgeClientRequestBody<PublicNotesInsert>(
           contentType: 'application/json; charset=utf-8',
-          schemaId: 'NotesInsert',
+          schemaId: 'PublicNotesInsert',
           value: body,
           encoder: (value) => value.toJson(),
         ),

@@ -1,14 +1,68 @@
 part of '../dart_schema_emitter.dart';
 
-Iterable<Spec> _tableSpecs(IntrospectedTable table) sync* {
-  yield _rowClass(table);
-  yield _insertClass(table);
-  yield _updateClass(table);
-  yield _tableClass(table);
+Iterable<Spec> _tableSpecs(
+  IntrospectedTable table,
+  DartSchemaNaming naming,
+) sync* {
+  for (final column in table.columns.where(_isConstrainedTextColumn)) {
+    yield _constrainedTextTypeSpec(column);
+  }
+  yield _rowClass(table, naming);
+  yield _insertClass(table, naming);
+  yield _updateClass(table, naming);
+  yield _tableClass(table, naming);
 }
 
-Class _rowClass(IntrospectedTable table) {
-  final rowType = '${_upperCamel(table.name)}Row';
+Code _constrainedTextTypeSpec(IntrospectedColumn column) {
+  final typeName = _normalizedValueType(column);
+  final seenValueNames = <String, int>{};
+  String valueName(String label) {
+    final baseName = _enumValueName(label);
+    final count = seenValueNames.update(
+      baseName,
+      (count) => count + 1,
+      ifAbsent: () => 0,
+    );
+    return count == 0 ? baseName : '$baseName$count';
+  }
+
+  final namesByValue = {
+    for (final value in column.constrainedValues) value: valueName(value),
+  };
+
+  final constants = column.constrainedValues
+      .map((value) {
+        return 'static const ${namesByValue[value]} = $typeName._('
+            "'${_escapeLiteral(value)}'"
+            ');';
+      })
+      .join('\n');
+  final values = column.constrainedValues
+      .map((value) => namesByValue[value])
+      .join(', ');
+  final switchCases = column.constrainedValues
+      .map((value) => "'${_escapeLiteral(value)}' => ${namesByValue[value]},")
+      .join('\n');
+
+  return Code('''
+extension type const $typeName._(String value) {
+  $constants
+
+  static const values = <$typeName>[$values];
+
+  static $typeName fromDatabase(Object? value) {
+    final text = value as String;
+    return switch (text) {
+      $switchCases
+      _ => throw ArgumentError.value(value, 'value', 'Unknown $typeName database value.'),
+    };
+  }
+}
+''');
+}
+
+Class _rowClass(IntrospectedTable table, DartSchemaNaming naming) {
+  final rowType = _rowClassName(table, naming);
   return Class((builder) {
     builder
       ..modifier = ClassModifier.final$
@@ -71,8 +125,8 @@ Class _rowClass(IntrospectedTable table) {
   });
 }
 
-Class _insertClass(IntrospectedTable table) {
-  final insertType = '${_upperCamel(table.name)}Insert';
+Class _insertClass(IntrospectedTable table, DartSchemaNaming naming) {
+  final insertType = _insertClassName(table, naming);
   return Class((builder) {
     builder
       ..modifier = ClassModifier.final$
@@ -137,8 +191,8 @@ Class _insertClass(IntrospectedTable table) {
   });
 }
 
-Class _updateClass(IntrospectedTable table) {
-  final updateType = '${_upperCamel(table.name)}Update';
+Class _updateClass(IntrospectedTable table, DartSchemaNaming naming) {
+  final updateType = _updateClassName(table, naming);
   return Class((builder) {
     builder
       ..modifier = ClassModifier.final$
@@ -199,12 +253,11 @@ Class _updateClass(IntrospectedTable table) {
   });
 }
 
-Class _tableClass(IntrospectedTable table) {
-  final baseName = _upperCamel(table.name);
-  final rowType = '${baseName}Row';
-  final insertType = '${baseName}Insert';
-  final updateType = '${baseName}Update';
-  final tableClassName = '${baseName}Table';
+Class _tableClass(IntrospectedTable table, DartSchemaNaming naming) {
+  final rowType = _rowClassName(table, naming);
+  final insertType = _insertClassName(table, naming);
+  final updateType = _updateClassName(table, naming);
+  final tableClassName = _tableClassName(table, naming);
 
   return Class((builder) {
     builder

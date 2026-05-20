@@ -1,5 +1,74 @@
 part of '../dart_schema_emitter.dart';
 
+/// Generated table model kind passed to a [DartSchemaModelNameBuilder].
+enum DartSchemaModelKind { row, insert, update, table }
+
+/// Context for choosing a generated table model class name.
+final class DartSchemaModelNameContext {
+  const DartSchemaModelNameContext({
+    required this.schemaName,
+    required this.tableName,
+    required this.kind,
+    required this.defaultName,
+  });
+
+  /// SQL schema name, or `null` when the table is not schema-qualified.
+  final String? schemaName;
+
+  /// SQL table name before Dart identifier normalization.
+  final String tableName;
+
+  /// Generated model shape being named.
+  final DartSchemaModelKind kind;
+
+  /// Default generated class name for this model.
+  final String defaultName;
+}
+
+/// Builds a generated Dart class name for a table model.
+typedef DartSchemaModelNameBuilder =
+    String Function(DartSchemaModelNameContext context);
+
+/// Naming configuration for generated Dart SQL schema code.
+final class DartSchemaNaming {
+  const DartSchemaNaming({this.modelNameBuilder});
+
+  /// Default naming for generated SQL models.
+  static final defaults = schemaPrefixed;
+
+  /// Naming that preserves the historical generated class names.
+  static const unprefixed = DartSchemaNaming();
+
+  /// Naming that prefixes table models with their SQL schema name.
+  static final schemaPrefixed = DartSchemaNaming(
+    modelNameBuilder: schemaPrefixedModelNameBuilder,
+  );
+
+  /// Optional callback that overrides generated table model class names.
+  final DartSchemaModelNameBuilder? modelNameBuilder;
+
+  String modelName(DartSchemaModelNameContext context) {
+    final builder = modelNameBuilder ?? defaultModelNameBuilder;
+    return builder(context);
+  }
+
+  /// Returns [DartSchemaModelNameContext.defaultName].
+  static String defaultModelNameBuilder(DartSchemaModelNameContext context) {
+    return context.defaultName;
+  }
+
+  /// Prefixes models with the normalized SQL schema name when one exists.
+  static String schemaPrefixedModelNameBuilder(
+    DartSchemaModelNameContext context,
+  ) {
+    final schemaName = context.schemaName?.trim();
+    if (schemaName == null || schemaName.isEmpty) {
+      return context.defaultName;
+    }
+    return '${_upperCamel(schemaName)}${context.defaultName}';
+  }
+}
+
 List<_SchemaGroup> _groupBySchema(IntrospectedDatabase database) {
   final grouped = <String, List<IntrospectedTable>>{};
   for (final table in database.tables) {
@@ -79,7 +148,7 @@ Reference _updateFieldType(IntrospectedColumn column) {
 }
 
 Reference _sqlColumnType(IntrospectedColumn column) {
-  if (column.enumName != null) {
+  if (_hasStringBackedValueType(column)) {
     return refer('String');
   }
   return refer(_normalizedValueType(column));
@@ -107,6 +176,87 @@ String _normalizedValueType(IntrospectedColumn column) {
     return typeName.substring(0, typeName.length - 1);
   }
   return typeName;
+}
+
+bool _hasStringBackedValueType(IntrospectedColumn column) {
+  return column.enumName != null || _isConstrainedTextColumn(column);
+}
+
+bool _isConstrainedTextColumn(IntrospectedColumn column) {
+  return column.enumName == null &&
+      column.constrainedValues.isNotEmpty &&
+      _normalizeDatabaseType(column.databaseType) == 'text';
+}
+
+String _normalizeDatabaseType(String databaseType) {
+  return databaseType
+      .trim()
+      .split(RegExp(r'\s+'))
+      .first
+      .toLowerCase()
+      .replaceAll(RegExp(r'\(.*\)$'), '');
+}
+
+IntrospectedDatabase _withGeneratedConstrainedTextTypes(
+  IntrospectedDatabase database,
+  DartSchemaNaming naming,
+) {
+  return IntrospectedDatabase(
+    dialect: database.dialect,
+    enums: database.enums,
+    routines: database.routines,
+    tables: [
+      for (final table in database.tables)
+        IntrospectedTable(
+          name: table.name,
+          schema: table.schema,
+          constraints: table.constraints,
+          columns: [
+            for (final column in table.columns)
+              if (_isConstrainedTextColumn(column))
+                _copyColumnWithDartType(
+                  column,
+                  _constrainedTextTypeName(table, column, naming),
+                )
+              else
+                column,
+          ],
+        ),
+    ],
+  );
+}
+
+IntrospectedColumn _copyColumnWithDartType(
+  IntrospectedColumn column,
+  String dartType,
+) {
+  return IntrospectedColumn(
+    name: column.name,
+    databaseType: column.databaseType,
+    dartType: dartType,
+    nullable: column.nullable,
+    hasDefault: column.hasDefault,
+    defaultExpression: column.defaultExpression,
+    primaryKey: column.primaryKey,
+    enumName: column.enumName,
+    enumSchema: column.enumSchema,
+    enumValues: column.enumValues,
+    constrainedValues: column.constrainedValues,
+  );
+}
+
+String _constrainedTextTypeName(
+  IntrospectedTable table,
+  IntrospectedColumn column,
+  DartSchemaNaming naming,
+) {
+  final tableType = _rowClassName(table, naming);
+  final suffix = _upperCamel(column.name);
+  final rowSuffix = RegExp(r'Row$').firstMatch(tableType);
+  if (rowSuffix == null) {
+    return '$tableType$suffix';
+  }
+  return '${tableType.substring(0, rowSuffix.start)}$suffix';
 }
 
 String _nullableType(String typeName, bool isNullable) {
@@ -149,6 +299,44 @@ String _tableFileName(IntrospectedTable table) =>
     '${_fileStem(table.name)}.g.dart';
 
 String _routineFileName() => 'routines.g.dart';
+
+String _rowClassName(IntrospectedTable table, DartSchemaNaming naming) {
+  return _modelClassName(table, naming, DartSchemaModelKind.row);
+}
+
+String _insertClassName(IntrospectedTable table, DartSchemaNaming naming) {
+  return _modelClassName(table, naming, DartSchemaModelKind.insert);
+}
+
+String _updateClassName(IntrospectedTable table, DartSchemaNaming naming) {
+  return _modelClassName(table, naming, DartSchemaModelKind.update);
+}
+
+String _tableClassName(IntrospectedTable table, DartSchemaNaming naming) {
+  return _modelClassName(table, naming, DartSchemaModelKind.table);
+}
+
+String _modelClassName(
+  IntrospectedTable table,
+  DartSchemaNaming naming,
+  DartSchemaModelKind kind,
+) {
+  final baseName = _upperCamel(table.name);
+  final defaultName = switch (kind) {
+    DartSchemaModelKind.row => '${baseName}Row',
+    DartSchemaModelKind.insert => '${baseName}Insert',
+    DartSchemaModelKind.update => '${baseName}Update',
+    DartSchemaModelKind.table => '${baseName}Table',
+  };
+  return naming.modelName(
+    DartSchemaModelNameContext(
+      schemaName: table.schema,
+      tableName: table.name,
+      kind: kind,
+      defaultName: defaultName,
+    ),
+  );
+}
 
 String _upperCamel(String value) {
   final parts = value

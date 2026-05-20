@@ -84,4 +84,51 @@ void main() {
       },
     );
   });
+
+  test('honors schema-prefixed model naming from builder options', () async {
+    final builder = dartEdgeSqlBuilder(
+      BuilderOptions(const <String, Object?>{
+        'database_class_name': 'AppSchema',
+        'model_name_style': 'schema_prefixed',
+      }),
+    );
+    const database = IntrospectedDatabase(
+      dialect: SqlCodegenDialect.postgres,
+      tables: [
+        IntrospectedTable(
+          name: 'group',
+          schema: 'public',
+          columns: [
+            IntrospectedColumn(
+              name: 'id',
+              databaseType: 'int4',
+              dartType: 'int',
+              primaryKey: true,
+            ),
+          ],
+        ),
+      ],
+    );
+
+    await testBuilder(
+      builder,
+      <String, String>{
+        'test_app|lib/app_schema.schema.json': jsonEncode(database.toJson()),
+      },
+      generateFor: const {'test_app|lib/app_schema.schema.json'},
+      outputs: {
+        'test_app|lib/app_schema.g.dart': decodedMatches(
+          allOf([
+            contains('final class PublicGroupRow implements JsonEncodable'),
+            contains('final class PublicGroupTable'),
+            contains(
+              'extends SqlTable<PublicGroupRow, PublicGroupInsert, PublicGroupUpdate>',
+            ),
+            contains('static const group = PublicGroupTable.table;'),
+            contains("static const schemaId = 'PublicGroupRow';"),
+          ]),
+        ),
+      },
+    );
+  });
 }

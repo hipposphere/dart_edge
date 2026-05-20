@@ -13,9 +13,9 @@ final class CreateNotesRoute
 
   @override
   Future<CreateNoteResponse> handle(ctx) async {
-    final body = ctx.req.body<NotesInsert>();
+    final body = ctx.req.body<PublicNotesInsert>();
     final note = await ctx.services.database.typed
-        .insertInto(NotesTable.table)
+        .insertInto(PublicNotesTable.table)
         .values(body)
         .executeReturningFirstOrNull();
 

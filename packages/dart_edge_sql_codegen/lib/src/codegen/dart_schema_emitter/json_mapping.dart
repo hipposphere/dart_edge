@@ -210,7 +210,7 @@ Constructor _decodeFactory(String typeName) {
 Expression _rowReadExpression(IntrospectedColumn column) {
   final fieldKey = '\${prefix}${column.name}';
   final type = _normalizedValueType(column);
-  if (column.enumName != null) {
+  if (_hasStringBackedValueType(column)) {
     final source = column.nullable
         ? refer('row')
               .property('readNullable')
@@ -295,7 +295,7 @@ Expression _fromJsonExpression(
     );
   }
 
-  if (column.enumName != null) {
+  if (_hasStringBackedValueType(column)) {
     final parsed = refer(
       type,
     ).property('fromDatabase').call([source.asA(refer('String'))]);
@@ -347,7 +347,7 @@ Expression _toJsonExpression(
     );
   }
 
-  if (column.enumName != null) {
+  if (_hasStringBackedValueType(column)) {
     return valueNullable
         ? CodeExpression(Code('${_code(source)}?.value'))
         : source.property('value');
@@ -371,7 +371,7 @@ Expression _toJsonExpression(
 Expression _jsonSchemaForColumn(IntrospectedColumn column) {
   final type = _normalizedValueType(column);
 
-  if (column.enumName != null) {
+  if (_hasStringBackedValueType(column)) {
     return _jsonSchemaFactory(
       'string',
       nullable: column.nullable,
@@ -463,7 +463,11 @@ _MapEntrySpec _insertMapEntry(
     key: column.name,
     value: encodeJson
         ? _toJsonExpression(column, source: source, sourceNullable: isOptional)
-        : _toDatabaseExpression(column, source: source),
+        : _toDatabaseExpression(
+            column,
+            source: source,
+            sourceNullable: isOptional,
+          ),
     condition: isOptional ? refer(fieldName).property('isPresent') : null,
   );
 }
@@ -478,7 +482,7 @@ _MapEntrySpec _updateMapEntry(
     key: column.name,
     value: encodeJson
         ? _toJsonExpression(column, source: source, sourceNullable: true)
-        : _toDatabaseExpression(column, source: source),
+        : _toDatabaseExpression(column, source: source, sourceNullable: true),
     condition: refer(fieldName).property('isPresent'),
   );
 }
@@ -486,15 +490,19 @@ _MapEntrySpec _updateMapEntry(
 Expression _toDatabaseExpression(
   IntrospectedColumn column, {
   required Expression source,
+  bool sourceNullable = false,
 }) {
-  if (column.enumName == null) {
+  if (!_hasStringBackedValueType(column)) {
     return source;
   }
-  return column.nullable
+  return column.nullable || sourceNullable
       ? CodeExpression(Code('${_code(source)}?.value'))
       : source.property('value');
 }
 
 List<String> _enumValuesForColumn(IntrospectedColumn column) {
+  if (_isConstrainedTextColumn(column)) {
+    return column.constrainedValues;
+  }
   return column.enumValues;
 }

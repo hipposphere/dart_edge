@@ -218,6 +218,7 @@ final class IntrospectedColumn {
     this.enumName,
     this.enumSchema,
     this.enumValues = const <String>[],
+    this.constrainedValues = const <String>[],
   });
 
   factory IntrospectedColumn.fromJson(Map<String, Object?> json) {
@@ -233,6 +234,11 @@ final class IntrospectedColumn {
       enumSchema: json['enumSchema'] as String?,
       enumValues: [
         for (final value in json['enumValues'] as List<Object?>? ?? const [])
+          value! as String,
+      ],
+      constrainedValues: [
+        for (final value
+            in json['constrainedValues'] as List<Object?>? ?? const [])
           value! as String,
       ],
     );
@@ -268,6 +274,9 @@ final class IntrospectedColumn {
   /// Enum values when this column uses a database enum.
   final List<String> enumValues;
 
+  /// Allowed text values from a simple single-column check constraint.
+  final List<String> constrainedValues;
+
   Map<String, Object?> toJson() {
     return <String, Object?>{
       'name': name,
@@ -280,6 +289,7 @@ final class IntrospectedColumn {
       'enumName': ?enumName,
       'enumSchema': ?enumSchema,
       if (enumValues.isNotEmpty) 'enumValues': enumValues,
+      if (constrainedValues.isNotEmpty) 'constrainedValues': constrainedValues,
     };
   }
 }

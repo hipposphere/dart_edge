@@ -68,6 +68,14 @@ void main() {
               enumSchema: 'public',
               enumValues: ['active', 'suspended'],
             ),
+            IntrospectedColumn(
+              name: 'role',
+              databaseType: 'text',
+              dartType: 'String',
+              hasDefault: true,
+              defaultExpression: "'member'::text",
+              constrainedValues: ['admin', 'member'],
+            ),
           ],
         ),
       ],
@@ -77,8 +85,9 @@ void main() {
     final table = roundTrip.tables.single;
 
     expect(roundTrip.enums.single.values, ['active', 'suspended']);
-    expect(table.columns.single.defaultExpression, "'active'::user_status");
-    expect(table.columns.single.enumName, 'user_status');
+    expect(table.columns.first.defaultExpression, "'active'::user_status");
+    expect(table.columns.first.enumName, 'user_status');
+    expect(table.columns.last.constrainedValues, ['admin', 'member']);
     expect(table.constraints.map((constraint) => constraint.kind), [
       IntrospectedTableConstraintKind.unique,
       IntrospectedTableConstraintKind.foreignKey,

@@ -1,29 +1,58 @@
 import 'package:dart_edge_core/dart_edge_core.dart';
 
-final class PeopleRow implements JsonEncodable {
-  const PeopleRow({required this.id, required this.name, required this.email});
+extension type const PublicPeopleRole._(String value) {
+  static const admin = PublicPeopleRole._('admin');
+  static const member = PublicPeopleRole._('member');
 
-  factory PeopleRow.fromSqlRow(SqlRow row, {String prefix = ''}) => PeopleRow(
-    id: row.read<int>('${prefix}id'),
-    name: row.read<String>('${prefix}name'),
-    email: row.read<String>('${prefix}email'),
-  );
+  static const values = <PublicPeopleRole>[admin, member];
 
-  factory PeopleRow.fromColumns(
+  static PublicPeopleRole fromDatabase(Object? value) {
+    final text = value as String;
+    return switch (text) {
+      'admin' => admin,
+      'member' => member,
+      _ => throw ArgumentError.value(
+        value,
+        'value',
+        'Unknown PublicPeopleRole database value.',
+      ),
+    };
+  }
+}
+
+final class PublicPeopleRow implements JsonEncodable {
+  const PublicPeopleRow({
+    required this.id,
+    required this.name,
+    required this.email,
+    required this.role,
+  });
+
+  factory PublicPeopleRow.fromSqlRow(SqlRow row, {String prefix = ''}) =>
+      PublicPeopleRow(
+        id: row.read<int>('${prefix}id'),
+        name: row.read<String>('${prefix}name'),
+        email: row.read<String>('${prefix}email'),
+        role: PublicPeopleRole.fromDatabase(row.read<String>('${prefix}role')),
+      );
+
+  factory PublicPeopleRow.fromColumns(
     Map<String, Object?> columns, {
     String prefix = '',
-  }) => PeopleRow.fromSqlRow(SqlRow(columns), prefix: prefix);
+  }) => PublicPeopleRow.fromSqlRow(SqlRow(columns), prefix: prefix);
 
-  factory PeopleRow.decode(Object? value) =>
-      PeopleRow.fromJson(readJsonObject(value));
+  factory PublicPeopleRow.decode(Object? value) =>
+      PublicPeopleRow.fromJson(readJsonObject(value));
 
-  factory PeopleRow.fromJson(Map<String, Object?> json) => PeopleRow(
-    id: (json['id'] as num).toInt(),
-    name: (json['name'] as String),
-    email: (json['email'] as String),
-  );
+  factory PublicPeopleRow.fromJson(Map<String, Object?> json) =>
+      PublicPeopleRow(
+        id: (json['id'] as num).toInt(),
+        name: (json['name'] as String),
+        email: (json['email'] as String),
+        role: PublicPeopleRole.fromDatabase((json['role'] as String)),
+      );
 
-  static const schemaId = 'PeopleRow';
+  static const schemaId = 'PublicPeopleRow';
 
   static const schemaRef = JsonSchema.componentRef(schemaId);
 
@@ -33,8 +62,9 @@ final class PeopleRow implements JsonEncodable {
       'id': JsonSchema.integer(),
       'name': JsonSchema.string(),
       'email': JsonSchema.string(),
+      'role': JsonSchema.string(enumValues: <String>['admin', 'member']),
     },
-    required: <String>['id', 'name', 'email'],
+    required: <String>['id', 'name', 'email', 'role'],
     additionalProperties: false,
   );
 
@@ -44,11 +74,19 @@ final class PeopleRow implements JsonEncodable {
 
   final String email;
 
-  PeopleRow copyWith({int? id, String? name, String? email}) {
-    return PeopleRow(
+  final PublicPeopleRole role;
+
+  PublicPeopleRow copyWith({
+    int? id,
+    String? name,
+    String? email,
+    PublicPeopleRole? role,
+  }) {
+    return PublicPeopleRow(
       id: id ?? this.id,
       name: name ?? this.name,
       email: email ?? this.email,
+      role: role ?? this.role,
     );
   }
 
@@ -56,6 +94,7 @@ final class PeopleRow implements JsonEncodable {
     'id': id,
     'name': name,
     'email': email,
+    'role': role.value,
   };
 
   @override
@@ -63,31 +102,40 @@ final class PeopleRow implements JsonEncodable {
     'id': id,
     'name': name,
     'email': email,
+    'role': role.value,
   };
 
   @override
-  String toString() => 'PeopleRow(id: $id, name: $name, email: $email)';
+  String toString() =>
+      'PublicPeopleRow(id: $id, name: $name, email: $email, role: $role)';
 }
 
-final class PeopleInsert implements JsonEncodable {
-  const PeopleInsert({
+final class PublicPeopleInsert implements JsonEncodable {
+  const PublicPeopleInsert({
     this.id = const SqlValue.absent(),
     required this.name,
     required this.email,
+    this.role = const SqlValue.absent(),
   });
 
-  factory PeopleInsert.decode(Object? value) =>
-      PeopleInsert.fromJson(readJsonObject(value));
+  factory PublicPeopleInsert.decode(Object? value) =>
+      PublicPeopleInsert.fromJson(readJsonObject(value));
 
-  factory PeopleInsert.fromJson(Map<String, Object?> json) => PeopleInsert(
-    id: json.containsKey('id')
-        ? SqlValue<int>((json['id'] as num).toInt())
-        : const SqlValue.absent(),
-    name: (json['name'] as String),
-    email: (json['email'] as String),
-  );
+  factory PublicPeopleInsert.fromJson(Map<String, Object?> json) =>
+      PublicPeopleInsert(
+        id: json.containsKey('id')
+            ? SqlValue<int>((json['id'] as num).toInt())
+            : const SqlValue.absent(),
+        name: (json['name'] as String),
+        email: (json['email'] as String),
+        role: json.containsKey('role')
+            ? SqlValue<PublicPeopleRole>(
+                PublicPeopleRole.fromDatabase((json['role'] as String)),
+              )
+            : const SqlValue.absent(),
+      );
 
-  static const schemaId = 'PeopleInsert';
+  static const schemaId = 'PublicPeopleInsert';
 
   static const schemaRef = JsonSchema.componentRef(schemaId);
 
@@ -97,6 +145,7 @@ final class PeopleInsert implements JsonEncodable {
       'id': JsonSchema.integer(),
       'name': JsonSchema.string(),
       'email': JsonSchema.string(),
+      'role': JsonSchema.string(enumValues: <String>['admin', 'member']),
     },
     required: <String>['name', 'email'],
     additionalProperties: false,
@@ -108,11 +157,19 @@ final class PeopleInsert implements JsonEncodable {
 
   final String email;
 
-  PeopleInsert copyWith({SqlValue<int>? id, String? name, String? email}) {
-    return PeopleInsert(
+  final SqlValue<PublicPeopleRole> role;
+
+  PublicPeopleInsert copyWith({
+    SqlValue<int>? id,
+    String? name,
+    String? email,
+    SqlValue<PublicPeopleRole>? role,
+  }) {
+    return PublicPeopleInsert(
       id: id ?? this.id,
       name: name ?? this.name,
       email: email ?? this.email,
+      role: role ?? this.role,
     );
   }
 
@@ -120,6 +177,7 @@ final class PeopleInsert implements JsonEncodable {
     if (id.isPresent) 'id': id.value,
     'name': name,
     'email': email,
+    if (role.isPresent) 'role': role.value?.value,
   };
 
   @override
@@ -127,35 +185,44 @@ final class PeopleInsert implements JsonEncodable {
     if (id.isPresent) 'id': id.value,
     'name': name,
     'email': email,
+    if (role.isPresent) 'role': role.value?.value,
   };
 
   @override
-  String toString() => 'PeopleInsert(id: $id, name: $name, email: $email)';
+  String toString() =>
+      'PublicPeopleInsert(id: $id, name: $name, email: $email, role: $role)';
 }
 
-final class PeopleUpdate implements JsonEncodable {
-  const PeopleUpdate({
+final class PublicPeopleUpdate implements JsonEncodable {
+  const PublicPeopleUpdate({
     this.id = const SqlValue.absent(),
     this.name = const SqlValue.absent(),
     this.email = const SqlValue.absent(),
+    this.role = const SqlValue.absent(),
   });
 
-  factory PeopleUpdate.decode(Object? value) =>
-      PeopleUpdate.fromJson(readJsonObject(value));
+  factory PublicPeopleUpdate.decode(Object? value) =>
+      PublicPeopleUpdate.fromJson(readJsonObject(value));
 
-  factory PeopleUpdate.fromJson(Map<String, Object?> json) => PeopleUpdate(
-    id: json.containsKey('id')
-        ? SqlValue<int>((json['id'] as num).toInt())
-        : const SqlValue.absent(),
-    name: json.containsKey('name')
-        ? SqlValue<String>((json['name'] as String))
-        : const SqlValue.absent(),
-    email: json.containsKey('email')
-        ? SqlValue<String>((json['email'] as String))
-        : const SqlValue.absent(),
-  );
+  factory PublicPeopleUpdate.fromJson(Map<String, Object?> json) =>
+      PublicPeopleUpdate(
+        id: json.containsKey('id')
+            ? SqlValue<int>((json['id'] as num).toInt())
+            : const SqlValue.absent(),
+        name: json.containsKey('name')
+            ? SqlValue<String>((json['name'] as String))
+            : const SqlValue.absent(),
+        email: json.containsKey('email')
+            ? SqlValue<String>((json['email'] as String))
+            : const SqlValue.absent(),
+        role: json.containsKey('role')
+            ? SqlValue<PublicPeopleRole>(
+                PublicPeopleRole.fromDatabase((json['role'] as String)),
+              )
+            : const SqlValue.absent(),
+      );
 
-  static const schemaId = 'PeopleUpdate';
+  static const schemaId = 'PublicPeopleUpdate';
 
   static const schemaRef = JsonSchema.componentRef(schemaId);
 
@@ -165,6 +232,7 @@ final class PeopleUpdate implements JsonEncodable {
       'id': JsonSchema.integer(),
       'name': JsonSchema.string(),
       'email': JsonSchema.string(),
+      'role': JsonSchema.string(enumValues: <String>['admin', 'member']),
     },
     required: <String>[],
     additionalProperties: false,
@@ -176,15 +244,19 @@ final class PeopleUpdate implements JsonEncodable {
 
   final SqlValue<String> email;
 
-  PeopleUpdate copyWith({
+  final SqlValue<PublicPeopleRole> role;
+
+  PublicPeopleUpdate copyWith({
     SqlValue<int>? id,
     SqlValue<String>? name,
     SqlValue<String>? email,
+    SqlValue<PublicPeopleRole>? role,
   }) {
-    return PeopleUpdate(
+    return PublicPeopleUpdate(
       id: id ?? this.id,
       name: name ?? this.name,
       email: email ?? this.email,
+      role: role ?? this.role,
     );
   }
 
@@ -192,6 +264,7 @@ final class PeopleUpdate implements JsonEncodable {
     if (id.isPresent) 'id': id.value,
     if (name.isPresent) 'name': name.value,
     if (email.isPresent) 'email': email.value,
+    if (role.isPresent) 'role': role.value?.value,
   };
 
   @override
@@ -199,30 +272,46 @@ final class PeopleUpdate implements JsonEncodable {
     if (id.isPresent) 'id': id.value,
     if (name.isPresent) 'name': name.value,
     if (email.isPresent) 'email': email.value,
+    if (role.isPresent) 'role': role.value?.value,
   };
 
   @override
-  String toString() => 'PeopleUpdate(id: $id, name: $name, email: $email)';
+  String toString() =>
+      'PublicPeopleUpdate(id: $id, name: $name, email: $email, role: $role)';
 }
 
-final class PeopleTable
-    extends SqlTable<PeopleRow, PeopleInsert, PeopleUpdate> {
-  const PeopleTable._();
+final class PublicPeopleTable
+    extends SqlTable<PublicPeopleRow, PublicPeopleInsert, PublicPeopleUpdate> {
+  const PublicPeopleTable._();
 
-  static const table = PeopleTable._();
+  static const table = PublicPeopleTable._();
 
-  static final id = SqlColumn<int>(table: table, name: 'id', nullable: false);
+  static final id = SqlColumn<int>(
+    table: table,
+    name: 'id',
+    nullable: false,
+    databaseType: 'int4',
+  );
 
   static final nameColumn = SqlColumn<String>(
     table: table,
     name: 'name',
     nullable: false,
+    databaseType: 'text',
   );
 
   static final email = SqlColumn<String>(
     table: table,
     name: 'email',
     nullable: false,
+    databaseType: 'text',
+  );
+
+  static final role = SqlColumn<String>(
+    table: table,
+    name: 'role',
+    nullable: false,
+    databaseType: 'text',
   );
 
   @override
@@ -236,15 +325,18 @@ final class PeopleTable
     id.asObjectColumn,
     nameColumn.asObjectColumn,
     email.asObjectColumn,
+    role.asObjectColumn,
   ];
 
   @override
-  PeopleRow mapRow(SqlRow row, {String prefix = ''}) =>
-      PeopleRow.fromSqlRow(row, prefix: prefix);
+  PublicPeopleRow mapRow(SqlRow row, {String prefix = ''}) =>
+      PublicPeopleRow.fromSqlRow(row, prefix: prefix);
 
   @override
-  Map<String, Object?> encodeInsert(PeopleInsert value) => value.toColumns();
+  Map<String, Object?> encodeInsert(PublicPeopleInsert value) =>
+      value.toColumns();
 
   @override
-  Map<String, Object?> encodeUpdate(PeopleUpdate value) => value.toColumns();
+  Map<String, Object?> encodeUpdate(PublicPeopleUpdate value) =>
+      value.toColumns();
 }

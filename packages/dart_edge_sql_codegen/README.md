@@ -57,6 +57,7 @@ Future<void> main() async {
   final emission = emitDartSchema(
     schema,
     databaseClassName: 'AppSchema',
+    naming: DartSchemaNaming.schemaPrefixed,
   );
   emission.writeToDirectory('lib/generated');
 
@@ -92,6 +93,25 @@ The builder emits a single Dart library beside the snapshot:
 lib/app_schema.schema.json
 lib/app_schema.g.dart
 ```
+
+Configure build_runner naming in your package `build.yaml`:
+
+```yaml
+targets:
+  $default:
+    builders:
+      dart_edge_sql_codegen:dart_edge_sql:
+        options:
+          database_class_name: AppSchema
+          model_name_style: schema_prefixed
+```
+
+`schema_prefixed` generates table model classes such as `PublicGroupRow`,
+`PublicGroupInsert`, `PublicGroupUpdate`, and `PublicGroupTable`, and is the
+default style. Use `model_name_style: unprefixed` to keep the historical
+`GroupRow` naming. Programmatic generation can use a custom
+`DartSchemaNaming(modelNameBuilder: ...)` when a project needs a different
+convention.
 
 Snapshot JSON uses the same shape as `IntrospectedDatabase.toJson()`:
 

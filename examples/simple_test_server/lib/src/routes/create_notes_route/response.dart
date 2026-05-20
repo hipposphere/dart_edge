@@ -7,7 +7,7 @@ final class CreateNoteResponse implements JsonEncodable {
   factory CreateNoteResponse.fromJson(Object? value) {
     final json = Map<String, Object?>.from(value! as Map);
     return CreateNoteResponse(
-      notes: NotesRow.fromJson(
+      notes: PublicNotesRow.fromJson(
         Map<String, Object?>.from(json['notes']! as Map),
       ),
     );
@@ -19,12 +19,12 @@ final class CreateNoteResponse implements JsonEncodable {
 
   static const jsonSchema = JsonSchema.object(
     id: schemaId,
-    properties: <String, JsonSchema>{'notes': NotesRow.schemaRef},
+    properties: <String, JsonSchema>{'notes': PublicNotesRow.schemaRef},
     required: <String>['notes'],
     additionalProperties: false,
   );
 
-  final NotesRow notes;
+  final PublicNotesRow notes;
 
   @override
   Map<String, Object?> toJson() => <String, Object?>{'notes': notes.toJson()};

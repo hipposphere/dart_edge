@@ -23,12 +23,12 @@ String _emitEntrypoint({
   return _format(library);
 }
 
-String _emitSchemaLibrary(_SchemaGroup group) {
+String _emitSchemaLibrary(_SchemaGroup group, DartSchemaNaming naming) {
   final library = Library((builder) {
     builder.directives.add(
       Directive.import('package:dart_edge_core/dart_edge_core.dart'),
     );
-    builder.body.add(_schemaClass(group));
+    builder.body.add(_schemaClass(group, naming));
 
     for (final table in group.tables) {
       builder.directives.add(
@@ -64,6 +64,7 @@ String _emitTableLibrary(
   IntrospectedTable table,
   _SchemaGroup group,
   List<_SchemaGroup> schemaGroups,
+  DartSchemaNaming naming,
 ) {
   final library = Library((builder) {
     builder.directives.add(
@@ -72,7 +73,7 @@ String _emitTableLibrary(
     for (final import in _tableEnumImports(table, group, schemaGroups)) {
       builder.directives.add(Directive.import(import.path));
     }
-    builder.body.addAll(_tableSpecs(table));
+    builder.body.addAll(_tableSpecs(table, naming));
   });
   return _format(library);
 }
@@ -129,7 +130,7 @@ Class _databaseClass(
   });
 }
 
-Class _schemaClass(_SchemaGroup group) {
+Class _schemaClass(_SchemaGroup group, DartSchemaNaming naming) {
   return Class((builder) {
     builder
       ..modifier = ClassModifier.final$
@@ -147,9 +148,7 @@ Class _schemaClass(_SchemaGroup group) {
         for (final table in group.tables)
           _staticConstField(
             name: _schemaTableMemberName(table.name),
-            assignment: refer(
-              '${_upperCamel(table.name)}Table',
-            ).property('table'),
+            assignment: refer(_tableClassName(table, naming)).property('table'),
           ),
         if (group.routines.isNotEmpty)
           _staticConstField(
@@ -163,9 +162,9 @@ Class _schemaClass(_SchemaGroup group) {
           type: _listOf(refer('JsonSchema')),
           assignment: literalList([
             for (final table in group.tables) ...[
-              refer('${_upperCamel(table.name)}Row').property('jsonSchema'),
-              refer('${_upperCamel(table.name)}Insert').property('jsonSchema'),
-              refer('${_upperCamel(table.name)}Update').property('jsonSchema'),
+              refer(_rowClassName(table, naming)).property('jsonSchema'),
+              refer(_insertClassName(table, naming)).property('jsonSchema'),
+              refer(_updateClassName(table, naming)).property('jsonSchema'),
             ],
           ], refer('JsonSchema')),
         ),

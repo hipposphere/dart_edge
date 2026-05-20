@@ -34,6 +34,7 @@ final class DartEdgeSqlBuilder implements Builder {
         decoded['databaseClassName'] as String? ??
         options.config['database_class_name'] as String? ??
         'GeneratedDatabaseSchema';
+    final naming = _namingFromOptions(options.config);
     final output = AssetId(
       input.package,
       input.path.replaceFirst(RegExp(r'\.schema\.json$'), '.g.dart'),
@@ -41,7 +42,27 @@ final class DartEdgeSqlBuilder implements Builder {
 
     await buildStep.writeAsString(
       output,
-      emitDartSchemaLibrary(database, databaseClassName: databaseClassName),
+      emitDartSchemaLibrary(
+        database,
+        databaseClassName: databaseClassName,
+        naming: naming,
+      ),
     );
   }
+}
+
+DartSchemaNaming _namingFromOptions(Map<String, dynamic> config) {
+  if (config['prefix_models_with_schema'] == true) {
+    return DartSchemaNaming.schemaPrefixed;
+  }
+
+  final style = config['model_name_style'] as String?;
+  return switch (style) {
+    null || 'default' => DartSchemaNaming.defaults,
+    'schema_prefixed' => DartSchemaNaming.schemaPrefixed,
+    'unprefixed' || 'legacy' => DartSchemaNaming.unprefixed,
+    _ => throw FormatException(
+      'Unsupported SQL codegen model_name_style "$style".',
+    ),
+  };
 }

@@ -258,6 +258,165 @@ void main() {
     );
   });
 
+  test('can prefix generated table models with schema names', () {
+    const database = IntrospectedDatabase(
+      dialect: SqlCodegenDialect.postgres,
+      tables: [
+        IntrospectedTable(
+          name: 'group',
+          schema: 'public',
+          columns: [
+            IntrospectedColumn(
+              name: 'id',
+              databaseType: 'int4',
+              dartType: 'int',
+              primaryKey: true,
+            ),
+          ],
+        ),
+      ],
+    );
+
+    final emission = emitDartSchema(
+      database,
+      databaseClassName: 'AppSchema',
+      naming: DartSchemaNaming.schemaPrefixed,
+    );
+    final publicSchema = emission
+        .fileAt('schemas/public/schema.g.dart')
+        .contents;
+    final groupTable = emission
+        .fileAt('schemas/public/tables/group.g.dart')
+        .contents;
+
+    expect(
+      publicSchema,
+      contains('static const group = PublicGroupTable.table;'),
+    );
+    expect(publicSchema, contains('PublicGroupRow.jsonSchema'));
+    expect(
+      groupTable,
+      contains('final class PublicGroupRow implements JsonEncodable'),
+    );
+    expect(
+      groupTable,
+      contains('final class PublicGroupInsert implements JsonEncodable'),
+    );
+    expect(
+      groupTable,
+      contains('final class PublicGroupUpdate implements JsonEncodable'),
+    );
+    expect(groupTable, contains('final class PublicGroupTable'));
+    expect(
+      groupTable,
+      contains(
+        'extends SqlTable<PublicGroupRow, PublicGroupInsert, PublicGroupUpdate>',
+      ),
+    );
+    expect(groupTable, contains("static const schemaId = 'PublicGroupRow';"));
+  });
+
+  test('prefixes generated table models with schema names by default', () {
+    const database = IntrospectedDatabase(
+      dialect: SqlCodegenDialect.postgres,
+      tables: [
+        IntrospectedTable(
+          name: 'group',
+          schema: 'public',
+          columns: [
+            IntrospectedColumn(
+              name: 'id',
+              databaseType: 'int4',
+              dartType: 'int',
+              primaryKey: true,
+            ),
+          ],
+        ),
+      ],
+    );
+
+    final library = emitDartSchemaLibrary(
+      database,
+      databaseClassName: 'AppSchema',
+    );
+
+    expect(library, contains('final class PublicGroupRow'));
+    expect(library, contains('static const group = PublicGroupTable.table;'));
+  });
+
+  test('can opt into historical unprefixed table model names', () {
+    const database = IntrospectedDatabase(
+      dialect: SqlCodegenDialect.postgres,
+      tables: [
+        IntrospectedTable(
+          name: 'group',
+          schema: 'public',
+          columns: [
+            IntrospectedColumn(
+              name: 'id',
+              databaseType: 'int4',
+              dartType: 'int',
+              primaryKey: true,
+            ),
+          ],
+        ),
+      ],
+    );
+
+    final library = emitDartSchemaLibrary(
+      database,
+      databaseClassName: 'AppSchema',
+      naming: DartSchemaNaming.unprefixed,
+    );
+
+    expect(library, contains('final class GroupRow'));
+    expect(library, contains('static const group = GroupTable.table;'));
+  });
+
+  test('accepts a custom table model name builder', () {
+    const database = IntrospectedDatabase(
+      dialect: SqlCodegenDialect.sqlite,
+      tables: [
+        IntrospectedTable(
+          name: 'users',
+          columns: [
+            IntrospectedColumn(
+              name: 'id',
+              databaseType: 'INTEGER',
+              dartType: 'int',
+              primaryKey: true,
+            ),
+          ],
+        ),
+      ],
+    );
+
+    final library = emitDartSchemaLibrary(
+      database,
+      databaseClassName: 'AppSchema',
+      naming: DartSchemaNaming(
+        modelNameBuilder: (context) => switch (context.kind) {
+          DartSchemaModelKind.row => 'Db${context.defaultName}',
+          DartSchemaModelKind.insert => 'New${context.defaultName}',
+          DartSchemaModelKind.update => 'Patch${context.defaultName}',
+          DartSchemaModelKind.table => 'Sql${context.defaultName}',
+        },
+      ),
+    );
+
+    expect(library, contains('final class DbUsersRow'));
+    expect(library, contains('final class NewUsersInsert'));
+    expect(library, contains('final class PatchUsersUpdate'));
+    expect(library, contains('final class SqlUsersTable'));
+    expect(
+      library,
+      contains(
+        'extends SqlTable<DbUsersRow, NewUsersInsert, PatchUsersUpdate>',
+      ),
+    );
+    expect(library, contains('static const users = SqlUsersTable.table;'));
+  });
+
   test('emits null-aware DateTime JSON encoding for nullable columns', () {
     const database = IntrospectedDatabase(
       dialect: SqlCodegenDialect.postgres,
@@ -360,6 +519,65 @@ void main() {
       contains(
         "'status': JsonSchema.string("
         "enumValues: <String>['active', 'suspended']",
+      ),
+    );
+  });
+
+  test('emits extension types for constrained text columns', () {
+    const database = IntrospectedDatabase(
+      dialect: SqlCodegenDialect.postgres,
+      tables: [
+        IntrospectedTable(
+          name: 'members',
+          schema: 'public',
+          columns: [
+            IntrospectedColumn(
+              name: 'id',
+              databaseType: 'int4',
+              dartType: 'int',
+              primaryKey: true,
+            ),
+            IntrospectedColumn(
+              name: 'role',
+              databaseType: 'text',
+              dartType: 'String',
+              hasDefault: true,
+              defaultExpression: "'member'::text",
+              constrainedValues: ['admin', 'member'],
+            ),
+          ],
+        ),
+      ],
+    );
+
+    final emission = emitDartSchema(database, databaseClassName: 'AppSchema');
+    final membersTable = emission
+        .fileAt('schemas/public/tables/members.g.dart')
+        .contents;
+
+    expect(
+      membersTable,
+      contains('extension type const PublicMembersRole._(String value)'),
+    );
+    expect(
+      membersTable,
+      contains("static const admin = PublicMembersRole._('admin')"),
+    );
+    expect(
+      membersTable,
+      contains("static const member = PublicMembersRole._('member')"),
+    );
+    expect(membersTable, contains('static PublicMembersRole fromDatabase'));
+    expect(membersTable, contains('final PublicMembersRole role;'));
+    expect(membersTable, contains("static final role = SqlColumn<String>("));
+    expect(membersTable, contains("databaseType: 'text',"));
+    expect(membersTable, contains("role: PublicMembersRole.fromDatabase("));
+    expect(membersTable, contains("'role': role.value,"));
+    expect(
+      membersTable,
+      contains(
+        "'role': JsonSchema.string("
+        "enumValues: <String>['admin', 'member']",
       ),
     );
   });

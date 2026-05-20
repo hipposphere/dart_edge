@@ -2,8 +2,8 @@
 
 part of 'client.g.dart';
 
-final class NotesRow implements JsonEncodable {
-  const NotesRow({
+final class PublicNotesRow implements JsonEncodable {
+  const PublicNotesRow({
     required this.id,
     required this.title,
     required this.body,
@@ -11,12 +11,12 @@ final class NotesRow implements JsonEncodable {
     required this.createdAt,
   });
 
-  factory NotesRow.decode(Object? value) {
-    return NotesRow.fromJson(readJsonObject(value));
+  factory PublicNotesRow.decode(Object? value) {
+    return PublicNotesRow.fromJson(readJsonObject(value));
   }
 
-  factory NotesRow.fromJson(Map<String, Object?> json) {
-    return NotesRow(
+  factory PublicNotesRow.fromJson(Map<String, Object?> json) {
+    return PublicNotesRow(
       id: (json['id']! as num).toInt(),
       title: json['title']! as String,
       body: json['body']! as String,
@@ -47,8 +47,8 @@ final class NotesRow implements JsonEncodable {
   }
 }
 
-final class NotesInsert implements JsonEncodable {
-  const NotesInsert({
+final class PublicNotesInsert implements JsonEncodable {
+  const PublicNotesInsert({
     this.id,
     required this.title,
     required this.body,
@@ -56,12 +56,12 @@ final class NotesInsert implements JsonEncodable {
     this.createdAt,
   });
 
-  factory NotesInsert.decode(Object? value) {
-    return NotesInsert.fromJson(readJsonObject(value));
+  factory PublicNotesInsert.decode(Object? value) {
+    return PublicNotesInsert.fromJson(readJsonObject(value));
   }
 
-  factory NotesInsert.fromJson(Map<String, Object?> json) {
-    return NotesInsert(
+  factory PublicNotesInsert.fromJson(Map<String, Object?> json) {
+    return PublicNotesInsert(
       id: json['id'] == null ? null : (json['id'] as num).toInt(),
       title: json['title']! as String,
       body: json['body']! as String,
@@ -102,10 +102,10 @@ final class CreateNoteResponse implements JsonEncodable {
   }
 
   factory CreateNoteResponse.fromJson(Map<String, Object?> json) {
-    return CreateNoteResponse(notes: NotesRow.decode(json['notes']!));
+    return CreateNoteResponse(notes: PublicNotesRow.decode(json['notes']!));
   }
 
-  final NotesRow notes;
+  final PublicNotesRow notes;
 
   @override
   Map<String, Object?> toJson() {

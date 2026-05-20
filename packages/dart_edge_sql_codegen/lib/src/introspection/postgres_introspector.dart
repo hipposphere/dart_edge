@@ -165,7 +165,13 @@ final class PostgresIntrospector implements SqlDatabaseIntrospector {
                 (entry) => IntrospectedTable(
                   name: entry.key.table,
                   schema: entry.key.schema,
-                  columns: List<IntrospectedColumn>.unmodifiable(entry.value),
+                  columns: List<IntrospectedColumn>.unmodifiable(
+                    _applyTextCheckConstraints(
+                      entry.value,
+                      constraintsByTable[entry.key] ??
+                          const <IntrospectedTableConstraint>[],
+                    ),
+                  ),
                   constraints: List<IntrospectedTableConstraint>.unmodifiable(
                     constraintsByTable[entry.key] ??
                         const <IntrospectedTableConstraint>[],
@@ -542,4 +548,156 @@ String _mapPostgresType(String databaseType) {
     _ when normalized.startsWith('_') => 'List<Object?>',
     _ => 'Object?',
   };
+}
+
+List<IntrospectedColumn> _applyTextCheckConstraints(
+  List<IntrospectedColumn> columns,
+  List<IntrospectedTableConstraint> constraints,
+) {
+  final valuesByColumn = <String, List<String>>{};
+  for (final constraint in constraints) {
+    if (constraint.kind != IntrospectedTableConstraintKind.check ||
+        constraint.columns.length != 1) {
+      continue;
+    }
+    final columnName = constraint.columns.single;
+    final expression = constraint.expression;
+    if (expression == null) {
+      continue;
+    }
+    final values = _textCheckValues(expression, columnName);
+    if (values != null && values.isNotEmpty) {
+      valuesByColumn[columnName] = values;
+    }
+  }
+
+  if (valuesByColumn.isEmpty) {
+    return columns;
+  }
+
+  return [
+    for (final column in columns)
+      if (valuesByColumn[column.name] case final values?)
+        _copyColumn(column, constrainedValues: values)
+      else
+        column,
+  ];
+}
+
+IntrospectedColumn _copyColumn(
+  IntrospectedColumn column, {
+  List<String>? constrainedValues,
+}) {
+  return IntrospectedColumn(
+    name: column.name,
+    databaseType: column.databaseType,
+    dartType: column.dartType,
+    nullable: column.nullable,
+    hasDefault: column.hasDefault,
+    defaultExpression: column.defaultExpression,
+    primaryKey: column.primaryKey,
+    enumName: column.enumName,
+    enumSchema: column.enumSchema,
+    enumValues: column.enumValues,
+    constrainedValues: constrainedValues ?? column.constrainedValues,
+  );
+}
+
+List<String>? _textCheckValues(String expression, String columnName) {
+  final body = _stripOuterParentheses(
+    expression.trim().replaceFirst(
+      RegExp(r'^CHECK\s*', caseSensitive: false),
+      '',
+    ),
+  );
+  final column = RegExp.escape(_quoteIdentifier(columnName));
+  final unquotedColumn = RegExp.escape(columnName);
+  final columnPattern = '(?:"$column"|"$unquotedColumn"|$unquotedColumn)';
+  final anyMatch = RegExp(
+    '^$columnPattern\\s*=\\s*ANY\\s*\\(\\s*ARRAY\\s*\\[(.*)\\]\\s*\\)\$',
+    caseSensitive: false,
+  ).firstMatch(body);
+  if (anyMatch != null) {
+    return _parseStringLiteralList(anyMatch.group(1)!);
+  }
+
+  final inMatch = RegExp(
+    '^$columnPattern\\s+IN\\s*\\((.*)\\)\$',
+    caseSensitive: false,
+  ).firstMatch(body);
+  if (inMatch != null) {
+    return _parseStringLiteralList(inMatch.group(1)!);
+  }
+
+  return null;
+}
+
+String _stripOuterParentheses(String value) {
+  var text = value.trim();
+  while (text.startsWith('(') && text.endsWith(')')) {
+    var depth = 0;
+    var wrapsWholeExpression = true;
+    for (var index = 0; index < text.length; index += 1) {
+      final codeUnit = text.codeUnitAt(index);
+      if (codeUnit == 0x28) {
+        depth += 1;
+      } else if (codeUnit == 0x29) {
+        depth -= 1;
+        if (depth == 0 && index != text.length - 1) {
+          wrapsWholeExpression = false;
+          break;
+        }
+      }
+    }
+    if (!wrapsWholeExpression) {
+      return text;
+    }
+    text = text.substring(1, text.length - 1).trim();
+  }
+  return text;
+}
+
+String _quoteIdentifier(String value) {
+  return value.replaceAll('"', '""');
+}
+
+List<String>? _parseStringLiteralList(String value) {
+  final parts = <String>[];
+  final buffer = StringBuffer();
+  var inString = false;
+  for (var index = 0; index < value.length; index += 1) {
+    final char = value[index];
+    if (char == "'") {
+      buffer.write(char);
+      if (inString && index + 1 < value.length && value[index + 1] == "'") {
+        index += 1;
+        buffer.write("'");
+        continue;
+      }
+      inString = !inString;
+      continue;
+    }
+    if (char == ',' && !inString) {
+      parts.add(buffer.toString().trim());
+      buffer.clear();
+      continue;
+    }
+    buffer.write(char);
+  }
+  if (inString) {
+    return null;
+  }
+  parts.add(buffer.toString().trim());
+
+  final values = <String>[];
+  for (final part in parts) {
+    final match = RegExp(
+      r'''^'((?:''|[^'])*)'(?:\s*::[A-Za-z0-9_."]+)?$''',
+    ).firstMatch(part);
+    if (match == null) {
+      return null;
+    }
+    values.add(match.group(1)!.replaceAll("''", "'"));
+  }
+  return values;
 }
