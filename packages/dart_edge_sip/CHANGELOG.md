@@ -1,4 +1,4 @@
-## 0.4.8
+## 0.4.9
 
 - Build SIP native artifacts against PJSIP 2.17 headers.
 
