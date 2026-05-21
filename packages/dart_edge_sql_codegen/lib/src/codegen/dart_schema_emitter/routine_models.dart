@@ -6,7 +6,15 @@ Class _routinesClass(_SchemaGroup group) {
     builder
       ..modifier = ClassModifier.final$
       ..name = group.routinesClassName
-      ..constructors.add(_privateConstConstructor());
+      ..constructors.add(_privateConstConstructor())
+      ..fields.add(
+        _staticConstField(
+          name: 'routines',
+          assignment: refer(
+            group.routinesClassName,
+          ).constInstanceNamed('_', const []),
+        ),
+      );
 
     for (final routine in group.routines) {
       final baseName = _schemaRoutineMemberName(routine.name);

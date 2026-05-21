@@ -923,9 +923,14 @@ void main() {
 
     expect(
       schema,
-      contains('static const routines = PublicSchemaRoutines._();'),
+      contains('static const routines = PublicSchemaRoutines.routines;'),
     );
     expect(routines, contains('final class PublicSchemaRoutines {'));
+    expect(routines, contains('const PublicSchemaRoutines._();'));
+    expect(
+      routines,
+      contains('static const routines = PublicSchemaRoutines._();'),
+    );
     expect(routines, contains('Future<SqlResult> findUser('));
     expect(routines, contains('required String email'));
     expect(routines, contains('SELECT * FROM "public"."find_user"(@email)'));

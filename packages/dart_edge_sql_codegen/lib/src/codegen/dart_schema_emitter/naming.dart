@@ -660,7 +660,11 @@ const _reservedSchemaMemberNames = <String>{
   'schemaName',
 };
 
-const _reservedRoutineMemberNames = <String>{'parameters', 'schemaName'};
+const _reservedRoutineMemberNames = <String>{
+  'parameters',
+  'routines',
+  'schemaName',
+};
 
 const _reservedRoutineParameterNames = <String>{'executor'};
 

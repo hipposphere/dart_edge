@@ -160,9 +160,7 @@ Class _schemaClass(_SchemaGroup group, DartSchemaNaming naming) {
         if (group.routines.isNotEmpty)
           _staticConstField(
             name: 'routines',
-            assignment: refer(
-              group.routinesClassName,
-            ).constInstanceNamed('_', const []),
+            assignment: refer(group.routinesClassName).property('routines'),
           ),
         _staticConstField(
           name: 'schemas',
