@@ -1,6 +1,6 @@
 name: dart_edge_docker
 description: Docker image generation for Dart Edge workspaces.
-version: 0.2.2
+version: 0.3.0
 publish_to: "https://registry.hippolabs.org/pub/internal-pub/"
 repository: https://github.com/hipposphere/dart_edge/tree/main/packages/dart_edge_docker
 
