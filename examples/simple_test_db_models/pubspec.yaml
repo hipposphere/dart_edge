@@ -9,3 +9,7 @@ environment:
 dependencies:
   dart_edge_core:
     hosted: "https://registry.hippolabs.org/pub/internal-pub/"
+
+dev_dependencies:
+  dart_edge_http_server_codegen: 
+    hosted: "https://registry.hippolabs.org/pub/internal-pub/"

@@ -54,6 +54,16 @@ void main() {
     );
   });
 
+  test('keeps Dart string type metadata out of JSON Schema output', () {
+    const schema = JsonStringSchema(
+      format: 'uuid',
+      dartType: DartSchemaType.parameter('TId'),
+    );
+
+    expect(schema.dartType, isA<DartGenericSchemaType>());
+    expect(schema.toJson(), {'type': 'string', 'format': 'uuid'});
+  });
+
   test('reads id from raw schemas', () {
     const schema = JsonSchema.raw({r'$id': 'RawUser', 'type': 'object'});
 

@@ -5,7 +5,9 @@ Iterable<Spec> _tableSpecs(
   DartSchemaNaming naming,
 ) sync* {
   final emittedExtensionTypes = <String>{};
-  for (final column in table.columns.where(_declaresExtensionValueType)) {
+  for (final column in table.columns.where(
+    (column) => _declaresExtensionValueType(table, naming, column),
+  )) {
     if (emittedExtensionTypes.add(_valueType(column))) {
       yield _extensionValueTypeSpec(column);
     }
@@ -27,8 +29,14 @@ extension type const $typeName($baseType value) {}
 ''');
 }
 
-bool _declaresExtensionValueType(IntrospectedColumn column) {
-  return column.primaryKey && _hasExtensionBackedValueType(column);
+bool _declaresExtensionValueType(
+  IntrospectedTable table,
+  DartSchemaNaming naming,
+  IntrospectedColumn column,
+) {
+  return column.primaryKey &&
+      column.dartType == _primaryKeyTypeName(table, naming) &&
+      _hasExtensionBackedValueType(column);
 }
 
 Code _constrainedTextTypeSpec(IntrospectedColumn column) {

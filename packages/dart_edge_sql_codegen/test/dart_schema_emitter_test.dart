@@ -649,6 +649,82 @@ void main() {
     expect(notesTable, contains('static final userId = SqlColumn<UserId>('));
   });
 
+  test('reuses referenced primary key type for primary key foreign keys', () {
+    const database = IntrospectedDatabase(
+      dialect: SqlCodegenDialect.postgres,
+      tables: [
+        IntrospectedTable(
+          schema: 'public',
+          name: 'phone_call',
+          columns: [
+            IntrospectedColumn(
+              name: 'id',
+              databaseType: 'text',
+              dartType: 'String',
+              primaryKey: true,
+            ),
+          ],
+        ),
+        IntrospectedTable(
+          schema: 'public',
+          name: 'phone_call_data',
+          columns: [
+            IntrospectedColumn(
+              name: 'id',
+              databaseType: 'text',
+              dartType: 'String',
+              primaryKey: true,
+            ),
+            IntrospectedColumn(
+              name: 'summary',
+              databaseType: 'text',
+              dartType: 'String?',
+              nullable: true,
+            ),
+          ],
+          constraints: [
+            IntrospectedTableConstraint(
+              name: 'phone_call_data_id_fkey',
+              kind: IntrospectedTableConstraintKind.foreignKey,
+              columns: ['id'],
+              referencedSchema: 'public',
+              referencedTable: 'phone_call',
+              referencedColumns: ['id'],
+            ),
+          ],
+        ),
+      ],
+    );
+
+    final emission = emitDartSchema(database, databaseClassName: 'AppSchema');
+    final phoneCallTable = emission
+        .fileAt('schemas/public/tables/phone_call.g.dart')
+        .contents;
+    final phoneCallDataTable = emission
+        .fileAt('schemas/public/tables/phone_call_data.g.dart')
+        .contents;
+
+    expect(
+      phoneCallTable,
+      contains('extension type const PublicPhoneCallId(String value) {}'),
+    );
+    expect(phoneCallDataTable, contains("import 'phone_call.g.dart';"));
+    expect(
+      phoneCallDataTable,
+      isNot(contains('extension type const PublicPhoneCallDataId')),
+    );
+    expect(phoneCallDataTable, contains('final PublicPhoneCallId id;'));
+    expect(
+      phoneCallDataTable,
+      contains("id: PublicPhoneCallId(row.read<String>('\${prefix}id'))"),
+    );
+    expect(phoneCallDataTable, contains('SqlValue<PublicPhoneCallId>? id,'));
+    expect(
+      phoneCallDataTable,
+      contains('static final id = SqlColumn<PublicPhoneCallId>('),
+    );
+  });
+
   test('emits nullable extension types for nullable foreign keys', () {
     const database = IntrospectedDatabase(
       dialect: SqlCodegenDialect.postgres,

@@ -276,7 +276,7 @@ IntrospectedDatabase _withGeneratedPrimaryKeyExtensionTypes(
   IntrospectedDatabase database,
   DartSchemaNaming naming,
 ) {
-  final primaryKeyTypes = <_ColumnKey, _PrimaryKeyTypeSpec>{};
+  final declaredPrimaryKeyTypes = <_ColumnKey, _PrimaryKeyTypeSpec>{};
   for (final table in database.tables) {
     final primaryKeyColumns = table.columns
         .where((column) => column.primaryKey)
@@ -285,17 +285,20 @@ IntrospectedDatabase _withGeneratedPrimaryKeyExtensionTypes(
       continue;
     }
     final column = primaryKeyColumns.single;
-    primaryKeyTypes[_columnKey(table, column.name)] = _PrimaryKeyTypeSpec(
+    declaredPrimaryKeyTypes[_columnKey(
+      table,
+      column.name,
+    )] = _PrimaryKeyTypeSpec(
       typeName: _primaryKeyTypeName(table, naming),
       baseDartType: _normalizedValueType(column),
     );
   }
 
-  if (primaryKeyTypes.isEmpty) {
+  if (declaredPrimaryKeyTypes.isEmpty) {
     return database;
   }
 
-  final foreignKeyTypes = <_ColumnKey, _PrimaryKeyTypeSpec>{};
+  final foreignKeyReferences = <_ColumnKey, _ColumnKey>{};
   for (final table in database.tables) {
     for (final constraint in table.constraints) {
       if (constraint.kind != IntrospectedTableConstraintKind.foreignKey ||
@@ -304,18 +307,55 @@ IntrospectedDatabase _withGeneratedPrimaryKeyExtensionTypes(
           constraint.referencedColumns.length != 1) {
         continue;
       }
-      final referencedKey = (
+      foreignKeyReferences[_columnKey(table, constraint.columns.single)] = (
         schema: _schemaName(constraint.referencedSchema ?? table.schema),
         table: constraint.referencedTable!,
         column: constraint.referencedColumns.single,
       );
-      final referencedType = primaryKeyTypes[referencedKey];
-      if (referencedType == null) {
-        continue;
-      }
-      foreignKeyTypes[_columnKey(table, constraint.columns.single)] =
-          referencedType;
     }
+  }
+
+  final resolvedPrimaryKeyTypes = <_ColumnKey, _PrimaryKeyTypeSpec>{};
+  _PrimaryKeyTypeSpec? resolvePrimaryKeyType(
+    _ColumnKey key, [
+    Set<_ColumnKey>? seen,
+  ]) {
+    if (resolvedPrimaryKeyTypes[key] case final resolved?) {
+      return resolved;
+    }
+    final localType = declaredPrimaryKeyTypes[key];
+    if (localType == null) {
+      return null;
+    }
+    final active = seen ?? <_ColumnKey>{};
+    if (!active.add(key)) {
+      return localType;
+    }
+    final referencedKey = foreignKeyReferences[key];
+    final inheritedType = referencedKey == null
+        ? null
+        : resolvePrimaryKeyType(referencedKey, active);
+    active.remove(key);
+
+    final resolvedType = inheritedType ?? localType;
+    resolvedPrimaryKeyTypes[key] = resolvedType;
+    return resolvedType;
+  }
+
+  final primaryKeyTypes = <_ColumnKey, _PrimaryKeyTypeSpec>{};
+  for (final key in declaredPrimaryKeyTypes.keys) {
+    primaryKeyTypes[key] = resolvePrimaryKeyType(key)!;
+  }
+
+  final foreignKeyTypes = <_ColumnKey, _PrimaryKeyTypeSpec>{};
+  for (final entry in foreignKeyReferences.entries) {
+    final key = entry.key;
+    final referencedKey = entry.value;
+    final referencedType = primaryKeyTypes[referencedKey];
+    if (referencedType == null) {
+      continue;
+    }
+    foreignKeyTypes[key] = referencedType;
   }
 
   return IntrospectedDatabase(

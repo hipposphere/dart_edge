@@ -15,6 +15,8 @@ final class FromSchemaModelSpec {
     required this.schema,
     required this.schemaId,
     required this.refModels,
+    required this.typeParameters,
+    required this.schemasById,
     required this.responseStatus,
   });
 
@@ -23,6 +25,8 @@ final class FromSchemaModelSpec {
   final JsonSchema schema;
   final String schemaId;
   final Map<String, SchemaRefModelSpec> refModels;
+  final List<TypeParameterSpec> typeParameters;
+  final Map<String, JsonSchema> schemasById;
   final int responseStatus;
 }
 
@@ -33,13 +37,6 @@ FromSchemaModelSpec buildFromSchemaModel(
   if (element is! TypeAliasElement) {
     throw InvalidGenerationSourceError(
       '@FromSchema can only be used on type aliases.',
-      element: element,
-    );
-  }
-
-  if (element.typeParameters.isNotEmpty) {
-    throw InvalidGenerationSourceError(
-      '@FromSchema does not support generic type aliases yet.',
       element: element,
     );
   }
@@ -73,7 +70,7 @@ FromSchemaModelSpec buildFromSchemaModel(
     registry: registry,
     element: element,
   );
-
+  final typeParameters = _typeParameterSpecs(element);
   final publicName = element.displayName;
   return FromSchemaModelSpec(
     publicName: publicName,
@@ -81,6 +78,8 @@ FromSchemaModelSpec buildFromSchemaModel(
     schema: schema,
     schemaId: _schemaIdForModel(sourceSchema, schema, publicName),
     refModels: refModels,
+    typeParameters: typeParameters,
+    schemasById: _schemasById(registry),
     responseStatus: reader.peek('responseStatus')?.intValue ?? 200,
   );
 }
@@ -129,6 +128,7 @@ JsonSchema jsonSchemaFromDartObject(
       enumValues: _objectListField(object, 'enumValues', element: element),
       nullable: _boolField(object, 'nullable') ?? false,
       format: _stringField(object, 'format'),
+      dartType: _dartSchemaTypeField(object, 'dartType', element: element),
     ),
     'JsonIntegerSchema' => JsonSchema.integer(
       id: _stringField(object, 'id'),
@@ -171,6 +171,20 @@ JsonSchema jsonSchemaFromDartObject(
   };
 }
 
+Map<String, JsonSchema> _schemasById(JsonSchemaRegistry? registry) {
+  if (registry == null) {
+    return const <String, JsonSchema>{};
+  }
+  final schemas = <String, JsonSchema>{};
+  for (final schema in registry.schemas) {
+    final id = schema.id;
+    if (id != null) {
+      schemas[id] = schema;
+    }
+  }
+  return schemas;
+}
+
 String generateFromSchemaModels(List<FromSchemaModelSpec> models) {
   final library = Library(
     (builder) => builder.body.addAll(models.map(_modelSpec)),
@@ -195,11 +209,13 @@ Spec _modelSpec(FromSchemaModelSpec model) {
 
 Class _objectModel(FromSchemaModelSpec model) {
   final fields = _modelFields(model);
+  final publicType = _typeName(model.publicName, model.typeParameters);
 
   return Class((builder) {
     builder
       ..modifier = ClassModifier.final$
       ..name = model.backingClassName
+      ..types.addAll(_typeParameterRefs(model.typeParameters))
       ..implements.add(refer('JsonEncodable'))
       ..constructors.add(
         Constructor((constructor) {
@@ -217,10 +233,20 @@ Class _objectModel(FromSchemaModelSpec model) {
             ]);
         }),
       )
+      ..constructors.addAll(
+        model.typeParameters.isEmpty
+            ? const <Constructor>[]
+            : [
+                _objectDecodeFactory(
+                  _typeName(model.backingClassName, model.typeParameters),
+                ),
+                _objectFromJsonFactory(model, fields),
+              ],
+      )
       ..fields.addAll([
         _schemaIdField(model.schemaId),
         _schemaRefField(),
-        _requestBodyField(),
+        _requestBodyField(includeDecoder: model.typeParameters.isEmpty),
         _responseField(model.responseStatus),
         for (final field in fields)
           Field((builder) {
@@ -232,8 +258,10 @@ Class _objectModel(FromSchemaModelSpec model) {
       ])
       ..methods.addAll([
         _objectToJsonMethod(fields, model.refModels),
-        _decodeMethod(model.publicName, 'fromJson(readJsonObject(value))'),
-        _objectFromJsonMethod(model.publicName, fields, model.refModels),
+        if (model.typeParameters.isEmpty) ...[
+          _decodeMethod(publicType, 'fromJson(readJsonObject(value))'),
+          _objectFromJsonMethod(model, fields),
+        ],
       ]);
   });
 }
@@ -279,7 +307,7 @@ Enum _stringEnumModel(FromSchemaModelSpec model) {
         }),
         _schemaIdField(model.schemaId),
         _schemaRefField(),
-        _requestBodyField(),
+        _requestBodyField(includeDecoder: true),
         _responseField(model.responseStatus),
       ])
       ..methods.addAll([
@@ -309,11 +337,14 @@ ExtensionType _arrayModel(FromSchemaModelSpec model) {
           schema.items!,
           nullable: schema.items!.nullable,
           refModels: model.refModels,
+          typeParameters: model.typeParameters,
         );
+  final publicType = _typeName(model.publicName, model.typeParameters);
 
   return ExtensionType((builder) {
     builder
       ..name = model.backingClassName
+      ..types.addAll(_typeParameterRefs(model.typeParameters))
       ..representationDeclaration = RepresentationDeclaration(
         (builder) => builder
           ..declaredRepresentationType = refer('List<$itemType>')
@@ -323,7 +354,7 @@ ExtensionType _arrayModel(FromSchemaModelSpec model) {
       ..fields.addAll([
         _schemaIdField(model.schemaId),
         _schemaRefField(),
-        _requestBodyField(),
+        _requestBodyField(includeDecoder: true),
         _responseField(model.responseStatus),
       ])
       ..methods.addAll([
@@ -341,15 +372,15 @@ ExtensionType _arrayModel(FromSchemaModelSpec model) {
               ),
             );
         }),
-        _decodeMethod(model.publicName, 'fromJson(value)'),
+        _decodeMethod(publicType, 'fromJson(value)'),
         Method((builder) {
           builder
             ..static = true
-            ..returns = refer(model.publicName)
+            ..returns = refer(publicType)
             ..name = 'fromJson'
             ..requiredParameters.add(_typedParameter('value', refer('Object?')))
             ..body = Code('''
-return ${model.publicName}(${_decodeValue(schema, 'value', nullable: false, refModels: model.refModels)});
+return $publicType(${_decodeValue(schema, 'value', nullable: false, refModels: model.refModels, typeParameters: model.typeParameters)});
 ''');
         }),
       ]);
@@ -378,7 +409,7 @@ Field _schemaRefField() {
   });
 }
 
-Field _requestBodyField() {
+Field _requestBodyField({required bool includeDecoder}) {
   return Field((builder) {
     builder
       ..static = true
@@ -387,7 +418,7 @@ Field _requestBodyField() {
       ..name = 'requestBody'
       ..assignment = refer('RequestBody').constInstanceNamed('json', const [], {
         'schema': refer('schemaRef'),
-        'decoder': refer('decode'),
+        if (includeDecoder) 'decoder': refer('decode'),
       }).code;
   });
 }
@@ -436,21 +467,51 @@ Method _decodeMethod(String publicName, String expression) {
 }
 
 Method _objectFromJsonMethod(
-  String publicName,
+  FromSchemaModelSpec model,
   List<_SchemaFieldSpec> fields,
-  Map<String, SchemaRefModelSpec> refModels,
 ) {
+  final publicType = _typeName(model.publicName, model.typeParameters);
   return Method((builder) {
     builder
       ..static = true
-      ..returns = refer(publicName)
+      ..returns = refer(publicType)
       ..name = 'fromJson'
       ..requiredParameters.add(
         _typedParameter('json', refer('Map<String, Object?>')),
       )
       ..body = Code('''
-return $publicName(
-${fields.map((field) => '${field.name}: ${_decodeValue(field.schema, "json[${_dartString(field.wireName)}]", nullable: field.nullable, refModels: refModels)},').join('\n')}
+return $publicType(
+${fields.map((field) => '${field.name}: ${_decodeValue(field.schema, "json[${_dartString(field.wireName)}]", nullable: field.nullable, refModels: model.refModels, typeParameters: model.typeParameters, path: field.name)},').join('\n')}
+);
+''');
+  });
+}
+
+Constructor _objectDecodeFactory(String publicType) {
+  return Constructor((builder) {
+    builder
+      ..factory = true
+      ..name = 'decode'
+      ..requiredParameters.add(_typedParameter('value', refer('Object?')))
+      ..body = Code('return $publicType.fromJson(readJsonObject(value));');
+  });
+}
+
+Constructor _objectFromJsonFactory(
+  FromSchemaModelSpec model,
+  List<_SchemaFieldSpec> fields,
+) {
+  final publicType = _typeName(model.publicName, model.typeParameters);
+  return Constructor((builder) {
+    builder
+      ..factory = true
+      ..name = 'fromJson'
+      ..requiredParameters.add(
+        _typedParameter('json', refer('Map<String, Object?>')),
+      )
+      ..body = Code('''
+return $publicType(
+${fields.map((field) => '${field.name}: ${_decodeValue(field.schema, "json[${_dartString(field.wireName)}]", nullable: field.nullable, refModels: model.refModels, typeParameters: model.typeParameters, path: field.name)},').join('\n')}
 );
 ''');
   });
@@ -512,6 +573,7 @@ List<_SchemaFieldSpec> _modelFields(FromSchemaModelSpec model) {
           entry.value,
           nullable: nullable,
           refModels: model.refModels,
+          typeParameters: model.typeParameters,
         ),
         schema: entry.value,
         requiredParameter: requiredParameter,
@@ -527,14 +589,16 @@ String _schemaDartType(
   JsonSchema schema, {
   required bool nullable,
   required Map<String, SchemaRefModelSpec> refModels,
+  required List<TypeParameterSpec> typeParameters,
 }) {
   final type = switch (schema) {
-    JsonStringSchema() => 'String',
+    JsonStringSchema(:final dartType) =>
+      _dartTypeName(dartType, typeParameters: typeParameters) ?? 'String',
     JsonIntegerSchema() => 'int',
     JsonNumberSchema() => 'num',
     JsonBooleanSchema() => 'bool',
     JsonArraySchema(:final items) =>
-      'List<${items == null ? 'Object?' : _schemaDartType(items, nullable: items.nullable, refModels: refModels)}>',
+      'List<${items == null ? 'Object?' : _schemaDartType(items, nullable: items.nullable, refModels: refModels, typeParameters: typeParameters)}>',
     JsonReferenceSchema(:final ref) =>
       _refModelForReference(ref, refModels)?.typeName ??
           _typeNameForSchemaRef(ref) ??
@@ -555,10 +619,16 @@ String _decodeValue(
   String source, {
   required bool nullable,
   required Map<String, SchemaRefModelSpec> refModels,
+  List<TypeParameterSpec> typeParameters = const <TypeParameterSpec>[],
+  String path = '',
 }) {
   return switch (schema) {
-    JsonStringSchema() =>
-      nullable ? '$source as String?' : '$source! as String',
+    JsonStringSchema(:final dartType) => _decodeStringValue(
+      dartType,
+      source,
+      nullable: nullable,
+      typeParameters: typeParameters,
+    ),
     JsonIntegerSchema() => nullable ? '$source as int?' : '$source! as int',
     JsonNumberSchema() => nullable ? '$source as num?' : '$source! as num',
     JsonBooleanSchema() => nullable ? '$source as bool?' : '$source! as bool',
@@ -567,14 +637,26 @@ String _decodeValue(
       source,
       nullable: nullable,
       refModels: refModels,
+      typeParameters: typeParameters,
+      path: path,
     ),
     JsonReferenceSchema(:final ref) => _decodeReferenceValue(
       ref,
       source,
       nullable: nullable,
       refModels: refModels,
+      typeParameters: typeParameters,
+      path: path,
     ),
-    JsonObjectSchema() || JsonRawSchema() =>
+    JsonObjectSchema() => _decodeObjectValue(
+      schema,
+      source,
+      nullable: nullable,
+      refModels: refModels,
+      typeParameters: typeParameters,
+      path: path,
+    ),
+    JsonRawSchema() =>
       nullable
           ? '$source == null ? null : Map<String, Object?>.from($source as Map)'
           : 'Map<String, Object?>.from($source! as Map)',
@@ -588,6 +670,8 @@ String _decodeArrayValue(
   String source, {
   required bool nullable,
   required Map<String, SchemaRefModelSpec> refModels,
+  required List<TypeParameterSpec> typeParameters,
+  required String path,
 }) {
   final itemExpression = items == null
       ? 'item'
@@ -596,6 +680,8 @@ String _decodeArrayValue(
           'item',
           nullable: items.nullable,
           refModels: refModels,
+          typeParameters: typeParameters,
+          path: path,
         );
 
   if (nullable) {
@@ -614,6 +700,8 @@ String _decodeReferenceValue(
   String source, {
   required bool nullable,
   required Map<String, SchemaRefModelSpec> refModels,
+  required List<TypeParameterSpec> typeParameters,
+  required String path,
 }) {
   final refModel = _refModelForReference(ref, refModels);
   if (refModel != null) {
@@ -633,6 +721,74 @@ String _decodeReferenceValue(
     return '$source == null ? null : $typeName.decode($source)';
   }
   return '$typeName.decode($source)';
+}
+
+String _decodeObjectValue(
+  JsonObjectSchema schema,
+  String source, {
+  required bool nullable,
+  required Map<String, SchemaRefModelSpec> refModels,
+  required List<TypeParameterSpec> typeParameters,
+  required String path,
+}) {
+  if (schema.properties.isEmpty) {
+    return nullable
+        ? '$source == null ? null : Map<String, Object?>.from($source as Map)'
+        : 'Map<String, Object?>.from($source! as Map)';
+  }
+
+  final mapSource = nullable
+      ? 'Map<String, Object?>.from($source as Map)'
+      : 'Map<String, Object?>.from($source! as Map)';
+  final required = schema.required.toSet();
+  final entries = schema.properties.entries
+      .map((entry) {
+        final fieldName = _fieldName(entry.key);
+        final fieldPath = path.isEmpty ? fieldName : '$path.$fieldName';
+        final fieldSource = '($mapSource)[${_dartString(entry.key)}]';
+        final fieldNullable =
+            !required.contains(entry.key) || entry.value.nullable;
+        return '${_dartString(entry.key)}: ${_decodeValue(entry.value, fieldSource, nullable: fieldNullable, refModels: refModels, typeParameters: typeParameters, path: fieldPath)},';
+      })
+      .join('\n');
+  final object = '<String, Object?>{\n$entries\n}';
+
+  if (nullable) {
+    return '$source == null ? null : $object';
+  }
+  return object;
+}
+
+String _decodeStringValue(
+  DartSchemaType? dartType,
+  String source, {
+  required bool nullable,
+  required List<TypeParameterSpec> typeParameters,
+}) {
+  final stringValue = nullable ? '$source as String?' : '$source! as String';
+  if (dartType == null) {
+    return stringValue;
+  }
+
+  if (dartType case DartConcreteSchemaType() || DartNamedSchemaType()) {
+    final typeName = _dartTypeName(dartType, typeParameters: typeParameters);
+    if (typeName == null) {
+      return stringValue;
+    }
+    return nullable
+        ? '$source == null ? null : $typeName($source as String)'
+        : '$typeName($source! as String)';
+  }
+
+  if (dartType case DartGenericSchemaType()) {
+    final typeName = _dartTypeName(dartType, typeParameters: typeParameters);
+    if (typeName == null) {
+      return stringValue;
+    }
+    return nullable ? '$source as $typeName?' : '$source! as $typeName';
+  }
+
+  return stringValue;
 }
 
 String _encodeValue(
@@ -913,6 +1069,48 @@ List<Object?> _objectListField(
   return [for (final value in values) _objectValue(value, element: element)];
 }
 
+DartSchemaType? _dartSchemaTypeField(
+  DartObject object,
+  String name, {
+  required Element element,
+}) {
+  final value = _field(object, name);
+  if (value == null || value.isNull) {
+    return null;
+  }
+
+  final typeName = value.type?.element?.name;
+  return switch (typeName) {
+    'DartConcreteSchemaType' => switch (_field(value, 'type')?.toTypeValue()) {
+      final type? => DartConcreteSchemaType.named(
+        type.element?.name ?? type.getDisplayString(),
+      ),
+      _ => throw InvalidGenerationSourceError(
+        'DartSchemaType.type must be called with a Dart type.',
+        element: element,
+      ),
+    },
+    'DartNamedSchemaType' => switch (_stringField(value, 'name')) {
+      final name? when name.isNotEmpty => DartSchemaType.named(name),
+      _ => throw InvalidGenerationSourceError(
+        'DartSchemaType.named must use a non-empty type name.',
+        element: element,
+      ),
+    },
+    'DartGenericSchemaType' => switch (_stringField(value, 'name')) {
+      final name? when name.isNotEmpty => DartSchemaType.parameter(name),
+      _ => throw InvalidGenerationSourceError(
+        'DartSchemaType.parameter must use a non-empty type parameter name.',
+        element: element,
+      ),
+    },
+    _ => throw InvalidGenerationSourceError(
+      'JsonSchema.string dartType must be a const DartSchemaType value.',
+      element: element,
+    ),
+  };
+}
+
 Map<String, Object?> _objectMap(
   Map<DartObject?, DartObject?> map, {
   required Element element,
@@ -993,7 +1191,7 @@ DartObject? _field(DartObject object, String name) {
     return value;
   }
 
-  if ((name == 'ref' || name == 'schema' || name == 'type') &&
+  if ((name == 'ref' || name == 'schema' || name == 'type' || name == 'name') &&
       invocation.positionalArguments.isNotEmpty) {
     return invocation.positionalArguments.first;
   }
@@ -1029,6 +1227,53 @@ SchemaRefModelSpec? _refModelForReference(
     return null;
   }
   return refModels[id];
+}
+
+String? _dartTypeName(
+  DartSchemaType? dartType, {
+  List<TypeParameterSpec> typeParameters = const <TypeParameterSpec>[],
+}) {
+  final typeParameterNames = _typeParameterNames(typeParameters);
+  return switch (dartType) {
+    DartConcreteSchemaType(:final name, :final type) =>
+      name ?? type?.toString(),
+    DartNamedSchemaType(:final name) => name,
+    DartGenericSchemaType(:final name) when typeParameterNames.contains(name) =>
+      name,
+    DartGenericSchemaType() => null,
+    null => null,
+  };
+}
+
+String _typeName(String name, List<TypeParameterSpec> typeParameters) {
+  if (typeParameters.isEmpty) {
+    return name;
+  }
+  return '$name<${_typeParameterNames(typeParameters).join(', ')}>';
+}
+
+List<TypeParameterSpec> _typeParameterSpecs(TypeAliasElement element) {
+  return [
+    for (final parameter in element.typeParameters)
+      TypeParameterSpec(
+        name: parameter.displayName,
+        bound: parameter.bound?.getDisplayString(),
+      ),
+  ];
+}
+
+List<Reference> _typeParameterRefs(List<TypeParameterSpec> typeParameters) {
+  return [
+    for (final parameter in typeParameters)
+      refer(switch (parameter.bound) {
+        final bound? => '${parameter.name} extends $bound',
+        null => parameter.name,
+      }),
+  ];
+}
+
+Set<String> _typeParameterNames(List<TypeParameterSpec> typeParameters) {
+  return {for (final parameter in typeParameters) parameter.name};
 }
 
 String? _schemaIdFromReference(String ref) {
@@ -1182,6 +1427,13 @@ final class SchemaRefModelSpec {
 
   final String schemaId;
   final String typeName;
+}
+
+final class TypeParameterSpec {
+  const TypeParameterSpec({required this.name, required this.bound});
+
+  final String name;
+  final String? bound;
 }
 
 const _dartKeywords = <String>{

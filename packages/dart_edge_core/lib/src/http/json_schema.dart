@@ -11,6 +11,41 @@ enum JsonSchemaType {
   final String wireValue;
 }
 
+/// Dart-only type metadata used by generators when mapping JSON Schema values.
+sealed class DartSchemaType {
+  const DartSchemaType();
+
+  const factory DartSchemaType.type(Type type) = DartConcreteSchemaType;
+
+  const factory DartSchemaType.named(String name) = DartNamedSchemaType;
+
+  const factory DartSchemaType.parameter(String name) = DartGenericSchemaType;
+}
+
+/// Binds a JSON Schema value to a concrete Dart type.
+final class DartConcreteSchemaType extends DartSchemaType {
+  const DartConcreteSchemaType(this.type) : name = null;
+
+  const DartConcreteSchemaType.named(this.name) : type = null;
+
+  final Type? type;
+  final String? name;
+}
+
+/// Binds a JSON Schema value to a concrete Dart type by source name.
+final class DartNamedSchemaType extends DartSchemaType {
+  const DartNamedSchemaType(this.name);
+
+  final String name;
+}
+
+/// Binds a JSON Schema value to a generated model type parameter.
+final class DartGenericSchemaType extends DartSchemaType {
+  const DartGenericSchemaType(this.name);
+
+  final String name;
+}
+
 /// Typed JSON Schema model used by route metadata and installed registries.
 sealed class JsonSchema {
   const JsonSchema._({
@@ -55,6 +90,7 @@ sealed class JsonSchema {
     List<Object?> enumValues,
     bool nullable,
     String? format,
+    DartSchemaType? dartType,
   }) = JsonStringSchema;
 
   const factory JsonSchema.integer({
@@ -224,9 +260,11 @@ final class JsonStringSchema extends _JsonTypedSchema {
     super.enumValues,
     super.nullable = false,
     this.format,
+    this.dartType,
   }) : super(type: JsonSchemaType.string);
 
   final String? format;
+  final DartSchemaType? dartType;
 
   @override
   Map<String, Object?> additionalKeywords() {
