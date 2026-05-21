@@ -6,7 +6,9 @@ version="${DART_EDGE_CI_VERSION:-}"
 action_ref="${DART_EDGE_CI_ACTION_REF:-}"
 
 if [[ -z "$version" ]]; then
-  version="$action_ref"
+  if [[ "$action_ref" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$ ]]; then
+    version="$action_ref"
+  fi
 fi
 
 if [[ -z "$version" ]]; then
@@ -60,13 +62,17 @@ if [[ -x "$install_dir/$binary_name" ]]; then
 fi
 
 api_url="https://api.github.com/repos/$repository/releases/tags/$tag"
-auth_args=()
-if [[ -n "${GITHUB_TOKEN:-}" ]]; then
-  auth_args=(-H "Authorization: Bearer $GITHUB_TOKEN")
-fi
+
+curl_with_auth() {
+  if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+    curl -fsSL -H "Authorization: Bearer $GITHUB_TOKEN" "$@"
+  else
+    curl -fsSL "$@"
+  fi
+}
 
 echo "Installing $asset from $repository release $tag"
-release_json="$(curl -fsSL "${auth_args[@]}" \
+release_json="$(curl_with_auth \
   -H "Accept: application/vnd.github+json" \
   -H "X-GitHub-Api-Version: 2022-11-28" \
   "$api_url")"
@@ -90,7 +96,7 @@ else:
 }
 
 mkdir -p "$install_dir"
-curl -fsSL "${auth_args[@]}" -o "$install_dir/$asset" "$asset_url"
+curl_with_auth -o "$install_dir/$asset" "$asset_url"
 chmod +x "$install_dir/$asset"
 
 sha_asset="$asset.sha256"
@@ -108,7 +114,7 @@ for asset in release.get("assets", []):
 ' <<<"$release_json")"
 
 if [[ -n "$sha_url" ]]; then
-  curl -fsSL "${auth_args[@]}" -o "$install_dir/$sha_asset" "$sha_url"
+  curl_with_auth -o "$install_dir/$sha_asset" "$sha_url"
   (
     cd "$install_dir"
     shasum -a 256 -c "$sha_asset"

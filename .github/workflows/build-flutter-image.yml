@@ -42,8 +42,9 @@ jobs:
 
       - name: Set up dart_edge_ci
         id: dart-edge-ci
-        uses: hipposphere/dart_edge/actions/setup_ci@v0.1.0
+        uses: hipposphere/dart_edge/actions/setup_ci@main
         with:
+          version: 0.1.0
           docker-image: ${{ inputs.image }}
           package-version-path: ${{ inputs.package_path }}
 
