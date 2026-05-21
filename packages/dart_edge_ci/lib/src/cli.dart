@@ -54,7 +54,12 @@ final class _DockerCommand extends Command<int> {
 }
 
 final class _GenerateCommand extends Command<int> {
-  _GenerateCommand(this._projectRoot);
+  _GenerateCommand(this._projectRoot) {
+    argParser.addFlag(
+      'github-output',
+      help: 'Append generated Docker paths to the GITHUB_OUTPUT file.',
+    );
+  }
 
   final Directory? _projectRoot;
 
@@ -65,7 +70,8 @@ final class _GenerateCommand extends Command<int> {
   String get name => 'generate';
 
   @override
-  String get invocation => 'dart_edge_ci docker generate [image]';
+  String get invocation =>
+      'dart_edge_ci docker generate [--github-output] [image]';
 
   @override
   Future<int> run() async {
@@ -80,7 +86,55 @@ final class _GenerateCommand extends Command<int> {
       stdout.writeln('Generated ${image.name}: ${image.dockerfile.path}');
     }
     stdout.writeln('Generated bake file: ${result.bakeFile.path}');
+
+    if (argResults!.flag('github-output')) {
+      final githubOutput = Platform.environment['GITHUB_OUTPUT'];
+      if (githubOutput == null || githubOutput.isEmpty) {
+        usageException('GITHUB_OUTPUT is not set.');
+      }
+      if (result.images.length != 1) {
+        usageException(
+          'Expected exactly one selected image when using --github-output.',
+        );
+      }
+      final image = result.images.single;
+      await File(githubOutput).writeAsString(
+        DockerGenerateOutput(
+          image: image.name,
+          dockerfile: image.dockerfile.path,
+          context: image.context.path,
+        ).toEnv(),
+        mode: FileMode.append,
+      );
+    }
+
     return 0;
+  }
+}
+
+final class DockerGenerateOutput {
+  const DockerGenerateOutput({
+    required this.image,
+    required this.dockerfile,
+    required this.context,
+  });
+
+  final String image;
+  final String dockerfile;
+  final String context;
+
+  Map<String, String> toMap() => {
+    'image': image,
+    'dockerfile': dockerfile,
+    'context': context,
+  };
+
+  String toEnv() {
+    final buffer = StringBuffer();
+    for (final entry in toMap().entries) {
+      buffer.writeln('${entry.key}=${entry.value}');
+    }
+    return buffer.toString();
   }
 }
 

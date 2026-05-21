@@ -1,0 +1,130 @@
+name: Dart Edge CI
+description: Install and run the precompiled dart_edge_ci binary.
+
+inputs:
+  version:
+    description: >
+      dart_edge_ci version to install. Defaults to the action ref when it looks
+      like vX.Y.Z or X.Y.Z.
+    required: false
+    default: ""
+  repository:
+    description: Repository that publishes dart_edge_ci release assets.
+    required: false
+    default: hipposphere/dart_edge
+  setup-dart:
+    description: Set up a Dart SDK for the consuming project.
+    required: false
+    default: "false"
+  dart-version:
+    description: Dart SDK version passed to dart-lang/setup-dart.
+    required: false
+    default: stable
+  setup-flutter:
+    description: Set up a Flutter SDK for the consuming project.
+    required: false
+    default: "false"
+  flutter-version:
+    description: Flutter SDK version passed to subosito/flutter-action.
+    required: false
+    default: stable
+  pub-get:
+    description: Run dart pub get or flutter pub get after SDK setup.
+    required: false
+    default: "false"
+  docker-image:
+    description: Generate a Dockerfile for this image key from docker.yaml and expose its path as an action output.
+    required: false
+    default: ""
+  package-version-path:
+    description: Read package version outputs from this package path.
+    required: false
+    default: ""
+  working-directory:
+    description: Directory where pub-get and command run.
+    required: false
+    default: "."
+  command:
+    description: dart_edge_ci command arguments to run after setup.
+    required: false
+    default: ""
+
+outputs:
+  image:
+    description: Generated Docker image name.
+    value: ${{ steps.dockerfile.outputs.image }}
+  dockerfile:
+    description: Generated Dockerfile path.
+    value: ${{ steps.dockerfile.outputs.dockerfile }}
+  context:
+    description: Docker build context path.
+    value: ${{ steps.dockerfile.outputs.context }}
+  version:
+    description: Package version from package-version-path.
+    value: ${{ steps.package-version.outputs.version }}
+  version-tag:
+    description: Tag-safe package version from package-version-path.
+    value: ${{ steps.package-version.outputs.version_tag }}
+
+runs:
+  using: composite
+  steps:
+    - name: Cache dart_edge_ci
+      uses: actions/cache@v4
+      with:
+        path: ${{ runner.temp }}/dart_edge_ci/bin
+        key: dart_edge_ci-${{ inputs.repository }}-${{ inputs.version || github.action_ref }}-${{ runner.os }}-${{ runner.arch }}
+
+    - name: Install dart_edge_ci
+      shell: bash
+      env:
+        DART_EDGE_CI_VERSION: ${{ inputs.version }}
+        DART_EDGE_CI_REPOSITORY: ${{ inputs.repository }}
+        DART_EDGE_CI_ACTION_REF: ${{ github.action_ref }}
+        GITHUB_TOKEN: ${{ github.token }}
+      run: bash "$GITHUB_ACTION_PATH/install.sh"
+
+    - name: Set up Dart
+      if: ${{ inputs.setup-dart == 'true' && inputs.setup-flutter != 'true' }}
+      uses: dart-lang/setup-dart@v1
+      with:
+        sdk: ${{ inputs.dart-version }}
+
+    - name: Set up Flutter
+      if: ${{ inputs.setup-flutter == 'true' }}
+      uses: subosito/flutter-action@v2
+      with:
+        flutter-version: ${{ inputs.flutter-version }}
+        cache: true
+
+    - name: Resolve dependencies
+      if: ${{ inputs.pub-get == 'true' }}
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        set -euo pipefail
+        if [[ "${{ inputs.setup-flutter }}" == "true" ]]; then
+          flutter pub get
+        else
+          dart pub get
+        fi
+
+    - name: Generate Dockerfile
+      id: dockerfile
+      if: ${{ inputs.docker-image != '' }}
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: dart_edge_ci docker generate --github-output "${{ inputs.docker-image }}"
+
+    - name: Read package version
+      id: package-version
+      if: ${{ inputs.package-version-path != '' }}
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: dart_edge_ci package-version --github-output "${{ inputs.package-version-path }}"
+
+    - name: Run dart_edge_ci
+      if: ${{ inputs.command != '' }}
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: dart_edge_ci ${{ inputs.command }}

@@ -1,0 +1,159 @@
+name: dart_edge_ci
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Optional dart_edge_ci package version. Defaults to packages/dart_edge_ci/pubspec.yaml.
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  prepare:
+    name: Prepare release
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.plan.outputs.version }}
+      tag: ${{ steps.plan.outputs.tag }}
+      targets: ${{ steps.plan.outputs.targets }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Resolve release metadata
+        id: plan
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          package_version="$(sed -nE 's/^version:[[:space:]]*([^[:space:]]+).*/\1/p' packages/dart_edge_ci/pubspec.yaml)"
+          version="${INPUT_VERSION:-$package_version}"
+          tag="v$version"
+
+          if [[ "${GITHUB_REF_TYPE:-}" == "tag" && "${GITHUB_REF_NAME:-}" != "$tag" ]]; then
+            echo "::error::Tag ${GITHUB_REF_NAME:-unknown} does not match dart_edge_ci package version $version."
+            exit 1
+          fi
+
+          targets="$(jq -cn '
+            [
+              {
+                os: "linux",
+                arch: "x64",
+                runner: "ubuntu-latest",
+                executable: "dart_edge_ci",
+                asset: ("dart_edge_ci-" + $version + "-linux-x64")
+              },
+              {
+                os: "linux",
+                arch: "arm64",
+                runner: "ubuntu-24.04-arm",
+                executable: "dart_edge_ci",
+                asset: ("dart_edge_ci-" + $version + "-linux-arm64")
+              },
+              {
+                os: "macos",
+                arch: "x64",
+                runner: "macos-13",
+                executable: "dart_edge_ci",
+                asset: ("dart_edge_ci-" + $version + "-macos-x64")
+              },
+              {
+                os: "macos",
+                arch: "arm64",
+                runner: "macos-14",
+                executable: "dart_edge_ci",
+                asset: ("dart_edge_ci-" + $version + "-macos-arm64")
+              },
+              {
+                os: "windows",
+                arch: "x64",
+                runner: "windows-latest",
+                executable: "dart_edge_ci.exe",
+                asset: ("dart_edge_ci-" + $version + "-windows-x64.exe")
+              }
+            ]
+          ' --arg version "$version")"
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "targets=$targets" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: ${{ matrix.target.os }}-${{ matrix.target.arch }}
+    needs: prepare
+    runs-on: ${{ matrix.target.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJson(needs.prepare.outputs.targets) }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Dart
+        uses: dart-lang/setup-dart@v1
+        with:
+          sdk: stable
+
+      - name: Resolve workspace
+        run: dart pub get
+
+      - name: Compile dart_edge_ci
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          dart compile exe packages/dart_edge_ci/bin/dart_edge_ci.dart \
+            -o "artifacts/${{ matrix.target.executable }}"
+          mv "artifacts/${{ matrix.target.executable }}" "artifacts/${{ matrix.target.asset }}"
+
+      - name: Check compiled binary
+        shell: bash
+        run: '"artifacts/${{ matrix.target.asset }}" --help >/dev/null'
+
+      - name: Checksum artifact
+        shell: bash
+        run: |
+          (
+            cd artifacts
+            shasum -a 256 "${{ matrix.target.asset }}" > "${{ matrix.target.asset }}.sha256"
+          )
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target.asset }}
+          path: |
+            artifacts/${{ matrix.target.asset }}
+            artifacts/${{ matrix.target.asset }}.sha256
+          if-no-files-found: error
+
+  release:
+    name: Publish release assets
+    needs:
+      - prepare
+      - build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download workflow artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Upload release artifacts
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.prepare.outputs.tag }}
+          name: ${{ needs.prepare.outputs.tag }}
+          files: artifacts/*

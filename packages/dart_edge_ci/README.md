@@ -218,17 +218,96 @@ dart run dart_edge_ci package-version --json packages/server
 
 ## GitHub Actions
 
+`dart_edge_ci` is distributed to GitHub Actions as precompiled AOT release
+assets. The action downloads the matching binary for the runner platform, caches
+it with `actions/cache`, adds it to `PATH`, and then optionally runs a
+`dart_edge_ci` command, generates a Dockerfile, or reads package version
+metadata and exposes the results as
+action output.
+
 ```yaml
 jobs:
   docker:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - uses: dart-lang/setup-dart@v1
-      - uses: docker/setup-buildx-action@v3
-      - run: dart pub get
-      - run: dart run dart_edge_ci docker generate
-      - run: docker buildx bake -f .dart_tool/dart_edge_ci/docker/docker-bake.hcl --push
+
+      - id: dart-edge-ci
+        uses: hipposphere/dart_edge/actions/setup_ci@v0.1.0
+        with:
+          docker-image: server
+          package-version-path: packages/server
+
+      - name: Build image
+        run: |
+          docker build \
+            --file "${{ steps.dart-edge-ci.outputs.dockerfile }}" \
+            --tag "ghcr.io/hipposphere/my-product-server:${{ steps.dart-edge-ci.outputs.version-tag }}" \
+            "${{ steps.dart-edge-ci.outputs.context }}"
+```
+
+The action version selects the `dart_edge_ci` binary. It does not force a Dart
+or Flutter version onto the consuming project. `docker-image` is the image name
+under `images:` in `docker.yaml`. The `dockerfile`, `context`, `version`, and
+`version-tag` outputs can be passed to any later publish/build action.
+
+You can still run any command manually:
+
+```yaml
+- uses: hipposphere/dart_edge/actions/setup_ci@v0.1.0
+  with:
+    command: docker print-config
+```
+
+If the project needs dependency resolution before running the command, opt into
+SDK setup explicitly:
+
+```yaml
+- uses: hipposphere/dart_edge/actions/setup_ci@v0.1.0
+  with:
+    setup-dart: "true"
+    dart-version: 3.12.0
+    pub-get: "true"
+    docker-image: server
+    package-version-path: packages/server
+```
+
+Flutter projects can opt into Flutter instead:
+
+```yaml
+- uses: hipposphere/dart_edge/actions/setup_ci@v0.1.0
+  with:
+    setup-flutter: "true"
+    flutter-version: 3.44.0
+    pub-get: "true"
+    docker-image: app
+    package-version-path: packages/app
+```
+
+For local actions or branch refs where the release tag cannot be inferred,
+provide the binary version directly:
+
+```yaml
+- uses: hipposphere/dart_edge/actions/setup_ci@main
+  with:
+    version: 0.1.0
+    command: docker print-config
+```
+
+## Releasing The GitHub Action Binary
+
+Tag a release with `v<version>` where `<version>` matches
+`packages/dart_edge_ci/pubspec.yaml`, or run the `dart_edge_ci` workflow
+manually. The workflow uses `dart-lang/setup-dart` with the stable Dart SDK,
+compiles `bin/dart_edge_ci.dart` with `dart compile exe`, and uploads one
+release asset per runner platform:
+
+```text
+dart_edge_ci-<version>-linux-x64
+dart_edge_ci-<version>-linux-arm64
+dart_edge_ci-<version>-macos-x64
+dart_edge_ci-<version>-macos-arm64
+dart_edge_ci-<version>-windows-x64.exe
 ```
 
 ## Migrating From Hand-Written Dockerfiles
