@@ -139,10 +139,10 @@ void main() {
       contains('displayName == null || !displayName.isPresent'),
     );
     expect(usersTable, contains('UsersInsert copyWith({'));
-    expect(usersTable, contains('SqlValue<int>? id,'));
+    expect(usersTable, contains('SqlValue<UserId>? id,'));
     expect(usersTable, contains('UsersUpdate copyWith({'));
     expect(usersTable, contains('SqlValue<DateTime>? createdAt,'));
-    expect(usersTable, contains("if (id.isPresent) 'id': id.value,"));
+    expect(usersTable, contains("if (id.isPresent) 'id': id.value?.value,"));
     expect(usersTable, contains("databaseType: 'INTEGER',"));
     expect(usersTable, contains("databaseType: 'TEXT',"));
     expect(
@@ -379,6 +379,7 @@ void main() {
       tables: [
         IntrospectedTable(
           name: 'users',
+          schema: 'public',
           columns: [
             IntrospectedColumn(
               name: 'id',
@@ -580,6 +581,100 @@ void main() {
         "enumValues: <String>['admin', 'member']",
       ),
     );
+  });
+
+  test('emits extension types for primary and foreign keys by default', () {
+    const database = IntrospectedDatabase(
+      dialect: SqlCodegenDialect.postgres,
+      tables: [
+        IntrospectedTable(
+          name: 'users',
+          columns: [
+            IntrospectedColumn(
+              name: 'id',
+              databaseType: 'int4',
+              dartType: 'int',
+              primaryKey: true,
+            ),
+          ],
+        ),
+        IntrospectedTable(
+          name: 'notes',
+          columns: [
+            IntrospectedColumn(
+              name: 'id',
+              databaseType: 'int4',
+              dartType: 'int',
+              primaryKey: true,
+            ),
+            IntrospectedColumn(
+              name: 'user_id',
+              databaseType: 'int4',
+              dartType: 'int',
+            ),
+          ],
+          constraints: [
+            IntrospectedTableConstraint(
+              name: 'notes_user_id_fkey',
+              kind: IntrospectedTableConstraintKind.foreignKey,
+              columns: ['user_id'],
+              referencedTable: 'users',
+              referencedColumns: ['id'],
+            ),
+          ],
+        ),
+      ],
+    );
+
+    final emission = emitDartSchema(database, databaseClassName: 'AppSchema');
+    final usersTable = emission
+        .fileAt('schemas/default/tables/users.g.dart')
+        .contents;
+    final notesTable = emission
+        .fileAt('schemas/default/tables/notes.g.dart')
+        .contents;
+
+    expect(usersTable, contains('extension type const UserId(int value) {}'));
+    expect(usersTable, contains('final UserId id;'));
+    expect(usersTable, contains("id: UserId(row.read<int>('\${prefix}id'))"));
+    expect(usersTable, contains("'id': id.value"));
+    expect(usersTable, contains('static final id = SqlColumn<UserId>('));
+
+    expect(notesTable, contains("import 'users.g.dart';"));
+    expect(notesTable, contains('extension type const NoteId(int value) {}'));
+    expect(notesTable, contains('final NoteId id;'));
+    expect(notesTable, contains('final UserId userId;'));
+    expect(notesTable, contains("userId: UserId(row.read<int>("));
+    expect(notesTable, contains("'user_id': userId.value,"));
+    expect(notesTable, contains('static final userId = SqlColumn<UserId>('));
+  });
+
+  test('can opt out of primary key extension types', () {
+    const database = IntrospectedDatabase(
+      dialect: SqlCodegenDialect.sqlite,
+      tables: [
+        IntrospectedTable(
+          name: 'notes',
+          columns: [
+            IntrospectedColumn(
+              name: 'id',
+              databaseType: 'INTEGER',
+              dartType: 'int',
+              primaryKey: true,
+            ),
+          ],
+        ),
+      ],
+    );
+
+    final library = emitDartSchemaLibrary(
+      database,
+      primaryKeyExtensionTypes: false,
+    );
+
+    expect(library, isNot(contains('extension type const NoteId')));
+    expect(library, contains('final int id;'));
+    expect(library, contains('static final id = SqlColumn<int>('));
   });
 
   test('imports enum types from another schema when needed', () {

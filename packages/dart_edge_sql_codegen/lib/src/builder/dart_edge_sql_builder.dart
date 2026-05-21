@@ -46,9 +46,14 @@ final class DartEdgeSqlBuilder implements Builder {
         database,
         databaseClassName: databaseClassName,
         naming: naming,
+        primaryKeyExtensionTypes: _primaryKeyExtensionTypes(options.config),
       ),
     );
   }
+}
+
+bool _primaryKeyExtensionTypes(Map<String, dynamic> config) {
+  return config['primary_key_extension_types'] as bool? ?? true;
 }
 
 DartSchemaNaming _namingFromOptions(Map<String, dynamic> config) {

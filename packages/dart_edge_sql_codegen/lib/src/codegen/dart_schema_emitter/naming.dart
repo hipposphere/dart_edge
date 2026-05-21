@@ -129,13 +129,13 @@ List<String> _requiredColumns(IntrospectedTable table, _GeneratedShape shape) {
 }
 
 Reference _fieldType(IntrospectedColumn column) {
-  return refer(_nullableType(_normalizedValueType(column), column.nullable));
+  return refer(_nullableType(_valueType(column), column.nullable));
 }
 
 Reference _insertFieldType(IntrospectedColumn column) {
   if (_isOptionalInsertColumn(column)) {
     return _type('SqlValue', [
-      refer(_nullableType(_normalizedValueType(column), column.nullable)),
+      refer(_nullableType(_valueType(column), column.nullable)),
     ]);
   }
   return _fieldType(column);
@@ -143,7 +143,7 @@ Reference _insertFieldType(IntrospectedColumn column) {
 
 Reference _updateFieldType(IntrospectedColumn column) {
   return _type('SqlValue', [
-    refer(_nullableType(_normalizedValueType(column), column.nullable)),
+    refer(_nullableType(_valueType(column), column.nullable)),
   ]);
 }
 
@@ -151,7 +151,7 @@ Reference _sqlColumnType(IntrospectedColumn column) {
   if (_hasStringBackedValueType(column)) {
     return refer('String');
   }
-  return refer(_normalizedValueType(column));
+  return refer(_valueType(column));
 }
 
 String _columnDatabaseType(IntrospectedColumn column) {
@@ -167,6 +167,14 @@ String _columnDatabaseType(IntrospectedColumn column) {
 bool _isOptionalInsertColumn(IntrospectedColumn column) =>
     column.hasDefault || column.primaryKey;
 
+String _valueType(IntrospectedColumn column) {
+  return _normalizedValueType(column);
+}
+
+String _databaseValueType(IntrospectedColumn column) {
+  return column.extensionBaseDartType ?? _normalizedValueType(column);
+}
+
 String _normalizedValueType(IntrospectedColumn column) {
   final typeName = column.dartType;
   if (typeName == 'Object?') {
@@ -180,6 +188,10 @@ String _normalizedValueType(IntrospectedColumn column) {
 
 bool _hasStringBackedValueType(IntrospectedColumn column) {
   return column.enumName != null || _isConstrainedTextColumn(column);
+}
+
+bool _hasExtensionBackedValueType(IntrospectedColumn column) {
+  return column.extensionBaseDartType != null;
 }
 
 bool _isConstrainedTextColumn(IntrospectedColumn column) {
@@ -242,6 +254,7 @@ IntrospectedColumn _copyColumnWithDartType(
     enumSchema: column.enumSchema,
     enumValues: column.enumValues,
     constrainedValues: column.constrainedValues,
+    extensionBaseDartType: column.extensionBaseDartType,
   );
 }
 
@@ -257,6 +270,133 @@ String _constrainedTextTypeName(
     return '$tableType$suffix';
   }
   return '${tableType.substring(0, rowSuffix.start)}$suffix';
+}
+
+IntrospectedDatabase _withGeneratedPrimaryKeyExtensionTypes(
+  IntrospectedDatabase database,
+  DartSchemaNaming naming,
+) {
+  final primaryKeyTypes = <_ColumnKey, _PrimaryKeyTypeSpec>{};
+  for (final table in database.tables) {
+    final primaryKeyColumns = table.columns
+        .where((column) => column.primaryKey)
+        .toList(growable: false);
+    if (primaryKeyColumns.length != 1) {
+      continue;
+    }
+    final column = primaryKeyColumns.single;
+    primaryKeyTypes[_columnKey(table, column.name)] = _PrimaryKeyTypeSpec(
+      typeName: _primaryKeyTypeName(table, naming),
+      baseDartType: _normalizedValueType(column),
+    );
+  }
+
+  if (primaryKeyTypes.isEmpty) {
+    return database;
+  }
+
+  final foreignKeyTypes = <_ColumnKey, _PrimaryKeyTypeSpec>{};
+  for (final table in database.tables) {
+    for (final constraint in table.constraints) {
+      if (constraint.kind != IntrospectedTableConstraintKind.foreignKey ||
+          constraint.columns.length != 1 ||
+          constraint.referencedTable == null ||
+          constraint.referencedColumns.length != 1) {
+        continue;
+      }
+      final referencedKey = (
+        schema: _schemaName(constraint.referencedSchema ?? table.schema),
+        table: constraint.referencedTable!,
+        column: constraint.referencedColumns.single,
+      );
+      final referencedType = primaryKeyTypes[referencedKey];
+      if (referencedType == null) {
+        continue;
+      }
+      foreignKeyTypes[_columnKey(table, constraint.columns.single)] =
+          referencedType;
+    }
+  }
+
+  return IntrospectedDatabase(
+    dialect: database.dialect,
+    enums: database.enums,
+    routines: database.routines,
+    tables: [
+      for (final table in database.tables)
+        IntrospectedTable(
+          name: table.name,
+          schema: table.schema,
+          constraints: table.constraints,
+          columns: [
+            for (final column in table.columns)
+              if (primaryKeyTypes[_columnKey(table, column.name)]
+                  case final primaryKeyType?)
+                _copyColumnWithExtensionType(column, primaryKeyType)
+              else if (foreignKeyTypes[_columnKey(table, column.name)]
+                  case final foreignKeyType?)
+                _copyColumnWithExtensionType(column, foreignKeyType)
+              else
+                column,
+          ],
+        ),
+    ],
+  );
+}
+
+IntrospectedColumn _copyColumnWithExtensionType(
+  IntrospectedColumn column,
+  _PrimaryKeyTypeSpec type,
+) {
+  return IntrospectedColumn(
+    name: column.name,
+    databaseType: column.databaseType,
+    dartType: type.typeName,
+    nullable: column.nullable,
+    hasDefault: column.hasDefault,
+    defaultExpression: column.defaultExpression,
+    primaryKey: column.primaryKey,
+    enumName: column.enumName,
+    enumSchema: column.enumSchema,
+    enumValues: column.enumValues,
+    constrainedValues: column.constrainedValues,
+    extensionBaseDartType: type.baseDartType,
+  );
+}
+
+_ColumnKey _columnKey(IntrospectedTable table, String column) {
+  return (schema: _schemaName(table.schema), table: table.name, column: column);
+}
+
+String _primaryKeyTypeName(IntrospectedTable table, DartSchemaNaming naming) {
+  final rowType = _rowClassName(table, naming);
+  final rowSuffix = RegExp(r'Row$').firstMatch(rowType);
+  final stem = rowSuffix == null
+      ? rowType
+      : rowType.substring(0, rowSuffix.start);
+  return '${_singularizeTypeStem(stem)}Id';
+}
+
+String _singularizeTypeStem(String value) {
+  if (value.endsWith('ies') && value.length > 3) {
+    return '${value.substring(0, value.length - 3)}y';
+  }
+  if (value.endsWith('s') && !value.endsWith('ss') && value.length > 1) {
+    return value.substring(0, value.length - 1);
+  }
+  return value;
+}
+
+typedef _ColumnKey = ({String schema, String table, String column});
+
+final class _PrimaryKeyTypeSpec {
+  const _PrimaryKeyTypeSpec({
+    required this.typeName,
+    required this.baseDartType,
+  });
+
+  final String typeName;
+  final String baseDartType;
 }
 
 String _nullableType(String typeName, bool isNullable) {

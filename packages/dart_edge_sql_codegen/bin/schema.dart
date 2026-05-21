@@ -43,6 +43,7 @@ Future<void> main(List<String> args) async {
     database,
     databaseClassName: options.value('class') ?? 'GeneratedDatabaseSchema',
     naming: _namingFromStyle(options.value('model-name-style')),
+    primaryKeyExtensionTypes: !options.flag('no-primary-key-extension-types'),
   );
   final outputDirectory = options.value('out') ?? 'lib/generated';
   emission.writeToDirectory(outputDirectory);
@@ -75,16 +76,24 @@ DartSchemaNaming _namingFromStyle(String? style) {
 }
 
 final class _Options {
-  const _Options({required this.values, required this.help, this.error});
+  const _Options({
+    required this.values,
+    required this.flags,
+    required this.help,
+    this.error,
+  });
 
   final Map<String, String> values;
+  final Set<String> flags;
   final bool help;
   final String? error;
 
   String? value(String name) => values[name];
+  bool flag(String name) => flags.contains(name);
 
   static _Options parse(List<String> args) {
     final values = <String, String>{};
+    final flags = <String>{};
     var help = false;
 
     for (var index = 0; index < args.length; index += 1) {
@@ -96,12 +105,18 @@ final class _Options {
       if (!arg.startsWith('--')) {
         return _Options(
           values: values,
+          flags: flags,
           help: help,
           error: 'Unexpected positional argument: $arg',
         );
       }
 
       final equalsIndex = arg.indexOf('=');
+      final flagName = arg.substring(2);
+      if (equalsIndex == -1 && _flagOptions.contains(flagName)) {
+        flags.add(flagName);
+        continue;
+      }
       final (name, value) = equalsIndex == -1
           ? (arg.substring(2), _takeValue(args, index))
           : (arg.substring(2, equalsIndex), arg.substring(equalsIndex + 1));
@@ -111,6 +126,7 @@ final class _Options {
       if (value == null || value.isEmpty) {
         return _Options(
           values: values,
+          flags: flags,
           help: help,
           error: 'Missing value for --$name.',
         );
@@ -119,7 +135,7 @@ final class _Options {
     }
 
     if (help) {
-      return _Options(values: values, help: true);
+      return _Options(values: values, flags: flags, help: true);
     }
 
     final hasSqlite = values.containsKey('sqlite');
@@ -127,14 +143,17 @@ final class _Options {
     if (hasSqlite == hasPostgres) {
       return _Options(
         values: values,
+        flags: flags,
         help: false,
         error: 'Pass exactly one of --sqlite or --postgres.',
       );
     }
 
-    return _Options(values: values, help: false);
+    return _Options(values: values, flags: flags, help: false);
   }
 }
+
+const _flagOptions = {'no-primary-key-extension-types'};
 
 String? _takeValue(List<String> args, int index) {
   final valueIndex = index + 1;
@@ -163,6 +182,8 @@ Options:
   --schemas <csv>   Comma-separated PostgreSQL schemas.
   --include <csv>   Comma-separated table allow-list.
   --exclude <csv>   Comma-separated table block-list.
+  --no-primary-key-extension-types
+                   Keep primary and foreign key fields on primitive Dart types.
 
 Examples:
   dart run dart_edge_sql_codegen:schema --sqlite sqlite.db --out lib/generated --class AppSchema

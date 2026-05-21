@@ -131,4 +131,48 @@ void main() {
       },
     );
   });
+
+  test(
+    'honors primary key extension type opt-out from builder options',
+    () async {
+      final builder = dartEdgeSqlBuilder(
+        BuilderOptions(const <String, Object?>{
+          'primary_key_extension_types': false,
+        }),
+      );
+      const database = IntrospectedDatabase(
+        dialect: SqlCodegenDialect.sqlite,
+        tables: [
+          IntrospectedTable(
+            name: 'notes',
+            columns: [
+              IntrospectedColumn(
+                name: 'id',
+                databaseType: 'INTEGER',
+                dartType: 'int',
+                primaryKey: true,
+              ),
+            ],
+          ),
+        ],
+      );
+
+      await testBuilder(
+        builder,
+        <String, String>{
+          'test_app|lib/app_schema.schema.json': jsonEncode(database.toJson()),
+        },
+        generateFor: const {'test_app|lib/app_schema.schema.json'},
+        outputs: {
+          'test_app|lib/app_schema.g.dart': decodedMatches(
+            allOf([
+              isNot(contains('extension type const NoteId')),
+              contains('final int id;'),
+              contains('static final id = SqlColumn<int>('),
+            ]),
+          ),
+        },
+      );
+    },
+  );
 }

@@ -73,6 +73,13 @@ String _emitTableLibrary(
     for (final import in _tableEnumImports(table, group, schemaGroups)) {
       builder.directives.add(Directive.import(import.path));
     }
+    for (final import in _tablePrimaryKeyTypeImports(
+      table,
+      group,
+      schemaGroups,
+    )) {
+      builder.directives.add(Directive.import(import.path));
+    }
     builder.body.addAll(_tableSpecs(table, naming));
   });
   return _format(library);

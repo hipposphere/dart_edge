@@ -65,8 +65,15 @@ DartSchemaEmission emitDartSchema(
   IntrospectedDatabase database, {
   String databaseClassName = 'GeneratedDatabaseSchema',
   DartSchemaNaming? naming,
+  bool primaryKeyExtensionTypes = true,
 }) {
   final effectiveNaming = naming ?? DartSchemaNaming.defaults;
+  if (primaryKeyExtensionTypes) {
+    database = _withGeneratedPrimaryKeyExtensionTypes(
+      database,
+      effectiveNaming,
+    );
+  }
   database = _withGeneratedConstrainedTextTypes(database, effectiveNaming);
   final schemaGroups = _groupBySchema(database);
   final entrypointFileName = '${_fileStem(databaseClassName)}.g.dart';
@@ -143,8 +150,15 @@ String emitDartSchemaLibrary(
   IntrospectedDatabase database, {
   String databaseClassName = 'GeneratedDatabaseSchema',
   DartSchemaNaming? naming,
+  bool primaryKeyExtensionTypes = true,
 }) {
   final effectiveNaming = naming ?? DartSchemaNaming.defaults;
+  if (primaryKeyExtensionTypes) {
+    database = _withGeneratedPrimaryKeyExtensionTypes(
+      database,
+      effectiveNaming,
+    );
+  }
   database = _withGeneratedConstrainedTextTypes(database, effectiveNaming);
   final schemaGroups = _groupBySchema(database);
   final library = Library((builder) {

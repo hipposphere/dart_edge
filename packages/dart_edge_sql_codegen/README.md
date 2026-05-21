@@ -104,6 +104,7 @@ targets:
         options:
           database_class_name: AppSchema
           model_name_style: schema_prefixed
+          primary_key_extension_types: true
 ```
 
 `schema_prefixed` generates table model classes such as `PublicGroupRow`,
@@ -112,6 +113,13 @@ default style. Use `model_name_style: unprefixed` to keep the historical
 `GroupRow` naming. Programmatic generation can use a custom
 `DartSchemaNaming(modelNameBuilder: ...)` when a project needs a different
 convention.
+
+Primary key extension types are enabled by default. A single-column primary key
+such as `notes.id` generates a value object like `NoteId`, and single-column
+foreign keys that reference it use the referenced table's ID type. Set
+`primary_key_extension_types: false`, pass
+`primaryKeyExtensionTypes: false`, or use
+`--no-primary-key-extension-types` when a project needs primitive key fields.
 
 Snapshot JSON uses the same shape as `IntrospectedDatabase.toJson()`:
 

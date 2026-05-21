@@ -49,7 +49,7 @@ _CopyWithFieldSpec _copyWithField(
     );
   }
 
-  final normalizedType = _normalizedValueType(column);
+  final normalizedType = _valueType(column);
   final isNullable = column.nullable || normalizedType == 'Object?';
   if (isNullable) {
     return _CopyWithFieldSpec(
@@ -209,7 +209,8 @@ Constructor _decodeFactory(String typeName) {
 
 Expression _rowReadExpression(IntrospectedColumn column) {
   final fieldKey = '\${prefix}${column.name}';
-  final type = _normalizedValueType(column);
+  final type = _valueType(column);
+  final databaseType = _databaseValueType(column);
   if (_hasStringBackedValueType(column)) {
     final source = column.nullable
         ? refer('row')
@@ -219,6 +220,22 @@ Expression _rowReadExpression(IntrospectedColumn column) {
               .property('read')
               .call([literalString(fieldKey)], const {}, [refer('String')]);
     final parsed = refer(type).property('fromDatabase').call([source]);
+    if (!column.nullable) {
+      return parsed;
+    }
+    return CodeExpression(
+      Code('${_code(source)} == null ? null : ${_code(parsed)}'),
+    );
+  }
+  if (_hasExtensionBackedValueType(column)) {
+    final source = column.nullable
+        ? refer('row')
+              .property('readNullable')
+              .call([literalString(fieldKey)], const {}, [refer(databaseType)])
+        : refer('row')
+              .property('read')
+              .call([literalString(fieldKey)], const {}, [refer(databaseType)]);
+    final parsed = refer(type).call([source]);
     if (!column.nullable) {
       return parsed;
     }
@@ -258,10 +275,7 @@ Expression _sqlValueFromJsonExpression(
   required bool optional,
 }) {
   final key = column.name;
-  final valueType = _nullableType(
-    _normalizedValueType(column),
-    column.nullable,
-  );
+  final valueType = _nullableType(_valueType(column), column.nullable);
   final parsed = _fromJsonExpression(
     column,
     source: _jsonLookup(key),
@@ -284,7 +298,8 @@ Expression _fromJsonExpression(
   required Expression source,
   required bool nullable,
 }) {
-  final type = _normalizedValueType(column);
+  final type = _valueType(column);
+  final databaseType = _databaseValueType(column);
 
   Expression wrapNullable(Expression expression) {
     if (!nullable) {
@@ -302,7 +317,29 @@ Expression _fromJsonExpression(
     return wrapNullable(parsed);
   }
 
-  return switch (type) {
+  if (_hasExtensionBackedValueType(column)) {
+    final parsed = switch (databaseType) {
+      'int' => source.asA(refer('num')).property('toInt').call(const []),
+      'double' => source.asA(refer('num')).property('toDouble').call(const []),
+      'num' => source.asA(refer('num')),
+      'bool' => source.asA(refer('bool')),
+      'String' => source.asA(refer('String')),
+      'DateTime' => refer(
+        'DateTime',
+      ).property('parse').call([source.asA(refer('String'))]),
+      'List<int>' => _type('List', [
+        refer('int'),
+      ]).newInstanceNamed('from', [source.asA(refer('List'))]),
+      'List<Object?>' => _type('List', [
+        refer('Object?'),
+      ]).newInstanceNamed('from', [source.asA(refer('List'))]),
+      'Object?' => source,
+      _ => source.asA(refer(databaseType)),
+    };
+    return wrapNullable(refer(type).call([parsed]));
+  }
+
+  return switch (databaseType) {
     'int' => wrapNullable(
       source.asA(refer('num')).property('toInt').call(const []),
     ),
@@ -326,7 +363,7 @@ Expression _fromJsonExpression(
       ]).newInstanceNamed('from', [source.asA(refer('List'))]),
     ),
     'Object?' => source,
-    _ => wrapNullable(source.asA(refer(type))),
+    _ => wrapNullable(source.asA(refer(databaseType))),
   };
 }
 
@@ -335,7 +372,7 @@ Expression _toJsonExpression(
   required Expression source,
   bool sourceNullable = false,
 }) {
-  final type = _normalizedValueType(column);
+  final databaseType = _databaseValueType(column);
   final valueNullable = column.nullable || sourceNullable;
 
   Expression wrapNullable(Expression expression) {
@@ -353,7 +390,25 @@ Expression _toJsonExpression(
         : source.property('value');
   }
 
-  return switch (type) {
+  if (_hasExtensionBackedValueType(column)) {
+    final value = source.property('value');
+    return switch (databaseType) {
+      'DateTime' =>
+        valueNullable
+            ? CodeExpression(Code('${_code(source)}?.value.toIso8601String()'))
+            : value.property('toIso8601String').call(const []),
+      'List<int>' => wrapNullable(
+        _type('List', [refer('int')]).newInstanceNamed('from', [value]),
+      ),
+      'List<Object?>' => wrapNullable(
+        _type('List', [refer('Object?')]).newInstanceNamed('from', [value]),
+      ),
+      _ =>
+        valueNullable ? CodeExpression(Code('${_code(source)}?.value')) : value,
+    };
+  }
+
+  return switch (databaseType) {
     'DateTime' =>
       valueNullable
           ? CodeExpression(Code('${_code(source)}?.toIso8601String()'))
@@ -369,7 +424,7 @@ Expression _toJsonExpression(
 }
 
 Expression _jsonSchemaForColumn(IntrospectedColumn column) {
-  final type = _normalizedValueType(column);
+  final type = _databaseValueType(column);
 
   if (_hasStringBackedValueType(column)) {
     return _jsonSchemaFactory(
@@ -493,7 +548,12 @@ Expression _toDatabaseExpression(
   bool sourceNullable = false,
 }) {
   if (!_hasStringBackedValueType(column)) {
-    return source;
+    if (!_hasExtensionBackedValueType(column)) {
+      return source;
+    }
+    return column.nullable || sourceNullable
+        ? CodeExpression(Code('${_code(source)}?.value'))
+        : source.property('value');
   }
   return column.nullable || sourceNullable
       ? CodeExpression(Code('${_code(source)}?.value'))

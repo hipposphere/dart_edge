@@ -12,6 +12,7 @@ final class SqlCodegenConfig {
     this.includeTables = const <String>{},
     this.excludeTables = const <String>{},
     this.databaseClassName = 'GeneratedDatabaseSchema',
+    this.primaryKeyExtensionTypes = true,
   });
 
   /// Source database dialect.
@@ -37,4 +38,8 @@ final class SqlCodegenConfig {
 
   /// Root database class emitted into the generated entrypoint file.
   final String databaseClassName;
+
+  /// Whether generated models use extension types for single-column primary
+  /// keys and matching single-column foreign keys.
+  final bool primaryKeyExtensionTypes;
 }

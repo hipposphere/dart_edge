@@ -219,6 +219,7 @@ final class IntrospectedColumn {
     this.enumSchema,
     this.enumValues = const <String>[],
     this.constrainedValues = const <String>[],
+    this.extensionBaseDartType,
   });
 
   factory IntrospectedColumn.fromJson(Map<String, Object?> json) {
@@ -241,6 +242,7 @@ final class IntrospectedColumn {
             in json['constrainedValues'] as List<Object?>? ?? const [])
           value! as String,
       ],
+      extensionBaseDartType: json['extensionBaseDartType'] as String?,
     );
   }
 
@@ -277,6 +279,10 @@ final class IntrospectedColumn {
   /// Allowed text values from a simple single-column check constraint.
   final List<String> constrainedValues;
 
+  /// Primitive Dart type wrapped by a generated extension type, when this
+  /// column was codegen-normalized to a value object.
+  final String? extensionBaseDartType;
+
   Map<String, Object?> toJson() {
     return <String, Object?>{
       'name': name,
@@ -290,6 +296,7 @@ final class IntrospectedColumn {
       'enumSchema': ?enumSchema,
       if (enumValues.isNotEmpty) 'enumValues': enumValues,
       if (constrainedValues.isNotEmpty) 'constrainedValues': constrainedValues,
+      'extensionBaseDartType': ?extensionBaseDartType,
     };
   }
 }
