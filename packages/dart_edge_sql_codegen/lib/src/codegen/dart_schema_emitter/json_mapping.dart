@@ -239,8 +239,11 @@ Expression _rowReadExpression(IntrospectedColumn column) {
     if (!column.nullable) {
       return parsed;
     }
+    final nullableParsed = refer(
+      type,
+    ).call([CodeExpression(Code('${_code(source)}!'))]);
     return CodeExpression(
-      Code('${_code(source)} == null ? null : ${_code(parsed)}'),
+      Code('${_code(source)} == null ? null : ${_code(nullableParsed)}'),
     );
   }
   if (type == 'Object?') {

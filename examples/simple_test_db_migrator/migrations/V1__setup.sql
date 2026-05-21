@@ -20,4 +20,8 @@ CREATE TABLE public.notes (
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP::TEXT
 );
 
+ALTER TABLE public.notes
+  ADD CONSTRAINT notes_owner_id_fkey
+  FOREIGN KEY (owner_id) REFERENCES public.people(id);
+
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO CURRENT_USER;

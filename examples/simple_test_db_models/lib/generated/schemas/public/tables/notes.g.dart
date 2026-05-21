@@ -1,4 +1,7 @@
 import 'package:dart_edge_core/dart_edge_core.dart';
+import 'people.g.dart';
+
+extension type const PublicNoteId(int value) {}
 
 final class PublicNotesRow implements JsonEncodable {
   const PublicNotesRow({
@@ -11,10 +14,10 @@ final class PublicNotesRow implements JsonEncodable {
 
   factory PublicNotesRow.fromSqlRow(SqlRow row, {String prefix = ''}) =>
       PublicNotesRow(
-        id: row.read<int>('${prefix}id'),
+        id: PublicNoteId(row.read<int>('${prefix}id')),
         title: row.read<String>('${prefix}title'),
         body: row.read<String>('${prefix}body'),
-        ownerId: row.read<int>('${prefix}owner_id'),
+        ownerId: PublicPeopleId(row.read<int>('${prefix}owner_id')),
         createdAt: row.read<String>('${prefix}created_at'),
       );
 
@@ -27,10 +30,10 @@ final class PublicNotesRow implements JsonEncodable {
       PublicNotesRow.fromJson(readJsonObject(value));
 
   factory PublicNotesRow.fromJson(Map<String, Object?> json) => PublicNotesRow(
-    id: (json['id'] as num).toInt(),
+    id: PublicNoteId((json['id'] as num).toInt()),
     title: (json['title'] as String),
     body: (json['body'] as String),
-    ownerId: (json['owner_id'] as num).toInt(),
+    ownerId: PublicPeopleId((json['owner_id'] as num).toInt()),
     createdAt: (json['created_at'] as String),
   );
 
@@ -51,21 +54,21 @@ final class PublicNotesRow implements JsonEncodable {
     additionalProperties: false,
   );
 
-  final int id;
+  final PublicNoteId id;
 
   final String title;
 
   final String body;
 
-  final int ownerId;
+  final PublicPeopleId ownerId;
 
   final String createdAt;
 
   PublicNotesRow copyWith({
-    int? id,
+    PublicNoteId? id,
     String? title,
     String? body,
-    int? ownerId,
+    PublicPeopleId? ownerId,
     String? createdAt,
   }) {
     return PublicNotesRow(
@@ -78,19 +81,19 @@ final class PublicNotesRow implements JsonEncodable {
   }
 
   Map<String, Object?> toColumns() => <String, Object?>{
-    'id': id,
+    'id': id.value,
     'title': title,
     'body': body,
-    'owner_id': ownerId,
+    'owner_id': ownerId.value,
     'created_at': createdAt,
   };
 
   @override
   Map<String, Object?> toJson() => <String, Object?>{
-    'id': id,
+    'id': id.value,
     'title': title,
     'body': body,
-    'owner_id': ownerId,
+    'owner_id': ownerId.value,
     'created_at': createdAt,
   };
 
@@ -114,11 +117,11 @@ final class PublicNotesInsert implements JsonEncodable {
   factory PublicNotesInsert.fromJson(Map<String, Object?> json) =>
       PublicNotesInsert(
         id: json.containsKey('id')
-            ? SqlValue<int>((json['id'] as num).toInt())
+            ? SqlValue<PublicNoteId>(PublicNoteId((json['id'] as num).toInt()))
             : const SqlValue.absent(),
         title: (json['title'] as String),
         body: (json['body'] as String),
-        ownerId: (json['owner_id'] as num).toInt(),
+        ownerId: PublicPeopleId((json['owner_id'] as num).toInt()),
         createdAt: json.containsKey('created_at')
             ? SqlValue<String>((json['created_at'] as String))
             : const SqlValue.absent(),
@@ -141,21 +144,21 @@ final class PublicNotesInsert implements JsonEncodable {
     additionalProperties: false,
   );
 
-  final SqlValue<int> id;
+  final SqlValue<PublicNoteId> id;
 
   final String title;
 
   final String body;
 
-  final int ownerId;
+  final PublicPeopleId ownerId;
 
   final SqlValue<String> createdAt;
 
   PublicNotesInsert copyWith({
-    SqlValue<int>? id,
+    SqlValue<PublicNoteId>? id,
     String? title,
     String? body,
-    int? ownerId,
+    PublicPeopleId? ownerId,
     SqlValue<String>? createdAt,
   }) {
     return PublicNotesInsert(
@@ -168,19 +171,19 @@ final class PublicNotesInsert implements JsonEncodable {
   }
 
   Map<String, Object?> toColumns() => <String, Object?>{
-    if (id.isPresent) 'id': id.value,
+    if (id.isPresent) 'id': id.value?.value,
     'title': title,
     'body': body,
-    'owner_id': ownerId,
+    'owner_id': ownerId.value,
     if (createdAt.isPresent) 'created_at': createdAt.value,
   };
 
   @override
   Map<String, Object?> toJson() => <String, Object?>{
-    if (id.isPresent) 'id': id.value,
+    if (id.isPresent) 'id': id.value?.value,
     'title': title,
     'body': body,
-    'owner_id': ownerId,
+    'owner_id': ownerId.value,
     if (createdAt.isPresent) 'created_at': createdAt.value,
   };
 
@@ -204,7 +207,7 @@ final class PublicNotesUpdate implements JsonEncodable {
   factory PublicNotesUpdate.fromJson(Map<String, Object?> json) =>
       PublicNotesUpdate(
         id: json.containsKey('id')
-            ? SqlValue<int>((json['id'] as num).toInt())
+            ? SqlValue<PublicNoteId>(PublicNoteId((json['id'] as num).toInt()))
             : const SqlValue.absent(),
         title: json.containsKey('title')
             ? SqlValue<String>((json['title'] as String))
@@ -213,7 +216,9 @@ final class PublicNotesUpdate implements JsonEncodable {
             ? SqlValue<String>((json['body'] as String))
             : const SqlValue.absent(),
         ownerId: json.containsKey('owner_id')
-            ? SqlValue<int>((json['owner_id'] as num).toInt())
+            ? SqlValue<PublicPeopleId>(
+                PublicPeopleId((json['owner_id'] as num).toInt()),
+              )
             : const SqlValue.absent(),
         createdAt: json.containsKey('created_at')
             ? SqlValue<String>((json['created_at'] as String))
@@ -237,21 +242,21 @@ final class PublicNotesUpdate implements JsonEncodable {
     additionalProperties: false,
   );
 
-  final SqlValue<int> id;
+  final SqlValue<PublicNoteId> id;
 
   final SqlValue<String> title;
 
   final SqlValue<String> body;
 
-  final SqlValue<int> ownerId;
+  final SqlValue<PublicPeopleId> ownerId;
 
   final SqlValue<String> createdAt;
 
   PublicNotesUpdate copyWith({
-    SqlValue<int>? id,
+    SqlValue<PublicNoteId>? id,
     SqlValue<String>? title,
     SqlValue<String>? body,
-    SqlValue<int>? ownerId,
+    SqlValue<PublicPeopleId>? ownerId,
     SqlValue<String>? createdAt,
   }) {
     return PublicNotesUpdate(
@@ -264,19 +269,19 @@ final class PublicNotesUpdate implements JsonEncodable {
   }
 
   Map<String, Object?> toColumns() => <String, Object?>{
-    if (id.isPresent) 'id': id.value,
+    if (id.isPresent) 'id': id.value?.value,
     if (title.isPresent) 'title': title.value,
     if (body.isPresent) 'body': body.value,
-    if (ownerId.isPresent) 'owner_id': ownerId.value,
+    if (ownerId.isPresent) 'owner_id': ownerId.value?.value,
     if (createdAt.isPresent) 'created_at': createdAt.value,
   };
 
   @override
   Map<String, Object?> toJson() => <String, Object?>{
-    if (id.isPresent) 'id': id.value,
+    if (id.isPresent) 'id': id.value?.value,
     if (title.isPresent) 'title': title.value,
     if (body.isPresent) 'body': body.value,
-    if (ownerId.isPresent) 'owner_id': ownerId.value,
+    if (ownerId.isPresent) 'owner_id': ownerId.value?.value,
     if (createdAt.isPresent) 'created_at': createdAt.value,
   };
 
@@ -291,7 +296,7 @@ final class PublicNotesTable
 
   static const table = PublicNotesTable._();
 
-  static final id = SqlColumn<int>(
+  static final id = SqlColumn<PublicNoteId>(
     table: table,
     name: 'id',
     nullable: false,
@@ -312,7 +317,7 @@ final class PublicNotesTable
     databaseType: 'text',
   );
 
-  static final ownerId = SqlColumn<int>(
+  static final ownerId = SqlColumn<PublicPeopleId>(
     table: table,
     name: 'owner_id',
     nullable: false,

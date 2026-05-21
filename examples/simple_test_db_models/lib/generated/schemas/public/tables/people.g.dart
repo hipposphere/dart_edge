@@ -1,5 +1,7 @@
 import 'package:dart_edge_core/dart_edge_core.dart';
 
+extension type const PublicPeopleId(int value) {}
+
 extension type const PublicPeopleRole._(String value) {
   static const admin = PublicPeopleRole._('admin');
   static const member = PublicPeopleRole._('member');
@@ -30,7 +32,7 @@ final class PublicPeopleRow implements JsonEncodable {
 
   factory PublicPeopleRow.fromSqlRow(SqlRow row, {String prefix = ''}) =>
       PublicPeopleRow(
-        id: row.read<int>('${prefix}id'),
+        id: PublicPeopleId(row.read<int>('${prefix}id')),
         name: row.read<String>('${prefix}name'),
         email: row.read<String>('${prefix}email'),
         role: PublicPeopleRole.fromDatabase(row.read<String>('${prefix}role')),
@@ -46,7 +48,7 @@ final class PublicPeopleRow implements JsonEncodable {
 
   factory PublicPeopleRow.fromJson(Map<String, Object?> json) =>
       PublicPeopleRow(
-        id: (json['id'] as num).toInt(),
+        id: PublicPeopleId((json['id'] as num).toInt()),
         name: (json['name'] as String),
         email: (json['email'] as String),
         role: PublicPeopleRole.fromDatabase((json['role'] as String)),
@@ -68,7 +70,7 @@ final class PublicPeopleRow implements JsonEncodable {
     additionalProperties: false,
   );
 
-  final int id;
+  final PublicPeopleId id;
 
   final String name;
 
@@ -77,7 +79,7 @@ final class PublicPeopleRow implements JsonEncodable {
   final PublicPeopleRole role;
 
   PublicPeopleRow copyWith({
-    int? id,
+    PublicPeopleId? id,
     String? name,
     String? email,
     PublicPeopleRole? role,
@@ -91,7 +93,7 @@ final class PublicPeopleRow implements JsonEncodable {
   }
 
   Map<String, Object?> toColumns() => <String, Object?>{
-    'id': id,
+    'id': id.value,
     'name': name,
     'email': email,
     'role': role.value,
@@ -99,7 +101,7 @@ final class PublicPeopleRow implements JsonEncodable {
 
   @override
   Map<String, Object?> toJson() => <String, Object?>{
-    'id': id,
+    'id': id.value,
     'name': name,
     'email': email,
     'role': role.value,
@@ -124,7 +126,9 @@ final class PublicPeopleInsert implements JsonEncodable {
   factory PublicPeopleInsert.fromJson(Map<String, Object?> json) =>
       PublicPeopleInsert(
         id: json.containsKey('id')
-            ? SqlValue<int>((json['id'] as num).toInt())
+            ? SqlValue<PublicPeopleId>(
+                PublicPeopleId((json['id'] as num).toInt()),
+              )
             : const SqlValue.absent(),
         name: (json['name'] as String),
         email: (json['email'] as String),
@@ -151,7 +155,7 @@ final class PublicPeopleInsert implements JsonEncodable {
     additionalProperties: false,
   );
 
-  final SqlValue<int> id;
+  final SqlValue<PublicPeopleId> id;
 
   final String name;
 
@@ -160,7 +164,7 @@ final class PublicPeopleInsert implements JsonEncodable {
   final SqlValue<PublicPeopleRole> role;
 
   PublicPeopleInsert copyWith({
-    SqlValue<int>? id,
+    SqlValue<PublicPeopleId>? id,
     String? name,
     String? email,
     SqlValue<PublicPeopleRole>? role,
@@ -174,7 +178,7 @@ final class PublicPeopleInsert implements JsonEncodable {
   }
 
   Map<String, Object?> toColumns() => <String, Object?>{
-    if (id.isPresent) 'id': id.value,
+    if (id.isPresent) 'id': id.value?.value,
     'name': name,
     'email': email,
     if (role.isPresent) 'role': role.value?.value,
@@ -182,7 +186,7 @@ final class PublicPeopleInsert implements JsonEncodable {
 
   @override
   Map<String, Object?> toJson() => <String, Object?>{
-    if (id.isPresent) 'id': id.value,
+    if (id.isPresent) 'id': id.value?.value,
     'name': name,
     'email': email,
     if (role.isPresent) 'role': role.value?.value,
@@ -207,7 +211,9 @@ final class PublicPeopleUpdate implements JsonEncodable {
   factory PublicPeopleUpdate.fromJson(Map<String, Object?> json) =>
       PublicPeopleUpdate(
         id: json.containsKey('id')
-            ? SqlValue<int>((json['id'] as num).toInt())
+            ? SqlValue<PublicPeopleId>(
+                PublicPeopleId((json['id'] as num).toInt()),
+              )
             : const SqlValue.absent(),
         name: json.containsKey('name')
             ? SqlValue<String>((json['name'] as String))
@@ -238,7 +244,7 @@ final class PublicPeopleUpdate implements JsonEncodable {
     additionalProperties: false,
   );
 
-  final SqlValue<int> id;
+  final SqlValue<PublicPeopleId> id;
 
   final SqlValue<String> name;
 
@@ -247,7 +253,7 @@ final class PublicPeopleUpdate implements JsonEncodable {
   final SqlValue<PublicPeopleRole> role;
 
   PublicPeopleUpdate copyWith({
-    SqlValue<int>? id,
+    SqlValue<PublicPeopleId>? id,
     SqlValue<String>? name,
     SqlValue<String>? email,
     SqlValue<PublicPeopleRole>? role,
@@ -261,7 +267,7 @@ final class PublicPeopleUpdate implements JsonEncodable {
   }
 
   Map<String, Object?> toColumns() => <String, Object?>{
-    if (id.isPresent) 'id': id.value,
+    if (id.isPresent) 'id': id.value?.value,
     if (name.isPresent) 'name': name.value,
     if (email.isPresent) 'email': email.value,
     if (role.isPresent) 'role': role.value?.value,
@@ -269,7 +275,7 @@ final class PublicPeopleUpdate implements JsonEncodable {
 
   @override
   Map<String, Object?> toJson() => <String, Object?>{
-    if (id.isPresent) 'id': id.value,
+    if (id.isPresent) 'id': id.value?.value,
     if (name.isPresent) 'name': name.value,
     if (email.isPresent) 'email': email.value,
     if (role.isPresent) 'role': role.value?.value,
@@ -286,7 +292,7 @@ final class PublicPeopleTable
 
   static const table = PublicPeopleTable._();
 
-  static final id = SqlColumn<int>(
+  static final id = SqlColumn<PublicPeopleId>(
     table: table,
     name: 'id',
     nullable: false,

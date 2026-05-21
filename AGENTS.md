@@ -182,6 +182,9 @@ repository root and composed from `packages/*`, with shared Rust crates under
 - Add or update tests in the package you changed when behavior changes.
 - If codegen is introduced or modified, validate both the source annotations and
   the generated output shape.
+- For generator changes that affect checked-in examples, regenerate and analyze
+  the relevant example project, especially the `examples/simple_test_*`
+  workspace packages for SQL and HTTP codegen behavior.
 
 ## Benchmarks
 

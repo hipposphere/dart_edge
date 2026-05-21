@@ -649,6 +649,89 @@ void main() {
     expect(notesTable, contains('static final userId = SqlColumn<UserId>('));
   });
 
+  test('emits nullable extension types for nullable foreign keys', () {
+    const database = IntrospectedDatabase(
+      dialect: SqlCodegenDialect.postgres,
+      tables: [
+        IntrospectedTable(
+          name: 'users',
+          columns: [
+            IntrospectedColumn(
+              name: 'id',
+              databaseType: 'int4',
+              dartType: 'int',
+              primaryKey: true,
+            ),
+          ],
+        ),
+        IntrospectedTable(
+          name: 'notes',
+          columns: [
+            IntrospectedColumn(
+              name: 'id',
+              databaseType: 'int4',
+              dartType: 'int',
+              primaryKey: true,
+            ),
+            IntrospectedColumn(
+              name: 'archived_by_id',
+              databaseType: 'int4',
+              dartType: 'int',
+              nullable: true,
+            ),
+          ],
+          constraints: [
+            IntrospectedTableConstraint(
+              name: 'notes_archived_by_id_fkey',
+              kind: IntrospectedTableConstraintKind.foreignKey,
+              columns: ['archived_by_id'],
+              referencedTable: 'users',
+              referencedColumns: ['id'],
+            ),
+          ],
+        ),
+      ],
+    );
+
+    final emission = emitDartSchema(database, databaseClassName: 'AppSchema');
+    final notesTable = emission
+        .fileAt('schemas/default/tables/notes.g.dart')
+        .contents;
+
+    expect(notesTable, contains('final UserId? archivedById;'));
+    expect(
+      notesTable,
+      contains(
+        "archivedById: row.readNullable<int>('\${prefix}archived_by_id') == null",
+      ),
+    );
+    expect(
+      notesTable,
+      contains(": UserId(row.readNullable<int>('\${prefix}archived_by_id')!)"),
+    );
+    expect(
+      notesTable,
+      contains("archivedById: json['archived_by_id'] == null"),
+    );
+    expect(
+      notesTable,
+      contains(": UserId((json['archived_by_id'] as num).toInt())"),
+    );
+    expect(notesTable, contains('final UserId? archivedById;'));
+    expect(notesTable, contains('final SqlValue<UserId?> archivedById;'));
+    expect(notesTable, contains("'archived_by_id': archivedById?.value"));
+    expect(
+      notesTable,
+      contains(
+        "if (archivedById.isPresent) 'archived_by_id': archivedById.value?.value",
+      ),
+    );
+    expect(
+      notesTable,
+      contains('static final archivedById = SqlColumn<UserId>('),
+    );
+  });
+
   test('can opt out of primary key extension types', () {
     const database = IntrospectedDatabase(
       dialect: SqlCodegenDialect.sqlite,
