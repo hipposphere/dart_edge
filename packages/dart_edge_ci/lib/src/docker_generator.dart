@@ -1,11 +1,18 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:glob/glob.dart';
+import 'package:glob/list_local_fs.dart';
 import 'package:path/path.dart' as p;
+import 'package:yaml/yaml.dart';
 
 import 'docker_config.dart';
 
 export 'docker_config.dart';
+
+part 'docker_templates/app.dart';
+part 'docker_templates/migrator.dart';
+part 'docker_templates/server.dart';
 
 final class DockerGenerator {
   DockerGenerator({required Directory projectRoot})
@@ -62,7 +69,9 @@ final class DockerGenerator {
     if (image case final FlutterAppImageConfig app) {
       await entrypoint.writeAsString(_nginxEntrypoint(app));
     }
-    await dockerfile.writeAsString(_dockerfile(project, labels, image));
+    await dockerfile.writeAsString(
+      _dockerfile(projectRoot, project, labels, image),
+    );
     return GeneratedDockerImage(
       name: image.name,
       tag: image.name,
@@ -204,22 +213,26 @@ String shellCommand(List<String> command) {
 }
 
 String _dockerfile(
+  Directory projectRoot,
   DockerProjectConfig project,
   OciLabels labels,
   DockerImageConfig image,
 ) {
   return switch (image) {
     final DartServerImageConfig server => _dartServerDockerfile(
+      projectRoot,
       project,
       labels,
       server,
     ),
     final DbMigratorImageConfig migrator => _dbMigratorDockerfile(
+      projectRoot,
       project,
       labels,
       migrator,
     ),
     final FlutterAppImageConfig app => _flutterAppDockerfile(
+      projectRoot,
       project,
       labels,
       app,
@@ -227,156 +240,65 @@ String _dockerfile(
   };
 }
 
-String _dartServerDockerfile(
-  DockerProjectConfig project,
-  OciLabels labels,
-  DartServerImageConfig image,
-) {
-  final runtimePackages = _runtimePackages(
-    sqlite: true,
-    postgres: true,
-    pglite: false,
-  );
-  return [
-    '# syntax=docker/dockerfile:1',
-    '',
-    ...image.dockerfile.prelude,
-    if (image.presets.pjproject case final pjproject?)
-      _pjprojectStage(pjproject),
-    'FROM ghcr.io/cirruslabs/flutter:${project.flutterVersion} AS build',
-    '',
-    'USER root',
-    'WORKDIR /app',
-    if (image.presets.pjproject != null) ...[
-      'COPY --from=pjproject /usr/local/include/ /usr/local/include/',
-      'COPY --from=pjproject /usr/local/lib/ /usr/local/lib/',
-      'RUN ldconfig',
-    ],
-    ...image.dockerfile.buildBeforePubGet,
-    _workspacePubspecCopies(image.packagePath),
-    'RUN flutter pub get',
-    ...image.dockerfile.buildAfterPubGet,
-    if (!image.packagePath.startsWith('packages/'))
-      'COPY ${image.packagePath} ${image.packagePath}',
-    'COPY packages packages',
-    'WORKDIR /app/${image.packagePath}',
-    ...image.dockerfile.buildBeforeCompile,
-    'RUN dart build cli --target=${image.target} --output=/app/build-output',
-    '',
-    _debianRuntime(runtimePackages),
-    'WORKDIR /app',
-    'COPY --from=build /app/build-output/bundle/ /app/',
-    if (image.presets.pjproject != null) ...[
-      'COPY --from=pjproject /usr/local/lib/*.so* /usr/local/lib/',
-      "RUN ldconfig && ldconfig -p | grep -q 'libpjsua\\.so'",
-      'ENV LD_PRELOAD=/usr/local/lib/libpjsua.so',
-    ],
-    'USER nonroot',
-    if (image.expose != null) 'EXPOSE ${image.expose}',
-    ...image.dockerfile.runtimeBeforeLabels,
-    _ociArgsAndLabels(labels, image),
-    'ENTRYPOINT ${jsonEncode(['/app/bin/${image.executable}'])}',
-    '',
-  ].join('\n');
-}
-
-String _dbMigratorDockerfile(
-  DockerProjectConfig project,
-  OciLabels labels,
-  DbMigratorImageConfig image,
-) {
-  final runtimePackages = _runtimePackages(
-    sqlite: image.databases.sqlite || image.databases.pglite,
-    postgres: image.databases.postgres,
-    pglite: image.databases.pglite,
-  );
-  return [
-    '# syntax=docker/dockerfile:1',
-    '',
-    ...image.dockerfile.prelude,
-    'FROM ghcr.io/cirruslabs/flutter:${project.flutterVersion} AS build',
-    '',
-    'USER root',
-    'WORKDIR /app',
-    ...image.dockerfile.buildBeforePubGet,
-    _workspacePubspecCopies(image.packagePath),
-    'RUN flutter pub get',
-    ...image.dockerfile.buildAfterPubGet,
-    if (!image.packagePath.startsWith('packages/'))
-      'COPY ${image.packagePath} ${image.packagePath}',
-    'COPY packages packages',
-    'WORKDIR /app/${image.packagePath}',
-    ...image.dockerfile.buildBeforeCompile,
-    'RUN dart build cli --target=${image.target} --output=/app/build-output',
-    '',
-    _debianRuntime(runtimePackages),
-    'WORKDIR /app',
-    'COPY --from=build /app/build-output/bundle/ /app/',
-    'USER nonroot',
-    ...image.dockerfile.runtimeBeforeLabels,
-    _ociArgsAndLabels(labels, image),
-    'ENTRYPOINT ${jsonEncode(['/app/bin/${image.executable}'])}',
-    '',
-  ].join('\n');
-}
-
-String _flutterAppDockerfile(
-  DockerProjectConfig project,
-  OciLabels labels,
-  FlutterAppImageConfig image,
-) {
-  final flutterVersion = image.flutterVersion ?? project.flutterVersion;
-  final buildArgs = [
-    'flutter',
-    'build',
-    'web',
-    '--release',
-    if (image.web.wasm) '--wasm',
-    '--web-renderer=${image.web.renderer}',
-    if (image.web.baseHrefEnv != null)
-      '--base-href=\${${image.web.baseHrefEnv}}',
+String _workspacePubspecCopies(Directory projectRoot, String packagePath) {
+  final sources = [
+    'pubspec.yaml',
+    'pubspec.lock',
+    ..._workspacePackagePubspecs(projectRoot, packagePath),
   ];
-  return [
-    '# syntax=docker/dockerfile:1',
-    '',
-    ...image.dockerfile.prelude,
-    'FROM ghcr.io/cirruslabs/flutter:$flutterVersion AS build',
-    '',
-    'USER root',
-    'WORKDIR /app',
-    if (image.web.baseHrefEnv != null) 'ARG ${image.web.baseHrefEnv}=/',
-    ...image.dockerfile.buildBeforePubGet,
-    _workspacePubspecCopies(image.packagePath),
-    'RUN flutter pub get',
-    ...image.dockerfile.buildAfterPubGet,
-    if (!image.packagePath.startsWith('packages/'))
-      'COPY ${image.packagePath} ${image.packagePath}',
-    'COPY packages packages',
-    'WORKDIR /app/${image.packagePath}',
-    ...image.dockerfile.buildBeforeCompile,
-    'RUN ${buildArgs.map(_shell).join(' ')}',
-    '',
-    'FROM nginx:1.29-alpine',
-    '',
-    _ociArgsAndLabels(labels, image),
-    'COPY .dart_tool/dart_edge_ci/docker/${image.name}/nginx-env.sh '
-        '/docker-entrypoint.d/99-dart-edge-env.sh',
-    'RUN chmod +x /docker-entrypoint.d/99-dart-edge-env.sh',
-    'COPY --from=build /app/${image.packagePath}/build/web '
-        '/usr/share/nginx/html',
-    _flutterCacheBusting(),
-    'EXPOSE 80',
-    ...image.dockerfile.runtimeBeforeLabels,
-    '',
-  ].join('\n');
+  return 'COPY --parents ${sources.join(' ')} ./';
 }
 
-String _workspacePubspecCopies(String packagePath) {
-  final packagePubspec = '$packagePath/pubspec.yaml';
-  final packageCopy = packagePath.startsWith('packages/')
-      ? ''
-      : '$packagePubspec ';
-  return 'COPY --parents pubspec.yaml pubspec.lock ${packageCopy}packages/*/pubspec.yaml ./';
+List<String> _workspacePackagePubspecs(
+  Directory projectRoot,
+  String packagePath,
+) {
+  final packagePubspecs = <String>{'$packagePath/pubspec.yaml'};
+  final workspaceEntries = _workspaceEntries(projectRoot);
+
+  if (workspaceEntries.isEmpty) {
+    packagePubspecs.add('packages/*/pubspec.yaml');
+    return packagePubspecs.toList()..sort();
+  }
+
+  for (final entry in workspaceEntries) {
+    final glob = Glob(p.posix.join(entry, 'pubspec.yaml'));
+    for (final entity in glob.listSync(root: projectRoot.path)) {
+      if (entity is! File) {
+        continue;
+      }
+      packagePubspecs.add(
+        _dockerPath(p.relative(entity.path, from: projectRoot.path)),
+      );
+    }
+  }
+
+  return packagePubspecs.toList()..sort();
+}
+
+List<String> _workspaceEntries(Directory projectRoot) {
+  final pubspecFile = File(p.join(projectRoot.path, 'pubspec.yaml'));
+  if (!pubspecFile.existsSync()) {
+    return const [];
+  }
+
+  final document = loadYaml(pubspecFile.readAsStringSync());
+  if (document is! YamlMap) {
+    return const [];
+  }
+  final workspace = document['workspace'];
+  if (workspace is! YamlList) {
+    return const [];
+  }
+
+  return [
+    for (final entry in workspace)
+      if (entry is String) _dockerPath(entry),
+  ];
+}
+
+String _dockerPath(String path) {
+  return p.posix.normalize(path.replaceAll(r'\', '/'));
 }
 
 String _debianRuntime(List<String> packages) {

@@ -34,6 +34,13 @@ void main() {
       contains('org.opencontainers.image.title="Callo Server"'),
     );
     expect(serverDockerfile, contains('ARG VERSION=1.0.0'));
+    expect(
+      serverDockerfile,
+      contains(
+        'COPY --parents pubspec.yaml pubspec.lock app/pubspec.yaml '
+        'packages/db_migrator/pubspec.yaml server/pubspec.yaml ./',
+      ),
+    );
 
     final migratorDockerfile = await File(
       '${root.path}/.dart_tool/dart_edge_ci/docker/migrator/Dockerfile',
@@ -120,6 +127,10 @@ Future<Directory> _projectRoot() async {
   await File('${root.path}/pubspec.yaml').writeAsString('''
 name: workspace
 version: 0.0.0
+workspace:
+  - server
+  - app
+  - packages/*
 ''');
   await File('${root.path}/pubspec.lock').writeAsString('');
   for (final entry in {
