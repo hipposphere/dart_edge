@@ -122,12 +122,21 @@ jobs:
         run: '"artifacts/${{ matrix.target.asset }}" --help >/dev/null'
 
       - name: Checksum artifact
+        if: ${{ matrix.target.os != 'windows' }}
         shell: bash
         run: |
           (
             cd artifacts
             shasum -a 256 "${{ matrix.target.asset }}" > "${{ matrix.target.asset }}.sha256"
           )
+
+      - name: Checksum artifact on Windows
+        if: ${{ matrix.target.os == 'windows' }}
+        shell: pwsh
+        run: |
+          $asset = "${{ matrix.target.asset }}"
+          $hash = (Get-FileHash -Algorithm SHA256 "artifacts/$asset").Hash.ToLowerInvariant()
+          "$hash  $asset" | Out-File -FilePath "artifacts/$asset.sha256" -Encoding ascii -NoNewline
 
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
