@@ -957,7 +957,7 @@ void main() {
       externalKeys,
       contains('extension type const AuthUserId(String value) {}'),
     );
-    expect(notesTable, contains("import '../../external_keys.g.dart';"));
+    expect(notesTable, contains("import '../../../external_keys.g.dart';"));
     expect(notesTable, contains('final AuthUserId ownerId;'));
     expect(notesTable, contains("ownerId: AuthUserId(row.read<String>("));
     expect(notesTable, contains("'owner_id': ownerId.value"));

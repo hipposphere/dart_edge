@@ -96,7 +96,7 @@ String _emitTableLibrary(
       Directive.import('package:dart_edge_core/dart_edge_core.dart'),
     );
     if (_usesExternalPrimaryKeyType(table, externalPrimaryKeyTypeNames)) {
-      builder.directives.add(Directive.import('../../external_keys.g.dart'));
+      builder.directives.add(Directive.import('../../../external_keys.g.dart'));
     }
     for (final import in _tableEnumImports(table, group, schemaGroups)) {
       builder.directives.add(Directive.import(import.path));
