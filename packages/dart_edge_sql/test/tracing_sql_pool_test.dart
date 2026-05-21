@@ -121,4 +121,124 @@ void main() {
       expect(result.single['value'], 1);
     },
   );
+
+  test('preserves SQL errors when propagated trace sink throws', () async {
+    final pool = TracingSqlPool(
+      _FailingPool(),
+      onTrace: (_) => throw StateError('trace failed'),
+      propagateTraceErrors: true,
+    );
+
+    await expectLater(
+      pool.execute(sql('SELECT 1')),
+      throwsA(
+        isA<FormatException>().having(
+          (error) => error.message,
+          'message',
+          'sql failed',
+        ),
+      ),
+    );
+  });
+
+  test('does not validate statement parameters before prepare', () async {
+    final delegate = _PreparingPool();
+    final events = <SqlTraceEvent>[];
+    final pool = TracingSqlPool(delegate, onTrace: events.add);
+
+    final prepared = await pool.withSession((session) {
+      return session.prepare(
+        SqlStatement.named('SELECT :missing AS value', const {}),
+      );
+    });
+
+    expect(prepared.statement.sql, 'SELECT :missing AS value');
+    expect(events, hasLength(1));
+    expect(events.single.operation, SqlTraceOperation.prepare);
+    expect(events.single.statement.sql, 'SELECT :missing AS value');
+    expect(events.single.compiledStatement.sql, 'SELECT :missing AS value');
+  });
+}
+
+final class _FailingPool implements SqlPool {
+  @override
+  SqlDialect get dialect => SqlDialect.sqlite;
+
+  @override
+  Future<SqlResult> execute(SqlStatement statement) {
+    throw const FormatException('sql failed');
+  }
+
+  @override
+  Future<T> withSession<T>(Future<T> Function(SqlSession session) action) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<T> withTransaction<T>(
+    Future<T> Function(SqlTransaction transaction) action,
+  ) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<void> close() async {}
+}
+
+final class _PreparingPool implements SqlPool {
+  @override
+  SqlDialect get dialect => SqlDialect.sqlite;
+
+  @override
+  Future<SqlResult> execute(SqlStatement statement) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<T> withSession<T>(Future<T> Function(SqlSession session) action) {
+    return action(_PreparingSession());
+  }
+
+  @override
+  Future<T> withTransaction<T>(
+    Future<T> Function(SqlTransaction transaction) action,
+  ) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<void> close() async {}
+}
+
+final class _PreparingSession implements SqlSession {
+  @override
+  SqlDialect get dialect => SqlDialect.sqlite;
+
+  @override
+  Future<SqlResult> execute(SqlStatement statement) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<PreparedSqlStatement> prepare(SqlStatement statement) async {
+    return _PreparedStatement(statement);
+  }
+}
+
+final class _PreparedStatement implements PreparedSqlStatement {
+  const _PreparedStatement(this.statement);
+
+  @override
+  SqlDialect get dialect => SqlDialect.sqlite;
+
+  @override
+  final SqlStatement statement;
+
+  @override
+  Future<SqlResult> execute({Object? parameters}) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<void> close() async {}
 }

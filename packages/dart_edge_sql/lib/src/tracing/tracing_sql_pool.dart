@@ -204,7 +204,6 @@ final class _TracingSqlSession implements SqlSession {
 
   @override
   Future<PreparedSqlStatement> prepare(SqlStatement statement) async {
-    final compiledStatement = compileSqlStatement(dialect, statement);
     final stopwatch = Stopwatch()..start();
 
     PreparedSqlStatement? prepared;
@@ -218,23 +217,23 @@ final class _TracingSqlSession implements SqlSession {
     }
     stopwatch.stop();
 
-    await _emitTrace(
-      SqlTraceEvent(
-        source: source,
-        operation: SqlTraceOperation.prepare,
-        dialect: dialect,
-        statement: statement,
-        compiledStatement: compiledStatement,
-        duration: stopwatch.elapsed,
-        error: operationError,
-        stackTrace: operationStackTrace,
-      ),
+    final traceError = await _emitTraceForOperation(
+      dialect: dialect,
+      source: source,
+      operation: SqlTraceOperation.prepare,
+      statement: statement,
+      duration: stopwatch.elapsed,
+      error: operationError,
+      stackTrace: operationStackTrace,
       onTrace: onTrace,
       propagateTraceErrors: propagateTraceErrors,
     );
 
     if (operationError != null) {
       Error.throwWithStackTrace(operationError, operationStackTrace!);
+    }
+    if (traceError case (final error, final stackTrace)) {
+      Error.throwWithStackTrace(error, stackTrace);
     }
 
     return _TracingPreparedSqlStatement(
@@ -305,7 +304,6 @@ Future<SqlResult> _traceSqlResult({
   required SqlTraceSink onTrace,
   required bool propagateTraceErrors,
 }) async {
-  final compiledStatement = compileSqlStatement(dialect, statement);
   final stopwatch = Stopwatch()..start();
 
   SqlResult? result;
@@ -319,18 +317,15 @@ Future<SqlResult> _traceSqlResult({
   }
   stopwatch.stop();
 
-  await _emitTrace(
-    SqlTraceEvent(
-      source: source,
-      operation: operation,
-      dialect: dialect,
-      statement: statement,
-      compiledStatement: compiledStatement,
-      duration: stopwatch.elapsed,
-      result: result,
-      error: operationError,
-      stackTrace: operationStackTrace,
-    ),
+  final traceError = await _emitTraceForOperation(
+    dialect: dialect,
+    source: source,
+    operation: operation,
+    statement: statement,
+    duration: stopwatch.elapsed,
+    result: result,
+    error: operationError,
+    stackTrace: operationStackTrace,
     onTrace: onTrace,
     propagateTraceErrors: propagateTraceErrors,
   );
@@ -338,21 +333,70 @@ Future<SqlResult> _traceSqlResult({
   if (operationError != null) {
     Error.throwWithStackTrace(operationError, operationStackTrace!);
   }
+  if (traceError case (final error, final stackTrace)) {
+    Error.throwWithStackTrace(error, stackTrace);
+  }
 
   return result!;
 }
 
-Future<void> _emitTrace(
+Future<(Object, StackTrace)?> _emitTraceForOperation({
+  required SqlDialect dialect,
+  required SqlTraceSource source,
+  required SqlTraceOperation operation,
+  required SqlStatement statement,
+  required Duration duration,
+  SqlResult? result,
+  Object? error,
+  StackTrace? stackTrace,
+  required SqlTraceSink onTrace,
+  required bool propagateTraceErrors,
+}) async {
+  final compiledStatement = _compileTraceStatement(dialect, statement);
+  return _emitTrace(
+    SqlTraceEvent(
+      source: source,
+      operation: operation,
+      dialect: dialect,
+      statement: statement,
+      compiledStatement: compiledStatement,
+      duration: duration,
+      result: result,
+      error: error,
+      stackTrace: stackTrace,
+    ),
+    onTrace: onTrace,
+    propagateTraceErrors: propagateTraceErrors,
+  );
+}
+
+SqlStatement _compileTraceStatement(
+  SqlDialect dialect,
+  SqlStatement statement,
+) {
+  try {
+    return compileSqlStatement(dialect, statement);
+  } catch (_) {
+    return statement;
+  }
+}
+
+Future<(Object, StackTrace)?> _emitTrace(
   SqlTraceEvent event, {
   required SqlTraceSink onTrace,
   required bool propagateTraceErrors,
 }) async {
   if (propagateTraceErrors) {
-    await onTrace(event);
-    return;
+    try {
+      await onTrace(event);
+    } catch (error, stackTrace) {
+      return (error, stackTrace);
+    }
+    return null;
   }
 
   try {
     await onTrace(event);
   } catch (_) {}
+  return null;
 }
