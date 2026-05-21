@@ -649,6 +649,74 @@ void main() {
     expect(notesTable, contains('static final userId = SqlColumn<UserId>('));
   });
 
+  test('names primary key extension types after the primary key column', () {
+    const database = IntrospectedDatabase(
+      dialect: SqlCodegenDialect.postgres,
+      tables: [
+        IntrospectedTable(
+          schema: 'public',
+          name: 'notes',
+          columns: [
+            IntrospectedColumn(
+              name: 'id',
+              databaseType: 'int4',
+              dartType: 'int',
+              primaryKey: true,
+            ),
+          ],
+        ),
+        IntrospectedTable(
+          schema: 'auth',
+          name: 'user',
+          columns: [
+            IntrospectedColumn(
+              name: 'id',
+              databaseType: 'uuid',
+              dartType: 'String',
+              primaryKey: true,
+            ),
+          ],
+        ),
+        IntrospectedTable(
+          schema: 'auth',
+          name: 'api_key',
+          columns: [
+            IntrospectedColumn(
+              name: 'key',
+              databaseType: 'text',
+              dartType: 'String',
+              primaryKey: true,
+            ),
+          ],
+        ),
+      ],
+    );
+
+    final emission = emitDartSchema(database, databaseClassName: 'AppSchema');
+    final notesTable = emission
+        .fileAt('schemas/public/tables/notes.g.dart')
+        .contents;
+    final userTable = emission
+        .fileAt('schemas/auth/tables/user.g.dart')
+        .contents;
+    final apiKeyTable = emission
+        .fileAt('schemas/auth/tables/api_key.g.dart')
+        .contents;
+
+    expect(
+      notesTable,
+      contains('extension type const PublicNoteId(int value) {}'),
+    );
+    expect(
+      userTable,
+      contains('extension type const AuthUserId(String value) {}'),
+    );
+    expect(
+      apiKeyTable,
+      contains('extension type const AuthApiKeyKey(String value) {}'),
+    );
+  });
+
   test('reuses referenced primary key type for primary key foreign keys', () {
     const database = IntrospectedDatabase(
       dialect: SqlCodegenDialect.postgres,
@@ -834,6 +902,113 @@ void main() {
     expect(library, isNot(contains('extension type const NoteId')));
     expect(library, contains('final int id;'));
     expect(library, contains('static final id = SqlColumn<int>('));
+  });
+
+  test('emits configured external primary key types for excluded tables', () {
+    const database = IntrospectedDatabase(
+      dialect: SqlCodegenDialect.postgres,
+      tables: [
+        IntrospectedTable(
+          schema: 'public',
+          name: 'notes',
+          columns: [
+            IntrospectedColumn(
+              name: 'id',
+              databaseType: 'int4',
+              dartType: 'int',
+              primaryKey: true,
+            ),
+            IntrospectedColumn(
+              name: 'owner_id',
+              databaseType: 'uuid',
+              dartType: 'String',
+            ),
+          ],
+          constraints: [
+            IntrospectedTableConstraint(
+              name: 'notes_owner_id_fkey',
+              kind: IntrospectedTableConstraintKind.foreignKey,
+              columns: ['owner_id'],
+              referencedSchema: 'auth',
+              referencedTable: 'user',
+              referencedColumns: ['id'],
+            ),
+          ],
+        ),
+      ],
+    );
+
+    final emission = emitDartSchema(
+      database,
+      databaseClassName: 'AppSchema',
+      externalPrimaryKeys: const {
+        'auth.user.id': ExternalPrimaryKeySpec(
+          typeName: 'AuthUserId',
+          baseDartType: 'String',
+        ),
+      },
+    );
+    final externalKeys = emission.fileAt('external_keys.g.dart').contents;
+    final notesTable = emission
+        .fileAt('schemas/public/tables/notes.g.dart')
+        .contents;
+
+    expect(
+      externalKeys,
+      contains('extension type const AuthUserId(String value) {}'),
+    );
+    expect(notesTable, contains("import '../../external_keys.g.dart';"));
+    expect(notesTable, contains('final AuthUserId ownerId;'));
+    expect(notesTable, contains("ownerId: AuthUserId(row.read<String>("));
+    expect(notesTable, contains("'owner_id': ownerId.value"));
+    expect(
+      notesTable,
+      contains('static final ownerId = SqlColumn<AuthUserId>('),
+    );
+    expect(
+      emission.files.map((file) => file.relativePath),
+      isNot(contains('schemas/auth/tables/user.g.dart')),
+    );
+  });
+
+  test('emits configured external primary keys even when unused', () {
+    const database = IntrospectedDatabase(
+      dialect: SqlCodegenDialect.postgres,
+      tables: [
+        IntrospectedTable(
+          schema: 'public',
+          name: 'notes',
+          columns: [
+            IntrospectedColumn(
+              name: 'id',
+              databaseType: 'int4',
+              dartType: 'int',
+              primaryKey: true,
+            ),
+          ],
+        ),
+      ],
+    );
+
+    final emission = emitDartSchema(
+      database,
+      databaseClassName: 'AppSchema',
+      externalPrimaryKeys: const {
+        'auth.api_key.key': ExternalPrimaryKeySpec(
+          typeName: 'AuthApiKeyKey',
+          baseDartType: 'String',
+        ),
+      },
+    );
+
+    expect(
+      emission.fileAt('external_keys.g.dart').contents,
+      contains('extension type const AuthApiKeyKey(String value) {}'),
+    );
+    expect(
+      emission.fileAt('app_schema.g.dart').contents,
+      contains("export 'external_keys.g.dart';"),
+    );
   });
 
   test('imports enum types from another schema when needed', () {

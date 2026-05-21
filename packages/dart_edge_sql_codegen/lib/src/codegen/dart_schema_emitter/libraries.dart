@@ -3,6 +3,7 @@ part of '../dart_schema_emitter.dart';
 String _emitEntrypoint({
   required String databaseClassName,
   required List<_SchemaGroup> schemaGroups,
+  required bool hasExternalPrimaryKeys,
 }) {
   final library = Library((builder) {
     builder
@@ -11,6 +12,9 @@ String _emitEntrypoint({
       )
       ..body.add(_databaseClass(databaseClassName, schemaGroups));
 
+    if (hasExternalPrimaryKeys) {
+      builder.directives.add(Directive.export('external_keys.g.dart'));
+    }
     for (final group in schemaGroups) {
       builder.directives.add(
         Directive.import('schemas/${group.folderName}/schema.g.dart'),
@@ -19,6 +23,26 @@ String _emitEntrypoint({
         Directive.export('schemas/${group.folderName}/schema.g.dart'),
       );
     }
+  });
+  return _format(library);
+}
+
+String _emitExternalPrimaryKeysLibrary(
+  List<ExternalPrimaryKeySpec> externalPrimaryKeyTypes,
+) {
+  final library = Library((builder) {
+    builder.body.addAll(
+      externalPrimaryKeyTypes.map(
+        (type) => _extensionValueTypeSpec(
+          IntrospectedColumn(
+            name: type.typeName,
+            databaseType: type.baseDartType,
+            dartType: type.typeName,
+            extensionBaseDartType: type.baseDartType,
+          ),
+        ),
+      ),
+    );
   });
   return _format(library);
 }
@@ -64,12 +88,16 @@ String _emitTableLibrary(
   IntrospectedTable table,
   _SchemaGroup group,
   List<_SchemaGroup> schemaGroups,
-  DartSchemaNaming naming,
-) {
+  DartSchemaNaming naming, {
+  required Set<String> externalPrimaryKeyTypeNames,
+}) {
   final library = Library((builder) {
     builder.directives.add(
       Directive.import('package:dart_edge_core/dart_edge_core.dart'),
     );
+    if (_usesExternalPrimaryKeyType(table, externalPrimaryKeyTypeNames)) {
+      builder.directives.add(Directive.import('../../external_keys.g.dart'));
+    }
     for (final import in _tableEnumImports(table, group, schemaGroups)) {
       builder.directives.add(Directive.import(import.path));
     }

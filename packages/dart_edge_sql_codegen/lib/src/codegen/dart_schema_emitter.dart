@@ -4,6 +4,7 @@ import 'package:code_builder/code_builder.dart';
 import 'package:dart_style/dart_style.dart';
 
 import '../introspection/introspected_database.dart';
+import 'sql_codegen_config.dart';
 
 part 'dart_schema_emitter/emission.dart';
 part 'dart_schema_emitter/libraries.dart';

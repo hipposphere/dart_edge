@@ -175,4 +175,64 @@ void main() {
       );
     },
   );
+
+  test('honors external primary key mappings from builder options', () async {
+    final builder = dartEdgeSqlBuilder(
+      BuilderOptions(const <String, Object?>{
+        'external_primary_keys': {
+          'auth.user.id': {'type': 'AuthUserId', 'base_type': 'String'},
+        },
+      }),
+    );
+    const database = IntrospectedDatabase(
+      dialect: SqlCodegenDialect.postgres,
+      tables: [
+        IntrospectedTable(
+          schema: 'public',
+          name: 'notes',
+          columns: [
+            IntrospectedColumn(
+              name: 'id',
+              databaseType: 'int4',
+              dartType: 'int',
+              primaryKey: true,
+            ),
+            IntrospectedColumn(
+              name: 'owner_id',
+              databaseType: 'uuid',
+              dartType: 'String',
+            ),
+          ],
+          constraints: [
+            IntrospectedTableConstraint(
+              name: 'notes_owner_id_fkey',
+              kind: IntrospectedTableConstraintKind.foreignKey,
+              columns: ['owner_id'],
+              referencedSchema: 'auth',
+              referencedTable: 'user',
+              referencedColumns: ['id'],
+            ),
+          ],
+        ),
+      ],
+    );
+
+    await testBuilder(
+      builder,
+      <String, String>{
+        'test_app|lib/app_schema.schema.json': jsonEncode(database.toJson()),
+      },
+      generateFor: const {'test_app|lib/app_schema.schema.json'},
+      outputs: {
+        'test_app|lib/app_schema.g.dart': decodedMatches(
+          allOf([
+            contains('extension type const AuthUserId(String value) {}'),
+            contains('final AuthUserId ownerId;'),
+            contains("ownerId: AuthUserId(row.read<String>("),
+            contains('static final ownerId = SqlColumn<AuthUserId>('),
+          ]),
+        ),
+      },
+    );
+  });
 }

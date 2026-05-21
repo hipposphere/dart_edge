@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:build/build.dart';
 
 import '../codegen/dart_schema_emitter.dart';
+import '../codegen/sql_codegen_config.dart';
 import '../introspection/introspected_database.dart';
 
 /// Build runner integration for schema snapshots.
@@ -47,6 +48,7 @@ final class DartEdgeSqlBuilder implements Builder {
         databaseClassName: databaseClassName,
         naming: naming,
         primaryKeyExtensionTypes: _primaryKeyExtensionTypes(options.config),
+        externalPrimaryKeys: _externalPrimaryKeys(options.config),
       ),
     );
   }
@@ -54,6 +56,48 @@ final class DartEdgeSqlBuilder implements Builder {
 
 bool _primaryKeyExtensionTypes(Map<String, dynamic> config) {
   return config['primary_key_extension_types'] as bool? ?? true;
+}
+
+Map<String, ExternalPrimaryKeySpec> _externalPrimaryKeys(
+  Map<String, dynamic> config,
+) {
+  final value = config['external_primary_keys'];
+  if (value == null) {
+    return const <String, ExternalPrimaryKeySpec>{};
+  }
+  if (value is! Map) {
+    throw const FormatException(
+      'SQL codegen external_primary_keys must be a map.',
+    );
+  }
+  final externalPrimaryKeys = <String, ExternalPrimaryKeySpec>{};
+  for (final entry in value.entries) {
+    final key = entry.key;
+    final spec = entry.value;
+    if (key is! String || spec is! Map) {
+      throw const FormatException(
+        'SQL codegen external_primary_keys entries must map strings to '
+        'objects with type and base_type.',
+      );
+    }
+    externalPrimaryKeys[key] = _externalPrimaryKeySpec(key, spec);
+  }
+  return externalPrimaryKeys;
+}
+
+ExternalPrimaryKeySpec _externalPrimaryKeySpec(
+  String key,
+  Map<dynamic, dynamic> value,
+) {
+  final typeName = value['type'] ?? value['type_name'];
+  final baseDartType = value['base_type'] ?? value['base_dart_type'];
+  if (typeName is! String || baseDartType is! String) {
+    throw FormatException(
+      'SQL codegen external_primary_keys.$key must define string '
+      'type and base_type values.',
+    );
+  }
+  return ExternalPrimaryKeySpec(typeName: typeName, baseDartType: baseDartType);
 }
 
 DartSchemaNaming _namingFromOptions(Map<String, dynamic> config) {

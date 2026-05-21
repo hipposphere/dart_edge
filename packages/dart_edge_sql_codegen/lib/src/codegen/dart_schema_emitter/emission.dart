@@ -66,16 +66,25 @@ DartSchemaEmission emitDartSchema(
   String databaseClassName = 'GeneratedDatabaseSchema',
   DartSchemaNaming? naming,
   bool primaryKeyExtensionTypes = true,
+  Map<String, ExternalPrimaryKeySpec> externalPrimaryKeys =
+      const <String, ExternalPrimaryKeySpec>{},
 }) {
   final effectiveNaming = naming ?? DartSchemaNaming.defaults;
+  final normalizedExternalPrimaryKeys = _externalPrimaryKeyNames(
+    externalPrimaryKeys,
+  );
   if (primaryKeyExtensionTypes) {
     database = _withGeneratedPrimaryKeyExtensionTypes(
       database,
       effectiveNaming,
+      externalPrimaryKeyTypeSpecs: normalizedExternalPrimaryKeys,
     );
   }
   database = _withGeneratedConstrainedTextTypes(database, effectiveNaming);
   final schemaGroups = _groupBySchema(database);
+  final externalPrimaryKeyTypes = _externalPrimaryKeyTypes(
+    normalizedExternalPrimaryKeys,
+  );
   final entrypointFileName = '${_fileStem(databaseClassName)}.g.dart';
   final files = <DartSchemaEmissionFile>[
     DartSchemaEmissionFile(
@@ -83,10 +92,20 @@ DartSchemaEmission emitDartSchema(
       contents: _emitEntrypoint(
         databaseClassName: databaseClassName,
         schemaGroups: schemaGroups,
+        hasExternalPrimaryKeys: externalPrimaryKeyTypes.isNotEmpty,
       ),
     ),
   ];
   final directories = <String>{};
+
+  if (externalPrimaryKeyTypes.isNotEmpty) {
+    files.add(
+      DartSchemaEmissionFile(
+        relativePath: 'external_keys.g.dart',
+        contents: _emitExternalPrimaryKeysLibrary(externalPrimaryKeyTypes),
+      ),
+    );
+  }
 
   for (final group in schemaGroups) {
     final schemaFolder = 'schemas/${group.folderName}';
@@ -114,6 +133,9 @@ DartSchemaEmission emitDartSchema(
             group,
             schemaGroups,
             effectiveNaming,
+            externalPrimaryKeyTypeNames: {
+              for (final type in externalPrimaryKeyTypes) type.typeName,
+            },
           ),
         ),
       );
@@ -151,15 +173,24 @@ String emitDartSchemaLibrary(
   String databaseClassName = 'GeneratedDatabaseSchema',
   DartSchemaNaming? naming,
   bool primaryKeyExtensionTypes = true,
+  Map<String, ExternalPrimaryKeySpec> externalPrimaryKeys =
+      const <String, ExternalPrimaryKeySpec>{},
 }) {
   final effectiveNaming = naming ?? DartSchemaNaming.defaults;
+  final normalizedExternalPrimaryKeys = _externalPrimaryKeyNames(
+    externalPrimaryKeys,
+  );
   if (primaryKeyExtensionTypes) {
     database = _withGeneratedPrimaryKeyExtensionTypes(
       database,
       effectiveNaming,
+      externalPrimaryKeyTypeSpecs: normalizedExternalPrimaryKeys,
     );
   }
   database = _withGeneratedConstrainedTextTypes(database, effectiveNaming);
+  final externalPrimaryKeyTypes = _externalPrimaryKeyTypes(
+    normalizedExternalPrimaryKeys,
+  );
   final schemaGroups = _groupBySchema(database);
   final library = Library((builder) {
     builder
@@ -171,6 +202,19 @@ String emitDartSchemaLibrary(
       ..body.addAll(
         schemaGroups.map((group) => _schemaClass(group, effectiveNaming)),
       );
+
+    builder.body.addAll(
+      externalPrimaryKeyTypes.map(
+        (type) => _extensionValueTypeSpec(
+          IntrospectedColumn(
+            name: type.typeName,
+            databaseType: type.baseDartType,
+            dartType: type.typeName,
+            extensionBaseDartType: type.baseDartType,
+          ),
+        ),
+      ),
+    );
 
     if (schemaGroups.any((group) => group.routines.isNotEmpty)) {
       builder.directives.add(

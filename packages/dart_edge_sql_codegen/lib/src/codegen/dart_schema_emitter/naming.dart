@@ -274,8 +274,10 @@ String _constrainedTextTypeName(
 
 IntrospectedDatabase _withGeneratedPrimaryKeyExtensionTypes(
   IntrospectedDatabase database,
-  DartSchemaNaming naming,
-) {
+  DartSchemaNaming naming, {
+  Map<_ColumnKey, ExternalPrimaryKeySpec> externalPrimaryKeyTypeSpecs =
+      const <_ColumnKey, ExternalPrimaryKeySpec>{},
+}) {
   final declaredPrimaryKeyTypes = <_ColumnKey, _PrimaryKeyTypeSpec>{};
   for (final table in database.tables) {
     final primaryKeyColumns = table.columns
@@ -289,12 +291,12 @@ IntrospectedDatabase _withGeneratedPrimaryKeyExtensionTypes(
       table,
       column.name,
     )] = _PrimaryKeyTypeSpec(
-      typeName: _primaryKeyTypeName(table, naming),
+      typeName: _primaryKeyTypeNameForColumn(table, column, naming),
       baseDartType: _normalizedValueType(column),
     );
   }
 
-  if (declaredPrimaryKeyTypes.isEmpty) {
+  if (declaredPrimaryKeyTypes.isEmpty && externalPrimaryKeyTypeSpecs.isEmpty) {
     return database;
   }
 
@@ -332,9 +334,12 @@ IntrospectedDatabase _withGeneratedPrimaryKeyExtensionTypes(
       return localType;
     }
     final referencedKey = foreignKeyReferences[key];
-    final inheritedType = referencedKey == null
-        ? null
-        : resolvePrimaryKeyType(referencedKey, active);
+    final inheritedType = switch (referencedKey) {
+      null => null,
+      final key =>
+        resolvePrimaryKeyType(key, active) ??
+            _externalPrimaryKeyType(externalPrimaryKeyTypeSpecs, key),
+    };
     active.remove(key);
 
     final resolvedType = inheritedType ?? localType;
@@ -351,7 +356,9 @@ IntrospectedDatabase _withGeneratedPrimaryKeyExtensionTypes(
   for (final entry in foreignKeyReferences.entries) {
     final key = entry.key;
     final referencedKey = entry.value;
-    final referencedType = primaryKeyTypes[referencedKey];
+    final referencedType =
+        primaryKeyTypes[referencedKey] ??
+        _externalPrimaryKeyType(externalPrimaryKeyTypeSpecs, referencedKey);
     if (referencedType == null) {
       continue;
     }
@@ -384,6 +391,20 @@ IntrospectedDatabase _withGeneratedPrimaryKeyExtensionTypes(
   );
 }
 
+_PrimaryKeyTypeSpec? _externalPrimaryKeyType(
+  Map<_ColumnKey, ExternalPrimaryKeySpec> externalPrimaryKeyTypeSpecs,
+  _ColumnKey key,
+) {
+  final spec = externalPrimaryKeyTypeSpecs[key];
+  if (spec == null) {
+    return null;
+  }
+  return _PrimaryKeyTypeSpec(
+    typeName: spec.typeName,
+    baseDartType: spec.baseDartType,
+  );
+}
+
 IntrospectedColumn _copyColumnWithExtensionType(
   IntrospectedColumn column,
   _PrimaryKeyTypeSpec type,
@@ -409,12 +430,28 @@ _ColumnKey _columnKey(IntrospectedTable table, String column) {
 }
 
 String _primaryKeyTypeName(IntrospectedTable table, DartSchemaNaming naming) {
+  final primaryKeyColumns = table.columns
+      .where((column) => column.primaryKey)
+      .toList(growable: false);
+  if (primaryKeyColumns.length != 1) {
+    return '${_singularizeTypeStem(_rowClassStem(table, naming))}Id';
+  }
+  return _primaryKeyTypeNameForColumn(table, primaryKeyColumns.single, naming);
+}
+
+String _primaryKeyTypeNameForColumn(
+  IntrospectedTable table,
+  IntrospectedColumn column,
+  DartSchemaNaming naming,
+) {
+  return '${_singularizeTypeStem(_rowClassStem(table, naming))}'
+      '${_upperCamel(column.name)}';
+}
+
+String _rowClassStem(IntrospectedTable table, DartSchemaNaming naming) {
   final rowType = _rowClassName(table, naming);
   final rowSuffix = RegExp(r'Row$').firstMatch(rowType);
-  final stem = rowSuffix == null
-      ? rowType
-      : rowType.substring(0, rowSuffix.start);
-  return '${_singularizeTypeStem(stem)}Id';
+  return rowSuffix == null ? rowType : rowType.substring(0, rowSuffix.start);
 }
 
 String _singularizeTypeStem(String value) {
@@ -437,6 +474,53 @@ final class _PrimaryKeyTypeSpec {
 
   final String typeName;
   final String baseDartType;
+}
+
+Map<_ColumnKey, ExternalPrimaryKeySpec> _externalPrimaryKeyNames(
+  Map<String, ExternalPrimaryKeySpec> externalPrimaryKeys,
+) {
+  return {
+    for (final entry in externalPrimaryKeys.entries)
+      _externalPrimaryKey(entry.key): entry.value,
+  };
+}
+
+_ColumnKey _externalPrimaryKey(String key) {
+  final parts = key
+      .split('.')
+      .map((part) => part.trim())
+      .where((part) => part.isNotEmpty)
+      .toList(growable: false);
+  if (parts.length != 3) {
+    throw FormatException(
+      'External primary key "$key" must use schema.table.column.',
+    );
+  }
+  return (schema: _schemaName(parts[0]), table: parts[1], column: parts[2]);
+}
+
+List<ExternalPrimaryKeySpec> _externalPrimaryKeyTypes(
+  Map<_ColumnKey, ExternalPrimaryKeySpec> externalPrimaryKeyTypeSpecs,
+) {
+  final externalPrimaryKeyTypes = <String, ExternalPrimaryKeySpec>{};
+  for (final spec in externalPrimaryKeyTypeSpecs.values) {
+    externalPrimaryKeyTypes[spec.typeName] = spec;
+  }
+  return externalPrimaryKeyTypes.values.toList(growable: false)
+    ..sort((left, right) => left.typeName.compareTo(right.typeName));
+}
+
+bool _usesExternalPrimaryKeyType(
+  IntrospectedTable table,
+  Set<String> externalPrimaryKeyTypeNames,
+) {
+  for (final column in table.columns) {
+    if (_hasExtensionBackedValueType(column) &&
+        externalPrimaryKeyTypeNames.contains(column.dartType)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 String _nullableType(String typeName, bool isNullable) {

@@ -20,6 +20,9 @@ Future<void> main(List<String> args) async {
   final includeTables = _csv(options.value('include'));
   final excludeTables = _csv(options.value('exclude'));
   final schemas = _csv(options.value('schemas'));
+  final externalPrimaryKeys = _externalPrimaryKeys(
+    options.value('external-primary-keys'),
+  );
   final introspector = switch ((
     sqlite: options.value('sqlite'),
     postgres: options.value('postgres'),
@@ -44,6 +47,7 @@ Future<void> main(List<String> args) async {
     databaseClassName: options.value('class') ?? 'GeneratedDatabaseSchema',
     naming: _namingFromStyle(options.value('model-name-style')),
     primaryKeyExtensionTypes: !options.flag('no-primary-key-extension-types'),
+    externalPrimaryKeys: externalPrimaryKeys,
   );
   final outputDirectory = options.value('out') ?? 'lib/generated';
   emission.writeToDirectory(outputDirectory);
@@ -61,6 +65,48 @@ Set<String> _csv(String? value) {
       .map((part) => part.trim())
       .where((part) => part.isNotEmpty)
       .toSet();
+}
+
+Map<String, ExternalPrimaryKeySpec> _externalPrimaryKeys(String? value) {
+  if (value == null || value.trim().isEmpty) {
+    return const <String, ExternalPrimaryKeySpec>{};
+  }
+  final externalPrimaryKeys = <String, ExternalPrimaryKeySpec>{};
+  for (final part in value.split(',')) {
+    final entry = part.trim();
+    if (entry.isEmpty) {
+      continue;
+    }
+    final mapping = _externalPrimaryKeyName(entry);
+    externalPrimaryKeys[mapping.$1] = mapping.$2;
+  }
+  return externalPrimaryKeys;
+}
+
+(String, ExternalPrimaryKeySpec) _externalPrimaryKeyName(String value) {
+  final equals = value.indexOf('=');
+  if (equals <= 0 || equals == value.length - 1) {
+    throw FormatException(
+      'Expected external primary key mapping "$value" to use '
+      'key=TypeName:BaseType.',
+    );
+  }
+  final key = value.substring(0, equals).trim();
+  final typeSpec = value.substring(equals + 1).trim();
+  final separator = typeSpec.indexOf(':');
+  if (separator <= 0 || separator == typeSpec.length - 1) {
+    throw FormatException(
+      'Expected external primary key mapping "$value" to include a base type '
+      'as key=TypeName:BaseType.',
+    );
+  }
+  return (
+    key,
+    ExternalPrimaryKeySpec(
+      typeName: typeSpec.substring(0, separator).trim(),
+      baseDartType: typeSpec.substring(separator + 1).trim(),
+    ),
+  );
 }
 
 DartSchemaNaming _namingFromStyle(String? style) {
@@ -182,6 +228,8 @@ Options:
   --schemas <csv>   Comma-separated PostgreSQL schemas.
   --include <csv>   Comma-separated table allow-list.
   --exclude <csv>   Comma-separated table block-list.
+  --external-primary-keys <csv>
+                   Comma-separated schema.table.column=TypeName:BaseType mappings.
   --no-primary-key-extension-types
                    Keep primary and foreign key fields on primitive Dart types.
 

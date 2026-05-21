@@ -1,6 +1,21 @@
 /// Database dialect supported by the SQL schema generator.
 enum SqlCodegenDialect { postgres, sqlite }
 
+/// Declares a generated value type for a primary key outside the generated
+/// table set.
+final class ExternalPrimaryKeySpec {
+  const ExternalPrimaryKeySpec({
+    required this.typeName,
+    required this.baseDartType,
+  });
+
+  /// Generated extension type name, for example `AuthUserId`.
+  final String typeName;
+
+  /// Dart type used for the value stored inside the extension type.
+  final String baseDartType;
+}
+
 /// Reusable configuration object for schema introspection and code generation.
 final class SqlCodegenConfig {
   const SqlCodegenConfig({
@@ -13,6 +28,7 @@ final class SqlCodegenConfig {
     this.excludeTables = const <String>{},
     this.databaseClassName = 'GeneratedDatabaseSchema',
     this.primaryKeyExtensionTypes = true,
+    this.externalPrimaryKeys = const <String, ExternalPrimaryKeySpec>{},
   });
 
   /// Source database dialect.
@@ -42,4 +58,10 @@ final class SqlCodegenConfig {
   /// Whether generated models use extension types for single-column primary
   /// keys and matching single-column foreign keys.
   final bool primaryKeyExtensionTypes;
+
+  /// External primary key specs keyed by `schema.table.column`.
+  ///
+  /// These let foreign keys reference excluded tables while still using a
+  /// generated extension type such as `AuthUserId`.
+  final Map<String, ExternalPrimaryKeySpec> externalPrimaryKeys;
 }

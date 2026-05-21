@@ -115,11 +115,26 @@ default style. Use `model_name_style: unprefixed` to keep the historical
 convention.
 
 Primary key extension types are enabled by default. A single-column primary key
-such as `notes.id` generates a value object like `NoteId`, and single-column
-foreign keys that reference it use the referenced table's ID type. Set
+such as `notes.id` generates a value object like `NoteId`; the suffix follows
+the primary key column, so `api_key.key` generates `ApiKeyKey`. Single-column
+foreign keys that reference a primary key use the referenced table's key type. Set
 `primary_key_extension_types: false`, pass
 `primaryKeyExtensionTypes: false`, or use
 `--no-primary-key-extension-types` when a project needs primitive key fields.
+When a generated table references a table that you intentionally exclude, map
+that referenced key with `external_primary_keys`:
+
+```yaml
+external_primary_keys:
+  auth.user.id:
+    type: AuthUserId
+    base_type: String
+```
+
+The structured emitter always writes configured external value types to
+`external_keys.g.dart` and imports them from tables whose foreign keys use them.
+The one-shot CLI accepts the same mapping as
+`--external-primary-keys auth.user.id=AuthUserId:String`.
 
 Snapshot JSON uses the same shape as `IntrospectedDatabase.toJson()`:
 
