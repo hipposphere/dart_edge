@@ -305,7 +305,6 @@ release asset per runner platform:
 ```text
 dart_edge_ci-<version>-linux-x64
 dart_edge_ci-<version>-linux-arm64
-dart_edge_ci-<version>-macos-x64
 dart_edge_ci-<version>-macos-arm64
 dart_edge_ci-<version>-windows-x64.exe
 ```

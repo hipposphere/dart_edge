@@ -61,13 +61,6 @@ jobs:
               },
               {
                 os: "macos",
-                arch: "x64",
-                runner: "macos-13",
-                executable: "dart_edge_ci",
-                asset: ("dart_edge_ci-" + $version + "-macos-x64")
-              },
-              {
-                os: "macos",
                 arch: "arm64",
                 runner: "macos-14",
                 executable: "dart_edge_ci",
