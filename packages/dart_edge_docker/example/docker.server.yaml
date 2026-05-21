@@ -1,0 +1,12 @@
+images:
+  server:
+    type: dart_server
+    package: server
+    target: bin/main.dart
+    executable: main
+    expose: 3000
+    title: Example Server
+    description: Example Dart Edge server
+    presets:
+      pjproject:
+        version: 2.17

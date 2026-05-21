@@ -1,0 +1,17 @@
+images:
+  app:
+    type: flutter_app
+    package: app
+    flutter_version: 3.44.0
+    web:
+      wasm: true
+      renderer: auto
+      base_href_env: BASE_HREF
+    nginx:
+      env:
+        required:
+          - API_URL
+        optional:
+          BASE_HREF: /
+    title: Example App
+    description: Example Flutter web app

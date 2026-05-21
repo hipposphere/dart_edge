@@ -1,4 +1,5 @@
-/// Docker build configuration annotations for Dart Edge apps.
+/// Docker image generation for Dart Edge workspaces.
 library;
 
-export 'src/dart_edge_docker_config.dart';
+export 'src/docker_config.dart';
+export 'src/docker_generator.dart';

@@ -1,0 +1,12 @@
+images:
+  migrator:
+    type: db_migrator
+    package: packages/db_migrator
+    target: bin/migrator.dart
+    executable: migrator
+    title: Example Migrator
+    description: Example database migrator
+    databases:
+      sqlite: true
+      postgres: true
+      pglite: false
