@@ -90,8 +90,8 @@ else:
 }
 
 mkdir -p "$install_dir"
-curl -fsSL "${auth_args[@]}" -o "$install_dir/$binary_name" "$asset_url"
-chmod +x "$install_dir/$binary_name"
+curl -fsSL "${auth_args[@]}" -o "$install_dir/$asset" "$asset_url"
+chmod +x "$install_dir/$asset"
 
 sha_asset="$asset.sha256"
 sha_url="$(DART_EDGE_CI_ASSET="$sha_asset" python3 -c '
@@ -113,6 +113,10 @@ if [[ -n "$sha_url" ]]; then
     cd "$install_dir"
     shasum -a 256 -c "$sha_asset"
   )
+fi
+
+if [[ "$asset" != "$binary_name" ]]; then
+  ln -sf "$asset" "$install_dir/$binary_name"
 fi
 
 echo "$install_dir" >> "$GITHUB_PATH"
