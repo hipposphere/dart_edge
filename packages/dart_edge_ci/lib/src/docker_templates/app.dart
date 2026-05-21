@@ -13,9 +13,6 @@ String _flutterAppDockerfile(
     'web',
     '--release',
     if (image.web.wasm) '--wasm',
-    '--web-renderer=${image.web.renderer}',
-    if (image.web.baseHrefEnv != null)
-      '--base-href=\${${image.web.baseHrefEnv}}',
   ];
   return [
     '# syntax=docker/dockerfile:1',

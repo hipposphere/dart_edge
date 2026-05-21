@@ -59,6 +59,7 @@ void main() {
     );
     expect(appDockerfile, contains('ARG BASE_HREF=/'));
     expect(appDockerfile, contains('flutter build web --release --wasm'));
+    expect(appDockerfile, isNot(contains('--base-href')));
     expect(appDockerfile, contains('FROM nginx:1.29-alpine'));
     expect(
       appDockerfile,
@@ -184,7 +185,6 @@ images:
     flutter_version: 3.44.0
     web:
       wasm: true
-      renderer: auto
       base_href_env: BASE_HREF
     nginx:
       env:

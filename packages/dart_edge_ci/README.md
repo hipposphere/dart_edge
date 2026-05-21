@@ -123,7 +123,6 @@ images:
     flutter_version: 3.44.0
     web:
       wasm: true
-      renderer: auto
       base_href_env: BASE_HREF
     nginx:
       env:

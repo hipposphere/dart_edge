@@ -400,14 +400,9 @@ final class DatabasePresets {
 }
 
 final class FlutterWebConfig {
-  const FlutterWebConfig({
-    this.wasm = false,
-    this.renderer = 'auto',
-    this.baseHrefEnv,
-  });
+  const FlutterWebConfig({this.wasm = false, this.baseHrefEnv});
 
   final bool wasm;
-  final String renderer;
   final String? baseHrefEnv;
 
   static FlutterWebConfig parse(Object? value, String path) {
@@ -417,14 +412,12 @@ final class FlutterWebConfig {
     final map = _map(value, path);
     return FlutterWebConfig(
       wasm: _bool(map['wasm'], '$path.wasm') ?? false,
-      renderer: _string(map['renderer'], '$path.renderer') ?? 'auto',
       baseHrefEnv: _string(map['base_href_env'], '$path.base_href_env'),
     );
   }
 
   Map<String, Object?> toJson() => {
     'wasm': wasm,
-    'renderer': renderer,
     if (baseHrefEnv != null) 'base_href_env': baseHrefEnv,
   };
 }
