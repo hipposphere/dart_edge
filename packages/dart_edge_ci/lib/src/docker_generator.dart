@@ -7,14 +7,15 @@ import 'docker_config.dart';
 
 export 'docker_config.dart';
 
-final class DartEdgeDockerGenerator {
-  DartEdgeDockerGenerator({required Directory projectRoot})
+final class DockerGenerator {
+  DockerGenerator({required Directory projectRoot})
     : projectRoot = projectRoot.absolute;
 
   final Directory projectRoot;
 
-  Directory get outputRoot =>
-      Directory(p.join(projectRoot.path, '.dart_tool', 'dart_edge_docker'));
+  Directory get outputRoot => Directory(
+    p.join(projectRoot.path, '.dart_tool', 'dart_edge_ci', 'docker'),
+  );
 
   Future<DockerProjectConfig> loadConfig() {
     return DockerProjectConfig.load(projectRoot);
@@ -358,7 +359,7 @@ String _flutterAppDockerfile(
     'FROM nginx:1.29-alpine',
     '',
     _ociArgsAndLabels(labels, image),
-    'COPY .dart_tool/dart_edge_docker/${image.name}/nginx-env.sh '
+    'COPY .dart_tool/dart_edge_ci/docker/${image.name}/nginx-env.sh '
         '/docker-entrypoint.d/99-dart-edge-env.sh',
     'RUN chmod +x /docker-entrypoint.d/99-dart-edge-env.sh',
     'COPY --from=build /app/${image.packagePath}/build/web '
@@ -683,7 +684,7 @@ String _bakeFile(
     for (final image in images) ...[
       'target "${image.name}" {',
       '  context = "../.."',
-      '  dockerfile = ".dart_tool/dart_edge_docker/${image.name}/Dockerfile"',
+      '  dockerfile = ".dart_tool/dart_edge_ci/docker/${image.name}/Dockerfile"',
       '  tags = ["${image.name}"]',
       '  args = {',
       '    VERSION = "${_hcl(image.version)}"',

@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:dart_edge_docker/dart_edge_docker.dart';
+import 'package:dart_edge_ci/dart_edge_ci.dart';
 import 'package:test/test.dart';
 
 void main() {
@@ -9,7 +9,7 @@ void main() {
     addTearDown(() => root.delete(recursive: true));
     await File('${root.path}/docker.yaml').writeAsString(_dockerYaml);
 
-    final result = await DartEdgeDockerGenerator(projectRoot: root).generate();
+    final result = await DockerGenerator(projectRoot: root).generate();
 
     expect(result.images.map((image) => image.name), [
       'server',
@@ -18,7 +18,7 @@ void main() {
     ]);
 
     final serverDockerfile = await File(
-      '${root.path}/.dart_tool/dart_edge_docker/server/Dockerfile',
+      '${root.path}/.dart_tool/dart_edge_ci/docker/server/Dockerfile',
     ).readAsString();
     expect(serverDockerfile, contains('FROM debian:trixie-slim AS pjproject'));
     expect(serverDockerfile, contains('ARG PJPROJECT_VERSION=2.18'));
@@ -36,7 +36,7 @@ void main() {
     expect(serverDockerfile, contains('ARG VERSION=1.0.0'));
 
     final migratorDockerfile = await File(
-      '${root.path}/.dart_tool/dart_edge_docker/migrator/Dockerfile',
+      '${root.path}/.dart_tool/dart_edge_ci/docker/migrator/Dockerfile',
     ).readAsString();
     expect(migratorDockerfile, contains('libsqlite3-0'));
     expect(migratorDockerfile, contains('libpq5'));
@@ -44,7 +44,7 @@ void main() {
     expect(migratorDockerfile, contains('ENTRYPOINT ["/app/bin/migrator"]'));
 
     final appDockerfile = await File(
-      '${root.path}/.dart_tool/dart_edge_docker/app/Dockerfile',
+      '${root.path}/.dart_tool/dart_edge_ci/docker/app/Dockerfile',
     ).readAsString();
     expect(
       appDockerfile,
@@ -60,7 +60,7 @@ void main() {
     expect(appDockerfile, contains(r'flutter_bootstrap.js?v=$cache_tag'));
 
     final entrypoint = await File(
-      '${root.path}/.dart_tool/dart_edge_docker/app/nginx-env.sh',
+      '${root.path}/.dart_tool/dart_edge_ci/docker/app/nginx-env.sh',
     ).readAsString();
     expect(entrypoint, contains('API_URL is required'));
     expect(entrypoint, contains(r': "${BASE_HREF:=/}"'));
@@ -80,7 +80,7 @@ void main() {
     expect(bake, contains('context = "../.."'));
     expect(
       bake,
-      contains('dockerfile = ".dart_tool/dart_edge_docker/app/Dockerfile"'),
+      contains('dockerfile = ".dart_tool/dart_edge_ci/docker/app/Dockerfile"'),
     );
     expect(bake, contains('BASE_HREF = "/"'));
   });
@@ -89,7 +89,7 @@ void main() {
     final root = await _projectRoot();
     addTearDown(() => root.delete(recursive: true));
     await File('${root.path}/docker.yaml').writeAsString(_dockerYaml);
-    final result = await DartEdgeDockerGenerator(
+    final result = await DockerGenerator(
       projectRoot: root,
     ).generate(selectedImage: 'server');
 
@@ -104,7 +104,7 @@ void main() {
       'buildx',
       'build',
       '--file',
-      '.dart_tool/dart_edge_docker/server/Dockerfile',
+      '.dart_tool/dart_edge_ci/docker/server/Dockerfile',
       '--tag',
       'server',
       '--build-arg',
@@ -116,7 +116,7 @@ void main() {
 }
 
 Future<Directory> _projectRoot() async {
-  final root = await Directory.systemTemp.createTemp('dart_edge_docker_');
+  final root = await Directory.systemTemp.createTemp('dart_edge_ci_');
   await File('${root.path}/pubspec.yaml').writeAsString('''
 name: workspace
 version: 0.0.0

@@ -6,20 +6,17 @@ import 'package:path/path.dart' as p;
 import 'docker_generator.dart';
 import 'package_version.dart';
 
-Future<int> runDartEdgeDocker(
+Future<int> runDartEdgeCi(
   List<String> arguments, {
   Directory? projectRoot,
   DockerProcessRunner processRunner = const DockerProcessRunner(),
 }) async {
   final runner =
       CommandRunner<int>(
-          'dart_edge_docker',
-          'Generate and build Docker images for Dart Edge workspaces.',
+          'dart_edge_ci',
+          'CI utilities for Dart Edge workspaces.',
         )
-        ..addCommand(_GenerateCommand(projectRoot))
-        ..addCommand(_BuildCommand(projectRoot, processRunner))
-        ..addCommand(_BakeCommand(projectRoot))
-        ..addCommand(_PrintConfigCommand(projectRoot))
+        ..addCommand(_DockerCommand(projectRoot, processRunner))
         ..addCommand(_PackageVersionCommand(projectRoot));
 
   try {
@@ -36,9 +33,24 @@ Future<int> runDartEdgeDocker(
     stderr.writeln('Package version error: ${error.message}');
     return 78;
   } on Object catch (error) {
-    stderr.writeln('dart_edge_docker failed: $error');
+    stderr.writeln('dart_edge_ci failed: $error');
     return 1;
   }
+}
+
+final class _DockerCommand extends Command<int> {
+  _DockerCommand(Directory? projectRoot, DockerProcessRunner processRunner) {
+    addSubcommand(_GenerateCommand(projectRoot));
+    addSubcommand(_BuildCommand(projectRoot, processRunner));
+    addSubcommand(_BakeCommand(projectRoot));
+    addSubcommand(_PrintConfigCommand(projectRoot));
+  }
+
+  @override
+  String get description => 'Generate and build Docker images.';
+
+  @override
+  String get name => 'docker';
 }
 
 final class _GenerateCommand extends Command<int> {
@@ -53,7 +65,7 @@ final class _GenerateCommand extends Command<int> {
   String get name => 'generate';
 
   @override
-  String get invocation => 'dart_edge_docker generate [image]';
+  String get invocation => 'dart_edge_ci docker generate [image]';
 
   @override
   Future<int> run() async {
@@ -61,7 +73,7 @@ final class _GenerateCommand extends Command<int> {
     if (argResults!.rest.length > 1) {
       usageException('Expected at most one image name.');
     }
-    final result = await DartEdgeDockerGenerator(
+    final result = await DockerGenerator(
       projectRoot: _projectRoot ?? Directory.current,
     ).generate(selectedImage: imageName);
     for (final image in result.images) {
@@ -87,7 +99,7 @@ final class _BuildCommand extends Command<int> {
   String get name => 'build';
 
   @override
-  String get invocation => 'dart_edge_docker build [--push] <image>';
+  String get invocation => 'dart_edge_ci docker build [--push] <image>';
 
   @override
   Future<int> run() async {
@@ -95,7 +107,7 @@ final class _BuildCommand extends Command<int> {
       usageException('Expected exactly one image name.');
     }
     final imageName = argResults!.rest.single;
-    final generator = DartEdgeDockerGenerator(
+    final generator = DockerGenerator(
       projectRoot: _projectRoot ?? Directory.current,
     );
     final result = await generator.generate(selectedImage: imageName);
@@ -135,7 +147,7 @@ final class _BakeCommand extends Command<int> {
 
   @override
   Future<int> run() async {
-    final result = await DartEdgeDockerGenerator(
+    final result = await DockerGenerator(
       projectRoot: _projectRoot ?? Directory.current,
     ).generate();
     stdout.writeln(result.bakeFile.path);
@@ -156,7 +168,7 @@ final class _PrintConfigCommand extends Command<int> {
 
   @override
   Future<int> run() async {
-    final generator = DartEdgeDockerGenerator(
+    final generator = DockerGenerator(
       projectRoot: _projectRoot ?? Directory.current,
     );
     final config = await generator.loadConfig();
@@ -185,7 +197,7 @@ final class _PackageVersionCommand extends Command<int> {
 
   @override
   String get invocation =>
-      'dart_edge_docker package-version [--json] [--github-output] <package-path>';
+      'dart_edge_ci package-version [--json] [--github-output] <package-path>';
 
   @override
   Future<int> run() async {

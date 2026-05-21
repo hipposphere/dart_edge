@@ -1,22 +1,24 @@
-# dart_edge_docker
+# dart_edge_ci
 
-Reusable Docker image generation for Dart Edge and Hipposphere workspaces.
+CI utilities for Dart Edge and Hipposphere workspaces. The first feature is
+reusable Docker image generation.
 
-Projects define images in `docker.yaml`; `dart_edge_docker` writes inspectable
-Dockerfiles and a Docker Bake file under `.dart_tool/dart_edge_docker/`.
+Projects define Docker images in `docker.yaml`; `dart_edge_ci docker` writes
+inspectable Dockerfiles and a Docker Bake file under
+`.dart_tool/dart_edge_ci/docker/`.
 Generated files are deterministic build artifacts and do not need to be
 committed.
 
 ## Commands
 
 ```sh
-dart run dart_edge_docker generate
-dart run dart_edge_docker generate server
-dart run dart_edge_docker build server
-dart run dart_edge_docker build --push server
-dart run dart_edge_docker bake
-dart run dart_edge_docker print-config
-dart run dart_edge_docker package-version packages/server
+dart run dart_edge_ci docker generate
+dart run dart_edge_ci docker generate server
+dart run dart_edge_ci docker build server
+dart run dart_edge_ci docker build --push server
+dart run dart_edge_ci docker bake
+dart run dart_edge_ci docker print-config
+dart run dart_edge_ci package-version packages/server
 ```
 
 `build` prints the generated Dockerfile path and the exact
@@ -85,7 +87,7 @@ images:
 Available hooks are `prelude`, `build_before_pub_get`,
 `build_after_pub_get`, `build_before_compile`, and `runtime_before_labels`.
 Snippets are emitted as-is into the generated Dockerfile, so keep them small and
-inspect `.dart_tool/dart_edge_docker/<image>/Dockerfile` after generation.
+inspect `.dart_tool/dart_edge_ci/docker/<image>/Dockerfile` after generation.
 
 ## DB Migrator Image
 
@@ -106,7 +108,7 @@ images:
 
 `databases.all: true` enables all current database runtime dependencies.
 
-The database dependency mapping currently lives in `dart_edge_docker` because
+The database dependency mapping currently lives in `dart_edge_ci` because
 `dart_edge_sql_migrator` does not yet expose container runtime presets. The
 `docker.yaml` shape is intentionally stable so those presets can later be
 delegated without changing product repos.
@@ -135,7 +137,9 @@ images:
 
 The Flutter template builds web release output, serves it with
 `nginx:1.29-alpine`, generates an Nginx entrypoint that validates required env
-vars, and writes `/usr/share/nginx/html/dart_edge_env.js` at container startup.
+vars, writes `/usr/share/nginx/html/.env`, writes
+`/usr/share/nginx/html/env-url.js`, patches `<base href>`, and creates the
+Nginx config at container startup.
 
 Flutter bootstrapping assets, manifest icons, and font assets are cache-busted
 using the image revision when available, or a content hash fallback.
@@ -172,9 +176,9 @@ Set top-level `vendor` in `docker.yaml` if you want
 ## Docker Bake
 
 ```sh
-dart run dart_edge_docker bake
-docker buildx bake -f .dart_tool/dart_edge_docker/docker-bake.hcl
-docker buildx bake -f .dart_tool/dart_edge_docker/docker-bake.hcl --push
+dart run dart_edge_ci docker bake
+docker buildx bake -f .dart_tool/dart_edge_ci/docker/docker-bake.hcl
+docker buildx bake -f .dart_tool/dart_edge_ci/docker/docker-bake.hcl --push
 ```
 
 The generated bake file has one target per image and points Docker at the repo
@@ -186,7 +190,7 @@ Use `package-version` in CI when you need the package version and a tag-safe
 variant:
 
 ```sh
-dart run dart_edge_docker package-version packages/server
+dart run dart_edge_ci package-version packages/server
 ```
 
 Output:
@@ -203,13 +207,13 @@ For GitHub Actions:
 ```yaml
 - name: Read package version
   id: package
-  run: dart run dart_edge_docker package-version --github-output packages/server
+  run: dart run dart_edge_ci package-version --github-output packages/server
 ```
 
 JSON output is also available:
 
 ```sh
-dart run dart_edge_docker package-version --json packages/server
+dart run dart_edge_ci package-version --json packages/server
 ```
 
 ## GitHub Actions
@@ -223,17 +227,17 @@ jobs:
       - uses: dart-lang/setup-dart@v1
       - uses: docker/setup-buildx-action@v3
       - run: dart pub get
-      - run: dart run dart_edge_docker generate
-      - run: docker buildx bake -f .dart_tool/dart_edge_docker/docker-bake.hcl --push
+      - run: dart run dart_edge_ci docker generate
+      - run: docker buildx bake -f .dart_tool/dart_edge_ci/docker/docker-bake.hcl --push
 ```
 
 ## Migrating From Hand-Written Dockerfiles
 
 1. Move repeated image settings into `docker.yaml`.
-2. Run `dart run dart_edge_docker generate`.
-3. Inspect `.dart_tool/dart_edge_docker/<image>/Dockerfile`.
-4. Compare the generated image locally with `dart run dart_edge_docker build <image>`.
+2. Run `dart run dart_edge_ci docker generate`.
+3. Inspect `.dart_tool/dart_edge_ci/docker/<image>/Dockerfile`.
+4. Compare the generated image locally with `dart run dart_edge_ci docker build <image>`.
 5. Replace CI Dockerfile references with the generated bake file.
 
 Use `docker.yaml` as the source of truth. Generated Dockerfiles stay under
-`.dart_tool/dart_edge_docker/` and should not be committed.
+`.dart_tool/dart_edge_ci/docker/` and should not be committed.

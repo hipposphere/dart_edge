@@ -1,4 +1,4 @@
-/// Docker image generation for Dart Edge workspaces.
+/// CI utilities for Dart Edge workspaces.
 library;
 
 export 'src/docker_config.dart';

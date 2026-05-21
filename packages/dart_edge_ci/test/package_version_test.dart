@@ -1,11 +1,11 @@
 import 'dart:io';
 
-import 'package:dart_edge_docker/dart_edge_docker.dart';
+import 'package:dart_edge_ci/dart_edge_ci.dart';
 import 'package:test/test.dart';
 
 void main() {
   test('reads version and derives version tag from pubspec.yaml', () async {
-    final root = await Directory.systemTemp.createTemp('dart_edge_docker_');
+    final root = await Directory.systemTemp.createTemp('dart_edge_ci_');
     addTearDown(() => root.delete(recursive: true));
     await File('${root.path}/pubspec.yaml').writeAsString('''
 name: app

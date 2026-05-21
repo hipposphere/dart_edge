@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:dart_edge_docker/dart_edge_docker.dart';
+import 'package:dart_edge_ci/dart_edge_ci.dart';
 import 'package:test/test.dart';
 
 void main() {
@@ -82,7 +82,7 @@ images:
   });
 
   test('reads image version from configured package pubspec', () async {
-    final root = await Directory.systemTemp.createTemp('dart_edge_docker_');
+    final root = await Directory.systemTemp.createTemp('dart_edge_ci_');
     addTearDown(() => root.delete(recursive: true));
     await Directory('${root.path}/server').create(recursive: true);
     await File('${root.path}/server/pubspec.yaml').writeAsString('''
