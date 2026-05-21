@@ -3,6 +3,8 @@ import 'dart:io';
 
 import 'package:yaml/yaml.dart';
 
+import 'package_version.dart';
+
 final class DockerConfigException implements Exception {
   const DockerConfigException(this.message);
 
@@ -458,14 +460,15 @@ String? _packageVersion(Directory? projectRoot, String packagePath) {
   if (projectRoot == null) {
     return null;
   }
-  final file = File('${projectRoot.path}/$packagePath/pubspec.yaml');
-  if (!file.existsSync()) {
+  try {
+    return PackageVersionOutput.readSync(
+      Directory('${projectRoot.path}/$packagePath'),
+    ).version;
+  } on PackageVersionException catch (error) {
     throw DockerConfigException(
-      'Package pubspec not found for "$packagePath": ${file.path}',
+      'Could not read package version for "$packagePath": ${error.message}',
     );
   }
-  final pubspec = _map(loadYaml(file.readAsStringSync()), file.path);
-  return _string(pubspec['version'], '${file.path}.version') ?? 'dev';
 }
 
 YamlMap _map(Object? value, String path) {

@@ -1,8 +1,10 @@
 import 'dart:io';
 
 import 'package:args/command_runner.dart';
+import 'package:path/path.dart' as p;
 
 import 'docker_generator.dart';
+import 'package_version.dart';
 
 Future<int> runDartEdgeDocker(
   List<String> arguments, {
@@ -17,7 +19,8 @@ Future<int> runDartEdgeDocker(
         ..addCommand(_GenerateCommand(projectRoot))
         ..addCommand(_BuildCommand(projectRoot, processRunner))
         ..addCommand(_BakeCommand(projectRoot))
-        ..addCommand(_PrintConfigCommand(projectRoot));
+        ..addCommand(_PrintConfigCommand(projectRoot))
+        ..addCommand(_PackageVersionCommand(projectRoot));
 
   try {
     return await runner.run(arguments) ?? 0;
@@ -28,6 +31,9 @@ Future<int> runDartEdgeDocker(
     return 64;
   } on DockerConfigException catch (error) {
     stderr.writeln('Configuration error: ${error.message}');
+    return 78;
+  } on PackageVersionException catch (error) {
+    stderr.writeln('Package version error: ${error.message}');
     return 78;
   } on Object catch (error) {
     stderr.writeln('dart_edge_docker failed: $error');
@@ -155,6 +161,55 @@ final class _PrintConfigCommand extends Command<int> {
     );
     final config = await generator.loadConfig();
     stdout.write(config.toPrettyJson());
+    return 0;
+  }
+}
+
+final class _PackageVersionCommand extends Command<int> {
+  _PackageVersionCommand(this._projectRoot) {
+    argParser
+      ..addFlag('json', help: 'Print JSON instead of key=value lines.')
+      ..addFlag(
+        'github-output',
+        help: 'Append version and version_tag to the GITHUB_OUTPUT file.',
+      );
+  }
+
+  final Directory? _projectRoot;
+
+  @override
+  String get description => 'Read version and version_tag from a pubspec.yaml.';
+
+  @override
+  String get name => 'package-version';
+
+  @override
+  String get invocation =>
+      'dart_edge_docker package-version [--json] [--github-output] <package-path>';
+
+  @override
+  Future<int> run() async {
+    if (argResults!.rest.length != 1) {
+      usageException('Expected exactly one package path.');
+    }
+    final root = _projectRoot ?? Directory.current;
+    final packagePath = argResults!.rest.single;
+    final packageRoot = Directory(
+      p.isAbsolute(packagePath) ? packagePath : p.join(root.path, packagePath),
+    );
+    final version = await PackageVersionOutput.read(packageRoot);
+
+    if (argResults!.flag('github-output')) {
+      final githubOutput = Platform.environment['GITHUB_OUTPUT'];
+      if (githubOutput == null || githubOutput.isEmpty) {
+        usageException('GITHUB_OUTPUT is not set.');
+      }
+      await File(
+        githubOutput,
+      ).writeAsString(version.toEnv(), mode: FileMode.append);
+    }
+
+    stdout.write(argResults!.flag('json') ? version.toJson() : version.toEnv());
     return 0;
   }
 }

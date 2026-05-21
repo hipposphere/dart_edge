@@ -16,6 +16,7 @@ dart run dart_edge_docker build server
 dart run dart_edge_docker build --push server
 dart run dart_edge_docker bake
 dart run dart_edge_docker print-config
+dart run dart_edge_docker package-version packages/server
 ```
 
 `build` prints the generated Dockerfile path and the exact
@@ -178,6 +179,38 @@ docker buildx bake -f .dart_tool/dart_edge_docker/docker-bake.hcl --push
 
 The generated bake file has one target per image and points Docker at the repo
 root as the build context.
+
+## Package Version Helper
+
+Use `package-version` in CI when you need the package version and a tag-safe
+variant:
+
+```sh
+dart run dart_edge_docker package-version packages/server
+```
+
+Output:
+
+```text
+version=1.2.3+45
+version_tag=v1.2.3-45
+```
+
+The tag is prefixed with `v` and replaces build metadata `+` with `-`.
+
+For GitHub Actions:
+
+```yaml
+- name: Read package version
+  id: package
+  run: dart run dart_edge_docker package-version --github-output packages/server
+```
+
+JSON output is also available:
+
+```sh
+dart run dart_edge_docker package-version --json packages/server
+```
 
 ## GitHub Actions
 
