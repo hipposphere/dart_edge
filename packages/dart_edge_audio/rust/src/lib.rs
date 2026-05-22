@@ -13,16 +13,17 @@ use rubato::{Async, FixedAsync, PolynomialDegree, Resampler};
 use serde::{Deserialize, Serialize};
 use symphonia::core::codecs::CodecParameters;
 use symphonia::core::codecs::audio::well_known::{
-    CODEC_ID_FLAC, CODEC_ID_MP3, CODEC_ID_PCM_F32LE, CODEC_ID_PCM_F64LE, CODEC_ID_PCM_S16LE,
-    CODEC_ID_PCM_S24LE, CODEC_ID_PCM_S32LE, CODEC_ID_PCM_U16LE, CODEC_ID_PCM_U24LE,
-    CODEC_ID_PCM_U32LE, CODEC_ID_VORBIS,
+    CODEC_ID_AAC, CODEC_ID_FLAC, CODEC_ID_MP3, CODEC_ID_PCM_F32LE, CODEC_ID_PCM_F64LE,
+    CODEC_ID_PCM_S16LE, CODEC_ID_PCM_S24LE, CODEC_ID_PCM_S32LE, CODEC_ID_PCM_U16LE,
+    CODEC_ID_PCM_U24LE, CODEC_ID_PCM_U32LE, CODEC_ID_VORBIS,
 };
 use symphonia::core::codecs::audio::{AudioCodecId, AudioDecoderOptions, CODEC_ID_NULL_AUDIO};
 use symphonia::core::errors::Error as SymphoniaError;
 use symphonia::core::formats::probe::Hint;
-use symphonia::core::formats::{FormatOptions, FormatReader, TrackType};
+use symphonia::core::formats::{FormatOptions, FormatReader, Track, TrackType};
 use symphonia::core::io::MediaSourceStream;
-use symphonia::core::meta::{MetadataOptions, StandardTag};
+use symphonia::core::meta::{MetadataOptions, MetadataRevision, StandardTag, Tag};
+use symphonia::core::units::Timestamp;
 use symphonia::default::{get_codecs, get_probe};
 
 const DART_EDGE_AUDIO_NATIVE_ABI_VERSION: i32 = 1;
@@ -40,6 +41,16 @@ pub struct NativeAudioBytesResult {
 struct NativeProbeBytesRequest {
     file_name_hint: Option<String>,
     mime_type_hint: Option<String>,
+    #[serde(default)]
+    mode: NativeAudioProbeMode,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct NativeProbeFileRequest {
+    path: String,
+    #[serde(default)]
+    mode: NativeAudioProbeMode,
 }
 
 #[derive(Deserialize)]
@@ -71,6 +82,15 @@ struct NativeBytesConversionRequest {
 enum NativeAudioTargetFormat {
     WavPcm16,
     WavPcm24,
+}
+
+#[derive(Default, Deserialize, Clone, Copy)]
+#[serde(rename_all = "camelCase")]
+enum NativeAudioProbeMode {
+    #[default]
+    Adaptive,
+    Shallow,
+    Full,
 }
 
 impl NativeAudioTargetFormat {
@@ -149,12 +169,18 @@ pub extern "C" fn dart_edge_audio_native_abi_version() -> i32 {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn dart_edge_audio_probe_file(path: *const c_char) -> *mut c_char {
-    let Some(path) = (unsafe { read_c_string(path) }) else {
+    let Some(input) = (unsafe { read_c_string(path) }) else {
         set_last_error("Missing audio input path.");
         return std::ptr::null_mut();
     };
+    let request =
+        serde_json::from_str::<NativeProbeFileRequest>(&input).unwrap_or(NativeProbeFileRequest {
+            path: input,
+            mode: NativeAudioProbeMode::Adaptive,
+        });
 
-    match probe_file(&path).and_then(|metadata| encode_json_string(&metadata)) {
+    match probe_file(&request.path, request.mode).and_then(|metadata| encode_json_string(&metadata))
+    {
         Ok(value) => {
             clear_last_error();
             value
@@ -176,6 +202,7 @@ pub extern "C" fn dart_edge_audio_probe_bytes(
         Ok(value) => value.unwrap_or(NativeProbeBytesRequest {
             file_name_hint: None,
             mime_type_hint: None,
+            mode: NativeAudioProbeMode::Adaptive,
         }),
         Err(error) => {
             set_last_error(error);
@@ -192,6 +219,7 @@ pub extern "C" fn dart_edge_audio_probe_bytes(
         input,
         options.file_name_hint.as_deref(),
         options.mime_type_hint.as_deref(),
+        options.mode,
     )
     .and_then(|metadata| encode_json_string(&metadata))
     {
@@ -302,23 +330,92 @@ pub extern "C" fn dart_edge_audio_free_string(value: *mut c_char) {
     }
 }
 
-fn probe_file(path: &str) -> Result<NativeAudioMetadata, String> {
+fn probe_file(path: &str, mode: NativeAudioProbeMode) -> Result<NativeAudioMetadata, String> {
     let bytes = fs::read(path).map_err(|error| format!("Failed to read audio file: {error}"))?;
     let file_name = Path::new(path)
         .file_name()
         .and_then(|value| value.to_str())
         .map(ToOwned::to_owned);
-    let decoded = decode_audio(bytes, file_name.as_deref(), None)?;
-    Ok(decoded.metadata())
+    probe_audio(bytes, file_name.as_deref(), None, mode)
 }
 
 fn probe_bytes(
     bytes: Vec<u8>,
     file_name_hint: Option<&str>,
     mime_type_hint: Option<&str>,
+    mode: NativeAudioProbeMode,
 ) -> Result<NativeAudioMetadata, String> {
-    let decoded = decode_audio(bytes, file_name_hint, mime_type_hint)?;
-    Ok(decoded.metadata())
+    probe_audio(bytes, file_name_hint, mime_type_hint, mode)
+}
+
+fn probe_audio(
+    bytes: Vec<u8>,
+    file_name_hint: Option<&str>,
+    mime_type_hint: Option<&str>,
+    mode: NativeAudioProbeMode,
+) -> Result<NativeAudioMetadata, String> {
+    match mode {
+        NativeAudioProbeMode::Full => {
+            let decoded = decode_audio(bytes, file_name_hint, mime_type_hint)?;
+            Ok(decoded.metadata())
+        }
+        NativeAudioProbeMode::Shallow => shallow_probe_audio(bytes, file_name_hint, mime_type_hint),
+        NativeAudioProbeMode::Adaptive => {
+            let metadata = shallow_probe_audio(bytes.clone(), file_name_hint, mime_type_hint)?;
+            if metadata.duration_micros > 0 {
+                Ok(metadata)
+            } else {
+                let decoded = decode_audio(bytes, file_name_hint, mime_type_hint)?;
+                Ok(decoded.metadata())
+            }
+        }
+    }
+}
+
+fn shallow_probe_audio(
+    bytes: Vec<u8>,
+    file_name_hint: Option<&str>,
+    mime_type_hint: Option<&str>,
+) -> Result<NativeAudioMetadata, String> {
+    let mut tags = collect_riff_info_tags(&bytes);
+    let mut hint = Hint::new();
+    if let Some(extension) = file_name_hint
+        .and_then(|value| Path::new(value).extension())
+        .and_then(|value| value.to_str())
+    {
+        hint.with_extension(extension);
+    }
+    if let Some(mime_type_hint) = mime_type_hint {
+        hint.mime_type(mime_type_hint);
+    }
+
+    let media_stream = MediaSourceStream::new(Box::new(Cursor::new(bytes)), Default::default());
+    let mut format = get_probe()
+        .probe(
+            &hint,
+            media_stream,
+            FormatOptions::default(),
+            MetadataOptions::default(),
+        )
+        .map_err(|error| format!("Failed to probe audio input: {error}"))?;
+    tags.extend(collect_tags(&mut *format));
+
+    let Some(track) = format
+        .first_track_known_codec(TrackType::Audio)
+        .or_else(|| format.first_track(TrackType::Audio))
+    else {
+        return Err("No supported audio track found.".to_string());
+    };
+    let Some(CodecParameters::Audio(codec_params)) = &track.codec_params else {
+        return Err("No supported audio track found.".to_string());
+    };
+
+    Ok(metadata_from_track(
+        track,
+        codec_params,
+        guess_container(file_name_hint, mime_type_hint),
+        tags,
+    ))
 }
 
 fn convert_file(
@@ -396,6 +493,7 @@ fn decode_audio(
         hint.mime_type(mime_type_hint);
     }
 
+    let mut tags = collect_riff_info_tags(&bytes);
     let media_stream = MediaSourceStream::new(Box::new(Cursor::new(bytes)), Default::default());
     let mut format = get_probe()
         .probe(
@@ -405,7 +503,7 @@ fn decode_audio(
             MetadataOptions::default(),
         )
         .map_err(|error| format!("Failed to probe audio input: {error}"))?;
-    let mut tags = collect_tags(&mut *format);
+    tags.extend(collect_tags(&mut *format));
 
     let (track_id, codec_params) = {
         let Some(track) = format
@@ -675,28 +773,104 @@ fn collect_tags(format: &mut dyn FormatReader) -> BTreeMap<String, String> {
     collect_metadata_tags(revision)
 }
 
-fn collect_metadata_tags(
-    revision: Option<&symphonia::core::meta::MetadataRevision>,
-) -> BTreeMap<String, String> {
+fn collect_riff_info_tags(bytes: &[u8]) -> BTreeMap<String, String> {
+    let mut tags = BTreeMap::new();
+    if bytes.len() < 12 || &bytes[0..4] != b"RIFF" || &bytes[8..12] != b"WAVE" {
+        return tags;
+    }
+
+    let mut offset = 12usize;
+    while offset + 8 <= bytes.len() {
+        let chunk_id = &bytes[offset..offset + 4];
+        let chunk_len = read_le_u32(bytes, offset + 4) as usize;
+        let payload_offset = offset + 8;
+        let payload_end = payload_offset.saturating_add(chunk_len);
+        if payload_end > bytes.len() {
+            break;
+        }
+
+        if chunk_id == b"LIST"
+            && chunk_len >= 4
+            && &bytes[payload_offset..payload_offset + 4] == b"INFO"
+        {
+            collect_riff_info_list_tags(&mut tags, &bytes[payload_offset + 4..payload_end]);
+        }
+
+        offset = payload_end + (chunk_len & 1);
+    }
+
+    tags
+}
+
+fn collect_riff_info_list_tags(tags: &mut BTreeMap<String, String>, bytes: &[u8]) {
+    let mut offset = 0usize;
+    while offset + 8 <= bytes.len() {
+        let tag_id = std::str::from_utf8(&bytes[offset..offset + 4]).unwrap_or_default();
+        let tag_len = read_le_u32(bytes, offset + 4) as usize;
+        let value_offset = offset + 8;
+        let value_end = value_offset.saturating_add(tag_len);
+        if value_end > bytes.len() {
+            break;
+        }
+
+        let key = normalize_raw_tag_key(tag_id);
+        let value = String::from_utf8_lossy(&bytes[value_offset..value_end])
+            .trim_matches(char::from(0))
+            .trim()
+            .to_string();
+        if !key.is_empty() && !value.is_empty() {
+            tags.entry(key).or_insert(value);
+        }
+
+        offset = value_end + (tag_len & 1);
+    }
+}
+
+fn read_le_u32(bytes: &[u8], offset: usize) -> u32 {
+    u32::from_le_bytes([
+        bytes[offset],
+        bytes[offset + 1],
+        bytes[offset + 2],
+        bytes[offset + 3],
+    ])
+}
+
+fn collect_metadata_tags(revision: Option<&MetadataRevision>) -> BTreeMap<String, String> {
     let mut tags = BTreeMap::new();
     if let Some(revision) = revision {
-        for tag in &revision.media.tags {
-            let key = tag
-                .std
-                .as_ref()
-                .and_then(standard_tag_name)
-                .map(ToOwned::to_owned)
-                .unwrap_or_else(|| tag.raw.key.trim().to_lowercase());
-            let value = tag.raw.value.to_string();
-            let value = value.trim_matches(char::from(0)).trim().to_string();
-            if key.is_empty() || value.trim().is_empty() {
-                continue;
-            }
-            tags.entry(key).or_insert(value);
+        collect_tag_list(&mut tags, &revision.media.tags);
+        for track in &revision.per_track {
+            collect_tag_list(&mut tags, &track.metadata.tags);
         }
     }
 
     tags
+}
+
+fn collect_tag_list(tags: &mut BTreeMap<String, String>, source: &[Tag]) {
+    for tag in source {
+        let key = tag
+            .std
+            .as_ref()
+            .and_then(standard_tag_name)
+            .map(ToOwned::to_owned)
+            .unwrap_or_else(|| normalize_raw_tag_key(&tag.raw.key));
+        let value = tag.raw.value.to_string();
+        let value = value.trim_matches(char::from(0)).trim().to_string();
+        if key.is_empty() || value.trim().is_empty() {
+            continue;
+        }
+        tags.entry(key).or_insert(value);
+    }
+}
+
+fn normalize_raw_tag_key(value: &str) -> String {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "inam" | "tit2" | "title" => "title".to_string(),
+        "iart" | "tpe1" | "artist" => "artist".to_string(),
+        "iprd" | "talb" | "album" => "album".to_string(),
+        other => other.to_string(),
+    }
 }
 
 fn standard_tag_name(key: &StandardTag) -> Option<&'static str> {
@@ -732,6 +906,8 @@ fn guess_container(file_name_hint: Option<&str>, mime_type_hint: Option<&str>) -
 
 fn normalize_container_name(value: &str) -> String {
     match value.to_ascii_lowercase().as_str() {
+        "aac" | "adts" => "aac".to_string(),
+        "m4a" | "mp4" => "m4a".to_string(),
         "wav" | "wave" => "wav".to_string(),
         "mp3" => "mp3".to_string(),
         "flac" => "flac".to_string(),
@@ -742,7 +918,11 @@ fn normalize_container_name(value: &str) -> String {
 
 fn normalize_container_from_mime(value: &str) -> Option<String> {
     let mime = value.to_ascii_lowercase();
-    if mime.contains("mpeg") || mime.contains("mp3") {
+    if mime.contains("mp4") || mime.contains("m4a") {
+        Some("m4a".to_string())
+    } else if mime.contains("aac") {
+        Some("aac".to_string())
+    } else if mime.contains("mpeg") || mime.contains("mp3") {
         Some("mp3".to_string())
     } else if mime.contains("flac") {
         Some("flac".to_string())
@@ -757,6 +937,7 @@ fn normalize_container_from_mime(value: &str) -> Option<String> {
 
 fn guess_codec_name(codec: AudioCodecId) -> Option<String> {
     match codec {
+        CODEC_ID_AAC => Some("aac".to_string()),
         CODEC_ID_MP3 => Some("mp3".to_string()),
         CODEC_ID_FLAC => Some("flac".to_string()),
         CODEC_ID_VORBIS => Some("vorbis".to_string()),
@@ -800,6 +981,47 @@ fn encode_bytes_result<T: Serialize>(
         bytes: native_bytes,
         result_json: result_json.into_raw(),
     })))
+}
+
+fn metadata_from_track(
+    track: &Track,
+    codec_params: &symphonia::core::codecs::audio::AudioCodecParameters,
+    container: Option<String>,
+    tags: BTreeMap<String, String>,
+) -> NativeAudioMetadata {
+    let duration_micros = track_duration_micros(track, codec_params);
+    NativeAudioMetadata {
+        duration_micros,
+        container,
+        codec: guess_codec_name(codec_params.codec),
+        sample_rate: codec_params.sample_rate,
+        channel_count: codec_params
+            .channels
+            .as_ref()
+            .map(|channels| channels.count() as u32),
+        bit_rate: None,
+        bit_depth: codec_params.bits_per_sample,
+        tags,
+    }
+}
+
+fn track_duration_micros(
+    track: &Track,
+    codec_params: &symphonia::core::codecs::audio::AudioCodecParameters,
+) -> u64 {
+    if let (Some(time_base), Some(duration)) = (track.time_base, track.duration) {
+        if let Ok(timestamp) = Timestamp::try_from(duration.get()) {
+            if let Some(time) = time_base.calc_time(timestamp) {
+                return time.as_micros().try_into().unwrap_or(0);
+            }
+        }
+    }
+
+    if let (Some(sample_rate), Some(num_frames)) = (codec_params.sample_rate, track.num_frames) {
+        return duration_micros(num_frames as usize, sample_rate);
+    }
+
+    0
 }
 
 impl DecodedAudio {

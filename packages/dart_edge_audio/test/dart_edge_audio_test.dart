@@ -45,6 +45,26 @@ void main() {
     }
   });
 
+  test('probeFile supports explicit shallow and full modes', () async {
+    final shallow = await DartEdgeAudio.probeFile(
+      'test/fixtures/tone.mp3',
+      mode: AudioProbeMode.shallow,
+    );
+    final adaptive = await DartEdgeAudio.probeFile('test/fixtures/tone.mp3');
+    final full = await DartEdgeAudio.probeFile(
+      'test/fixtures/tone.mp3',
+      mode: AudioProbeMode.full,
+    );
+
+    expect(shallow.container, 'mp3');
+    expect(shallow.codec, 'mp3');
+    expect(shallow.sampleRate, 44100);
+    expect(shallow.channelCount, 2);
+    expect(shallow.duration.inMilliseconds, inInclusiveRange(600, 900));
+    expect(adaptive.duration, shallow.duration);
+    expect(full.duration.inMilliseconds, inInclusiveRange(600, 900));
+  });
+
   group('probeBytes', () {
     final cases = <_FixtureCase>[
       const _FixtureCase(
@@ -89,6 +109,30 @@ void main() {
       });
     }
   });
+
+  test(
+    'probeBytes adaptive uses shallow metadata when duration is available',
+    () async {
+      final bytes = await File('test/fixtures/tone.wav').readAsBytes();
+      final shallow = await DartEdgeAudio.probeBytes(
+        bytes,
+        fileNameHint: 'tone.wav',
+        mimeTypeHint: 'audio/wav',
+        mode: AudioProbeMode.shallow,
+      );
+      final adaptive = await DartEdgeAudio.probeBytes(
+        bytes,
+        fileNameHint: 'tone.wav',
+        mimeTypeHint: 'audio/wav',
+      );
+
+      expect(shallow.container, 'wav');
+      expect(shallow.codec, 'pcm_s16le');
+      expect(shallow.duration.inMilliseconds, inInclusiveRange(600, 900));
+      expect(shallow.tags['title'], 'Dart Edge Fixture');
+      expect(adaptive.duration, shallow.duration);
+    },
+  );
 
   group('probeNativeBytes', () {
     final cases = <_FixtureCase>[

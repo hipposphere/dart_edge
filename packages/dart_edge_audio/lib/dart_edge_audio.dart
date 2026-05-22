@@ -10,5 +10,6 @@ export 'src/audio_channel_layout.dart';
 export 'src/audio_file_conversion_request.dart';
 export 'src/audio_file_conversion_result.dart';
 export 'src/audio_metadata.dart';
+export 'src/audio_probe_mode.dart';
 export 'src/audio_target_format.dart';
 export 'src/dart_edge_audio.dart';

@@ -12,18 +12,22 @@ import 'audio_channel_layout.dart';
 import 'audio_file_conversion_request.dart';
 import 'audio_file_conversion_result.dart';
 import 'audio_metadata.dart';
+import 'audio_probe_mode.dart';
 import 'audio_target_format.dart';
 import 'native/dart_edge_audio_native.dart';
 
 /// Stateless facade for native-backed audio probing and conversion.
 abstract final class DartEdgeAudio {
-  static Future<AudioMetadata> probeFile(String path) async {
+  static Future<AudioMetadata> probeFile(
+    String path, {
+    AudioProbeMode mode = AudioProbeMode.adaptive,
+  }) async {
     if (path.isEmpty) {
       throw ArgumentError.value(path, 'path', 'path must not be empty.');
     }
 
     final resultJson = await Isolate.run(
-      () => DartEdgeAudioNative.probeFile(path),
+      () => DartEdgeAudioNative.probeFile(path, mode: mode),
     );
     return AudioMetadata.fromJson(_decodeJsonObject(resultJson));
   }
@@ -32,6 +36,7 @@ abstract final class DartEdgeAudio {
     Uint8List bytes, {
     String? fileNameHint,
     String? mimeTypeHint,
+    AudioProbeMode mode = AudioProbeMode.adaptive,
   }) async {
     _ensureBytes(bytes);
 
@@ -42,6 +47,7 @@ abstract final class DartEdgeAudio {
         materialized,
         fileNameHint: fileNameHint,
         mimeTypeHint: mimeTypeHint,
+        mode: mode,
       );
     });
 
@@ -58,6 +64,7 @@ abstract final class DartEdgeAudio {
     core_ffi.NativeBytes bytes, {
     String? fileNameHint,
     String? mimeTypeHint,
+    AudioProbeMode mode = AudioProbeMode.adaptive,
   }) async {
     _ensureNativeBytes(bytes);
 
@@ -72,6 +79,7 @@ abstract final class DartEdgeAudio {
         bytesLength,
         fileNameHint: fileNameHint,
         mimeTypeHint: mimeTypeHint,
+        mode: mode,
       );
     });
 

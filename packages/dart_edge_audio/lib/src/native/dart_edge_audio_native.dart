@@ -6,6 +6,7 @@ import 'package:dart_edge_native_bridge/dart_edge_native_bridge.dart'
     as core_ffi;
 import 'package:ffi/ffi.dart';
 
+import '../audio_probe_mode.dart';
 import 'generated_bindings.dart' as gen;
 
 final class NativeBytesConversionResponse {
@@ -23,11 +24,17 @@ abstract final class DartEdgeAudioNative {
 
   static bool get hasBundledAsset => abiVersion >= 1;
 
-  static String probeFile(String path) {
-    final pathPtr = path.toNativeUtf8();
+  static String probeFile(
+    String path, {
+    AudioProbeMode mode = AudioProbeMode.adaptive,
+  }) {
+    final requestPtr = jsonEncode({
+      'path': path,
+      'mode': mode.wireValue,
+    }).toNativeUtf8();
 
     try {
-      final resultPtr = gen.dart_edge_audio_probe_file(pathPtr.cast<Char>());
+      final resultPtr = gen.dart_edge_audio_probe_file(requestPtr.cast<Char>());
       if (resultPtr == nullptr) {
         throw StateError(_takeLastError());
       }
@@ -38,7 +45,7 @@ abstract final class DartEdgeAudioNative {
         gen.dart_edge_audio_free_string(resultPtr);
       }
     } finally {
-      calloc.free(pathPtr);
+      calloc.free(requestPtr);
     }
   }
 
@@ -46,6 +53,7 @@ abstract final class DartEdgeAudioNative {
     Uint8List bytes, {
     String? fileNameHint,
     String? mimeTypeHint,
+    AudioProbeMode mode = AudioProbeMode.adaptive,
   }) {
     final bytesPtr = bytes.isEmpty ? nullptr : calloc<Uint8>(bytes.length);
 
@@ -59,6 +67,7 @@ abstract final class DartEdgeAudioNative {
         bytes.length,
         fileNameHint: fileNameHint,
         mimeTypeHint: mimeTypeHint,
+        mode: mode,
       );
     } finally {
       if (bytesPtr != nullptr) {
@@ -72,10 +81,12 @@ abstract final class DartEdgeAudioNative {
     int bytesLength, {
     String? fileNameHint,
     String? mimeTypeHint,
+    AudioProbeMode mode = AudioProbeMode.adaptive,
   }) {
     final requestPtr = jsonEncode({
       'fileNameHint': fileNameHint,
       'mimeTypeHint': mimeTypeHint,
+      'mode': mode.wireValue,
     }).toNativeUtf8();
 
     try {

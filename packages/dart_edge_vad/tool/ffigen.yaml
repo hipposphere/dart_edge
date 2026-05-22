@@ -1,0 +1,26 @@
+name: DartEdgeVadNativeBindings
+description: Generated C ABI bindings for dart_edge_vad.
+output: ../lib/src/native/generated_bindings.dart
+headers:
+  entry-points:
+    - ../rust/include/dart_edge_vad.h
+compiler-opts:
+  - -I../../crates/dart_edge_core/include
+import:
+  symbol-files:
+    - package:dart_edge_native_bridge/src/ffi/generated_symbols.yaml
+functions:
+  include:
+    - dart_edge_vad_.*
+  leaf:
+    include:
+      - dart_edge_vad_free_string
+      - dart_edge_vad_native_abi_version
+exclude-all-by-default: true
+sort: true
+use-supported-typedefs: true
+comments: false
+preamble: |
+  // ignore_for_file: camel_case_types, non_constant_identifier_names
+ffi-native:
+  asset-id: package:dart_edge_vad/dart_edge_vad.dart

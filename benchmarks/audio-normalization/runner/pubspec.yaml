@@ -1,0 +1,13 @@
+name: dart_edge_audio_normalization_benchmark_runner
+description: Benchmark runner for audio probing and normalization latency.
+publish_to: none
+version: 0.1.0
+
+environment:
+  sdk: ">=3.12.0 <4.0.0"
+
+resolution: workspace
+
+dependencies:
+  dart_edge_audio: any
+  dart_edge_vad: any
