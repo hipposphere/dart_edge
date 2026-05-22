@@ -69,9 +69,61 @@ The layout also includes package-owned fallback styles by default for the docs
 shell and the shadcn primitives used by the built-in MDX components. Set
 `includeFallbackStyles: false` when the consuming app serves a complete
 Tailwind/shadcn stylesheet and wants that bundle to own all component styling.
+The docs shell includes a Light/Dark/System color-mode control. It starts in
+System mode, stores the selected mode in `localStorage`, and sets both
+`data-theme` and the `.dark` class on the document root for stylesheet
+compatibility.
 
 For Tailwind-based apps, `web/styles/globals.tw.css` remains available as a
 starter Tailwind entrypoint.
+
+## Bundled Content
+
+Use `DartEdgeDocsApp.fromContentSource()` when docs must not depend on loose
+source files at runtime, for example in Docker images built from compiled Dart
+output.
+
+```dart
+final docs = DartEdgeDocsApp.fromContentSource(
+  wiki: wiki,
+  source: DartEdgeDocsDataAssetContentSource(
+    package: 'my_docs_app',
+    assetNames: const [
+      'docs/index.mdx',
+      'docs/users/calls.mdx',
+    ],
+    pathPrefixToStrip: 'docs',
+    loadString: loadDataAssetString,
+  ),
+);
+```
+
+A package that owns docs can use the same hook pattern as `dart_edge_docs`:
+register files under `content/docs/**/*.mdx` and `content/docs/**/*.md` as data
+assets with ids like `package:my_docs_app/docs/users/calls.mdx`.
+
+Adding a bundled page requires adding the file under `content/docs` and listing
+its asset name wherever the app constructs `DartEdgeDocsDataAssetContentSource`.
+
+Until the target Dart runtime can load data assets by id, use the generated
+string manifest fallback:
+
+```sh
+dart run dart_edge_docs:generate_docs_manifest \
+  --input content/docs \
+  --output lib/src/generated/docs_content_manifest.dart \
+  --name docsContentManifest
+```
+
+```dart
+const docs = DartEdgeDocsApp.fromContentSource(
+  wiki: wiki,
+  source: DartEdgeDocsStringManifestContentSource(docsContentManifest),
+);
+```
+
+When the fallback is active, rerun the manifest generator after adding or
+editing a docs page.
 
 ## Dart Edge Mounting
 

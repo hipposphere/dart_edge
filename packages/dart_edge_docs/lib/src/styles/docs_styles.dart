@@ -19,6 +19,40 @@ List<StyleRule> get dartEdgeDocsStyles => [
   css('.de-docs-brand').styles(textDecoration: TextDecoration.none),
   css('.de-docs-header-spacer').styles(flex: Flex(grow: 1)),
   css('.de-docs-header-link').styles(textDecoration: TextDecoration.none),
+  css('.de-docs-theme-toggle').styles(
+    display: Display.inlineFlex,
+    alignItems: AlignItems.center,
+    padding: Padding.all(0.125.rem),
+    border: Border.all(width: 1.px),
+    raw: {
+      'border-color': 'var(--border)',
+      'border-radius': '0.5rem',
+      'background': 'var(--muted)',
+    },
+  ),
+  css('.de-docs-theme-button').styles(
+    border: Border.none,
+    cursor: Cursor.pointer,
+    fontSize: 0.75.rem,
+    fontWeight: FontWeight.w500,
+    padding: Padding.symmetric(horizontal: 0.5.rem, vertical: 0.25.rem),
+    raw: {
+      'border-radius': '0.375rem',
+      'background': 'transparent',
+      'color': 'var(--muted-foreground)',
+      'line-height': '1.25rem',
+    },
+  ),
+  css('.de-docs-theme-button[aria-pressed="true"]').styles(
+    raw: {
+      'background': 'var(--background)',
+      'color': 'var(--foreground)',
+      'box-shadow': '0 1px 2px rgb(0 0 0 / 0.06)',
+    },
+  ),
+  css(
+    '.de-docs-theme-button:hover',
+  ).styles(raw: {'color': 'var(--foreground)'}),
   css('.de-docs-layout').styles(
     display: Display.grid,
     maxWidth: 96.rem,
@@ -94,6 +128,7 @@ List<StyleRule> get dartEdgeDocsStyles => [
 List<StyleRule> get _shadcnFallbackStyles => [
   css(':root').styles(
     raw: {
+      'color-scheme': 'light',
       '--radius': '0.5rem',
       '--background': '#ffffff',
       '--foreground': '#111111',
@@ -113,6 +148,27 @@ List<StyleRule> get _shadcnFallbackStyles => [
       '--ring': '#a3a3a3',
     },
   ),
+  css(':root[data-theme="dark"]').styles(
+    raw: {
+      'color-scheme': 'dark',
+      '--background': '#0a0a0a',
+      '--foreground': '#fafafa',
+      '--card': '#111111',
+      '--card-foreground': '#fafafa',
+      '--primary': '#fafafa',
+      '--primary-foreground': '#171717',
+      '--secondary': '#262626',
+      '--secondary-foreground': '#fafafa',
+      '--muted': '#262626',
+      '--muted-foreground': '#a3a3a3',
+      '--accent': '#262626',
+      '--accent-foreground': '#fafafa',
+      '--destructive': '#ef4444',
+      '--border': '#262626',
+      '--input': '#262626',
+      '--ring': '#737373',
+    },
+  ),
   css('*').styles(raw: {'box-sizing': 'border-box'}),
   css('body').styles(
     margin: Margin.zero,
@@ -129,9 +185,11 @@ List<StyleRule> get _shadcnFallbackStyles => [
   css('.border-b').styles(raw: {'border-bottom': '1px solid var(--border)'}),
   css('.border-r').styles(raw: {'border-right': '1px solid var(--border)'}),
   css('.bg-background').styles(raw: {'background': 'var(--background)'}),
-  css(
-    '.bg-background\\/95',
-  ).styles(raw: {'background': 'rgb(255 255 255 / 0.95)'}),
+  css('.bg-background\\/95').styles(
+    raw: {
+      'background': 'color-mix(in srgb, var(--background) 95%, transparent)',
+    },
+  ),
   css('.bg-muted, .bg-secondary').styles(raw: {'background': 'var(--muted)'}),
   css('.bg-card').styles(raw: {'background': 'var(--card)'}),
   css('.text-foreground').styles(raw: {'color': 'var(--foreground)'}),

@@ -6,6 +6,7 @@
 library;
 
 export 'src/app/docs_app.dart';
+export 'src/content/content_source.dart';
 export 'src/content/mdx.dart';
 export 'src/content/shadcn_mdx_components.dart';
 export 'src/layout/docs_layout.dart';

@@ -2,6 +2,7 @@ import 'package:jaspr/jaspr.dart';
 import 'package:jaspr/server.dart';
 import 'package:jaspr_content/jaspr_content.dart';
 
+import '../content/content_source.dart';
 import '../content/mdx.dart';
 import '../layout/docs_layout.dart';
 import '../wiki/wiki.dart';
@@ -19,7 +20,22 @@ final class DartEdgeDocsApp extends StatelessComponent {
     this.additionalComponents = const [],
     this.debugPrintRoutes = false,
     super.key,
-  });
+  }) : contentSource = null;
+
+  /// Creates a docs app backed by bundled or generated content.
+  const DartEdgeDocsApp.fromContentSource({
+    required this.wiki,
+    required DartEdgeDocsContentSource source,
+    this.stylesheetHref = '/styles.css',
+    this.includeFallbackStyles = true,
+    this.eagerlyLoadAllPages = true,
+    this.templateEngine,
+    this.additionalComponents = const [],
+    this.debugPrintRoutes = false,
+    super.key,
+  }) : contentSource = source,
+       contentDirectory = 'content',
+       dataDirectory = 'content/_data';
 
   /// Structured wiki navigation shown in the shell.
   final DartEdgeDocsWiki wiki;
@@ -29,6 +45,9 @@ final class DartEdgeDocsApp extends StatelessComponent {
 
   /// Directory containing optional `jaspr_content` data files.
   final String dataDirectory;
+
+  /// Optional bundled content source.
+  final DartEdgeDocsContentSource? contentSource;
 
   /// Compiled stylesheet path.
   ///
@@ -54,6 +73,34 @@ final class DartEdgeDocsApp extends StatelessComponent {
 
   @override
   Component build(BuildContext context) {
+    final source = contentSource;
+    if (source != null) {
+      return ContentApp.custom(
+        loaders: [
+          DartEdgeDocsContentSourceLoader(
+            source: source,
+            debugPrint: debugPrintRoutes,
+          ),
+        ],
+        eagerlyLoadAllPages: eagerlyLoadAllPages,
+        configResolver: PageConfig.all(
+          templateEngine: templateEngine,
+          parsers: DartEdgeDocsMdx.parsers(),
+          extensions: DartEdgeDocsMdx.extensions(),
+          components: DartEdgeDocsMdx.components(
+            additional: additionalComponents,
+          ),
+          layouts: [
+            DartEdgeDocsLayout(
+              wiki: wiki,
+              stylesheetHref: stylesheetHref,
+              includeFallbackStyles: includeFallbackStyles,
+            ),
+          ],
+        ),
+      );
+    }
+
     return ContentApp(
       directory: contentDirectory,
       dataDirectory: dataDirectory,

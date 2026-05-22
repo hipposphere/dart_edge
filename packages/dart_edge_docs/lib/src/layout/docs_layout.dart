@@ -24,6 +24,7 @@ final class DartEdgeDocsLayout extends PageLayoutBase {
   @override
   Iterable<Component> buildHead(Page page) sync* {
     yield* super.buildHead(page);
+    yield script(content: _docsColorModeScript);
     yield link(rel: 'stylesheet', href: stylesheetHref);
     if (includeFallbackStyles) {
       yield Style(styles: dartEdgeDocsStyles);
@@ -59,6 +60,7 @@ final class DartEdgeDocsLayout extends PageLayoutBase {
                 Component.text(version),
               ], variant: BadgeVariant.secondary),
             span(classes: 'de-docs-header-spacer', []),
+            _DocsColorModeToggle(),
             if (wiki.repositoryHref case final repositoryHref?)
               a(
                 href: repositoryHref,
@@ -113,6 +115,33 @@ final class DartEdgeDocsLayout extends PageLayoutBase {
           ]),
         ]),
       ],
+    );
+  }
+}
+
+final class _DocsColorModeToggle extends StatelessComponent {
+  @override
+  Component build(BuildContext context) {
+    return div(
+      classes: 'de-docs-theme-toggle',
+      attributes: {'role': 'group', 'aria-label': 'Color mode'},
+      [
+        _button('system', 'System'),
+        _button('light', 'Light'),
+        _button('dark', 'Dark'),
+      ],
+    );
+  }
+
+  Component _button(String value, String label) {
+    return button(
+      type: ButtonType.button,
+      classes: 'de-docs-theme-button',
+      attributes: {
+        'data-de-docs-theme-value': value,
+        'aria-pressed': value == 'system' ? 'true' : 'false',
+      },
+      [Component.text(label)],
     );
   }
 }
@@ -177,3 +206,75 @@ String _normalizeComparableHref(String href) {
   if (href == '/') return '/';
   return href.endsWith('/') ? href.substring(0, href.length - 1) : href;
 }
+
+const _docsColorModeScript = '''
+(function () {
+  var storageKey = 'dart_edge_docs_color_mode';
+  var root = document.documentElement;
+  var media = window.matchMedia('(prefers-color-scheme: dark)');
+
+  function storedMode() {
+    try {
+      var value = window.localStorage.getItem(storageKey);
+      return value === 'light' || value === 'dark' || value === 'system'
+        ? value
+        : 'system';
+    } catch (_) {
+      return 'system';
+    }
+  }
+
+  function resolvedMode(mode) {
+    return mode === 'system' ? (media.matches ? 'dark' : 'light') : mode;
+  }
+
+  function updateButtons(mode) {
+    var buttons = document.querySelectorAll('[data-de-docs-theme-value]');
+    for (var i = 0; i < buttons.length; i += 1) {
+      var button = buttons[i];
+      var active = button.getAttribute('data-de-docs-theme-value') === mode;
+      button.setAttribute('aria-pressed', active ? 'true' : 'false');
+    }
+  }
+
+  function apply(mode) {
+    var resolved = resolvedMode(mode);
+    root.dataset.themeMode = mode;
+    root.dataset.theme = resolved;
+    root.style.colorScheme = resolved;
+    root.classList.toggle('dark', resolved === 'dark');
+    updateButtons(mode);
+  }
+
+  function save(mode) {
+    try {
+      window.localStorage.setItem(storageKey, mode);
+    } catch (_) {}
+  }
+
+  apply(storedMode());
+
+  document.addEventListener('click', function (event) {
+    var target = event.target.closest
+      ? event.target.closest('[data-de-docs-theme-value]')
+      : null;
+    if (!target) return;
+    var mode = target.getAttribute('data-de-docs-theme-value');
+    if (mode !== 'light' && mode !== 'dark' && mode !== 'system') return;
+    save(mode);
+    apply(mode);
+  });
+
+  var onSystemModeChange = function () {
+    if (storedMode() === 'system') {
+      apply('system');
+    }
+  };
+
+  if (media.addEventListener) {
+    media.addEventListener('change', onSystemModeChange);
+  } else if (media.addListener) {
+    media.addListener(onSystemModeChange);
+  }
+})();
+''';
