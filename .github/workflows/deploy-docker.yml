@@ -1,0 +1,132 @@
+name: Deploy Docker
+
+on:
+  workflow_call:
+    inputs:
+      source:
+        description: Folder in the repository to copy to the server.
+        required: true
+        type: string
+      target:
+        description: Absolute folder path on the remote server.
+        required: true
+        type: string
+      ssh_host:
+        description: SSH host for the remote server.
+        required: true
+        type: string
+      ssh_port:
+        description: SSH port for the remote server.
+        required: true
+        type: string
+      ssh_username:
+        description: SSH username for the remote server.
+        required: true
+        type: string
+      compose_command:
+        description: Docker Compose command to run in the target folder.
+        required: false
+        type: string
+        default: docker compose up -d --build --force-recreate
+      create_network:
+        description: Docker network to create before compose. Leave empty to skip.
+        required: false
+        type: string
+        default: ""
+      login_ghcr:
+        description: Whether to log in to ghcr.io on the remote server before compose.
+        required: false
+        type: boolean
+        default: false
+    secrets:
+      SSH_KEY:
+        required: false
+      SSH_PASSWORD:
+        required: false
+      ENV_FILE:
+        required: false
+      GHCR_TOKEN:
+        required: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      HAS_ENV_FILE: ${{ secrets.ENV_FILE != '' }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Clear old deployment folder on remote server
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ inputs.ssh_host }}
+          port: ${{ inputs.ssh_port }}
+          username: ${{ inputs.ssh_username }}
+          key: ${{ secrets.SSH_KEY }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          script: |
+            set -e
+            rm -rf "${{ inputs.target }}"
+            mkdir -p "${{ inputs.target }}"
+
+      - name: Copy files to remote server
+        uses: appleboy/scp-action@v1.0.0
+        with:
+          host: ${{ inputs.ssh_host }}
+          port: ${{ inputs.ssh_port }}
+          username: ${{ inputs.ssh_username }}
+          key: ${{ secrets.SSH_KEY }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          source: ${{ inputs.source }}
+          strip_components: 1
+          target: ${{ inputs.target }}
+
+      - name: Write .env file on remote server
+        if: ${{ env.HAS_ENV_FILE == 'true' }}
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ inputs.ssh_host }}
+          port: ${{ inputs.ssh_port }}
+          username: ${{ inputs.ssh_username }}
+          key: ${{ secrets.SSH_KEY }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          script: |
+            set -e
+            umask 077
+            cat > "${{ inputs.target }}/.env" <<'ENVEOF'
+            ${{ secrets.ENV_FILE }}
+            ENVEOF
+
+      - name: Login to ghcr on remote server
+        if: ${{ inputs.login_ghcr }}
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ inputs.ssh_host }}
+          port: ${{ inputs.ssh_port }}
+          username: ${{ inputs.ssh_username }}
+          key: ${{ secrets.SSH_KEY }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          script: |
+            set -e
+            echo "${{ secrets.GHCR_TOKEN || github.token }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Build and deploy on remote server
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ inputs.ssh_host }}
+          port: ${{ inputs.ssh_port }}
+          username: ${{ inputs.ssh_username }}
+          key: ${{ secrets.SSH_KEY }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          script: |
+            set -e
+            cd "${{ inputs.target }}"
+            if [ -n "${{ inputs.create_network }}" ] && ! docker network ls --format '{{.Name}}' | grep -Fxq "${{ inputs.create_network }}"; then
+              docker network create "${{ inputs.create_network }}"
+            fi
+            ${{ inputs.compose_command }}
+            docker image prune -a -f
+            docker builder prune -f
