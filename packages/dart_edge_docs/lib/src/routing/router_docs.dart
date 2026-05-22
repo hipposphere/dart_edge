@@ -9,11 +9,17 @@ extension DartEdgeDocsRouterExtensions<TServices> on Router<TServices> {
   void mountDartEdgeDocs(
     DartEdgeDocsApp docs, {
     String catchAllPath = '/<dartEdgeDocsPath*>',
+    bool serveStaticFiles = false,
+    JasprStaticFileHandler? staticFileHandler,
+    String? handlerPath,
   }) {
     mountJasprApp(
       docs,
       catchAllPath: catchAllPath,
       paths: const <String>[],
+      serveStaticFiles: serveStaticFiles,
+      staticFileHandler: staticFileHandler,
+      handlerPath: handlerPath,
       routeOptions: (path) {
         return const RouteOptions(
           operationId: 'getDartEdgeDocsApp',

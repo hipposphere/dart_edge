@@ -1,3 +1,10 @@
+## 0.3.6
+
+- Add `serveStaticFiles`, `staticFileHandler`, and `handlerPath` options to
+  `mountJasprApp(...)` so mounted apps can run without Jaspr's runtime
+  `pubspec.yaml` lookup and can preserve the Shelf base path when mounted under
+  prefixes such as `/docs`.
+
 ## 0.3.5
 
 - Remove direct Dart Edge HTML route helpers in favor of mounting Jaspr's Shelf

@@ -148,6 +148,18 @@ app.mountDartEdgeDocs(
 );
 ```
 
-The helper mounts a single catch-all Jaspr app route. Static files are handled
-by Jaspr's app handler, so app-local files under `web/` are served the same way
-they are in a normal Jaspr server.
+The helper mounts a single catch-all Jaspr app route and disables Jaspr static
+file handling by default so bundled docs work in app-only runtime images without
+a `pubspec.yaml`. For mounted docs under a prefix, pass both the route pattern
+and Shelf handler base path:
+
+```dart
+app.mountDartEdgeDocs(
+  docs,
+  catchAllPath: '/docs/<dartEdgeDocsPath*>',
+  handlerPath: '/docs',
+);
+```
+
+If an app wants Jaspr to serve `web/` static files as well, pass
+`serveStaticFiles: true` or provide `staticFileHandler`.

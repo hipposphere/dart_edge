@@ -1,3 +1,9 @@
+## 0.2.2
+
+- Forward Jaspr static file and handler base-path options from
+  `mountDartEdgeDocs(...)`, with Jaspr static file handling disabled by default
+  for app-only runtime images.
+
 ## 0.2.0
 
 - Mount docs through the Shelf-backed Jaspr app handler.

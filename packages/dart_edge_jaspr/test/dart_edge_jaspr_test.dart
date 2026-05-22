@@ -53,4 +53,49 @@ void main() {
     expect(response.statusCode, HttpStatus.ok);
     expect(html, contains('Mounted body'));
   });
+
+  test('can mount a Jaspr app without Jaspr static file handling', () async {
+    final app = DartEdge<void>(services: () {});
+    app.mountJasprApp(
+      jaspr_server.Document(
+        title: 'Mounted',
+        base: null,
+        body: div([Component.text('Mounted body')]),
+      ),
+      catchAllPath: '/docs/<jasprPath*>',
+      paths: const [],
+      serveStaticFiles: false,
+      handlerPath: '/docs',
+    );
+
+    expect(app.routeRegistry.registrations, hasLength(1));
+    expect(
+      app.routeRegistry.registrations.single.httpPath,
+      '/docs/<jasprPath*>',
+    );
+
+    final server = await app.listen(port: 0);
+    final client = HttpClient();
+
+    addTearDown(() async {
+      client.close(force: true);
+      await server.close();
+    });
+
+    final baseUri = Uri.http('127.0.0.1:${server.port}');
+    final response = await (await client.getUrl(
+      baseUri.resolve('/docs/nested/page'),
+    )).close();
+    final html = await response.transform(SystemEncoding().decoder).join();
+
+    expect(response.statusCode, HttpStatus.ok);
+    expect(html, contains('Mounted body'));
+
+    final staticResponse = await (await client.getUrl(
+      baseUri.resolve('/docs/styles.css'),
+    )).close();
+    await staticResponse.drain<void>();
+
+    expect(staticResponse.statusCode, HttpStatus.notFound);
+  });
 }

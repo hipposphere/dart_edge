@@ -48,6 +48,8 @@ void main() {
 
     router.mountDartEdgeDocs(
       const DartEdgeDocsApp(wiki: wiki, stylesheetHref: '/docs/styles.css'),
+      catchAllPath: '/docs/<dartEdgeDocsPath*>',
+      handlerPath: '/docs',
     );
 
     final paths = {
@@ -55,7 +57,7 @@ void main() {
         registration.httpPath,
     };
 
-    expect(paths, contains('/<dartEdgeDocsPath*>'));
+    expect(paths, contains('/docs/<dartEdgeDocsPath*>'));
     expect(router.routeRegistry.registrations, hasLength(1));
   });
 

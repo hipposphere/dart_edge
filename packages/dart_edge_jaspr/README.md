@@ -46,13 +46,17 @@ Future<void> main() async {
 ```dart
 app.mountJasprApp(
   docs,
-  catchAllPath: '/<jasprPath*>',
+  catchAllPath: '/docs/<jasprPath*>',
   paths: const [],
+  handlerPath: '/docs',
+  serveStaticFiles: false,
 );
 ```
 
-Static files are handled by Jaspr's `serveApp(...)` handler, so configure them
-the same way you would in a normal Jaspr app.
+Static files are handled by Jaspr's `serveApp(...)` handler by default, so
+configure them the same way you would in a normal Jaspr app. For app-only
+runtime images that do not contain a `pubspec.yaml` or `web/` directory, pass
+`serveStaticFiles: false` or provide `staticFileHandler`.
 
 The catch-all path requires a runtime native artifact that supports final
 wildcard route segments.
