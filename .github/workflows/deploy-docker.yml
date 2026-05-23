@@ -38,6 +38,16 @@ on:
         required: false
         type: boolean
         default: false
+      image_artifact:
+        description: Workflow artifact name containing a docker image archive to load on the remote server before compose. Leave empty to skip.
+        required: false
+        type: string
+        default: ""
+      remote_image_archive:
+        description: Absolute path to a docker image archive already present on the remote server. Leave empty to skip.
+        required: false
+        type: string
+        default: ""
     secrets:
       SSH_KEY:
         required: false
@@ -52,12 +62,73 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: read
+      packages: read
     env:
       HAS_ENV_FILE: ${{ secrets.ENV_FILE != '' }}
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
+
+      - name: Validate image inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${{ inputs.image_artifact }}" ] && [ -n "${{ inputs.remote_image_archive }}" ]; then
+            echo "::error::Use either inputs.image_artifact or inputs.remote_image_archive, not both."
+            exit 1
+          fi
+          if [ -n "${{ inputs.remote_image_archive }}" ] && [[ "${{ inputs.remote_image_archive }}" != /* ]]; then
+            echo "::error::inputs.remote_image_archive must be an absolute path."
+            exit 1
+          fi
+          if { [ -n "${{ inputs.image_artifact }}" ] || [ -n "${{ inputs.remote_image_archive }}" ]; } && [[ "${{ inputs.compose_command }}" == *"--build"* ]]; then
+            echo "::warning::inputs.compose_command contains --build while loading a prebuilt image. Compose may rebuild instead of using the loaded image."
+          fi
+
+      - name: Download image artifact
+        if: ${{ inputs.image_artifact != '' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.image_artifact }}
+          path: downloaded-image-artifact
+
+      - name: Prepare image artifact for upload
+        if: ${{ inputs.image_artifact != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="$(find downloaded-image-artifact -type f \( -name '*.tar' -o -name '*.tar.gz' \) | head -n 1)"
+          if [ -z "$archive" ]; then
+            echo "::error::No .tar or .tar.gz docker image archive found in artifact '${{ inputs.image_artifact }}'."
+            exit 1
+          fi
+          mkdir -p deploy-artifacts
+          case "$archive" in
+            *.tar.gz) cp "$archive" deploy-artifacts/docker-image.tar.gz ;;
+            *.tar) gzip -c "$archive" > deploy-artifacts/docker-image.tar.gz ;;
+            *)
+              echo "::error::Unsupported docker image archive: $archive"
+              exit 1
+              ;;
+          esac
+
+      - name: Load remote image archive
+        if: ${{ inputs.remote_image_archive != '' }}
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ inputs.ssh_host }}
+          port: ${{ inputs.ssh_port }}
+          username: ${{ inputs.ssh_username }}
+          key: ${{ secrets.SSH_KEY }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          script: |
+            set -e
+            gzip -dc "${{ inputs.remote_image_archive }}" | docker load
+            rm -f "${{ inputs.remote_image_archive }}"
 
       - name: Clear old deployment folder on remote server
         uses: appleboy/ssh-action@v1.0.0
@@ -81,6 +152,19 @@ jobs:
           key: ${{ secrets.SSH_KEY }}
           password: ${{ secrets.SSH_PASSWORD }}
           source: ${{ inputs.source }}
+          strip_components: 1
+          target: ${{ inputs.target }}
+
+      - name: Copy image artifact to remote server
+        if: ${{ inputs.image_artifact != '' }}
+        uses: appleboy/scp-action@v1.0.0
+        with:
+          host: ${{ inputs.ssh_host }}
+          port: ${{ inputs.ssh_port }}
+          username: ${{ inputs.ssh_username }}
+          key: ${{ secrets.SSH_KEY }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          source: deploy-artifacts/docker-image.tar.gz
           strip_components: 1
           target: ${{ inputs.target }}
 
@@ -112,6 +196,20 @@ jobs:
           script: |
             set -e
             echo "${{ secrets.GHCR_TOKEN || github.token }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Load image artifact on remote server
+        if: ${{ inputs.image_artifact != '' }}
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ inputs.ssh_host }}
+          port: ${{ inputs.ssh_port }}
+          username: ${{ inputs.ssh_username }}
+          key: ${{ secrets.SSH_KEY }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          script: |
+            set -e
+            gzip -dc "${{ inputs.target }}/docker-image.tar.gz" | docker load
+            rm -f "${{ inputs.target }}/docker-image.tar.gz"
 
       - name: Build and deploy on remote server
         uses: appleboy/ssh-action@v1.0.0

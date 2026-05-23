@@ -24,6 +24,53 @@ on:
         required: false
         type: string
         default: linux/amd64
+      output:
+        description: Image output mode. Use "ghcr", "artifact", or "ssh-upload".
+        required: true
+        type: string
+      artifact_name:
+        description: Archive name for "artifact" uploads and "ssh-upload" temporary files.
+        required: false
+        type: string
+        default: docker-image
+      ssh_host:
+        description: SSH host for the remote server when output is "ssh-upload".
+        required: false
+        type: string
+        default: ""
+      ssh_port:
+        description: SSH port for the remote server when output is "ssh-upload".
+        required: false
+        type: string
+        default: "22"
+      ssh_username:
+        description: SSH username for the remote server when output is "ssh-upload".
+        required: false
+        type: string
+        default: ""
+      remote_image_archive:
+        description: Absolute path on the remote server for the uploaded docker archive when output is "ssh-upload". Defaults to /tmp/<artifact_name>-<run_id>-<run_attempt>.tar.gz.
+        required: false
+        type: string
+        default: ""
+    secrets:
+      SSH_KEY:
+        required: false
+      SSH_PASSWORD:
+        required: false
+    outputs:
+      image:
+        description: Fully qualified image name.
+        value: ${{ jobs.build.outputs.image }}
+      version_tag:
+        description: Version tag resolved from the package pubspec.yaml.
+        value: ${{ jobs.build.outputs.version_tag }}
+      artifact_name:
+        description: Uploaded workflow artifact name when output is "artifact".
+        value: ${{ jobs.build.outputs.artifact_name }}
+      remote_image_archive:
+        description: Remote docker archive path when output is "ssh-upload".
+        value: ${{ jobs.build.outputs.remote_image_archive }}
 
 jobs:
   build:
@@ -32,6 +79,11 @@ jobs:
     permissions:
       contents: read
       packages: write
+    outputs:
+      image: ${{ steps.metadata.outputs.image }}
+      version_tag: ${{ steps.dart-edge-ci.outputs.version-tag }}
+      artifact_name: ${{ inputs.artifact_name }}
+      remote_image_archive: ${{ steps.remote-archive.outputs.path }}
 
     steps:
       - name: Checkout
@@ -56,7 +108,33 @@ jobs:
           echo "image=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/${{ inputs.image_name }}" >> "${GITHUB_OUTPUT}"
           echo "created=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> "${GITHUB_OUTPUT}"
 
+      - name: Validate output mode
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${{ inputs.output }}" in
+            ghcr|artifact|ssh-upload) ;;
+            *)
+              echo "::error::inputs.output must be 'ghcr', 'artifact', or 'ssh-upload'."
+              exit 1
+              ;;
+          esac
+          if [ "${{ inputs.output }}" = "ssh-upload" ]; then
+            for name in ssh_host ssh_username; do
+              value=""
+              case "$name" in
+                ssh_host) value="${{ inputs.ssh_host }}" ;;
+                ssh_username) value="${{ inputs.ssh_username }}" ;;
+              esac
+              if [ -z "$value" ]; then
+                echo "::error::inputs.$name is required when inputs.output is 'ssh-upload'."
+                exit 1
+              fi
+            done
+          fi
+
       - name: Log in to GitHub Container Registry
+        if: ${{ inputs.output == 'ghcr' }}
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -64,6 +142,7 @@ jobs:
           password: ${{ github.token }}
 
       - name: Build and publish image
+        if: ${{ inputs.output == 'ghcr' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -81,3 +160,99 @@ jobs:
             --build-arg "REVISION=${{ github.sha }}" \
             --build-arg "CREATED=${{ steps.metadata.outputs.created }}" \
             --build-arg "SOURCE=${{ github.server_url }}/${{ github.repository }}"
+
+      - name: Build image archive
+        if: ${{ inputs.output == 'artifact' || inputs.output == 'ssh-upload' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ inputs.platforms }}" == *","* ]]; then
+            echo "::error::Docker image archives use docker load archives and support one platform. Set inputs.platforms to a single platform."
+            exit 1
+          fi
+
+          mkdir -p artifacts
+          docker buildx build \
+            "${{ steps.dart-edge-ci.outputs.context }}" \
+            --file "${{ steps.dart-edge-ci.outputs.dockerfile }}" \
+            --output "type=docker,dest=artifacts/${{ inputs.artifact_name }}.tar" \
+            --platform "${{ inputs.platforms }}" \
+            --tag "${{ steps.metadata.outputs.image }}:${{ steps.dart-edge-ci.outputs.version-tag }}" \
+            --tag "${{ steps.metadata.outputs.image }}:latest" \
+            --tag "${{ steps.metadata.outputs.image }}:sha-${{ github.sha }}" \
+            --cache-from "type=gha,scope=${{ inputs.cache_scope }}" \
+            --cache-to "type=gha,scope=${{ inputs.cache_scope }},mode=max" \
+            --build-arg "VERSION=${{ steps.dart-edge-ci.outputs.version }}" \
+            --build-arg "REVISION=${{ github.sha }}" \
+            --build-arg "CREATED=${{ steps.metadata.outputs.created }}" \
+            --build-arg "SOURCE=${{ github.server_url }}/${{ github.repository }}"
+          gzip -f "artifacts/${{ inputs.artifact_name }}.tar"
+
+      - name: Upload image artifact
+        if: ${{ inputs.output == 'artifact' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.artifact_name }}
+          path: artifacts/${{ inputs.artifact_name }}.tar.gz
+          if-no-files-found: error
+
+      - name: Resolve remote image archive
+        id: remote-archive
+        if: ${{ inputs.output == 'ssh-upload' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          path="${{ inputs.remote_image_archive }}"
+          if [ -z "$path" ]; then
+            path="/tmp/${{ inputs.artifact_name }}-${{ github.run_id }}-${{ github.run_attempt }}.tar.gz"
+          fi
+          if [[ "$path" != /* ]]; then
+            echo "::error::inputs.remote_image_archive must be an absolute path."
+            exit 1
+          fi
+          echo "path=$path" >> "${GITHUB_OUTPUT}"
+          echo "dir=$(dirname "$path")" >> "${GITHUB_OUTPUT}"
+          echo "name=$(basename "$path")" >> "${GITHUB_OUTPUT}"
+
+      - name: Prepare remote image archive directory
+        if: ${{ inputs.output == 'ssh-upload' }}
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ inputs.ssh_host }}
+          port: ${{ inputs.ssh_port }}
+          username: ${{ inputs.ssh_username }}
+          key: ${{ secrets.SSH_KEY }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          script: |
+            set -e
+            mkdir -p "${{ steps.remote-archive.outputs.dir }}"
+
+      - name: Upload image archive to remote server
+        if: ${{ inputs.output == 'ssh-upload' }}
+        uses: appleboy/scp-action@v1.0.0
+        with:
+          host: ${{ inputs.ssh_host }}
+          port: ${{ inputs.ssh_port }}
+          username: ${{ inputs.ssh_username }}
+          key: ${{ secrets.SSH_KEY }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          source: artifacts/${{ inputs.artifact_name }}.tar.gz
+          strip_components: 1
+          target: ${{ steps.remote-archive.outputs.dir }}
+
+      - name: Move image archive into place
+        if: ${{ inputs.output == 'ssh-upload' }}
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ inputs.ssh_host }}
+          port: ${{ inputs.ssh_port }}
+          username: ${{ inputs.ssh_username }}
+          key: ${{ secrets.SSH_KEY }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          script: |
+            set -e
+            uploaded="${{ steps.remote-archive.outputs.dir }}/${{ inputs.artifact_name }}.tar.gz"
+            target="${{ steps.remote-archive.outputs.path }}"
+            if [ "$uploaded" != "$target" ]; then
+              mv "$uploaded" "$target"
+            fi
