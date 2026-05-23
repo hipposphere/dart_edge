@@ -454,6 +454,178 @@ SqlOrderBy _normalizeOrderBy(Object value, {required bool descending}) {
   };
 }
 
+_SqlFragment _sqlOrderByFragment(SqlOrderBy order, {String prefix = 'order'}) {
+  final fragment = switch ((order.column, order.expression)) {
+    (final SqlColumn<dynamic> column?, _) => _sqlFragment(column),
+    (_, final SqlRawExpression<dynamic> expression?) => _sqlFragment(
+      expression,
+      prefix: prefix,
+    ),
+    _ => throw StateError('SqlOrderBy requires a column or expression.'),
+  };
+  return _SqlFragment(
+    '${fragment.sql}${order.descending ? ' DESC' : ' ASC'}',
+    fragment.parameters,
+  );
+}
+
+_SqlFragment _sqlFragment(
+  Object value, {
+  Map<String, Object?>? parameters,
+  String prefix = 'expr',
+}) {
+  if (parameters != null) {
+    return _rewriteSqlFragmentParameters(
+      value as String,
+      parameters: parameters,
+      prefix: prefix,
+    );
+  }
+  return switch (value) {
+    final SqlRawExpression<dynamic> expression => _rewriteSqlFragmentParameters(
+      expression.sql,
+      parameters: expression.parameters,
+      prefix: prefix,
+    ),
+    final SqlColumn<dynamic> column => _compileSqlFragment((compiler) {
+      compiler.writeColumn(column.asObjectColumn);
+    }),
+    final SqlTable<dynamic, dynamic, dynamic> table => _compileSqlFragment((
+      compiler,
+    ) {
+      compiler.writeIdentifier(switch (table) {
+        final SqlRawTable rawTable =>
+          rawTable.alias ?? rawTable.tableExpression,
+        _ => table.name,
+      });
+    }),
+    final String rawSql => _SqlFragment(rawSql),
+    final Object invalid => throw ArgumentError.value(
+      invalid,
+      'value',
+      'Expected String, SqlRawExpression, SqlColumn, or SqlTable.',
+    ),
+  };
+}
+
+_SqlFragment _compileSqlFragment(void Function(_SqlCompiler compiler) write) {
+  final compiler = _SqlCompiler(SqlDialect.postgres);
+  write(compiler);
+  return _SqlFragment(compiler.toStatement().sql);
+}
+
+_SqlFragment _rewriteSqlFragmentParameters(
+  String sql, {
+  required Map<String, Object?> parameters,
+  required String prefix,
+}) {
+  if (parameters.isEmpty) {
+    return _SqlFragment(sql);
+  }
+  final rewritten = StringBuffer();
+  final rewrittenParameters = <String, Object?>{};
+  var index = 0;
+  while (index < sql.length) {
+    final char = sql[index];
+    if (char == "'") {
+      index = _copyQuotedSql(sql, index, "'", rewritten);
+    } else if (char == '"') {
+      index = _copyQuotedSql(sql, index, '"', rewritten);
+    } else if (_startsWith(sql, index, '--')) {
+      index = _copyLineCommentSql(sql, index, rewritten);
+    } else if (_startsWith(sql, index, '/*')) {
+      index = _copyBlockCommentSql(sql, index, rewritten);
+    } else if (char == '@' && _isIdentifierStart(_peek(sql, index + 1))) {
+      final start = index;
+      var end = index + 2;
+      while (_isIdentifierPart(_peek(sql, end))) {
+        end += 1;
+      }
+      final name = sql.substring(index + 1, end);
+      if (parameters.containsKey(name)) {
+        final rewrittenName = '${prefix}_$name';
+        rewritten.write('@$rewrittenName');
+        rewrittenParameters[rewrittenName] = parameters[name];
+      } else {
+        rewritten.write(sql.substring(start, end));
+      }
+      index = end;
+    } else {
+      rewritten.write(char);
+      index += 1;
+    }
+  }
+  return _SqlFragment(rewritten.toString(), rewrittenParameters);
+}
+
+int _copyQuotedSql(String sql, int start, String quote, StringBuffer target) {
+  target.write(quote);
+  var index = start + 1;
+  while (index < sql.length) {
+    final char = sql[index];
+    target.write(char);
+    index += 1;
+    if (char == quote) {
+      if (_peek(sql, index) == quote) {
+        target.write(quote);
+        index += 1;
+        continue;
+      }
+      break;
+    }
+  }
+  return index;
+}
+
+int _copyLineCommentSql(String sql, int start, StringBuffer target) {
+  var index = start;
+  while (index < sql.length) {
+    final char = sql[index];
+    target.write(char);
+    index += 1;
+    if (char == '\n') {
+      break;
+    }
+  }
+  return index;
+}
+
+int _copyBlockCommentSql(String sql, int start, StringBuffer target) {
+  var index = start;
+  while (index < sql.length) {
+    final char = sql[index];
+    target.write(char);
+    index += 1;
+    if (char == '*' && _peek(sql, index) == '/') {
+      target.write('/');
+      index += 1;
+      break;
+    }
+  }
+  return index;
+}
+
+Map<String, Object?> _mergeSqlFragmentParameters(
+  Iterable<_SqlFragment> values,
+) {
+  final parameters = <String, Object?>{};
+  for (final fragment in values) {
+    parameters.addAll(fragment.parameters);
+  }
+  return parameters;
+}
+
+String _sqlStringLiteral(String value) {
+  return "'${value.replaceAll("'", "''")}'";
+}
+
+final class _SqlFragment {
+  const _SqlFragment(this.sql, [this.parameters = const <String, Object?>{}]);
+
+  final String sql;
+  final Map<String, Object?> parameters;
+}
+
 String _aliasFor(SqlColumn<dynamic> column) =>
     '${column.table.selectionPrefix}${column.name}';
 

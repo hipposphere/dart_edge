@@ -290,6 +290,61 @@ void main() {
     expect(escapedStatement.namedParameters, {'p1': 0});
   });
 
+  test('composes PostgreSQL JSONB query expressions', () {
+    final postsSubquery = pool.typed
+        .from(PostsTable.table)
+        .where(PostsTable.userId.equalsColumn(UsersTable.id))
+        .select([
+          Sql.jsonbAgg(
+            Sql.toJsonb(PostsTable.table),
+            orderBy: [PostsTable.id.desc()],
+          ).as('value'),
+        ]);
+
+    final statement = pool.typed.from(UsersTable.table).select([
+      Sql.jsonbBuildObject({
+        'recording': Sql.toJsonb(UsersTable.table),
+        'summaries': Sql.coalesce<List<Object?>>([
+          Sql.scalarSubquery<List<Object?>>(postsSubquery),
+          Sql.jsonbEmptyArray(),
+        ]),
+      }).as('details'),
+    ]).toStatement();
+
+    expect(
+      statement.sql,
+      'SELECT jsonb_build_object('
+      '\'recording\', to_jsonb("users"), '
+      '\'summaries\', COALESCE((SELECT jsonb_agg(to_jsonb("posts") '
+      'ORDER BY "posts"."id" DESC) AS "value" FROM "posts" '
+      'WHERE "posts"."user_id" = "users"."id"), \'[]\'::jsonb)'
+      ') AS "details" FROM "users"',
+    );
+  });
+
+  test('keeps JSONB expression parameters composable', () {
+    final statement = const _NoopSqlExecutor(SqlDialect.postgres).typed
+        .from(UsersTable.table)
+        .select([
+          Sql.jsonbBuildObject({
+            'payload': Sql.raw<Object?>(
+              '@payload::jsonb',
+              parameters: {
+                'payload': {'name': 'Ada'},
+              },
+            ),
+          }).as('details'),
+        ])
+        .toStatement();
+
+    expect(
+      statement.sql,
+      'SELECT jsonb_build_object(\'payload\', @p1::jsonb) AS "details" '
+      'FROM "users"',
+    );
+    expect(statement.namedParameters, {'p1': '{"name":"Ada"}'});
+  });
+
   test('formats SqlValue for debugging', () {
     expect(const SqlValue<int>.absent().toString(), 'SqlValue.absent()');
     expect(const SqlValue<int>(42).toString(), 'SqlValue(42)');
@@ -459,6 +514,18 @@ final class UsersTable extends SqlTable<UsersRow, UsersInsert, UsersUpdate> {
 
   @override
   String? get schema => null;
+}
+
+final class _NoopSqlExecutor implements SqlExecutor {
+  const _NoopSqlExecutor(this.dialect);
+
+  @override
+  final SqlDialect dialect;
+
+  @override
+  Future<SqlResult> execute(SqlStatement statement) {
+    throw UnsupportedError('This executor only compiles statements.');
+  }
 }
 
 final class PostsRow {

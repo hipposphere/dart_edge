@@ -185,6 +185,116 @@ sealed class SqlPredicate {
   }
 }
 
+/// Typed helpers for composing SQL expression fragments.
+abstract final class Sql {
+  /// Creates a raw SQL expression.
+  static SqlRawExpression<TValue> raw<TValue>(
+    String sql, {
+    Map<String, Object?> parameters = const <String, Object?>{},
+  }) {
+    return SqlRawExpression<TValue>(sql, parameters: parameters);
+  }
+
+  /// Creates a scalar subquery expression from a selected query.
+  static SqlRawExpression<TValue> scalarSubquery<TValue>(
+    SelectedSelectQueryBuilder<dynamic> query,
+  ) {
+    final statement = query.toStatement();
+    final fragment = _sqlFragment(
+      statement.sql,
+      parameters: statement.namedParameters ?? const <String, Object?>{},
+      prefix: 'subquery',
+    );
+    return SqlRawExpression<TValue>(
+      '(${fragment.sql})',
+      parameters: fragment.parameters,
+    );
+  }
+
+  /// Creates `to_jsonb(value)`.
+  static SqlRawExpression<Object?> toJsonb(Object value) {
+    final fragment = _sqlFragment(value);
+    return SqlRawExpression<Object?>(
+      'to_jsonb(${fragment.sql})',
+      parameters: fragment.parameters,
+    );
+  }
+
+  /// Creates `jsonb_agg(value [ORDER BY ...])`.
+  static SqlRawExpression<List<Object?>> jsonbAgg(
+    Object value, {
+    Iterable<SqlOrderBy> orderBy = const <SqlOrderBy>[],
+  }) {
+    final valueFragment = _sqlFragment(value, prefix: 'agg_value');
+    final orderFragments = [
+      for (final (index, order) in orderBy.indexed)
+        _sqlOrderByFragment(order, prefix: 'agg_order_$index'),
+    ];
+    final sql = StringBuffer('jsonb_agg(${valueFragment.sql}');
+    if (orderFragments.isNotEmpty) {
+      sql.write(' ORDER BY ');
+      sql.write(orderFragments.map((fragment) => fragment.sql).join(', '));
+    }
+    sql.write(')');
+    return SqlRawExpression<List<Object?>>(
+      sql.toString(),
+      parameters: _mergeSqlFragmentParameters([
+        valueFragment,
+        ...orderFragments,
+      ]),
+    );
+  }
+
+  /// Creates `jsonb_build_object('key', value, ...)`.
+  static SqlRawExpression<Map<String, Object?>> jsonbBuildObject(
+    Map<String, Object> fields,
+  ) {
+    final fragments = <_SqlFragment>[];
+    final sql = StringBuffer('jsonb_build_object(');
+    var first = true;
+    for (final (index, entry) in fields.entries.indexed) {
+      final valueFragment = _sqlFragment(entry.value, prefix: 'object_$index');
+      fragments.add(valueFragment);
+      if (!first) {
+        sql.write(', ');
+      }
+      first = false;
+      sql.write(_sqlStringLiteral(entry.key));
+      sql.write(', ');
+      sql.write(valueFragment.sql);
+    }
+    sql.write(')');
+    return SqlRawExpression<Map<String, Object?>>(
+      sql.toString(),
+      parameters: _mergeSqlFragmentParameters(fragments),
+    );
+  }
+
+  /// Creates `COALESCE(value, fallback, ...)`.
+  static SqlRawExpression<TValue> coalesce<TValue>(Iterable<Object> values) {
+    final fragments = [
+      for (final (index, value) in values.indexed)
+        _sqlFragment(value, prefix: 'coalesce_$index'),
+    ];
+    if (fragments.isEmpty) {
+      throw ArgumentError.value(
+        values,
+        'values',
+        'coalesce() requires at least one expression.',
+      );
+    }
+    return SqlRawExpression<TValue>(
+      'COALESCE(${fragments.map((fragment) => fragment.sql).join(', ')})',
+      parameters: _mergeSqlFragmentParameters(fragments),
+    );
+  }
+
+  /// Creates the PostgreSQL `jsonb` empty array literal.
+  static SqlRawExpression<List<Object?>> jsonbEmptyArray() {
+    return const SqlRawExpression<List<Object?>>("'[]'::jsonb");
+  }
+}
+
 /// Raw SQL expression for advanced projections and ordering.
 final class SqlRawExpression<TValue> {
   const SqlRawExpression(
