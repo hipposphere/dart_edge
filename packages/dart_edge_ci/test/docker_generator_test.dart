@@ -121,6 +121,35 @@ void main() {
     expect(command, contains('--push'));
     expect(command.last, '.');
   });
+
+  test(
+    'generates valid nginx entrypoint without configured env vars',
+    () async {
+      final root = await _projectRoot();
+      addTearDown(() => root.delete(recursive: true));
+      await File('${root.path}/docker.yaml').writeAsString('''
+images:
+  widgetbook:
+    type: flutter_app
+    package: app
+    flutter_version: 3.44.0
+    title: Widgetbook
+    description: Widgetbook
+''');
+
+      await DockerGenerator(projectRoot: root).generate();
+
+      final entrypoint = File(
+        '${root.path}/.dart_tool/dart_edge_ci/docker/widgetbook/nginx-env.sh',
+      );
+      final contents = await entrypoint.readAsString();
+      expect(contents, contains('{\n:\n'));
+      expect(contents, contains('} > "\$env_file"'));
+
+      final syntaxCheck = await Process.run('sh', ['-n', entrypoint.path]);
+      expect(syntaxCheck.exitCode, 0, reason: 'stderr: ${syntaxCheck.stderr}');
+    },
+  );
 }
 
 Future<Directory> _projectRoot() async {

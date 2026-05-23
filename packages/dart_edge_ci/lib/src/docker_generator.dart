@@ -483,6 +483,7 @@ if [ -z "$BASE_PREFIX" ]; then
 fi
 
 {
+:
 ''',
     for (final name in sortedEnvEntries)
       '  printf ${_shell('%s=%s\\n')} ${_shell(name)} "\${$name}"',
