@@ -35,7 +35,12 @@ Future<RequestInput> decodeRequestInput(
     schemaId: headersSchemaId,
     codecs: codecs,
   );
-  final bodyValue = _decodeBody(request, body, codecs: codecs);
+  final bodyValue = await _decodeBody(
+    request,
+    body,
+    codecs: codecs,
+    nativeRequest: nativeRequest,
+  );
 
   return RequestInput(
     params: paramsValue,
@@ -68,17 +73,26 @@ Object? _decodeStringMap(
   return codecs.decodeValueOrRaw(schemaId, decodedValues);
 }
 
-Object? _decodeBody(
+Future<Object?> _decodeBody(
   TransportRequest request,
   RequestBody? body, {
   required DartEdgeCodecRegistry codecs,
-}) {
+  required NativeRequest? nativeRequest,
+}) async {
   if (body == null) {
     return null;
   }
 
   if (request.bodyKind == TransportRequestBodyKind.multipart) {
-    return null;
+    final decoder = body.multipartDecoder;
+    if (decoder == null) {
+      return null;
+    }
+    final form = await nativeRequest?.multipart();
+    if (form == null) {
+      throw StateError('No multipart form-data parser is available.');
+    }
+    return decoder(form.toMultipartFormData());
   }
 
   final payload = request.bodyBytes;

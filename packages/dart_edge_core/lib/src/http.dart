@@ -5,6 +5,7 @@ export 'http/json_encodable.dart';
 export 'http/json_schema.dart';
 export 'http/json_schema_ref.dart';
 export 'http/json_schema_registry.dart';
+export 'http/multipart_form_data.dart';
 export 'http/raw_response.dart';
 export 'http/request_body.dart';
 export 'http/response_set.dart';

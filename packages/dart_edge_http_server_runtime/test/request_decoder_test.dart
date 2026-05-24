@@ -1,8 +1,12 @@
 import 'dart:convert';
+import 'dart:ffi';
 import 'dart:typed_data';
 
 import 'package:dart_edge_http_server_runtime/dart_edge_http_server_runtime.dart';
+import 'package:dart_edge_http_server_runtime/src/runtime/native_request.dart';
 import 'package:dart_edge_http_server_runtime/src/runtime/request_decoder.dart';
+import 'package:dart_edge_native_bridge/dart_edge_native_bridge.dart' as bridge;
+import 'package:ffi/ffi.dart';
 import 'package:test/test.dart';
 
 void main() {
@@ -128,6 +132,67 @@ void main() {
     expect(input.body<CreateUserInput>().name, 'Ada');
   });
 
+  test('decodes multipart request bodies with route-local decoder', () async {
+    final nativeBytes = calloc<Uint8>(3);
+    nativeBytes.asTypedList(3).setAll(0, [1, 2, 3]);
+    final nativeBytesView = calloc<bridge.NativeBytes>()
+      ..ref.ptr = nativeBytes
+      ..ref.len = 3;
+    final borrowed = createBorrowedNativeRequestBody(nativeBytesView.ref);
+    calloc.free(nativeBytesView);
+
+    try {
+      final nativeRequest = NativeRequest(
+        routeId: 'route_0',
+        pathParams: const <String, String>{},
+        query: const <String, String>{},
+        headers: const <String, String>{},
+        body: borrowed.body,
+        multipartLoader: () async => NativeMultipartForm(
+          fields: const [
+            NativeMultipartField(name: 'workspace_id', value: 'workspace_1'),
+            NativeMultipartField(name: 'persist', value: 'true'),
+          ],
+          files: [NativeMultipartFile(fieldName: 'file', body: borrowed.body)],
+        ),
+      );
+
+      final input = await decodeRequestInput(
+        TransportRequest(
+          routeId: 'route_0',
+          pathParams: const <String, String>{},
+          query: const <String, String>{},
+          headers: const <String, String>{},
+          bodyKind: TransportRequestBodyKind.multipart,
+        ),
+        codecs: DartEdgeCodecRegistry.empty,
+        nativeRequest: nativeRequest,
+        paramsSchemaId: null,
+        querySchemaId: null,
+        headersSchemaId: null,
+        body: RequestBody.multipartFormData(
+          schema: const JsonSchema.ref('WorkspaceTranscribeBody'),
+          decoder: (form) {
+            return MultipartUploadBody(
+              workspaceId: form.fieldValue('workspace_id')!,
+              persist: bool.parse(form.fieldValue('persist')!),
+              file: form.file('file')!,
+            );
+          },
+        ),
+      );
+
+      final body = input.body<MultipartUploadBody>();
+      expect(body.workspaceId, 'workspace_1');
+      expect(body.persist, isTrue);
+      expect(body.file.length, 3);
+      expect(await body.file.bytes, [1, 2, 3]);
+    } finally {
+      borrowed.release();
+      calloc.free(nativeBytes);
+    }
+  });
+
   test('decodes params and query with route-local decoders', () async {
     final codecs = DartEdgeCodecRegistry.empty
         .withCodec<UserPath>(
@@ -235,4 +300,16 @@ final class CreateUserInput {
   const CreateUserInput({required this.name});
 
   final String name;
+}
+
+final class MultipartUploadBody {
+  const MultipartUploadBody({
+    required this.workspaceId,
+    required this.persist,
+    required this.file,
+  });
+
+  final String workspaceId;
+  final bool persist;
+  final MultipartFile file;
 }

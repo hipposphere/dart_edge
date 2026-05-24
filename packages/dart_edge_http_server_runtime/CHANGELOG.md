@@ -1,3 +1,9 @@
+## 0.3.19
+
+- Decode schema-backed multipart form-data bodies through route-local decoders.
+- Expose runtime multipart files through the core `MultipartFile` contract.
+- Require `dart_edge_core` 0.3.15.
+
 ## 0.3.18
 
 - Add final wildcard route segment support for catch-all HTTP routes.

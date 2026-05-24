@@ -592,6 +592,125 @@ typedef PublishStatus = _$PublishStatus;
       );
     });
 
+    test('emits multipart body models from FromMultipartSchema', () async {
+      final builder = dartEdgeHttpServerBuilder(BuilderOptions.empty);
+
+      await testBuilder(
+        builder,
+        const <String, String>{
+          'test_app|lib/models.dart': r'''
+// ignore_for_file: undefined_class
+
+part 'models.g.dart';
+
+sealed class JsonSchema {
+  const JsonSchema._({this.id, this.nullable = false});
+
+  const factory JsonSchema.object({
+    String? id,
+    bool nullable,
+    Map<String, JsonSchema> properties,
+    List<String> required,
+  }) = JsonObjectSchema;
+
+  const factory JsonSchema.string({
+    String? id,
+    bool nullable,
+    String? format,
+  }) = JsonStringSchema;
+
+  const factory JsonSchema.boolean({
+    String? id,
+    bool nullable,
+  }) = JsonBooleanSchema;
+
+  final String? id;
+  final bool nullable;
+}
+
+final class JsonObjectSchema extends JsonSchema {
+  const JsonObjectSchema({
+    super.id,
+    super.nullable,
+    this.properties = const <String, JsonSchema>{},
+    this.required = const <String>[],
+  }) : super._();
+
+  final Map<String, JsonSchema> properties;
+  final List<String> required;
+}
+
+final class JsonStringSchema extends JsonSchema {
+  const JsonStringSchema({super.id, super.nullable, this.format}) : super._();
+
+  final String? format;
+}
+
+final class JsonBooleanSchema extends JsonSchema {
+  const JsonBooleanSchema({super.id, super.nullable}) : super._();
+}
+
+final class JsonSchemaRegistry {
+  const JsonSchemaRegistry({required this.schemas});
+
+  final List<JsonSchema> schemas;
+}
+
+final class FromMultipartSchema {
+  const FromMultipartSchema(
+    this.schema, {
+    this.registry,
+    this.refs = const [],
+  });
+
+  final JsonSchema schema;
+  final JsonSchemaRegistry? registry;
+  final List<SchemaRefModel> refs;
+}
+
+final class SchemaRefModel {
+  const SchemaRefModel(this.type, {this.schemaId});
+
+  final Type type;
+  final String? schemaId;
+}
+
+const uploadSchema = JsonSchema.object(
+  id: 'UploadBody',
+  properties: <String, JsonSchema>{
+    'workspace_id': JsonSchema.string(),
+    'persist': JsonSchema.boolean(),
+    'file': JsonSchema.string(format: 'binary'),
+  },
+  required: <String>['workspace_id', 'persist', 'file'],
+);
+
+@FromMultipartSchema(uploadSchema)
+typedef UploadBody = _$UploadBody;
+''',
+        },
+        outputs: {
+          'test_app|lib/models.dart_edge_http_server.g.part': decodedMatches(
+            allOf([
+              contains('final class _\$UploadBody'),
+              contains(
+                'static const RequestBody requestBody = '
+                'RequestBody.multipartFormData(',
+              ),
+              contains('decoder: decodeMultipart,'),
+              contains('final String workspaceId;'),
+              contains('final bool persist;'),
+              contains('final MultipartFile file;'),
+              contains('static UploadBody decodeMultipart('),
+              contains('form.fieldValue("workspace_id")'),
+              contains('bool.parse(value)'),
+              contains('form.file("file")'),
+            ]),
+          ),
+        },
+      );
+    });
+
     test('emits generic typed string models from FromSchema aliases', () async {
       final builder = dartEdgeHttpServerBuilder(BuilderOptions.empty);
 

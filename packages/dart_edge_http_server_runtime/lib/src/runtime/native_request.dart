@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:ffi';
 import 'dart:typed_data';
 
+import 'package:dart_edge_core/dart_edge_core.dart';
 import 'package:dart_edge_native_bridge/dart_edge_native_bridge.dart'
     as core_ffi;
 import 'package:ffi/ffi.dart';
@@ -84,7 +85,7 @@ final class NativeMultipartField {
 }
 
 /// One uploaded file entry from a multipart form payload.
-final class NativeMultipartFile {
+final class NativeMultipartFile implements MultipartFile {
   const NativeMultipartFile({
     required this.fieldName,
     this.filename,
@@ -93,19 +94,33 @@ final class NativeMultipartFile {
   });
 
   /// Multipart field name from `Content-Disposition`.
+  @override
   final String fieldName;
 
   /// Optional client-provided file name.
+  @override
   final String? filename;
 
   /// Optional part-level content type.
+  @override
   final String? contentType;
 
   /// Borrowed native file body for the current request lifecycle.
   final NativeRequestBody body;
 
   /// Length of the uploaded file in bytes.
+  @override
   int get length => body.length;
+
+  /// Lazily copies the uploaded file into Dart-owned memory.
+  @override
+  Future<Uint8List> get bytes async => copyBytes();
+
+  /// Opens the uploaded file as a single-chunk stream.
+  @override
+  Stream<List<int>> openRead() async* {
+    yield copyBytes();
+  }
 
   /// Borrowed native bytes for the uploaded file.
   core_ffi.NativeBytes get nativeBytes => body.nativeBytes;
@@ -145,6 +160,16 @@ final class NativeMultipartForm {
         yield file;
       }
     }
+  }
+
+  /// Adapts this runtime-native form view to the core multipart contract.
+  MultipartFormData toMultipartFormData() {
+    return MultipartFormData(
+      fields: fields.map(
+        (field) => MultipartFormField(name: field.name, value: field.value),
+      ),
+      files: files,
+    );
   }
 }
 

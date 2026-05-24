@@ -1,3 +1,9 @@
+## 0.3.23
+
+- Generate typed multipart form-data body models from `@FromMultipartSchema`.
+- Map `string(format: binary)` multipart fields to `MultipartFile`.
+- Require `dart_edge_core` 0.3.15.
+
 ## 0.3.20
 
 - Generate WebSocket client query parameters from `WebSocketOptions.query`.

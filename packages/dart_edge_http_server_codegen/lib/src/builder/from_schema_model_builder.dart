@@ -18,6 +18,7 @@ final class FromSchemaModelSpec {
     required this.typeParameters,
     required this.schemasById,
     required this.responseStatus,
+    required this.source,
   });
 
   final String publicName;
@@ -28,15 +29,19 @@ final class FromSchemaModelSpec {
   final List<TypeParameterSpec> typeParameters;
   final Map<String, JsonSchema> schemasById;
   final int responseStatus;
+  final FromSchemaModelSource source;
 }
+
+enum FromSchemaModelSource { json, multipart }
 
 FromSchemaModelSpec buildFromSchemaModel(
   Element element,
-  ConstantReader reader,
-) {
+  ConstantReader reader, {
+  FromSchemaModelSource source = FromSchemaModelSource.json,
+}) {
   if (element is! TypeAliasElement) {
     throw InvalidGenerationSourceError(
-      '@FromSchema can only be used on type aliases.',
+      '@${_annotationName(source)} can only be used on type aliases.',
       element: element,
     );
   }
@@ -81,7 +86,15 @@ FromSchemaModelSpec buildFromSchemaModel(
     typeParameters: typeParameters,
     schemasById: _schemasById(registry),
     responseStatus: reader.peek('responseStatus')?.intValue ?? 200,
+    source: source,
   );
+}
+
+String _annotationName(FromSchemaModelSource source) {
+  return switch (source) {
+    FromSchemaModelSource.json => 'FromSchema',
+    FromSchemaModelSource.multipart => 'FromMultipartSchema',
+  };
 }
 
 JsonSchema jsonSchemaFromDartObject(
@@ -210,13 +223,14 @@ Spec _modelSpec(FromSchemaModelSpec model) {
 Class _objectModel(FromSchemaModelSpec model) {
   final fields = _modelFields(model);
   final publicType = _typeName(model.publicName, model.typeParameters);
+  final isMultipart = model.source == FromSchemaModelSource.multipart;
 
   return Class((builder) {
     builder
       ..modifier = ClassModifier.final$
       ..name = model.backingClassName
       ..types.addAll(_typeParameterRefs(model.typeParameters))
-      ..implements.add(refer('JsonEncodable'))
+      ..implements.addAll(isMultipart ? const [] : [refer('JsonEncodable')])
       ..constructors.add(
         Constructor((constructor) {
           constructor
@@ -246,8 +260,11 @@ Class _objectModel(FromSchemaModelSpec model) {
       ..fields.addAll([
         _schemaIdField(model.schemaId),
         _schemaRefField(),
-        _requestBodyField(includeDecoder: model.typeParameters.isEmpty),
-        _responseField(model.responseStatus),
+        _requestBodyField(
+          source: model.source,
+          includeDecoder: model.typeParameters.isEmpty,
+        ),
+        if (!isMultipart) _responseField(model.responseStatus),
         for (final field in fields)
           Field((builder) {
             builder
@@ -257,11 +274,14 @@ Class _objectModel(FromSchemaModelSpec model) {
           }),
       ])
       ..methods.addAll([
-        _objectToJsonMethod(fields, model.refModels),
-        if (model.typeParameters.isEmpty) ...[
-          _decodeMethod(publicType, 'fromJson(readJsonObject(value))'),
-          _objectFromJsonMethod(model, fields),
-        ],
+        if (!isMultipart) _objectToJsonMethod(fields, model.refModels),
+        if (model.typeParameters.isEmpty)
+          if (isMultipart)
+            _objectFromMultipartMethod(model, fields)
+          else ...[
+            _decodeMethod(publicType, 'fromJson(readJsonObject(value))'),
+            _objectFromJsonMethod(model, fields),
+          ],
       ]);
   });
 }
@@ -307,7 +327,7 @@ Enum _stringEnumModel(FromSchemaModelSpec model) {
         }),
         _schemaIdField(model.schemaId),
         _schemaRefField(),
-        _requestBodyField(includeDecoder: true),
+        _requestBodyField(source: model.source, includeDecoder: true),
         _responseField(model.responseStatus),
       ])
       ..methods.addAll([
@@ -338,6 +358,7 @@ ExtensionType _arrayModel(FromSchemaModelSpec model) {
           nullable: schema.items!.nullable,
           refModels: model.refModels,
           typeParameters: model.typeParameters,
+          source: model.source,
         );
   final publicType = _typeName(model.publicName, model.typeParameters);
 
@@ -354,7 +375,7 @@ ExtensionType _arrayModel(FromSchemaModelSpec model) {
       ..fields.addAll([
         _schemaIdField(model.schemaId),
         _schemaRefField(),
-        _requestBodyField(includeDecoder: true),
+        _requestBodyField(source: model.source, includeDecoder: true),
         _responseField(model.responseStatus),
       ])
       ..methods.addAll([
@@ -409,17 +430,29 @@ Field _schemaRefField() {
   });
 }
 
-Field _requestBodyField({required bool includeDecoder}) {
+Field _requestBodyField({
+  required FromSchemaModelSource source,
+  required bool includeDecoder,
+}) {
   return Field((builder) {
+    final constructorName = switch (source) {
+      FromSchemaModelSource.json => 'json',
+      FromSchemaModelSource.multipart => 'multipartFormData',
+    };
+    final decoderName = switch (source) {
+      FromSchemaModelSource.json => 'decode',
+      FromSchemaModelSource.multipart => 'decodeMultipart',
+    };
     builder
       ..static = true
       ..modifier = FieldModifier.constant
       ..type = refer('RequestBody')
       ..name = 'requestBody'
-      ..assignment = refer('RequestBody').constInstanceNamed('json', const [], {
-        'schema': refer('schemaRef'),
-        if (includeDecoder) 'decoder': refer('decode'),
-      }).code;
+      ..assignment =
+          refer('RequestBody').constInstanceNamed(constructorName, const [], {
+            'schema': refer('schemaRef'),
+            if (includeDecoder) 'decoder': refer(decoderName),
+          }).code;
   });
 }
 
@@ -482,6 +515,27 @@ Method _objectFromJsonMethod(
       ..body = Code('''
 return $publicType(
 ${fields.map((field) => '${field.name}: ${_decodeValue(field.schema, "json[${_dartString(field.wireName)}]", nullable: field.nullable, refModels: model.refModels, typeParameters: model.typeParameters, path: field.name)},').join('\n')}
+);
+''');
+  });
+}
+
+Method _objectFromMultipartMethod(
+  FromSchemaModelSpec model,
+  List<_SchemaFieldSpec> fields,
+) {
+  final publicType = _typeName(model.publicName, model.typeParameters);
+  return Method((builder) {
+    builder
+      ..static = true
+      ..returns = refer(publicType)
+      ..name = 'decodeMultipart'
+      ..requiredParameters.add(
+        _typedParameter('form', refer('MultipartFormData')),
+      )
+      ..body = Code('''
+return $publicType(
+${fields.map((field) => '${field.name}: ${_decodeMultipartValue(field)},').join('\n')}
 );
 ''');
   });
@@ -574,6 +628,7 @@ List<_SchemaFieldSpec> _modelFields(FromSchemaModelSpec model) {
           nullable: nullable,
           refModels: model.refModels,
           typeParameters: model.typeParameters,
+          source: model.source,
         ),
         schema: entry.value,
         requiredParameter: requiredParameter,
@@ -590,18 +645,21 @@ String _schemaDartType(
   required bool nullable,
   required Map<String, SchemaRefModelSpec> refModels,
   required List<TypeParameterSpec> typeParameters,
+  required FromSchemaModelSource source,
 }) {
   final type = switch (schema) {
     JsonStringSchema(:final dartType, :final format) => _stringSchemaDartType(
       dartType,
       format: format,
       typeParameters: typeParameters,
+      source: source,
     ),
     JsonIntegerSchema() => 'int',
-    JsonNumberSchema() => 'num',
+    JsonNumberSchema() =>
+      source == FromSchemaModelSource.multipart ? 'double' : 'num',
     JsonBooleanSchema() => 'bool',
     JsonArraySchema(:final items) =>
-      'List<${items == null ? 'Object?' : _schemaDartType(items, nullable: items.nullable, refModels: refModels, typeParameters: typeParameters)}>',
+      'List<${items == null ? 'Object?' : _schemaDartType(items, nullable: items.nullable, refModels: refModels, typeParameters: typeParameters, source: source)}>',
     JsonReferenceSchema(:final ref) =>
       _refModelForReference(ref, refModels)?.typeName ??
           _typeNameForSchemaRef(ref) ??
@@ -615,6 +673,115 @@ String _schemaDartType(
     return type;
   }
   return '$type?';
+}
+
+String _decodeMultipartValue(_SchemaFieldSpec field) {
+  final fieldName = _dartString(field.wireName);
+  return switch (field.schema) {
+    JsonStringSchema(:final format) when format == 'binary' =>
+      _decodeMultipartFile(fieldName, nullable: field.nullable),
+    JsonStringSchema() => _decodeMultipartText(
+      fieldName,
+      nullable: field.nullable,
+      convert: (value) => value,
+    ),
+    JsonIntegerSchema() => _decodeMultipartText(
+      fieldName,
+      nullable: field.nullable,
+      convert: (value) => 'int.parse($value)',
+    ),
+    JsonNumberSchema() => _decodeMultipartText(
+      fieldName,
+      nullable: field.nullable,
+      convert: (value) => 'double.parse($value)',
+    ),
+    JsonBooleanSchema() => _decodeMultipartText(
+      fieldName,
+      nullable: field.nullable,
+      convert: (value) => 'bool.parse($value)',
+    ),
+    JsonArraySchema(:final items)
+        when items is JsonStringSchema && items.format == 'binary' =>
+      _decodeMultipartFileList(fieldName, nullable: field.nullable),
+    JsonArraySchema(:final items) => _decodeMultipartTextList(
+      fieldName,
+      items,
+      nullable: field.nullable,
+    ),
+    _ => throw InvalidGenerationSourceError(
+      '@FromMultipartSchema only supports string, integer, number, boolean, '
+      'arrays of those scalar values, and string(format: binary) file parts.',
+    ),
+  };
+}
+
+String _decodeMultipartFile(String fieldName, {required bool nullable}) {
+  if (nullable) {
+    return 'form.file($fieldName)';
+  }
+  return 'form.file($fieldName) ?? (throw ArgumentError.value(null, $fieldName, '
+      "'Expected multipart file.'))";
+}
+
+String _decodeMultipartFileList(String fieldName, {required bool nullable}) {
+  final expression =
+      '(() { final values = form.filesNamed($fieldName).toList(); '
+      "if (values.isEmpty) return null; return values; })()";
+  if (nullable) {
+    return expression;
+  }
+  return '(() { final values = form.filesNamed($fieldName).toList(); '
+      "if (values.isEmpty) { throw ArgumentError.value(null, $fieldName, "
+      "'Expected at least one multipart file.'); } return values; })()";
+}
+
+String _decodeMultipartText(
+  String fieldName, {
+  required bool nullable,
+  required String Function(String value) convert,
+}) {
+  if (nullable) {
+    final converted = convert('value');
+    return '(() { final value = form.fieldValue($fieldName); '
+        'if (value == null || value.isEmpty) return null; '
+        'return $converted; })()';
+  }
+
+  final converted = convert('value');
+  return '(() { final value = form.fieldValue($fieldName); '
+      "if (value == null) { throw ArgumentError.value(null, $fieldName, "
+      "'Expected multipart field.'); } return $converted; })()";
+}
+
+String _decodeMultipartTextList(
+  String fieldName,
+  JsonSchema? items, {
+  required bool nullable,
+}) {
+  String convert(String value) {
+    return switch (items) {
+      null => value,
+      JsonStringSchema() => value,
+      JsonIntegerSchema() => 'int.parse($value)',
+      JsonNumberSchema() => 'double.parse($value)',
+      JsonBooleanSchema() => 'bool.parse($value)',
+      _ => throw InvalidGenerationSourceError(
+        '@FromMultipartSchema only supports arrays of scalar text fields or '
+        'binary file parts.',
+      ),
+    };
+  }
+
+  final converted = convert('value');
+  if (nullable) {
+    return '(() { final values = form.fieldValues($fieldName).toList(); '
+        'if (values.isEmpty) return null; '
+        'return values.map((value) => $converted).toList(); })()';
+  }
+  return '(() { final values = form.fieldValues($fieldName).toList(); '
+      "if (values.isEmpty) { throw ArgumentError.value(null, $fieldName, "
+      "'Expected multipart field.'); } "
+      'return values.map((value) => $converted).toList(); })()';
 }
 
 String _decodeValue(
@@ -831,7 +998,11 @@ String _stringSchemaDartType(
   DartSchemaType? dartType, {
   required String? format,
   required List<TypeParameterSpec> typeParameters,
+  required FromSchemaModelSource source,
 }) {
+  if (source == FromSchemaModelSource.multipart && format == 'binary') {
+    return 'MultipartFile';
+  }
   return _dartTypeName(dartType, typeParameters: typeParameters) ??
       switch (format) {
         'date-time' => 'DateTime',

@@ -1,3 +1,8 @@
+## 0.3.14
+
+- Update `dart_edge_http_server_runtime` constraint for typed multipart body
+  decoding support.
+
 ## 0.3.13
 
 - Update `dart_edge_http_server_runtime` constraint for catch-all route support.

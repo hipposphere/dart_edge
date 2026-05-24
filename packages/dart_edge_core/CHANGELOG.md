@@ -1,3 +1,8 @@
+## 0.3.15
+
+- Add multipart form-data body contracts and `@FromMultipartSchema`.
+- Add schema-backed multipart request body decoder support.
+
 ## 0.3.13
 
 - Add WebSocket route query schema and query decoder options.
