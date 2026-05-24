@@ -208,6 +208,59 @@ void main() {
       );
     });
 
+    test('emits multipart client body models and encoders', () {
+      final spec = DartEdgeClientLibrarySpec(
+        className: 'UploadsClient',
+        schemas: const [
+          JsonSchema.object(
+            id: 'UploadBody',
+            properties: {
+              'workspace_id': JsonSchema.string(),
+              'persist': JsonSchema.boolean(),
+              'file': JsonSchema.string(format: 'binary'),
+              'attachments': JsonSchema.array(
+                items: JsonSchema.string(format: 'binary'),
+              ),
+            },
+            required: ['workspace_id', 'persist', 'file', 'attachments'],
+            additionalProperties: false,
+          ),
+        ],
+        operations: [
+          DartEdgeClientOperation(
+            method: HttpMethod.post,
+            path: '/uploads',
+            options: const RouteOptions(
+              operationId: 'upload',
+              body: RequestBody.multipartFormData(
+                schema: JsonSchema.ref('UploadBody'),
+              ),
+              success: ResponseSpec.json(),
+            ),
+            successType: 'Object?',
+            bodyType: 'UploadBody',
+          ),
+        ],
+      );
+
+      final generator = const DartEdgeClientGenerator();
+      final bindings = generator.generateBindingsPart(spec);
+      final models = generator.generateModelsPart(spec);
+
+      expect(
+        bindings,
+        contains('encoder: (value) => value.toMultipartFormData()'),
+      );
+      expect(models, contains('final class UploadBody'));
+      expect(models, isNot(contains('implements JsonEncodable')));
+      expect(models, contains('final MultipartUploadFile file;'));
+      expect(models, contains('final List<MultipartUploadFile> attachments;'));
+      expect(models, contains('MultipartFormData toMultipartFormData()'));
+      expect(models, contains('MultipartFormField(name: "workspace_id"'));
+      expect(models, contains('file.asFile("file")'));
+      expect(models, contains('for (final file in attachments)'));
+    });
+
     test(
       'emits split client files into an existing or new directory',
       () async {
@@ -812,6 +865,67 @@ void main() {
       },
     );
 
+    test('builds multipart form-data requests', () async {
+      final transport = _FakeTransport(
+        onSend: (request) async {
+          expect(request.method, HttpMethod.post);
+          expect(request.uri, Uri.parse('https://api.example.test/v1/uploads'));
+          expect(
+            request.headers['content-type'],
+            startsWith('multipart/form-data; boundary='),
+          );
+          expect(request.body, isNull);
+          final text = utf8.decode(request.bodyBytes!);
+          expect(text, contains('name="workspace_id"'));
+          expect(text, contains('workspace_1'));
+          expect(text, contains('name="persist"'));
+          expect(text, contains('true'));
+          expect(text, contains('name="file"; filename="voice.wav"'));
+          expect(text, contains('Content-Type: audio/wav'));
+          expect(text, contains('abc'));
+
+          return const DartEdgeClientResponse(
+            status: 204,
+            contentType: 'text/plain; charset=utf-8',
+          );
+        },
+      );
+      final client = _TestClient(
+        baseUri: Uri.parse('https://api.example.test/v1'),
+        transport: transport,
+      );
+
+      await client.invoke<Object?, Never, Never, Never, UploadClientBody>(
+        DartEdgeClientInvocation<
+          Object?,
+          Never,
+          Never,
+          Never,
+          UploadClientBody
+        >(
+          method: HttpMethod.post,
+          pathTemplate: '/uploads',
+          success: const DartEdgeClientResponseSpec<Object?>(
+            status: 204,
+            contentType: 'text/plain; charset=utf-8',
+          ),
+          body: DartEdgeClientRequestBody<UploadClientBody>(
+            contentType: 'multipart/form-data',
+            value: UploadClientBody(
+              workspaceId: 'workspace_1',
+              persist: true,
+              file: MultipartUploadFile.bytes(
+                filename: 'voice.wav',
+                contentType: 'audio/wav',
+                bytes: utf8.encode('abc'),
+              ),
+            ),
+            encoder: (value) => value.toMultipartFormData(),
+          ),
+        ),
+      );
+    });
+
     test('returns documented error response objects', () async {
       final client = _TestClient(
         baseUri: Uri.parse('https://api.example.test'),
@@ -1148,6 +1262,28 @@ final class CreateUserBody {
   static Map<String, Object?> toJson(CreateUserBody value) => {
     'name': value.name,
   };
+}
+
+final class UploadClientBody {
+  const UploadClientBody({
+    required this.workspaceId,
+    required this.persist,
+    required this.file,
+  });
+
+  final String workspaceId;
+  final bool persist;
+  final MultipartUploadFile file;
+
+  MultipartFormData toMultipartFormData() {
+    return MultipartFormData(
+      fields: [
+        MultipartFormField(name: 'workspace_id', value: workspaceId),
+        MultipartFormField(name: 'persist', value: persist.toString()),
+      ],
+      files: [file.asFile('file')],
+    );
+  }
 }
 
 final class UserDto {

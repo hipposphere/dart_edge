@@ -1,6 +1,6 @@
 name: dart_edge_http_server_codegen
 description: HTTP server code generation and generator-facing APIs for Dart Edge.
-version: 0.3.23
+version: 0.3.24
 publish_to: "https://registry.hippolabs.org/pub/internal-pub/"
 repository: https://github.com/hipposphere/dart_edge/tree/main/packages/dart_edge_http_server_codegen
 
@@ -15,7 +15,7 @@ dependencies:
   code_builder: ^4.11.1
   dart_edge_core:
     hosted: "https://registry.hippolabs.org/pub/internal-pub/"
-    version: ^0.3.15
+    version: ^0.3.16
   dart_style: ^3.1.8
   source_gen: ^4.2.3
 

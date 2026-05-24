@@ -41,7 +41,9 @@ final class DartEdgeHttpClientTransport implements DartEdgeClientTransport {
     final httpRequest = http.Request(request.method.wireName, request.uri)
       ..headers.addAll(request.headers);
 
-    if (request.body case final body?) {
+    if (request.bodyBytes case final bodyBytes?) {
+      httpRequest.bodyBytes = bodyBytes;
+    } else if (request.body case final body?) {
       httpRequest.body = body;
     }
 

@@ -2,7 +2,7 @@
 
 - Decode schema-backed multipart form-data bodies through route-local decoders.
 - Expose runtime multipart files through the core `MultipartFile` contract.
-- Require `dart_edge_core` 0.3.15.
+- Require `dart_edge_core` 0.3.16.
 
 ## 0.3.18
 

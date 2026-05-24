@@ -1,8 +1,10 @@
-## 0.3.23
+## 0.3.24
 
 - Generate typed multipart form-data body models from `@FromMultipartSchema`.
+- Generate multipart client body DTOs with `MultipartUploadFile` fields and
+  `toMultipartFormData()` encoders.
 - Map `string(format: binary)` multipart fields to `MultipartFile`.
-- Require `dart_edge_core` 0.3.15.
+- Require `dart_edge_core` 0.3.16.
 
 ## 0.3.20
 

@@ -44,6 +44,28 @@ void main() {
         expect(response.bodyBytes, utf8.encode('ok'));
       },
     );
+
+    test('sends request body bytes through package:http', () async {
+      final transport = DartEdgeHttpClientTransport(
+        client: MockClient((request) async {
+          expect(request.method, 'POST');
+          expect(request.headers['content-type'], 'multipart/form-data');
+          expect(request.bodyBytes, [1, 2, 3]);
+          return http.Response('', 204);
+        }),
+      );
+
+      final response = await transport.send(
+        DartEdgeClientRequest(
+          method: HttpMethod.post,
+          uri: Uri.parse('https://api.example.test/uploads'),
+          headers: const {'content-type': 'multipart/form-data'},
+          bodyBytes: const [1, 2, 3],
+        ),
+      );
+
+      expect(response.status, 204);
+    });
   });
 
   group('DartEdgeWebSocketClientTransport', () {

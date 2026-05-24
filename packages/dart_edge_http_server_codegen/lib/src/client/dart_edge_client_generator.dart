@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:code_builder/code_builder.dart';
@@ -408,6 +409,7 @@ final class DartEdgeClientGenerator {
 
   List<Spec> _modelSpecs(DartEdgeClientLibrarySpec spec) {
     final generatedTypeIds = _generatedModelTypeIds(spec);
+    final multipartBodySchemaIds = _multipartBodySchemaIds(spec);
     final classes = <Class>[
       for (final schema in spec.schemas)
         if (schema is JsonObjectSchema &&
@@ -421,6 +423,9 @@ final class DartEdgeClientGenerator {
             _schemaTypeFromId(schema.id!, spec.schemaTypes)!,
             schema,
             spec.schemaTypes,
+            source: multipartBodySchemaIds.contains(schema.id)
+                ? _ClientModelSource.multipart
+                : _ClientModelSource.json,
           ),
     ];
     if (classes.isEmpty) {
@@ -477,6 +482,7 @@ final class DartEdgeClientGenerator {
             property,
             nullable: false,
             schemaTypes: spec.schemaTypes,
+            source: _ClientModelSource.json,
           ),
         );
       }
@@ -488,30 +494,44 @@ final class DartEdgeClientGenerator {
   Class _modelClass(
     String name,
     JsonObjectSchema schema,
-    Map<String, String> schemaTypes,
-  ) {
+    Map<String, String> schemaTypes, {
+    required _ClientModelSource source,
+  }) {
     return Class((builder) {
       builder
         ..modifier = ClassModifier.final$
         ..name = name
-        ..implements.add(refer('JsonEncodable'))
-        ..constructors.add(_modelConstructor(schema, schemaTypes))
-        ..constructors.add(_modelDecodeFactory(name))
-        ..constructors.add(_modelFromJsonFactory(name, schema, schemaTypes))
-        ..fields.addAll(_modelFields(schema, schemaTypes))
-        ..methods.add(_modelToJsonMethod(schema, schemaTypes));
+        ..implements.addAll(
+          source == _ClientModelSource.json ? [refer('JsonEncodable')] : [],
+        )
+        ..constructors.add(_modelConstructor(schema, schemaTypes, source))
+        ..constructors.addAll(
+          source == _ClientModelSource.json
+              ? [
+                  _modelDecodeFactory(name),
+                  _modelFromJsonFactory(name, schema, schemaTypes),
+                ]
+              : [],
+        )
+        ..fields.addAll(_modelFields(schema, schemaTypes, source))
+        ..methods.add(
+          source == _ClientModelSource.json
+              ? _modelToJsonMethod(schema, schemaTypes)
+              : _modelToMultipartFormDataMethod(schema, schemaTypes),
+        );
     });
   }
 
   Constructor _modelConstructor(
     JsonObjectSchema schema,
     Map<String, String> schemaTypes,
+    _ClientModelSource source,
   ) {
     return Constructor((builder) {
       builder
         ..constant = true
         ..optionalParameters.addAll([
-          for (final field in _modelFieldSpecs(schema, schemaTypes))
+          for (final field in _modelFieldSpecs(schema, schemaTypes, source))
             _namedParameter(field.name, required: field.required, toThis: true),
         ]);
     });
@@ -522,7 +542,11 @@ final class DartEdgeClientGenerator {
     JsonObjectSchema schema,
     Map<String, String> schemaTypes,
   ) {
-    final fields = _modelFieldSpecs(schema, schemaTypes);
+    final fields = _modelFieldSpecs(
+      schema,
+      schemaTypes,
+      _ClientModelSource.json,
+    );
     final assignments = fields
         .map((field) => '${field.name}: ${_decodeField(field)},')
         .join('\n');
@@ -564,9 +588,10 @@ $assignments
   Iterable<Field> _modelFields(
     JsonObjectSchema schema,
     Map<String, String> schemaTypes,
+    _ClientModelSource source,
   ) {
     return [
-      for (final field in _modelFieldSpecs(schema, schemaTypes))
+      for (final field in _modelFieldSpecs(schema, schemaTypes, source))
         Field((builder) {
           builder
             ..modifier = FieldModifier.final$
@@ -583,6 +608,7 @@ $assignments
     final entries = _modelFieldSpecs(
       schema,
       schemaTypes,
+      _ClientModelSource.json,
     ).map((field) => "'${field.wireName}': ${_encodeField(field)},").join('\n');
     return Method((builder) {
       builder
@@ -597,9 +623,44 @@ $entries
     });
   }
 
+  Method _modelToMultipartFormDataMethod(
+    JsonObjectSchema schema,
+    Map<String, String> schemaTypes,
+  ) {
+    final fields = _modelFieldSpecs(
+      schema,
+      schemaTypes,
+      _ClientModelSource.multipart,
+    );
+    final textFields = fields
+        .where((field) => !_isMultipartBinaryField(field.schema))
+        .map(_multipartTextFieldExpression)
+        .join('\n');
+    final files = fields
+        .where((field) => _isMultipartBinaryField(field.schema))
+        .map(_multipartFileExpression)
+        .join('\n');
+    return Method((builder) {
+      builder
+        ..returns = refer('MultipartFormData')
+        ..name = 'toMultipartFormData'
+        ..body = Code('''
+return MultipartFormData(
+  fields: <MultipartFormField>[
+$textFields
+  ],
+  files: <MultipartFile>[
+$files
+  ],
+);
+''');
+    });
+  }
+
   List<_ClientModelFieldSpec> _modelFieldSpecs(
     JsonObjectSchema schema,
     Map<String, String> schemaTypes,
+    _ClientModelSource source,
   ) {
     return [
       for (final entry in schema.properties.entries)
@@ -612,6 +673,7 @@ $entries
             entry.value,
             nullable: !schema.required.contains(entry.key),
             schemaTypes: schemaTypes,
+            source: source,
           ),
           schemaTypes: schemaTypes,
         ),
@@ -932,7 +994,9 @@ $entries
     }
     if (options.body case final body?) {
       final bodySchemaId = jsonSchemaRouteId(body.schema);
-      final bodyEncoder = _encoderFor(operation.bodyType!);
+      final bodyEncoder = _isMultipartFormDataContentType(body.contentType)
+          ? const CodeExpression(Code('(value) => value.toMultipartFormData()'))
+          : _encoderFor(operation.bodyType!);
       arguments['body'] = refer('DartEdgeClientRequestBody').newInstance(
         const <Expression>[],
         <String, Expression>{
@@ -968,10 +1032,69 @@ final class _ClientModelFieldSpec {
   final Map<String, String> schemaTypes;
 }
 
+enum _ClientModelSource { json, multipart }
+
+Set<String> _multipartBodySchemaIds(DartEdgeClientLibrarySpec spec) {
+  return {
+    for (final operation in spec.operations)
+      if (operation.options.body case final body?
+          when _isMultipartFormDataContentType(body.contentType))
+        ?jsonSchemaRouteId(body.schema),
+  };
+}
+
+bool _isMultipartFormDataContentType(String contentType) {
+  return contentType.split(';').first.trim().toLowerCase() ==
+      'multipart/form-data';
+}
+
+bool _isMultipartBinaryField(JsonSchema schema) {
+  return (schema is JsonStringSchema && schema.format == 'binary') ||
+      (schema is JsonArraySchema &&
+          schema.items is JsonStringSchema &&
+          (schema.items! as JsonStringSchema).format == 'binary');
+}
+
+String _multipartTextFieldExpression(_ClientModelFieldSpec field) {
+  final name = field.name;
+  final wireName = _dartString(field.wireName);
+  if (field.schema case JsonArraySchema()) {
+    if (field.required) {
+      return '    for (final value in $name) '
+          'MultipartFormField(name: $wireName, value: value.toString()),';
+    }
+    return '    if ($name != null) for (final value in $name!) '
+        'MultipartFormField(name: $wireName, value: value.toString()),';
+  }
+  if (field.required) {
+    return "    MultipartFormField(name: $wireName, value: $name.toString()),";
+  }
+  return "    if ($name != null) MultipartFormField(name: $wireName, value: $name.toString()),";
+}
+
+String _multipartFileExpression(_ClientModelFieldSpec field) {
+  final name = field.name;
+  final wireName = _dartString(field.wireName);
+  if (field.schema case JsonArraySchema()) {
+    if (field.required) {
+      return '    for (final file in $name) file.asFile($wireName),';
+    }
+    return '    if ($name != null) for (final file in $name!) '
+        'file.asFile($wireName),';
+  }
+  if (field.required) {
+    return '    $name.asFile($wireName),';
+  }
+  return '    if ($name != null) $name!.asFile($wireName),';
+}
+
+String _dartString(String value) => jsonEncode(value);
+
 String _clientModelType(
   JsonSchema schema, {
   required bool nullable,
   required Map<String, String> schemaTypes,
+  _ClientModelSource source = _ClientModelSource.json,
 }) {
   final baseType = switch (schema) {
     JsonReferenceSchema _ =>
@@ -979,12 +1102,13 @@ String _clientModelType(
     JsonStringSchema(:final dartType, :final format) => _clientStringModelType(
       dartType,
       format: format,
+      source: source,
     ),
     JsonIntegerSchema _ => 'int',
     JsonNumberSchema _ => 'num',
     JsonBooleanSchema _ => 'bool',
     JsonArraySchema _ =>
-      'List<${_clientModelType(schema.items ?? const JsonSchema.any(), nullable: false, schemaTypes: schemaTypes)}>',
+      'List<${_clientModelType(schema.items ?? const JsonSchema.any(), nullable: false, schemaTypes: schemaTypes, source: source)}>',
     JsonObjectSchema(:final id?) => _schemaTypeFromId(id, schemaTypes)!,
     JsonObjectSchema _ => 'Map<String, Object?>',
     JsonAnySchema _ => 'Object?',
@@ -1078,7 +1202,14 @@ String _encodeClientModelValue(
   return nullable ? '$value?.toJson()' : '$value.toJson()';
 }
 
-String _clientStringModelType(DartSchemaType? dartType, {String? format}) {
+String _clientStringModelType(
+  DartSchemaType? dartType, {
+  String? format,
+  _ClientModelSource source = _ClientModelSource.json,
+}) {
+  if (source == _ClientModelSource.multipart && format == 'binary') {
+    return 'MultipartUploadFile';
+  }
   return _clientDartTypeName(dartType) ??
       switch (format) {
         'date-time' => 'DateTime',

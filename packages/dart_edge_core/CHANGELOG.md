@@ -1,7 +1,8 @@
-## 0.3.15
+## 0.3.16
 
 - Add multipart form-data body contracts and `@FromMultipartSchema`.
 - Add schema-backed multipart request body decoder support.
+- Add generated-client multipart upload file and byte request body contracts.
 
 ## 0.3.13
 

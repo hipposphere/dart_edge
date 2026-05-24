@@ -11,24 +11,28 @@ final class DartEdgeClientRequest {
     required this.uri,
     this.headers = const <String, String>{},
     this.body,
+    this.bodyBytes,
   });
 
   final HttpMethod method;
   final Uri uri;
   final Map<String, String> headers;
   final String? body;
+  final List<int>? bodyBytes;
 
   DartEdgeClientRequest copyWith({
     HttpMethod? method,
     Uri? uri,
     Map<String, String>? headers,
     String? body,
+    List<int>? bodyBytes,
   }) {
     return DartEdgeClientRequest(
       method: method ?? this.method,
       uri: uri ?? this.uri,
       headers: headers ?? this.headers,
       body: body ?? this.body,
+      bodyBytes: bodyBytes ?? this.bodyBytes,
     );
   }
 }

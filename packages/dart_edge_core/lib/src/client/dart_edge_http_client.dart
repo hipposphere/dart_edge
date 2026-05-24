@@ -25,6 +25,7 @@ abstract base class DartEdgeHttpClientBase {
     DartEdgeClientInvocation<TResponse, TParams, TQuery, THeaders, TBody>
     invocation,
   ) async {
+    final encodedBody = await _encodeRequestBody(body: invocation.body);
     final request = DartEdgeClientRequest(
       method: invocation.method,
       uri: _buildUri(
@@ -35,8 +36,10 @@ abstract base class DartEdgeHttpClientBase {
       headers: _buildHeaders(
         headers: invocation.headers,
         body: invocation.body,
+        encodedBody: encodedBody,
       ),
-      body: _encodeRequestBody(body: invocation.body),
+      body: encodedBody?.body,
+      bodyBytes: encodedBody?.bodyBytes,
     );
 
     final response = await transport.send(request);
@@ -96,6 +99,7 @@ abstract base class DartEdgeHttpClientBase {
         headers: _buildHeaders<THeaders, Never>(
           headers: invocation.headers,
           body: null,
+          encodedBody: null,
         ),
         protocols: invocation.protocols,
       ),
@@ -124,6 +128,7 @@ abstract base class DartEdgeHttpClientBase {
         headers: _buildHeaders<THeaders, Never>(
           headers: invocation.headers,
           body: null,
+          encodedBody: null,
         ),
       ),
     );
@@ -151,6 +156,7 @@ abstract base class DartEdgeHttpClientBase {
   Map<String, String> _buildHeaders<THeaders, TBody>({
     required DartEdgeClientRequestValue<THeaders>? headers,
     required DartEdgeClientRequestBody<TBody>? body,
+    required _EncodedClientRequestBody? encodedBody,
   }) {
     final builtHeaders = <String, String>{
       ...defaultHeaders,
@@ -158,15 +164,18 @@ abstract base class DartEdgeHttpClientBase {
     };
 
     if (body case final body? when body.value != null) {
-      builtHeaders.putIfAbsent('content-type', () => body.contentType);
+      builtHeaders.putIfAbsent(
+        'content-type',
+        () => encodedBody?.contentType ?? body.contentType,
+      );
     }
 
     return builtHeaders;
   }
 
-  String? _encodeRequestBody<TBody>({
+  Future<_EncodedClientRequestBody?> _encodeRequestBody<TBody>({
     required DartEdgeClientRequestBody<TBody>? body,
-  }) {
+  }) async {
     if (body == null || body.value == null) {
       return null;
     }
@@ -175,14 +184,36 @@ abstract base class DartEdgeHttpClientBase {
     final contentType = body.contentType.toLowerCase();
 
     if (_isJsonContentType(contentType)) {
-      return jsonEncode(encodedBody);
+      return _EncodedClientRequestBody(
+        contentType: body.contentType,
+        body: jsonEncode(encodedBody),
+      );
     }
 
     if (_isTextContentType(contentType)) {
-      return encodedBody?.toString() ?? '';
+      return _EncodedClientRequestBody(
+        contentType: body.contentType,
+        body: encodedBody?.toString() ?? '',
+      );
     }
 
-    return encodedBody?.toString();
+    if (_isMultipartFormDataContentType(contentType)) {
+      final form = encodedBody is MultipartFormData
+          ? encodedBody
+          : throw StateError(
+              'Expected MultipartFormData for multipart request body.',
+            );
+      final encoded = await _encodeMultipartFormData(form);
+      return _EncodedClientRequestBody(
+        contentType: 'multipart/form-data; boundary=${encoded.boundary}',
+        bodyBytes: encoded.bodyBytes,
+      );
+    }
+
+    return _EncodedClientRequestBody(
+      contentType: body.contentType,
+      body: encodedBody?.toString(),
+    );
   }
 
   T _decodeResponse<T>(
@@ -365,6 +396,10 @@ abstract base class DartEdgeHttpClientBase {
     return value.toLowerCase().startsWith('text/plain');
   }
 
+  bool _isMultipartFormDataContentType(String value) {
+    return value.split(';').first.trim().toLowerCase() == 'multipart/form-data';
+  }
+
   bool _isBinaryContentType(String value) {
     final mimeType = value.split(';').first.trim().toLowerCase();
     return mimeType == 'application/octet-stream' ||
@@ -375,6 +410,68 @@ abstract base class DartEdgeHttpClientBase {
 }
 
 final _pathParameterPattern = RegExp(r'<([^>]+)>');
+
+final class _EncodedClientRequestBody {
+  const _EncodedClientRequestBody({
+    required this.contentType,
+    this.body,
+    this.bodyBytes,
+  });
+
+  final String contentType;
+  final String? body;
+  final List<int>? bodyBytes;
+}
+
+typedef _EncodedMultipartFormData = ({String boundary, Uint8List bodyBytes});
+
+Future<_EncodedMultipartFormData> _encodeMultipartFormData(
+  MultipartFormData form,
+) async {
+  final boundary =
+      'dart-edge-boundary-${DateTime.now().microsecondsSinceEpoch}';
+  final bytes = BytesBuilder(copy: false);
+  final newline = utf8.encode('\r\n');
+
+  void writeAscii(String value) {
+    bytes.add(ascii.encode(value));
+  }
+
+  for (final field in form.fields) {
+    writeAscii('--$boundary\r\n');
+    writeAscii(
+      'Content-Disposition: form-data; '
+      'name="${_escapeMultipartHeaderValue(field.name)}"\r\n\r\n',
+    );
+    bytes.add(utf8.encode(field.value));
+    bytes.add(newline);
+  }
+
+  for (final file in form.files) {
+    writeAscii('--$boundary\r\n');
+    writeAscii(
+      'Content-Disposition: form-data; '
+      'name="${_escapeMultipartHeaderValue(file.fieldName)}"',
+    );
+    if (file.filename case final filename?) {
+      writeAscii('; filename="${_escapeMultipartHeaderValue(filename)}"');
+    }
+    writeAscii('\r\n');
+    if (file.contentType case final contentType?) {
+      writeAscii('Content-Type: $contentType\r\n');
+    }
+    writeAscii('\r\n');
+    bytes.add(await file.bytes);
+    bytes.add(newline);
+  }
+
+  writeAscii('--$boundary--\r\n');
+  return (boundary: boundary, bodyBytes: bytes.takeBytes());
+}
+
+String _escapeMultipartHeaderValue(String value) {
+  return value.replaceAll(r'\', r'\\').replaceAll('"', r'\"');
+}
 
 /// Fully described generated-client invocation.
 final class DartEdgeClientInvocation<

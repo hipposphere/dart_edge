@@ -32,6 +32,54 @@ abstract interface class MultipartFile {
   Stream<List<int>> openRead();
 }
 
+/// Client-side file value for generated multipart request DTOs.
+final class MultipartUploadFile {
+  MultipartUploadFile.bytes({
+    required List<int> bytes,
+    this.filename,
+    this.contentType,
+  }) : length = bytes.length,
+       _readBytes = (() async => Uint8List.fromList(bytes)),
+       _openRead = null;
+
+  MultipartUploadFile.stream({
+    required Stream<List<int>> Function() openRead,
+    this.filename,
+    this.contentType,
+    this.length,
+  }) : _readBytes = (() => _collectBytes(openRead())),
+       _openRead = openRead;
+
+  /// Optional client-provided file name.
+  final String? filename;
+
+  /// Optional part-level content type.
+  final String? contentType;
+
+  /// Uploaded file length in bytes, when known without reading the stream.
+  final int? length;
+
+  final Future<Uint8List> Function() _readBytes;
+  final Stream<List<int>> Function()? _openRead;
+
+  /// Lazily reads the upload contents into memory.
+  Future<Uint8List> get bytes => _readBytes();
+
+  /// Opens a stream for the upload contents.
+  Stream<List<int>> openRead() {
+    final openRead = _openRead;
+    if (openRead != null) {
+      return openRead();
+    }
+    return Stream.fromFuture(bytes);
+  }
+
+  /// Attaches this upload value to a multipart form field name.
+  MultipartFile asFile(String fieldName) {
+    return _MultipartUploadFormFile(fieldName: fieldName, file: this);
+  }
+}
+
 /// Parsed multipart form-data payload.
 final class MultipartFormData {
   MultipartFormData({
@@ -79,4 +127,44 @@ final class MultipartFormData {
     }
     return null;
   }
+}
+
+final class _MultipartUploadFormFile implements MultipartFile {
+  const _MultipartUploadFormFile({required this.fieldName, required this.file});
+
+  @override
+  final String fieldName;
+
+  final MultipartUploadFile file;
+
+  @override
+  String? get filename => file.filename;
+
+  @override
+  String? get contentType => file.contentType;
+
+  @override
+  int get length => file.length ?? 0;
+
+  @override
+  Future<Uint8List> get bytes => file.bytes;
+
+  @override
+  Stream<List<int>> openRead() => file.openRead();
+}
+
+Future<Uint8List> _collectBytes(Stream<List<int>> stream) async {
+  final chunks = <List<int>>[];
+  var length = 0;
+  await for (final chunk in stream) {
+    chunks.add(chunk);
+    length += chunk.length;
+  }
+  final bytes = Uint8List(length);
+  var offset = 0;
+  for (final chunk in chunks) {
+    bytes.setRange(offset, offset + chunk.length, chunk);
+    offset += chunk.length;
+  }
+  return bytes;
 }
