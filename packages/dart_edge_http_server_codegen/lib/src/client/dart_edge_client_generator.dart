@@ -976,7 +976,10 @@ String _clientModelType(
   final baseType = switch (schema) {
     JsonReferenceSchema _ =>
       _schemaTypeFromId(jsonSchemaRouteId(schema), schemaTypes) ?? 'Object?',
-    JsonStringSchema _ => 'String',
+    JsonStringSchema(:final dartType, :final format) => _clientStringModelType(
+      dartType,
+      format: format,
+    ),
     JsonIntegerSchema _ => 'int',
     JsonNumberSchema _ => 'num',
     JsonBooleanSchema _ => 'bool',
@@ -1007,6 +1010,9 @@ String _decodeSchemaValue(
       _schemaTypeFromId(jsonSchemaRouteId(schema), schemaTypes),
       value,
     ),
+    JsonStringSchema(:final dartType, :final format)
+        when dartType == null && format == 'date-time' =>
+      'DateTime.parse($value as String)',
     JsonStringSchema _ => '$value as String',
     JsonIntegerSchema _ => '($value as num).toInt()',
     JsonNumberSchema _ => '$value as num',
@@ -1048,6 +1054,9 @@ String _encodeSchemaValue(
       value,
       nullable: nullable,
     ),
+    JsonStringSchema(:final dartType, :final format)
+        when dartType == null && format == 'date-time' =>
+      nullable ? '$value?.toIso8601String()' : '$value.toIso8601String()',
     JsonArraySchema(:final items?) => _encodeArrayValue(
       items,
       value,
@@ -1067,6 +1076,24 @@ String _encodeClientModelValue(
     return value;
   }
   return nullable ? '$value?.toJson()' : '$value.toJson()';
+}
+
+String _clientStringModelType(DartSchemaType? dartType, {String? format}) {
+  return _clientDartTypeName(dartType) ??
+      switch (format) {
+        'date-time' => 'DateTime',
+        _ => 'String',
+      };
+}
+
+String? _clientDartTypeName(DartSchemaType? dartType) {
+  return switch (dartType) {
+    DartConcreteSchemaType(:final name, :final type) =>
+      name ?? type?.toString(),
+    DartNamedSchemaType(:final name) => name,
+    DartGenericSchemaType(:final name) => name,
+    null => null,
+  };
 }
 
 String _encodeArrayValue(

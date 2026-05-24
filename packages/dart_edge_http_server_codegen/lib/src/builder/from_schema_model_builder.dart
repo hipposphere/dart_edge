@@ -592,8 +592,11 @@ String _schemaDartType(
   required List<TypeParameterSpec> typeParameters,
 }) {
   final type = switch (schema) {
-    JsonStringSchema(:final dartType) =>
-      _dartTypeName(dartType, typeParameters: typeParameters) ?? 'String',
+    JsonStringSchema(:final dartType, :final format) => _stringSchemaDartType(
+      dartType,
+      format: format,
+      typeParameters: typeParameters,
+    ),
     JsonIntegerSchema() => 'int',
     JsonNumberSchema() => 'num',
     JsonBooleanSchema() => 'bool',
@@ -623,10 +626,11 @@ String _decodeValue(
   String path = '',
 }) {
   return switch (schema) {
-    JsonStringSchema(:final dartType) => _decodeStringValue(
+    JsonStringSchema(:final dartType, :final format) => _decodeStringValue(
       dartType,
       source,
       nullable: nullable,
+      format: format,
       typeParameters: typeParameters,
     ),
     JsonIntegerSchema() => nullable ? '$source as int?' : '$source! as int',
@@ -763,10 +767,16 @@ String _decodeStringValue(
   DartSchemaType? dartType,
   String source, {
   required bool nullable,
+  required String? format,
   required List<TypeParameterSpec> typeParameters,
 }) {
   final stringValue = nullable ? '$source as String?' : '$source! as String';
   if (dartType == null) {
+    if (format == 'date-time') {
+      return nullable
+          ? '$source == null ? null : DateTime.parse($source as String)'
+          : 'DateTime.parse($source! as String)';
+    }
     return stringValue;
   }
 
@@ -798,6 +808,9 @@ String _encodeValue(
   required Map<String, SchemaRefModelSpec> refModels,
 }) {
   return switch (schema) {
+    JsonStringSchema(:final dartType, :final format)
+        when dartType == null && format == 'date-time' =>
+      nullable ? '$source?.toIso8601String()' : '$source.toIso8601String()',
     JsonArraySchema(:final items) => _encodeArrayValue(
       items,
       source,
@@ -812,6 +825,18 @@ String _encodeValue(
     ),
     _ => source,
   };
+}
+
+String _stringSchemaDartType(
+  DartSchemaType? dartType, {
+  required String? format,
+  required List<TypeParameterSpec> typeParameters,
+}) {
+  return _dartTypeName(dartType, typeParameters: typeParameters) ??
+      switch (format) {
+        'date-time' => 'DateTime',
+        _ => 'String',
+      };
 }
 
 String _encodeArrayValue(
