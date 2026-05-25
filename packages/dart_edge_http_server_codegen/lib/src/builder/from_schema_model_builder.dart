@@ -259,6 +259,7 @@ Class _objectModel(FromSchemaModelSpec model) {
       )
       ..fields.addAll([
         _schemaIdField(model.schemaId),
+        _schemaField(model.schema, schemaId: model.schemaId),
         _schemaRefField(),
         _requestBodyField(
           source: model.source,
@@ -326,6 +327,7 @@ Enum _stringEnumModel(FromSchemaModelSpec model) {
             ..name = 'value';
         }),
         _schemaIdField(model.schemaId),
+        _schemaField(model.schema, schemaId: model.schemaId),
         _schemaRefField(),
         _requestBodyField(source: model.source, includeDecoder: true),
         _responseField(model.responseStatus),
@@ -374,6 +376,7 @@ ExtensionType _arrayModel(FromSchemaModelSpec model) {
       ..implements.add(refer('List<$itemType>'))
       ..fields.addAll([
         _schemaIdField(model.schemaId),
+        _schemaField(model.schema, schemaId: model.schemaId),
         _schemaRefField(),
         _requestBodyField(source: model.source, includeDecoder: true),
         _responseField(model.responseStatus),
@@ -430,6 +433,20 @@ Field _schemaRefField() {
   });
 }
 
+Field _schemaField(JsonSchema schema, {required String schemaId}) {
+  return Field((builder) {
+    builder
+      ..static = true
+      ..modifier = FieldModifier.constant
+      ..type = refer('JsonSchema')
+      ..name = 'schema'
+      ..assignment = _schemaExpression(
+        schema,
+        idExpression: schema.id == schemaId ? refer('schemaId') : null,
+      ).code;
+  });
+}
+
 Field _requestBodyField({
   required FromSchemaModelSource source,
   required bool includeDecoder,
@@ -448,12 +465,110 @@ Field _requestBodyField({
       ..modifier = FieldModifier.constant
       ..type = refer('RequestBody')
       ..name = 'requestBody'
-      ..assignment =
-          refer('RequestBody').constInstanceNamed(constructorName, const [], {
-            'schema': refer('schemaRef'),
-            if (includeDecoder) 'decoder': refer(decoderName),
-          }).code;
+      ..assignment = refer('RequestBody').constInstanceNamed(
+        constructorName,
+        const [],
+        {
+          'schema': refer('schema'),
+          if (includeDecoder) 'decoder': refer(decoderName),
+        },
+      ).code;
   });
+}
+
+Expression _schemaExpression(JsonSchema schema, {Expression? idExpression}) {
+  final baseArguments = <String, Expression>{
+    if (idExpression != null)
+      'id': idExpression
+    else if (schema.id case final id?)
+      'id': literalString(id),
+    if (schema.title case final title?) 'title': literalString(title),
+    if (schema.description case final description?)
+      'description': literalString(description),
+    if (schema.enumValues.isNotEmpty)
+      'enumValues': literalConstList(schema.enumValues),
+  };
+
+  return switch (schema) {
+    JsonAnySchema() => refer(
+      'JsonSchema',
+    ).constInstanceNamed('any', const [], baseArguments),
+    JsonObjectSchema(
+      :final nullable,
+      :final properties,
+      :final required,
+      :final additionalProperties,
+    ) =>
+      refer('JsonSchema').constInstanceNamed('object', const [], {
+        ...baseArguments,
+        if (nullable) 'nullable': literalBool(nullable),
+        if (properties.isNotEmpty)
+          'properties': literalConstMap(
+            {
+              for (final entry in properties.entries)
+                entry.key: _schemaExpression(entry.value),
+            },
+            refer('String'),
+            refer('JsonSchema'),
+          ),
+        if (required.isNotEmpty)
+          'required': literalConstList(required, refer('String')),
+        if (additionalProperties != null)
+          'additionalProperties': literalBool(additionalProperties),
+      }),
+    JsonArraySchema(:final nullable, :final items) =>
+      refer('JsonSchema').constInstanceNamed('array', const [], {
+        ...baseArguments,
+        if (nullable) 'nullable': literalBool(nullable),
+        if (items != null) 'items': _schemaExpression(items),
+      }),
+    JsonStringSchema(:final nullable, :final format, :final dartType) =>
+      refer('JsonSchema').constInstanceNamed('string', const [], {
+        ...baseArguments,
+        if (nullable) 'nullable': literalBool(nullable),
+        if (format != null) 'format': literalString(format),
+        if (dartType != null) 'dartType': _dartSchemaTypeExpression(dartType),
+      }),
+    JsonIntegerSchema(:final nullable, :final format) =>
+      refer('JsonSchema').constInstanceNamed('integer', const [], {
+        ...baseArguments,
+        if (nullable) 'nullable': literalBool(nullable),
+        if (format != null) 'format': literalString(format),
+      }),
+    JsonNumberSchema(:final nullable, :final format) =>
+      refer('JsonSchema').constInstanceNamed('number', const [], {
+        ...baseArguments,
+        if (nullable) 'nullable': literalBool(nullable),
+        if (format != null) 'format': literalString(format),
+      }),
+    JsonBooleanSchema(:final nullable) =>
+      refer('JsonSchema').constInstanceNamed('boolean', const [], {
+        ...baseArguments,
+        if (nullable) 'nullable': literalBool(nullable),
+      }),
+    JsonReferenceSchema(:final ref) => refer(
+      'JsonSchema',
+    ).constInstanceNamed('ref', [literalString(ref)], baseArguments),
+    JsonRawSchema(:final schema, :final id) =>
+      refer('JsonSchema').constInstanceNamed(
+        'raw',
+        [literalConstMap(schema, refer('String'), refer('Object?'))],
+        {if (id != null) 'id': literalString(id)},
+      ),
+    _ => throw StateError('Unsupported request body schema $schema.'),
+  };
+}
+
+Expression _dartSchemaTypeExpression(DartSchemaType dartType) {
+  final typeName = _dartTypeName(dartType);
+  return switch (dartType) {
+    DartConcreteSchemaType() || DartNamedSchemaType() => refer(
+      'DartSchemaType',
+    ).constInstanceNamed('named', [literalString(typeName ?? 'Object')]),
+    DartGenericSchemaType() => refer(
+      'DartSchemaType',
+    ).constInstanceNamed('parameter', [literalString(typeName ?? 'Object')]),
+  };
 }
 
 Field _responseField(int status) {
@@ -466,7 +581,7 @@ Field _responseField(int status) {
       ..assignment = refer('ResponseSpec').constInstanceNamed(
         'json',
         const [],
-        {'status': literalNum(status), 'schema': refer('schemaRef')},
+        {'status': literalNum(status), 'schema': refer('schema')},
       ).code;
   });
 }

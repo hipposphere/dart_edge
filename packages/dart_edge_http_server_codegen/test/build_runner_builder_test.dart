@@ -475,17 +475,23 @@ typedef PublishStatus = _$PublishStatus;
                 'final class _\$CreateUserInput implements JsonEncodable',
               ),
               contains("static const schemaId = 'CreateUserInput';"),
+              contains('static const JsonSchema schema = JsonSchema.object('),
+              contains('id: schemaId,'),
               contains(
                 'static const schemaRef = JsonSchema.componentRef(schemaId);',
               ),
               contains(
                 'static const RequestBody requestBody = RequestBody.json(',
               ),
+              contains('schema: schema,'),
+              isNot(contains('schema: schemaRef,\n    decoder: decode,')),
               contains('decoder: decode,'),
               contains(
                 'static const ResponseSpec response = ResponseSpec.json(',
               ),
               contains('status: 200,'),
+              contains('schema: schema,\n  );'),
+              isNot(contains('schema: schemaRef,\n  );')),
               contains('final String name;'),
               contains('final int? age;'),
               contains('final List<String> tags;'),
@@ -696,6 +702,11 @@ typedef UploadBody = _$UploadBody;
               contains(
                 'static const RequestBody requestBody = '
                 'RequestBody.multipartFormData(',
+              ),
+              contains('static const JsonSchema schema = JsonSchema.object('),
+              contains('schema: schema,'),
+              isNot(
+                contains('schema: schemaRef,\n    decoder: decodeMultipart,'),
               ),
               contains('decoder: decodeMultipart,'),
               contains('final String workspaceId;'),
@@ -958,6 +969,9 @@ typedef StringIdParams = _$StringIdParams;
               contains(
                 'static const RequestBody requestBody = RequestBody.json(',
               ),
+              contains('static const JsonSchema schema = JsonSchema.object('),
+              contains('schema: schema,'),
+              isNot(contains('schema: schemaRef,\n    decoder: decode,')),
               contains('factory _\$IdParams.decode(Object? value)'),
               contains('factory _\$IdParams.fromJson('),
               contains('id: json["id"]! as TId,'),

@@ -77,16 +77,25 @@ final class _$CreateUserInput {
 
   static const schemaId = 'CreateUserInput';
 
+  static const JsonSchema schema = JsonSchema.object(
+    id: schemaId,
+    properties: <String, JsonSchema>{
+      'name': JsonSchema.string(),
+      'email': JsonSchema.string(format: 'email'),
+    },
+    required: <String>['name', 'email'],
+  );
+
   static const schemaRef = JsonSchema.componentRef(schemaId);
 
   static const RequestBody requestBody = RequestBody.json(
-    schema: schemaRef,
+    schema: schema,
     decoder: fromJson,
   );
 
   static const ResponseSpec response = ResponseSpec.json(
     status: 200,
-    schema: schemaRef,
+    schema: schema,
   );
 
   final String name;
