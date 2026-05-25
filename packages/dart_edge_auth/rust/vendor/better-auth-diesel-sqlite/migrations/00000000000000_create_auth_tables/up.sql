@@ -4,24 +4,21 @@
 
 CREATE TABLE IF NOT EXISTS "user" (
     id TEXT PRIMARY KEY NOT NULL,
-    name TEXT,
+    name TEXT NOT NULL,
     email TEXT NOT NULL UNIQUE,
-    username TEXT UNIQUE,
-    "displayUsername" TEXT,
     "emailVerified" BOOLEAN NOT NULL DEFAULT 0,
     image TEXT,
-    role TEXT NOT NULL DEFAULT 'user',
-    banned BOOLEAN NOT NULL DEFAULT 0,
+    role TEXT,
+    banned BOOLEAN,
     "banReason" TEXT,
     "banExpires" TEXT,
-    "twoFactorEnabled" BOOLEAN NOT NULL DEFAULT 0,
-    metadata TEXT,
+    "phoneNumber" TEXT UNIQUE,
+    "phoneNumberVerified" BOOLEAN,
     "createdAt" TEXT NOT NULL,
     "updatedAt" TEXT NOT NULL
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_user_email ON "user" (email);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_user_username ON "user" (username);
 
 CREATE TABLE IF NOT EXISTS "session" (
     id TEXT PRIMARY KEY NOT NULL,
@@ -30,9 +27,7 @@ CREATE TABLE IF NOT EXISTS "session" (
     "ipAddress" TEXT,
     "userAgent" TEXT,
     "expiresAt" TEXT NOT NULL,
-    "activeOrganizationId" TEXT,
     "impersonatedBy" TEXT,
-    active BOOLEAN NOT NULL DEFAULT 1,
     "createdAt" TEXT NOT NULL,
     "updatedAt" TEXT NOT NULL
 );

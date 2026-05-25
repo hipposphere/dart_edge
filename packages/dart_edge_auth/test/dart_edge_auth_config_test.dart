@@ -158,7 +158,7 @@ void main() {
     expect(authTables.users.qualifiedName, 'auth.user');
     expect(authTables.sessions.userId.qualifiedName, 'auth.session.userId');
     expect(authTables.users.emailVerified, isA<SqlColumn<bool>>());
-    expect(authTables.sessions.active, isA<SqlColumn<bool>>());
+    expect(authTables.sessions.expiresAt, isA<SqlColumn<String>>());
   });
 }
 

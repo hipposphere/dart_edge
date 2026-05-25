@@ -2,7 +2,7 @@
 
 - Use Better Auth's singular default table names and camelCase default columns
   for generated auth schemas, migrations, and native shared database queries.
-- Bump the native artifact version to 0.1.8.
+- Bump the native artifact version to 0.1.9.
 
 ## 0.3.12
 

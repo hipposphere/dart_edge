@@ -26,24 +26,21 @@ const SQLITE_SCHEMA_SQL: &str = include_str!(
 const POSTGRES_SCHEMA_SQL: &str = r#"
 CREATE TABLE IF NOT EXISTS "user" (
     id TEXT PRIMARY KEY NOT NULL,
-    name TEXT,
+    name TEXT NOT NULL,
     email TEXT NOT NULL UNIQUE,
-    username TEXT UNIQUE,
-    "displayUsername" TEXT,
     "emailVerified" BOOLEAN NOT NULL DEFAULT FALSE,
     image TEXT,
-    role TEXT NOT NULL DEFAULT 'user',
-    banned BOOLEAN NOT NULL DEFAULT FALSE,
+    role TEXT,
+    banned BOOLEAN,
     "banReason" TEXT,
-    "banExpires" TEXT,
-    "twoFactorEnabled" BOOLEAN NOT NULL DEFAULT FALSE,
-    metadata JSONB,
-    "createdAt" TEXT NOT NULL,
-    "updatedAt" TEXT NOT NULL
+    "banExpires" TIMESTAMPTZ,
+    "phoneNumber" TEXT UNIQUE,
+    "phoneNumberVerified" BOOLEAN,
+    "createdAt" TIMESTAMPTZ NOT NULL,
+    "updatedAt" TIMESTAMPTZ NOT NULL
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_user_email ON "user" (email);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_user_username ON "user" (username);
 
 CREATE TABLE IF NOT EXISTS "session" (
     id TEXT PRIMARY KEY NOT NULL,
@@ -51,12 +48,10 @@ CREATE TABLE IF NOT EXISTS "session" (
     token TEXT NOT NULL UNIQUE,
     "ipAddress" TEXT,
     "userAgent" TEXT,
-    "expiresAt" TEXT NOT NULL,
-    "activeOrganizationId" TEXT,
+    "expiresAt" TIMESTAMPTZ NOT NULL,
     "impersonatedBy" TEXT,
-    active BOOLEAN NOT NULL DEFAULT TRUE,
-    "createdAt" TEXT NOT NULL,
-    "updatedAt" TEXT NOT NULL
+    "createdAt" TIMESTAMPTZ NOT NULL,
+    "updatedAt" TIMESTAMPTZ NOT NULL
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_session_token ON "session" (token);
@@ -70,12 +65,12 @@ CREATE TABLE IF NOT EXISTS "account" (
     "accessToken" TEXT,
     "refreshToken" TEXT,
     "idToken" TEXT,
-    "accessTokenExpiresAt" TEXT,
-    "refreshTokenExpiresAt" TEXT,
+    "accessTokenExpiresAt" TIMESTAMPTZ,
+    "refreshTokenExpiresAt" TIMESTAMPTZ,
     scope TEXT,
     password TEXT,
-    "createdAt" TEXT NOT NULL,
-    "updatedAt" TEXT NOT NULL
+    "createdAt" TIMESTAMPTZ NOT NULL,
+    "updatedAt" TIMESTAMPTZ NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_account_user_id ON "account" ("userId");
@@ -85,9 +80,9 @@ CREATE TABLE IF NOT EXISTS "verification" (
     id TEXT PRIMARY KEY NOT NULL,
     identifier TEXT NOT NULL,
     value TEXT NOT NULL,
-    "expiresAt" TEXT NOT NULL,
-    "createdAt" TEXT NOT NULL,
-    "updatedAt" TEXT NOT NULL
+    "expiresAt" TIMESTAMPTZ NOT NULL,
+    "createdAt" TIMESTAMPTZ NOT NULL,
+    "updatedAt" TIMESTAMPTZ NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_verification_identifier ON "verification" (identifier);
@@ -441,6 +436,13 @@ impl<'a> RowReader<'a> {
         }
     }
 
+    fn boolean_or_default(&self, name: &str, default: bool) -> AuthResult<bool> {
+        Ok(match self.values.get(name) {
+            None | Some(SqlValue::Null) => default,
+            Some(_) => self.boolean(name)?,
+        })
+    }
+
     fn integer(&self, name: &str) -> AuthResult<i64> {
         match self.value(name)? {
             SqlValue::Integer(value) => Ok(*value),
@@ -539,9 +541,9 @@ fn decode_user(row: RowMap) -> AuthResult<User> {
         updated_at: row.datetime("updatedAt")?,
         username: row.opt_string("username")?,
         display_username: row.opt_string("displayUsername")?,
-        two_factor_enabled: row.boolean("twoFactorEnabled")?,
+        two_factor_enabled: row.boolean_or_default("twoFactorEnabled", false)?,
         role: row.opt_string("role")?,
-        banned: row.boolean("banned")?,
+        banned: row.boolean_or_default("banned", false)?,
         ban_reason: row.opt_string("banReason")?,
         ban_expires: row.opt_datetime("banExpires")?,
         metadata: row.json_or_default("metadata")?,
@@ -561,7 +563,7 @@ fn decode_session(row: RowMap) -> AuthResult<Session> {
         user_id: row.string("userId")?,
         impersonated_by: row.opt_string("impersonatedBy")?,
         active_organization_id: row.opt_string("activeOrganizationId")?,
-        active: row.boolean("active")?,
+        active: row.boolean_or_default("active", true)?,
     })
 }
 
@@ -603,10 +605,10 @@ impl UserOps for SharedSqlDatabaseAdapter {
     async fn create_user(&self, create_user: CreateUser) -> AuthResult<User> {
         let id = create_user.id.unwrap_or_else(|| Uuid::new_v4().to_string());
         let now = now_text();
-        let placeholders = self.placeholders(1, 11);
+        let placeholders = self.placeholders(1, 8);
         let sql = format!(
             "INSERT INTO {table} ({id_col}, {email_col}, {name_col}, {image_col}, {verified_col}, \
-             {username_col}, {displayUsername_col}, {role_col}, {createdAt_col}, {updatedAt_col}, {metadata_col}) \
+             {role_col}, {createdAt_col}, {updatedAt_col}) \
              VALUES ({values}) RETURNING *",
             table = self.table("user"),
             id_col = quoted("id"),
@@ -614,12 +616,9 @@ impl UserOps for SharedSqlDatabaseAdapter {
             name_col = quoted("name"),
             image_col = quoted("image"),
             verified_col = quoted("emailVerified"),
-            username_col = quoted("username"),
-            displayUsername_col = quoted("displayUsername"),
             role_col = quoted("role"),
             createdAt_col = quoted("createdAt"),
             updatedAt_col = quoted("updatedAt"),
-            metadata_col = quoted("metadata"),
             values = placeholders.join(", "),
         );
         let row = self.fetch_one_row(
@@ -639,18 +638,9 @@ impl UserOps for SharedSqlDatabaseAdapter {
                     None => SqlParam::Null,
                 },
                 SqlParam::Boolean(create_user.email_verified.unwrap_or(false)),
-                match create_user.username {
-                    Some(value) => SqlParam::String(value),
-                    None => SqlParam::Null,
-                },
-                match create_user.display_username {
-                    Some(value) => SqlParam::String(value),
-                    None => SqlParam::Null,
-                },
                 SqlParam::String(create_user.role.unwrap_or_else(|| "user".to_string())),
                 SqlParam::String(now.clone()),
                 SqlParam::String(now),
-                SqlParam::Json(create_user.metadata.unwrap_or_else(|| json!({}))),
             ],
         )?;
         decode_user(row)
@@ -879,10 +869,10 @@ impl SessionOps for SharedSqlDatabaseAdapter {
         let id = Uuid::new_v4().to_string();
         let token = format!("session_{}", Uuid::new_v4());
         let now = now_text();
-        let placeholders = self.placeholders(1, 11);
+        let placeholders = self.placeholders(1, 8);
         let sql = format!(
             "INSERT INTO {table} ({id_col}, {userId_col}, {token_col}, {expiresAt_col}, {createdAt_col}, \
-             {updatedAt_col}, {ipAddress_col}, {userAgent_col}, {impersonatedBy_col}, {active_org_col}, {active_col}) \
+             {updatedAt_col}, {ipAddress_col}, {userAgent_col}) \
              VALUES ({values}) RETURNING *",
             table = self.table("session"),
             id_col = quoted("id"),
@@ -893,9 +883,6 @@ impl SessionOps for SharedSqlDatabaseAdapter {
             updatedAt_col = quoted("updatedAt"),
             ipAddress_col = quoted("ipAddress"),
             userAgent_col = quoted("userAgent"),
-            impersonatedBy_col = quoted("impersonatedBy"),
-            active_org_col = quoted("activeOrganizationId"),
-            active_col = quoted("active"),
             values = placeholders.join(", "),
         );
         let row = self.fetch_one_row(
@@ -915,15 +902,6 @@ impl SessionOps for SharedSqlDatabaseAdapter {
                     Some(value) => SqlParam::String(value),
                     None => SqlParam::Null,
                 },
-                match session.impersonated_by {
-                    Some(value) => SqlParam::String(value),
-                    None => SqlParam::Null,
-                },
-                match session.active_organization_id {
-                    Some(value) => SqlParam::String(value),
-                    None => SqlParam::Null,
-                },
-                SqlParam::Boolean(true),
             ],
         )?;
         decode_session(row)
@@ -931,12 +909,10 @@ impl SessionOps for SharedSqlDatabaseAdapter {
 
     async fn get_session(&self, token: &str) -> AuthResult<Option<Session>> {
         let sql = format!(
-            "SELECT * FROM {table} WHERE {token_col} = {placeholder} AND {active_col} = {active_value}",
+            "SELECT * FROM {table} WHERE {token_col} = {placeholder}",
             table = self.table("session"),
             token_col = quoted("token"),
             placeholder = self.placeholder(1),
-            active_col = quoted("active"),
-            active_value = self.dialect.bool_literal(true),
         );
         self.fetch_optional_row(sql, vec![SqlParam::String(token.to_string())])?
             .map(decode_session)
@@ -945,12 +921,10 @@ impl SessionOps for SharedSqlDatabaseAdapter {
 
     async fn get_user_sessions(&self, user_id: &str) -> AuthResult<Vec<Session>> {
         let sql = format!(
-            "SELECT * FROM {table} WHERE {userId_col} = {placeholder} AND {active_col} = {active_value} ORDER BY {createdAt_col}",
+            "SELECT * FROM {table} WHERE {userId_col} = {placeholder} ORDER BY {createdAt_col}",
             table = self.table("session"),
             userId_col = quoted("userId"),
             placeholder = self.placeholder(1),
-            active_col = quoted("active"),
-            active_value = self.dialect.bool_literal(true),
             createdAt_col = quoted("createdAt"),
         );
         self.fetch_all_rows(sql, vec![SqlParam::String(user_id.to_string())])?
@@ -966,7 +940,7 @@ impl SessionOps for SharedSqlDatabaseAdapter {
     ) -> AuthResult<()> {
         let sql = format!(
             "UPDATE {table} SET {expiresAt_col} = {expires_placeholder}, {updatedAt_col} = {updated_placeholder} \
-             WHERE {token_col} = {token_placeholder} AND {active_col} = {active_value}",
+             WHERE {token_col} = {token_placeholder}",
             table = self.table("session"),
             expiresAt_col = quoted("expiresAt"),
             expires_placeholder = self.placeholder(1),
@@ -974,8 +948,6 @@ impl SessionOps for SharedSqlDatabaseAdapter {
             updated_placeholder = self.placeholder(2),
             token_col = quoted("token"),
             token_placeholder = self.placeholder(3),
-            active_col = quoted("active"),
-            active_value = self.dialect.bool_literal(true),
         );
         self.execute_affected(
             sql,
@@ -1012,46 +984,22 @@ impl SessionOps for SharedSqlDatabaseAdapter {
 
     async fn delete_expired_sessions(&self) -> AuthResult<usize> {
         let sql = format!(
-            "DELETE FROM {table} WHERE {expiresAt_col} < {placeholder} OR {active_col} = {inactive_value}",
+            "DELETE FROM {table} WHERE {expiresAt_col} < {placeholder}",
             table = self.table("session"),
             expiresAt_col = quoted("expiresAt"),
             placeholder = self.placeholder(1),
-            active_col = quoted("active"),
-            inactive_value = self.dialect.bool_literal(false),
         );
         self.execute_affected(sql, vec![SqlParam::String(now_text())])
     }
 
     async fn update_session_active_organization(
         &self,
-        token: &str,
-        organization_id: Option<&str>,
+        _token: &str,
+        _organization_id: Option<&str>,
     ) -> AuthResult<Session> {
-        let sql = format!(
-            "UPDATE {table} SET {active_org_col} = {org_placeholder}, {updatedAt_col} = {updated_placeholder} \
-             WHERE {token_col} = {token_placeholder} AND {active_col} = {active_value} RETURNING *",
-            table = self.table("session"),
-            active_org_col = quoted("activeOrganizationId"),
-            org_placeholder = self.placeholder(1),
-            updatedAt_col = quoted("updatedAt"),
-            updated_placeholder = self.placeholder(2),
-            token_col = quoted("token"),
-            token_placeholder = self.placeholder(3),
-            active_col = quoted("active"),
-            active_value = self.dialect.bool_literal(true),
-        );
-        let row = self.fetch_one_row(
-            sql,
-            vec![
-                match organization_id {
-                    Some(value) => SqlParam::String(value.to_string()),
-                    None => SqlParam::Null,
-                },
-                SqlParam::String(now_text()),
-                SqlParam::String(token.to_string()),
-            ],
-        )?;
-        decode_session(row)
+        Err(AuthError::not_implemented(
+            "Shared dart_edge_sql auth databases do not support active organizations yet.",
+        ))
     }
 }
 
