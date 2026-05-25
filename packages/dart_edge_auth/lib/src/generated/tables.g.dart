@@ -635,7 +635,7 @@ final class DartEdgeAuthSessionsTable
   );
 
   @override
-  String get name => 'sessions';
+  String get name => 'session';
 
   @override
   List<SqlColumn<Object?>> get columns => <SqlColumn<Object?>>[
@@ -1542,7 +1542,7 @@ final class DartEdgeAuthUsersTable
   );
 
   @override
-  String get name => 'users';
+  String get name => 'user';
 
   @override
   List<SqlColumn<Object?>> get columns => <SqlColumn<Object?>>[

@@ -43,7 +43,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Schema updated to match actual `better-auth-core` 0.9.0 entity types
-  - Table names match `Auth*Meta` defaults (`users`, `sessions`, `accounts`, `api_keys`, `passkeys`)
+  - Table names match Better Auth defaults (`user`, `session`, `account`, `verification`, `api_keys`, `passkeys`)
   - Account fields: `account_id`/`provider_id` (not `provider`/`provider_account_id`)
   - ApiKey: column `key` for hash, full rate limiting fields, permissions, metadata
   - Passkey: `name` field (not `authenticator_name`), `counter` as `i64`

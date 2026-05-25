@@ -24,7 +24,7 @@ const SQLITE_SCHEMA_SQL: &str = include_str!(
 );
 
 const POSTGRES_SCHEMA_SQL: &str = r#"
-CREATE TABLE IF NOT EXISTS "users" (
+CREATE TABLE IF NOT EXISTS "user" (
     id TEXT PRIMARY KEY NOT NULL,
     name TEXT,
     email TEXT NOT NULL UNIQUE,
@@ -42,12 +42,12 @@ CREATE TABLE IF NOT EXISTS "users" (
     updated_at TEXT NOT NULL
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON "users" (email);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON "users" (username);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_user_email ON "user" (email);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_user_username ON "user" (username);
 
-CREATE TABLE IF NOT EXISTS "sessions" (
+CREATE TABLE IF NOT EXISTS "session" (
     id TEXT PRIMARY KEY NOT NULL,
-    user_id TEXT NOT NULL REFERENCES "users" (id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL REFERENCES "user" (id) ON DELETE CASCADE,
     token TEXT NOT NULL UNIQUE,
     ip_address TEXT,
     user_agent TEXT,
@@ -59,12 +59,12 @@ CREATE TABLE IF NOT EXISTS "sessions" (
     updated_at TEXT NOT NULL
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_sessions_token ON "sessions" (token);
-CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON "sessions" (user_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_session_token ON "session" (token);
+CREATE INDEX IF NOT EXISTS idx_session_user_id ON "session" (user_id);
 
-CREATE TABLE IF NOT EXISTS "accounts" (
+CREATE TABLE IF NOT EXISTS "account" (
     id TEXT PRIMARY KEY NOT NULL,
-    user_id TEXT NOT NULL REFERENCES "users" (id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL REFERENCES "user" (id) ON DELETE CASCADE,
     account_id TEXT NOT NULL,
     provider_id TEXT NOT NULL,
     access_token TEXT,
@@ -78,10 +78,10 @@ CREATE TABLE IF NOT EXISTS "accounts" (
     updated_at TEXT NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_accounts_user_id ON "accounts" (user_id);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_accounts_provider ON "accounts" (provider_id, account_id);
+CREATE INDEX IF NOT EXISTS idx_account_user_id ON "account" (user_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_account_provider ON "account" (provider_id, account_id);
 
-CREATE TABLE IF NOT EXISTS "verifications" (
+CREATE TABLE IF NOT EXISTS "verification" (
     id TEXT PRIMARY KEY NOT NULL,
     identifier TEXT NOT NULL,
     value TEXT NOT NULL,
@@ -90,8 +90,8 @@ CREATE TABLE IF NOT EXISTS "verifications" (
     updated_at TEXT NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_verifications_identifier ON "verifications" (identifier);
-CREATE INDEX IF NOT EXISTS idx_verifications_value ON "verifications" (value);
+CREATE INDEX IF NOT EXISTS idx_verification_identifier ON "verification" (identifier);
+CREATE INDEX IF NOT EXISTS idx_verification_value ON "verification" (value);
 
 CREATE TABLE IF NOT EXISTS "organization" (
     id TEXT PRIMARY KEY NOT NULL,
@@ -107,7 +107,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_organization_slug ON "organization" (slug)
 
 CREATE TABLE IF NOT EXISTS "member" (
     id TEXT PRIMARY KEY NOT NULL,
-    user_id TEXT NOT NULL REFERENCES "users" (id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL REFERENCES "user" (id) ON DELETE CASCADE,
     organization_id TEXT NOT NULL REFERENCES "organization" (id) ON DELETE CASCADE,
     role TEXT NOT NULL DEFAULT 'member',
     created_at TEXT NOT NULL
@@ -123,7 +123,7 @@ CREATE TABLE IF NOT EXISTS "invitation" (
     email TEXT NOT NULL,
     role TEXT NOT NULL DEFAULT 'member',
     status TEXT NOT NULL DEFAULT 'pending',
-    inviter_id TEXT NOT NULL REFERENCES "users" (id),
+    inviter_id TEXT NOT NULL REFERENCES "user" (id),
     expires_at TEXT NOT NULL,
     created_at TEXT NOT NULL
 );
@@ -133,7 +133,7 @@ CREATE INDEX IF NOT EXISTS idx_invitation_email ON "invitation" (email);
 
 CREATE TABLE IF NOT EXISTS "two_factor" (
     id TEXT PRIMARY KEY NOT NULL,
-    user_id TEXT NOT NULL UNIQUE REFERENCES "users" (id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL UNIQUE REFERENCES "user" (id) ON DELETE CASCADE,
     secret TEXT NOT NULL,
     backup_codes TEXT,
     created_at TEXT NOT NULL,
@@ -144,7 +144,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_two_factor_user_id ON "two_factor" (user_i
 
 CREATE TABLE IF NOT EXISTS "api_keys" (
     id TEXT PRIMARY KEY NOT NULL,
-    user_id TEXT NOT NULL REFERENCES "users" (id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL REFERENCES "user" (id) ON DELETE CASCADE,
     name TEXT,
     start TEXT,
     prefix TEXT,
@@ -171,7 +171,7 @@ CREATE INDEX IF NOT EXISTS idx_api_keys_key ON "api_keys" ("key");
 
 CREATE TABLE IF NOT EXISTS "passkeys" (
     id TEXT PRIMARY KEY NOT NULL,
-    user_id TEXT NOT NULL REFERENCES "users" (id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL REFERENCES "user" (id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     credential_id TEXT NOT NULL UNIQUE,
     public_key TEXT NOT NULL,
@@ -187,10 +187,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_passkeys_credential_id ON "passkeys" (cred
 "#;
 
 const AUTH_TABLE_NAMES: &[&str] = &[
-    "users",
-    "sessions",
-    "accounts",
-    "verifications",
+    "user",
+    "session",
+    "account",
+    "verification",
     "organization",
     "member",
     "invitation",
@@ -608,7 +608,7 @@ impl UserOps for SharedSqlDatabaseAdapter {
             "INSERT INTO {table} ({id_col}, {email_col}, {name_col}, {image_col}, {verified_col}, \
              {username_col}, {display_username_col}, {role_col}, {created_at_col}, {updated_at_col}, {metadata_col}) \
              VALUES ({values}) RETURNING *",
-            table = self.table("users"),
+            table = self.table("user"),
             id_col = quoted("id"),
             email_col = quoted("email"),
             name_col = quoted("name"),
@@ -659,7 +659,7 @@ impl UserOps for SharedSqlDatabaseAdapter {
     async fn get_user_by_id(&self, id: &str) -> AuthResult<Option<User>> {
         let sql = format!(
             "SELECT * FROM {table} WHERE {id_col} = {placeholder}",
-            table = self.table("users"),
+            table = self.table("user"),
             id_col = quoted("id"),
             placeholder = self.placeholder(1),
         );
@@ -671,7 +671,7 @@ impl UserOps for SharedSqlDatabaseAdapter {
     async fn get_user_by_email(&self, email: &str) -> AuthResult<Option<User>> {
         let sql = format!(
             "SELECT * FROM {table} WHERE {email_col} = {placeholder}",
-            table = self.table("users"),
+            table = self.table("user"),
             email_col = quoted("email"),
             placeholder = self.placeholder(1),
         );
@@ -683,7 +683,7 @@ impl UserOps for SharedSqlDatabaseAdapter {
     async fn get_user_by_username(&self, username: &str) -> AuthResult<Option<User>> {
         let sql = format!(
             "SELECT * FROM {table} WHERE {username_col} = {placeholder}",
-            table = self.table("users"),
+            table = self.table("user"),
             username_col = quoted("username"),
             placeholder = self.placeholder(1),
         );
@@ -753,7 +753,7 @@ impl UserOps for SharedSqlDatabaseAdapter {
         params.push(SqlParam::String(id.to_string()));
         let sql = format!(
             "UPDATE {table} SET {sets} WHERE {id_col} = {id_placeholder} RETURNING *",
-            table = self.table("users"),
+            table = self.table("user"),
             sets = sets.join(", "),
             id_col = quoted("id"),
             id_placeholder = self.placeholder(params.len()),
@@ -765,7 +765,7 @@ impl UserOps for SharedSqlDatabaseAdapter {
     async fn delete_user(&self, id: &str) -> AuthResult<()> {
         let sql = format!(
             "DELETE FROM {table} WHERE {id_col} = {placeholder}",
-            table = self.table("users"),
+            table = self.table("user"),
             id_col = quoted("id"),
             placeholder = self.placeholder(1),
         );
@@ -847,7 +847,7 @@ impl UserOps for SharedSqlDatabaseAdapter {
 
         let count_sql = format!(
             "SELECT COUNT(*) AS count FROM {table}{where_clause}",
-            table = self.table("users"),
+            table = self.table("user"),
         );
         let count_row = self.fetch_one_row(count_sql, bind_values.clone())?;
         let total = RowReader::new(&count_row).integer("count")? as usize;
@@ -859,7 +859,7 @@ impl UserOps for SharedSqlDatabaseAdapter {
         let offset_placeholder = self.placeholder(data_params.len());
         let data_sql = format!(
             "SELECT * FROM {table}{where_clause}{order_clause} LIMIT {limit_placeholder} OFFSET {offset_placeholder}",
-            table = self.table("users"),
+            table = self.table("user"),
         );
         let users = self
             .fetch_all_rows(data_sql, data_params)?
@@ -884,7 +884,7 @@ impl SessionOps for SharedSqlDatabaseAdapter {
             "INSERT INTO {table} ({id_col}, {user_id_col}, {token_col}, {expires_at_col}, {created_at_col}, \
              {updated_at_col}, {ip_address_col}, {user_agent_col}, {impersonated_by_col}, {active_org_col}, {active_col}) \
              VALUES ({values}) RETURNING *",
-            table = self.table("sessions"),
+            table = self.table("session"),
             id_col = quoted("id"),
             user_id_col = quoted("user_id"),
             token_col = quoted("token"),
@@ -932,7 +932,7 @@ impl SessionOps for SharedSqlDatabaseAdapter {
     async fn get_session(&self, token: &str) -> AuthResult<Option<Session>> {
         let sql = format!(
             "SELECT * FROM {table} WHERE {token_col} = {placeholder} AND {active_col} = {active_value}",
-            table = self.table("sessions"),
+            table = self.table("session"),
             token_col = quoted("token"),
             placeholder = self.placeholder(1),
             active_col = quoted("active"),
@@ -946,7 +946,7 @@ impl SessionOps for SharedSqlDatabaseAdapter {
     async fn get_user_sessions(&self, user_id: &str) -> AuthResult<Vec<Session>> {
         let sql = format!(
             "SELECT * FROM {table} WHERE {user_id_col} = {placeholder} AND {active_col} = {active_value} ORDER BY {created_at_col}",
-            table = self.table("sessions"),
+            table = self.table("session"),
             user_id_col = quoted("user_id"),
             placeholder = self.placeholder(1),
             active_col = quoted("active"),
@@ -967,7 +967,7 @@ impl SessionOps for SharedSqlDatabaseAdapter {
         let sql = format!(
             "UPDATE {table} SET {expires_at_col} = {expires_placeholder}, {updated_at_col} = {updated_placeholder} \
              WHERE {token_col} = {token_placeholder} AND {active_col} = {active_value}",
-            table = self.table("sessions"),
+            table = self.table("session"),
             expires_at_col = quoted("expires_at"),
             expires_placeholder = self.placeholder(1),
             updated_at_col = quoted("updated_at"),
@@ -991,7 +991,7 @@ impl SessionOps for SharedSqlDatabaseAdapter {
     async fn delete_session(&self, token: &str) -> AuthResult<()> {
         let sql = format!(
             "DELETE FROM {table} WHERE {token_col} = {placeholder}",
-            table = self.table("sessions"),
+            table = self.table("session"),
             token_col = quoted("token"),
             placeholder = self.placeholder(1),
         );
@@ -1002,7 +1002,7 @@ impl SessionOps for SharedSqlDatabaseAdapter {
     async fn delete_user_sessions(&self, user_id: &str) -> AuthResult<()> {
         let sql = format!(
             "DELETE FROM {table} WHERE {user_id_col} = {placeholder}",
-            table = self.table("sessions"),
+            table = self.table("session"),
             user_id_col = quoted("user_id"),
             placeholder = self.placeholder(1),
         );
@@ -1013,7 +1013,7 @@ impl SessionOps for SharedSqlDatabaseAdapter {
     async fn delete_expired_sessions(&self) -> AuthResult<usize> {
         let sql = format!(
             "DELETE FROM {table} WHERE {expires_at_col} < {placeholder} OR {active_col} = {inactive_value}",
-            table = self.table("sessions"),
+            table = self.table("session"),
             expires_at_col = quoted("expires_at"),
             placeholder = self.placeholder(1),
             active_col = quoted("active"),
@@ -1030,7 +1030,7 @@ impl SessionOps for SharedSqlDatabaseAdapter {
         let sql = format!(
             "UPDATE {table} SET {active_org_col} = {org_placeholder}, {updated_at_col} = {updated_placeholder} \
              WHERE {token_col} = {token_placeholder} AND {active_col} = {active_value} RETURNING *",
-            table = self.table("sessions"),
+            table = self.table("session"),
             active_org_col = quoted("active_organization_id"),
             org_placeholder = self.placeholder(1),
             updated_at_col = quoted("updated_at"),
@@ -1067,7 +1067,7 @@ impl AccountOps for SharedSqlDatabaseAdapter {
             "INSERT INTO {table} ({id_col}, {account_id_col}, {provider_id_col}, {user_id_col}, {access_token_col}, \
              {refresh_token_col}, {id_token_col}, {access_expires_col}, {refresh_expires_col}, {scope_col}, \
              {password_col}, {created_at_col}, {updated_at_col}) VALUES ({values}) RETURNING *",
-            table = self.table("accounts"),
+            table = self.table("account"),
             id_col = quoted("id"),
             account_id_col = quoted("account_id"),
             provider_id_col = quoted("provider_id"),
@@ -1111,7 +1111,7 @@ impl AccountOps for SharedSqlDatabaseAdapter {
     ) -> AuthResult<Option<Account>> {
         let sql = format!(
             "SELECT * FROM {table} WHERE {provider_col} = {provider_placeholder} AND {account_col} = {account_placeholder}",
-            table = self.table("accounts"),
+            table = self.table("account"),
             provider_col = quoted("provider_id"),
             provider_placeholder = self.placeholder(1),
             account_col = quoted("account_id"),
@@ -1131,7 +1131,7 @@ impl AccountOps for SharedSqlDatabaseAdapter {
     async fn get_user_accounts(&self, user_id: &str) -> AuthResult<Vec<Account>> {
         let sql = format!(
             "SELECT * FROM {table} WHERE {user_id_col} = {placeholder} ORDER BY {created_at_col}",
-            table = self.table("accounts"),
+            table = self.table("account"),
             user_id_col = quoted("user_id"),
             placeholder = self.placeholder(1),
             created_at_col = quoted("created_at"),
@@ -1190,7 +1190,7 @@ impl AccountOps for SharedSqlDatabaseAdapter {
         params.push(SqlParam::String(id.to_string()));
         let sql = format!(
             "UPDATE {table} SET {sets} WHERE {id_col} = {placeholder} RETURNING *",
-            table = self.table("accounts"),
+            table = self.table("account"),
             sets = sets.join(", "),
             id_col = quoted("id"),
             placeholder = self.placeholder(params.len()),
@@ -1202,7 +1202,7 @@ impl AccountOps for SharedSqlDatabaseAdapter {
     async fn delete_account(&self, id: &str) -> AuthResult<()> {
         let sql = format!(
             "DELETE FROM {table} WHERE {id_col} = {placeholder}",
-            table = self.table("accounts"),
+            table = self.table("account"),
             id_col = quoted("id"),
             placeholder = self.placeholder(1),
         );
@@ -1225,7 +1225,7 @@ impl VerificationOps for SharedSqlDatabaseAdapter {
         let sql = format!(
             "INSERT INTO {table} ({id_col}, {identifier_col}, {value_col}, {expires_col}, {created_col}, {updated_col}) \
              VALUES ({values}) RETURNING *",
-            table = self.table("verifications"),
+            table = self.table("verification"),
             id_col = quoted("id"),
             identifier_col = quoted("identifier"),
             value_col = quoted("value"),
@@ -1256,7 +1256,7 @@ impl VerificationOps for SharedSqlDatabaseAdapter {
         let sql = format!(
             "SELECT * FROM {table} WHERE {identifier_col} = {identifier_placeholder} \
              AND {value_col} = {value_placeholder} AND {expires_col} > {expires_placeholder}",
-            table = self.table("verifications"),
+            table = self.table("verification"),
             identifier_col = quoted("identifier"),
             identifier_placeholder = self.placeholder(1),
             value_col = quoted("value"),
@@ -1279,7 +1279,7 @@ impl VerificationOps for SharedSqlDatabaseAdapter {
     async fn get_verification_by_value(&self, value: &str) -> AuthResult<Option<Verification>> {
         let sql = format!(
             "SELECT * FROM {table} WHERE {value_col} = {value_placeholder} AND {expires_col} > {expires_placeholder}",
-            table = self.table("verifications"),
+            table = self.table("verification"),
             value_col = quoted("value"),
             value_placeholder = self.placeholder(1),
             expires_col = quoted("expires_at"),
@@ -1303,7 +1303,7 @@ impl VerificationOps for SharedSqlDatabaseAdapter {
         let sql = format!(
             "SELECT * FROM {table} WHERE {identifier_col} = {identifier_placeholder} \
              AND {expires_col} > {expires_placeholder}",
-            table = self.table("verifications"),
+            table = self.table("verification"),
             identifier_col = quoted("identifier"),
             identifier_placeholder = self.placeholder(1),
             expires_col = quoted("expires_at"),
@@ -1328,7 +1328,7 @@ impl VerificationOps for SharedSqlDatabaseAdapter {
         let sql = format!(
             "DELETE FROM {table} WHERE {identifier_col} = {identifier_placeholder} \
              AND {value_col} = {value_placeholder} AND {expires_col} > {expires_placeholder} RETURNING *",
-            table = self.table("verifications"),
+            table = self.table("verification"),
             identifier_col = quoted("identifier"),
             identifier_placeholder = self.placeholder(1),
             value_col = quoted("value"),
@@ -1351,7 +1351,7 @@ impl VerificationOps for SharedSqlDatabaseAdapter {
     async fn delete_verification(&self, id: &str) -> AuthResult<()> {
         let sql = format!(
             "DELETE FROM {table} WHERE {id_col} = {placeholder}",
-            table = self.table("verifications"),
+            table = self.table("verification"),
             id_col = quoted("id"),
             placeholder = self.placeholder(1),
         );
@@ -1362,7 +1362,7 @@ impl VerificationOps for SharedSqlDatabaseAdapter {
     async fn delete_expired_verifications(&self) -> AuthResult<usize> {
         let sql = format!(
             "DELETE FROM {table} WHERE {expires_col} < {placeholder}",
-            table = self.table("verifications"),
+            table = self.table("verification"),
             expires_col = quoted("expires_at"),
             placeholder = self.placeholder(1),
         );

@@ -19,7 +19,7 @@ use crate::adapter::DieselSqliteAdapter;
 use crate::conversions::now_iso;
 use crate::error::diesel_to_auth_error;
 use crate::models::{NewVerificationRow, VerificationRow};
-use crate::schema::verifications;
+use crate::schema::verification;
 
 #[async_trait]
 impl VerificationOps for DieselSqliteAdapter {
@@ -33,13 +33,13 @@ impl VerificationOps for DieselSqliteAdapter {
         let row_id = new_row.id.clone();
 
         self.interact(move |conn| {
-            diesel::insert_into(verifications::table)
+            diesel::insert_into(verification::table)
                 .values(&new_row)
                 .execute(conn)
                 .map_err(diesel_to_auth_error)?;
 
-            verifications::table
-                .filter(verifications::id.eq(&row_id))
+            verification::table
+                .filter(verification::id.eq(&row_id))
                 .first::<VerificationRow>(conn)
                 .map(Verification::from)
                 .map_err(diesel_to_auth_error)
@@ -55,9 +55,9 @@ impl VerificationOps for DieselSqliteAdapter {
         let identifier = identifier.to_string();
         let value = value.to_string();
         self.interact(move |conn| {
-            verifications::table
-                .filter(verifications::identifier.eq(&identifier))
-                .filter(verifications::value.eq(&value))
+            verification::table
+                .filter(verification::identifier.eq(&identifier))
+                .filter(verification::value.eq(&value))
                 .first::<VerificationRow>(conn)
                 .optional()
                 .map(|opt| opt.map(Verification::from))
@@ -72,8 +72,8 @@ impl VerificationOps for DieselSqliteAdapter {
     ) -> AuthResult<Option<Self::Verification>> {
         let value = value.to_string();
         self.interact(move |conn| {
-            verifications::table
-                .filter(verifications::value.eq(&value))
+            verification::table
+                .filter(verification::value.eq(&value))
                 .first::<VerificationRow>(conn)
                 .optional()
                 .map(|opt| opt.map(Verification::from))
@@ -88,8 +88,8 @@ impl VerificationOps for DieselSqliteAdapter {
     ) -> AuthResult<Option<Self::Verification>> {
         let identifier = identifier.to_string();
         self.interact(move |conn| {
-            verifications::table
-                .filter(verifications::identifier.eq(&identifier))
+            verification::table
+                .filter(verification::identifier.eq(&identifier))
                 .first::<VerificationRow>(conn)
                 .optional()
                 .map(|opt| opt.map(Verification::from))
@@ -107,16 +107,16 @@ impl VerificationOps for DieselSqliteAdapter {
         let value = value.to_string();
         self.interact(move |conn| {
             // Atomic select + delete: find the row first, then delete it
-            let row = verifications::table
-                .filter(verifications::identifier.eq(&identifier))
-                .filter(verifications::value.eq(&value))
+            let row = verification::table
+                .filter(verification::identifier.eq(&identifier))
+                .filter(verification::value.eq(&value))
                 .first::<VerificationRow>(conn)
                 .optional()
                 .map_err(diesel_to_auth_error)?;
 
             match row {
                 Some(row) => {
-                    diesel::delete(verifications::table.filter(verifications::id.eq(&row.id)))
+                    diesel::delete(verification::table.filter(verification::id.eq(&row.id)))
                         .execute(conn)
                         .map_err(diesel_to_auth_error)?;
 
@@ -131,7 +131,7 @@ impl VerificationOps for DieselSqliteAdapter {
     async fn delete_verification(&self, id: &str) -> AuthResult<()> {
         let id = id.to_string();
         self.interact(move |conn| {
-            diesel::delete(verifications::table.filter(verifications::id.eq(&id)))
+            diesel::delete(verification::table.filter(verification::id.eq(&id)))
                 .execute(conn)
                 .map_err(diesel_to_auth_error)?;
             Ok(())
@@ -143,7 +143,7 @@ impl VerificationOps for DieselSqliteAdapter {
         let now = now_iso();
         self.interact(move |conn| {
             let deleted =
-                diesel::delete(verifications::table.filter(verifications::expires_at.lt(&now)))
+                diesel::delete(verification::table.filter(verification::expires_at.lt(&now)))
                     .execute(conn)
                     .map_err(diesel_to_auth_error)?;
             Ok(deleted)

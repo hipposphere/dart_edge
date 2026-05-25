@@ -1,8 +1,8 @@
 -- better-auth-diesel-sqlite schema
 -- SQLite dialect, matching better-auth-rs entity and meta trait expectations.
--- Table names match Auth*Meta defaults (pluralized where upstream expects it).
+-- Table names match Better Auth defaults.
 
-CREATE TABLE IF NOT EXISTS "users" (
+CREATE TABLE IF NOT EXISTS "user" (
     id TEXT PRIMARY KEY NOT NULL,
     name TEXT,
     email TEXT NOT NULL UNIQUE,
@@ -20,12 +20,12 @@ CREATE TABLE IF NOT EXISTS "users" (
     updated_at TEXT NOT NULL
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON "users" (email);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON "users" (username);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_user_email ON "user" (email);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_user_username ON "user" (username);
 
-CREATE TABLE IF NOT EXISTS "sessions" (
+CREATE TABLE IF NOT EXISTS "session" (
     id TEXT PRIMARY KEY NOT NULL,
-    user_id TEXT NOT NULL REFERENCES "users" (id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL REFERENCES "user" (id) ON DELETE CASCADE,
     token TEXT NOT NULL UNIQUE,
     ip_address TEXT,
     user_agent TEXT,
@@ -37,12 +37,12 @@ CREATE TABLE IF NOT EXISTS "sessions" (
     updated_at TEXT NOT NULL
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_sessions_token ON "sessions" (token);
-CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON "sessions" (user_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_session_token ON "session" (token);
+CREATE INDEX IF NOT EXISTS idx_session_user_id ON "session" (user_id);
 
-CREATE TABLE IF NOT EXISTS "accounts" (
+CREATE TABLE IF NOT EXISTS "account" (
     id TEXT PRIMARY KEY NOT NULL,
-    user_id TEXT NOT NULL REFERENCES "users" (id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL REFERENCES "user" (id) ON DELETE CASCADE,
     account_id TEXT NOT NULL,
     provider_id TEXT NOT NULL,
     access_token TEXT,
@@ -56,10 +56,10 @@ CREATE TABLE IF NOT EXISTS "accounts" (
     updated_at TEXT NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_accounts_user_id ON "accounts" (user_id);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_accounts_provider ON "accounts" (provider_id, account_id);
+CREATE INDEX IF NOT EXISTS idx_account_user_id ON "account" (user_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_account_provider ON "account" (provider_id, account_id);
 
-CREATE TABLE IF NOT EXISTS "verifications" (
+CREATE TABLE IF NOT EXISTS "verification" (
     id TEXT PRIMARY KEY NOT NULL,
     identifier TEXT NOT NULL,
     value TEXT NOT NULL,
@@ -68,8 +68,8 @@ CREATE TABLE IF NOT EXISTS "verifications" (
     updated_at TEXT NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_verifications_identifier ON "verifications" (identifier);
-CREATE INDEX IF NOT EXISTS idx_verifications_value ON "verifications" (value);
+CREATE INDEX IF NOT EXISTS idx_verification_identifier ON "verification" (identifier);
+CREATE INDEX IF NOT EXISTS idx_verification_value ON "verification" (value);
 
 CREATE TABLE IF NOT EXISTS "organization" (
     id TEXT PRIMARY KEY NOT NULL,
@@ -85,7 +85,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_organization_slug ON "organization" (slug)
 
 CREATE TABLE IF NOT EXISTS "member" (
     id TEXT PRIMARY KEY NOT NULL,
-    user_id TEXT NOT NULL REFERENCES "users" (id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL REFERENCES "user" (id) ON DELETE CASCADE,
     organization_id TEXT NOT NULL REFERENCES "organization" (id) ON DELETE CASCADE,
     role TEXT NOT NULL DEFAULT 'member',
     created_at TEXT NOT NULL
@@ -101,7 +101,7 @@ CREATE TABLE IF NOT EXISTS "invitation" (
     email TEXT NOT NULL,
     role TEXT NOT NULL DEFAULT 'member',
     status TEXT NOT NULL DEFAULT 'pending',
-    inviter_id TEXT NOT NULL REFERENCES "users" (id),
+    inviter_id TEXT NOT NULL REFERENCES "user" (id),
     expires_at TEXT NOT NULL,
     created_at TEXT NOT NULL
 );
@@ -111,7 +111,7 @@ CREATE INDEX IF NOT EXISTS idx_invitation_email ON "invitation" (email);
 
 CREATE TABLE IF NOT EXISTS "two_factor" (
     id TEXT PRIMARY KEY NOT NULL,
-    user_id TEXT NOT NULL UNIQUE REFERENCES "users" (id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL UNIQUE REFERENCES "user" (id) ON DELETE CASCADE,
     secret TEXT NOT NULL,
     backup_codes TEXT,
     created_at TEXT NOT NULL,
@@ -122,7 +122,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_two_factor_user_id ON "two_factor" (user_i
 
 CREATE TABLE IF NOT EXISTS "api_keys" (
     id TEXT PRIMARY KEY NOT NULL,
-    user_id TEXT NOT NULL REFERENCES "users" (id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL REFERENCES "user" (id) ON DELETE CASCADE,
     name TEXT,
     start TEXT,
     prefix TEXT,
@@ -149,7 +149,7 @@ CREATE INDEX IF NOT EXISTS idx_api_keys_key ON "api_keys" ("key");
 
 CREATE TABLE IF NOT EXISTS "passkeys" (
     id TEXT PRIMARY KEY NOT NULL,
-    user_id TEXT NOT NULL REFERENCES "users" (id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL REFERENCES "user" (id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     credential_id TEXT NOT NULL UNIQUE,
     public_key TEXT NOT NULL,

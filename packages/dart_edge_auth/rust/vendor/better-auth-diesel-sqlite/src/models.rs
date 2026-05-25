@@ -9,15 +9,15 @@
 //! entity types happens in `conversions.rs`.
 
 use crate::schema::{
-    accounts, api_keys, invitation, member, organization, passkeys, sessions, two_factor, users,
-    verifications,
+    account, api_keys, invitation, member, organization, passkeys, session, two_factor, user,
+    verification,
 };
 use diesel::prelude::*;
 
 // ============ User ============
 
 #[derive(Queryable, Selectable, Debug, Clone)]
-#[diesel(table_name = users)]
+#[diesel(table_name = user)]
 #[diesel(check_for_backend(diesel::sqlite::Sqlite))]
 pub struct UserRow {
     pub id: String,
@@ -38,7 +38,7 @@ pub struct UserRow {
 }
 
 #[derive(Insertable, Debug)]
-#[diesel(table_name = users)]
+#[diesel(table_name = user)]
 pub struct NewUserRow {
     pub id: String,
     pub name: Option<String>,
@@ -58,7 +58,7 @@ pub struct NewUserRow {
 }
 
 #[derive(AsChangeset, Debug, Default)]
-#[diesel(table_name = users)]
+#[diesel(table_name = user)]
 pub struct UpdateUserRow {
     pub name: Option<Option<String>>,
     pub email: Option<String>,
@@ -78,7 +78,7 @@ pub struct UpdateUserRow {
 // ============ Session ============
 
 #[derive(Queryable, Selectable, Debug, Clone)]
-#[diesel(table_name = sessions)]
+#[diesel(table_name = session)]
 #[diesel(check_for_backend(diesel::sqlite::Sqlite))]
 pub struct SessionRow {
     pub id: String,
@@ -95,7 +95,7 @@ pub struct SessionRow {
 }
 
 #[derive(Insertable, Debug)]
-#[diesel(table_name = sessions)]
+#[diesel(table_name = session)]
 pub struct NewSessionRow {
     pub id: String,
     pub user_id: String,
@@ -113,7 +113,7 @@ pub struct NewSessionRow {
 // ============ Account ============
 
 #[derive(Queryable, Selectable, Debug, Clone)]
-#[diesel(table_name = accounts)]
+#[diesel(table_name = account)]
 #[diesel(check_for_backend(diesel::sqlite::Sqlite))]
 pub struct AccountRow {
     pub id: String,
@@ -132,7 +132,7 @@ pub struct AccountRow {
 }
 
 #[derive(Insertable, Debug)]
-#[diesel(table_name = accounts)]
+#[diesel(table_name = account)]
 pub struct NewAccountRow {
     pub id: String,
     pub user_id: String,
@@ -150,7 +150,7 @@ pub struct NewAccountRow {
 }
 
 #[derive(AsChangeset, Debug, Default)]
-#[diesel(table_name = accounts)]
+#[diesel(table_name = account)]
 pub struct UpdateAccountRow {
     pub access_token: Option<Option<String>>,
     pub refresh_token: Option<Option<String>>,
@@ -165,7 +165,7 @@ pub struct UpdateAccountRow {
 // ============ Verification ============
 
 #[derive(Queryable, Selectable, Debug, Clone)]
-#[diesel(table_name = verifications)]
+#[diesel(table_name = verification)]
 #[diesel(check_for_backend(diesel::sqlite::Sqlite))]
 pub struct VerificationRow {
     pub id: String,
@@ -177,7 +177,7 @@ pub struct VerificationRow {
 }
 
 #[derive(Insertable, Debug)]
-#[diesel(table_name = verifications)]
+#[diesel(table_name = verification)]
 pub struct NewVerificationRow {
     pub id: String,
     pub identifier: String,

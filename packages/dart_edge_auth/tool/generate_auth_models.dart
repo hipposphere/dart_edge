@@ -28,7 +28,7 @@ Future<IntrospectedDatabase> _introspectBetterAuthSchema(String schema) async {
     await database.execute(sql(schema));
     return await SqliteIntrospector.fromDatabase(
       database,
-      includeTables: const {'users', 'sessions'},
+      includeTables: const {'user', 'session'},
     ).introspect();
   } finally {
     await database.close();
@@ -44,8 +44,8 @@ String _emitTables(IntrospectedDatabase database) {
 
 String _authModelName(DartSchemaModelNameContext context) {
   final tablePrefix = switch (context.tableName) {
-    'users' => 'DartEdgeAuthUser',
-    'sessions' => 'DartEdgeAuthSession',
+    'user' => 'DartEdgeAuthUser',
+    'session' => 'DartEdgeAuthSession',
     final table => throw StateError('Unsupported Better Auth table "$table".'),
   };
   return switch (context.kind) {

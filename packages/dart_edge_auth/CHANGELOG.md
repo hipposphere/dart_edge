@@ -1,3 +1,9 @@
+## 0.3.16
+
+- Use Better Auth's singular default table names for generated auth schemas,
+  migrations, and native shared database queries.
+- Bump the native artifact version to 0.1.7.
+
 ## 0.3.12
 
 - Bump the native artifact version to 0.1.4 for Rust 1.95 and dependency

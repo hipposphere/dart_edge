@@ -76,7 +76,7 @@ void main() {
 
     final users = await database.execute(
       sql(
-        'SELECT email FROM users WHERE email = ?',
+        'SELECT email FROM "user" WHERE email = ?',
         parameters: ['sqlite@example.com'],
       ),
     );
@@ -120,7 +120,7 @@ void main() {
 
     final users = await database.execute(
       sql(
-        'SELECT email FROM users WHERE email = ?',
+        'SELECT email FROM "user" WHERE email = ?',
         parameters: ['manual-migration@example.com'],
       ),
     );

@@ -9,7 +9,7 @@ use diesel::prelude::*;
 use crate::adapter::DieselSqliteAdapter;
 use crate::error::diesel_to_auth_error;
 use crate::models::{NewUserRow, UpdateUserRow, UserRow};
-use crate::schema::users;
+use crate::schema::user;
 
 #[async_trait]
 impl UserOps for DieselSqliteAdapter {
@@ -20,13 +20,13 @@ impl UserOps for DieselSqliteAdapter {
         let row_id = new_row.id.clone();
 
         self.interact(move |conn| {
-            diesel::insert_into(users::table)
+            diesel::insert_into(user::table)
                 .values(&new_row)
                 .execute(conn)
                 .map_err(diesel_to_auth_error)?;
 
-            users::table
-                .filter(users::id.eq(&row_id))
+            user::table
+                .filter(user::id.eq(&row_id))
                 .first::<UserRow>(conn)
                 .map(User::from)
                 .map_err(diesel_to_auth_error)
@@ -37,8 +37,8 @@ impl UserOps for DieselSqliteAdapter {
     async fn get_user_by_id(&self, id: &str) -> AuthResult<Option<Self::User>> {
         let id = id.to_string();
         self.interact(move |conn| {
-            users::table
-                .filter(users::id.eq(&id))
+            user::table
+                .filter(user::id.eq(&id))
                 .first::<UserRow>(conn)
                 .optional()
                 .map(|opt| opt.map(User::from))
@@ -50,8 +50,8 @@ impl UserOps for DieselSqliteAdapter {
     async fn get_user_by_email(&self, email: &str) -> AuthResult<Option<Self::User>> {
         let email = email.to_string();
         self.interact(move |conn| {
-            users::table
-                .filter(users::email.eq(&email))
+            user::table
+                .filter(user::email.eq(&email))
                 .first::<UserRow>(conn)
                 .optional()
                 .map(|opt| opt.map(User::from))
@@ -63,8 +63,8 @@ impl UserOps for DieselSqliteAdapter {
     async fn get_user_by_username(&self, username: &str) -> AuthResult<Option<Self::User>> {
         let username = username.to_string();
         self.interact(move |conn| {
-            users::table
-                .filter(users::username.eq(&username))
+            user::table
+                .filter(user::username.eq(&username))
                 .first::<UserRow>(conn)
                 .optional()
                 .map(|opt| opt.map(User::from))
@@ -78,13 +78,13 @@ impl UserOps for DieselSqliteAdapter {
         let changeset = UpdateUserRow::from(update);
 
         self.interact(move |conn| {
-            diesel::update(users::table.filter(users::id.eq(&id)))
+            diesel::update(user::table.filter(user::id.eq(&id)))
                 .set(&changeset)
                 .execute(conn)
                 .map_err(diesel_to_auth_error)?;
 
-            users::table
-                .filter(users::id.eq(&id))
+            user::table
+                .filter(user::id.eq(&id))
                 .first::<UserRow>(conn)
                 .map(User::from)
                 .map_err(diesel_to_auth_error)
@@ -95,7 +95,7 @@ impl UserOps for DieselSqliteAdapter {
     async fn delete_user(&self, id: &str) -> AuthResult<()> {
         let id = id.to_string();
         self.interact(move |conn| {
-            diesel::delete(users::table.filter(users::id.eq(&id)))
+            diesel::delete(user::table.filter(user::id.eq(&id)))
                 .execute(conn)
                 .map_err(diesel_to_auth_error)?;
             Ok(())
@@ -105,24 +105,24 @@ impl UserOps for DieselSqliteAdapter {
 
     async fn list_users(&self, params: ListUsersParams) -> AuthResult<(Vec<Self::User>, usize)> {
         self.interact(move |conn| {
-            let mut query = users::table.into_boxed::<diesel::sqlite::Sqlite>();
-            let mut count_query = users::table.into_boxed::<diesel::sqlite::Sqlite>();
+            let mut query = user::table.into_boxed::<diesel::sqlite::Sqlite>();
+            let mut count_query = user::table.into_boxed::<diesel::sqlite::Sqlite>();
 
             // Apply search filter
             if let (Some(field), Some(value)) = (&params.search_field, &params.search_value) {
                 let pattern = format!("%{value}%");
                 match field.as_str() {
                     "email" => {
-                        query = query.filter(users::email.like(pattern.clone()));
-                        count_query = count_query.filter(users::email.like(pattern));
+                        query = query.filter(user::email.like(pattern.clone()));
+                        count_query = count_query.filter(user::email.like(pattern));
                     }
                     "name" => {
-                        query = query.filter(users::name.like(pattern.clone()));
-                        count_query = count_query.filter(users::name.like(pattern));
+                        query = query.filter(user::name.like(pattern.clone()));
+                        count_query = count_query.filter(user::name.like(pattern));
                     }
                     "username" => {
-                        query = query.filter(users::username.like(pattern.clone()));
-                        count_query = count_query.filter(users::username.like(pattern));
+                        query = query.filter(user::username.like(pattern.clone()));
+                        count_query = count_query.filter(user::username.like(pattern));
                     }
                     _ => {}
                 }
@@ -132,13 +132,13 @@ impl UserOps for DieselSqliteAdapter {
             if let (Some(field), Some(value)) = (&params.filter_field, &params.filter_value) {
                 match field.as_str() {
                     "role" => {
-                        query = query.filter(users::role.eq(value.clone()));
-                        count_query = count_query.filter(users::role.eq(value.clone()));
+                        query = query.filter(user::role.eq(value.clone()));
+                        count_query = count_query.filter(user::role.eq(value.clone()));
                     }
                     "banned" => {
                         let is_banned = value == "true";
-                        query = query.filter(users::banned.eq(is_banned));
-                        count_query = count_query.filter(users::banned.eq(is_banned));
+                        query = query.filter(user::banned.eq(is_banned));
+                        count_query = count_query.filter(user::banned.eq(is_banned));
                     }
                     _ => {}
                 }
@@ -155,12 +155,12 @@ impl UserOps for DieselSqliteAdapter {
             let sort_field = params.sort_by.as_deref().unwrap_or("created_at");
 
             query = match (sort_field, sort_dir) {
-                ("email", "desc") => query.order(users::email.desc()),
-                ("email", _) => query.order(users::email.asc()),
-                ("name", "desc") => query.order(users::name.desc()),
-                ("name", _) => query.order(users::name.asc()),
-                ("created_at", "desc") => query.order(users::created_at.desc()),
-                (_, _) => query.order(users::created_at.asc()),
+                ("email", "desc") => query.order(user::email.desc()),
+                ("email", _) => query.order(user::email.asc()),
+                ("name", "desc") => query.order(user::name.desc()),
+                ("name", _) => query.order(user::name.asc()),
+                ("created_at", "desc") => query.order(user::created_at.desc()),
+                (_, _) => query.order(user::created_at.asc()),
             };
 
             // Apply pagination

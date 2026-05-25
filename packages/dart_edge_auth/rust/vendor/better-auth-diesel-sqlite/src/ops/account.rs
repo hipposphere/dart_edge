@@ -16,7 +16,7 @@ use diesel::prelude::*;
 use crate::adapter::DieselSqliteAdapter;
 use crate::error::diesel_to_auth_error;
 use crate::models::{AccountRow, NewAccountRow, UpdateAccountRow};
-use crate::schema::accounts;
+use crate::schema::account;
 
 #[async_trait]
 impl AccountOps for DieselSqliteAdapter {
@@ -27,13 +27,13 @@ impl AccountOps for DieselSqliteAdapter {
         let row_id = new_row.id.clone();
 
         self.interact(move |conn| {
-            diesel::insert_into(accounts::table)
+            diesel::insert_into(account::table)
                 .values(&new_row)
                 .execute(conn)
                 .map_err(diesel_to_auth_error)?;
 
-            accounts::table
-                .filter(accounts::id.eq(&row_id))
+            account::table
+                .filter(account::id.eq(&row_id))
                 .first::<AccountRow>(conn)
                 .map(Account::from)
                 .map_err(diesel_to_auth_error)
@@ -49,9 +49,9 @@ impl AccountOps for DieselSqliteAdapter {
         let provider = provider.to_string();
         let provider_account_id = provider_account_id.to_string();
         self.interact(move |conn| {
-            accounts::table
-                .filter(accounts::provider_id.eq(&provider))
-                .filter(accounts::account_id.eq(&provider_account_id))
+            account::table
+                .filter(account::provider_id.eq(&provider))
+                .filter(account::account_id.eq(&provider_account_id))
                 .first::<AccountRow>(conn)
                 .optional()
                 .map(|opt| opt.map(Account::from))
@@ -63,8 +63,8 @@ impl AccountOps for DieselSqliteAdapter {
     async fn get_user_accounts(&self, user_id: &str) -> AuthResult<Vec<Self::Account>> {
         let user_id = user_id.to_string();
         self.interact(move |conn| {
-            accounts::table
-                .filter(accounts::user_id.eq(&user_id))
+            account::table
+                .filter(account::user_id.eq(&user_id))
                 .load::<AccountRow>(conn)
                 .map(|rows| rows.into_iter().map(Account::from).collect())
                 .map_err(diesel_to_auth_error)
@@ -77,13 +77,13 @@ impl AccountOps for DieselSqliteAdapter {
         let changeset = UpdateAccountRow::from(update);
 
         self.interact(move |conn| {
-            diesel::update(accounts::table.filter(accounts::id.eq(&id)))
+            diesel::update(account::table.filter(account::id.eq(&id)))
                 .set(&changeset)
                 .execute(conn)
                 .map_err(diesel_to_auth_error)?;
 
-            accounts::table
-                .filter(accounts::id.eq(&id))
+            account::table
+                .filter(account::id.eq(&id))
                 .first::<AccountRow>(conn)
                 .map(Account::from)
                 .map_err(diesel_to_auth_error)
@@ -94,7 +94,7 @@ impl AccountOps for DieselSqliteAdapter {
     async fn delete_account(&self, id: &str) -> AuthResult<()> {
         let id = id.to_string();
         self.interact(move |conn| {
-            diesel::delete(accounts::table.filter(accounts::id.eq(&id)))
+            diesel::delete(account::table.filter(account::id.eq(&id)))
                 .execute(conn)
                 .map_err(diesel_to_auth_error)?;
             Ok(())

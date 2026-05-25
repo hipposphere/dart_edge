@@ -4,8 +4,8 @@
 //! Table names match `Auth*Meta` trait defaults from `better-auth-core`.
 
 diesel::table! {
-    /// User accounts table.
-    users (id) {
+    /// User account table.
+    user (id) {
         id -> Text,
         name -> Nullable<Text>,
         email -> Text,
@@ -25,8 +25,8 @@ diesel::table! {
 }
 
 diesel::table! {
-    /// Active sessions table.
-    sessions (id) {
+    /// Active session table.
+    session (id) {
         id -> Text,
         user_id -> Text,
         token -> Text,
@@ -43,7 +43,7 @@ diesel::table! {
 
 diesel::table! {
     /// `OAuth` provider account links.
-    accounts (id) {
+    account (id) {
         id -> Text,
         user_id -> Text,
         account_id -> Text,
@@ -62,7 +62,7 @@ diesel::table! {
 
 diesel::table! {
     /// Email/reset verification tokens.
-    verifications (id) {
+    verification (id) {
         id -> Text,
         identifier -> Text,
         value -> Text,
@@ -166,20 +166,20 @@ diesel::table! {
     }
 }
 
-diesel::joinable!(sessions -> users (user_id));
-diesel::joinable!(accounts -> users (user_id));
-diesel::joinable!(two_factor -> users (user_id));
-diesel::joinable!(api_keys -> users (user_id));
-diesel::joinable!(passkeys -> users (user_id));
-diesel::joinable!(member -> users (user_id));
+diesel::joinable!(session -> user (user_id));
+diesel::joinable!(account -> user (user_id));
+diesel::joinable!(two_factor -> user (user_id));
+diesel::joinable!(api_keys -> user (user_id));
+diesel::joinable!(passkeys -> user (user_id));
+diesel::joinable!(member -> user (user_id));
 diesel::joinable!(member -> organization (organization_id));
 diesel::joinable!(invitation -> organization (organization_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
-    users,
-    sessions,
-    accounts,
-    verifications,
+    user,
+    session,
+    account,
+    verification,
     organization,
     member,
     invitation,
