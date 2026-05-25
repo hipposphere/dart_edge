@@ -4,8 +4,8 @@ use std::ffi::{CStr, CString, c_char};
 use async_trait::async_trait;
 use better_auth::types_mod::types_org::{Member, Organization};
 use better_auth::types_mod::{
-    ApiKey, ApiKeyOps, CreateApiKey, CreateTwoFactor, ListUsersParams, TwoFactorOps, UpdateAccount,
-    UpdateApiKey,
+    ApiKey, ApiKeyOps, CreateApiKey, CreateTwoFactor, ListUsersParams, PASSWORD_HASH_KEY,
+    TwoFactorOps, UpdateAccount, UpdateApiKey,
 };
 use better_auth::{
     Account, AccountOps, AuthError, AuthResult, CreateAccount, CreateInvitation, CreateMember,
@@ -220,7 +220,7 @@ enum SqlParam {
     Integer(i64),
     Boolean(bool),
     String(String),
-    Json(Value),
+    DateTime(String),
 }
 
 struct RowReader<'a> {
@@ -360,6 +360,14 @@ impl SharedSqlDatabaseAdapter {
         self.dialect.placeholder(index)
     }
 
+    fn datetime_placeholder(&self, index: usize) -> String {
+        let placeholder = self.placeholder(index);
+        match self.dialect {
+            SharedSqlDialect::Postgres => format!("CAST({placeholder} AS TIMESTAMPTZ)"),
+            SharedSqlDialect::Sqlite => placeholder,
+        }
+    }
+
     fn placeholders(&self, start: usize, count: usize) -> Vec<String> {
         (start..start + count)
             .map(|index| self.placeholder(index))
@@ -372,6 +380,25 @@ impl SharedSqlDatabaseAdapter {
             placeholder = self.placeholder(index),
         )
     }
+
+    fn user_select_sql(&self, where_clause: &str) -> String {
+        format!(
+            "SELECT u.*, \
+             (SELECT a.{password_col} FROM {account_table} AS a \
+              WHERE a.{account_user_col} = u.{user_id_col} \
+              AND a.{provider_col} = 'credential' \
+              ORDER BY a.{account_created_col} DESC LIMIT 1) AS {password_alias} \
+             FROM {user_table} AS u WHERE {where_clause}",
+            password_col = quoted("password"),
+            account_table = self.table("account"),
+            account_user_col = quoted("userId"),
+            user_id_col = quoted("id"),
+            provider_col = quoted("providerId"),
+            account_created_col = quoted("createdAt"),
+            password_alias = quoted("__passwordHash"),
+            user_table = self.table("user"),
+        )
+    }
 }
 
 impl SqlParam {
@@ -381,7 +408,7 @@ impl SqlParam {
             Self::Integer(value) => SqlValue::Integer(value),
             Self::Boolean(value) => SqlValue::Boolean(value),
             Self::String(value) => SqlValue::String(value),
-            Self::Json(value) => SqlValue::Json(value),
+            Self::DateTime(value) => SqlValue::DateTime(value),
         }
     }
 }
@@ -522,6 +549,10 @@ fn now_text() -> String {
     Utc::now().to_rfc3339()
 }
 
+fn now_datetime_param() -> SqlParam {
+    SqlParam::DateTime(now_text())
+}
+
 fn escape_like(value: &str) -> String {
     value
         .replace('\\', "\\\\")
@@ -531,6 +562,16 @@ fn escape_like(value: &str) -> String {
 
 fn decode_user(row: RowMap) -> AuthResult<User> {
     let row = RowReader::new(&row);
+    let mut metadata = row.json_or_default("metadata")?;
+    if let Some(password_hash) = row.opt_string("__passwordHash")? {
+        if !metadata.is_object() {
+            metadata = json!({});
+        }
+        if let Some(object) = metadata.as_object_mut() {
+            object.insert(PASSWORD_HASH_KEY.to_string(), json!(password_hash));
+        }
+    }
+
     Ok(User {
         id: row.string("id")?,
         name: row.opt_string("name")?,
@@ -546,7 +587,7 @@ fn decode_user(row: RowMap) -> AuthResult<User> {
         banned: row.boolean_or_default("banned", false)?,
         ban_reason: row.opt_string("banReason")?,
         ban_expires: row.opt_datetime("banExpires")?,
-        metadata: row.json_or_default("metadata")?,
+        metadata,
     })
 }
 
@@ -605,6 +646,12 @@ impl UserOps for SharedSqlDatabaseAdapter {
     async fn create_user(&self, create_user: CreateUser) -> AuthResult<User> {
         let id = create_user.id.unwrap_or_else(|| Uuid::new_v4().to_string());
         let now = now_text();
+        let password_hash = create_user
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.get(PASSWORD_HASH_KEY))
+            .and_then(|value| value.as_str())
+            .map(ToOwned::to_owned);
         let placeholders = self.placeholders(1, 8);
         let sql = format!(
             "INSERT INTO {table} ({id_col}, {email_col}, {name_col}, {image_col}, {verified_col}, \
@@ -621,10 +668,10 @@ impl UserOps for SharedSqlDatabaseAdapter {
             updatedAt_col = quoted("updatedAt"),
             values = placeholders.join(", "),
         );
-        let row = self.fetch_one_row(
+        self.fetch_one_row(
             sql,
             vec![
-                SqlParam::String(id),
+                SqlParam::String(id.clone()),
                 match create_user.email {
                     Some(value) => SqlParam::String(value),
                     None => SqlParam::Null,
@@ -639,56 +686,68 @@ impl UserOps for SharedSqlDatabaseAdapter {
                 },
                 SqlParam::Boolean(create_user.email_verified.unwrap_or(false)),
                 SqlParam::String(create_user.role.unwrap_or_else(|| "user".to_string())),
-                SqlParam::String(now.clone()),
-                SqlParam::String(now),
+                SqlParam::DateTime(now.clone()),
+                SqlParam::DateTime(now),
             ],
         )?;
-        decode_user(row)
+
+        if let Some(password_hash) = password_hash {
+            self.create_account(CreateAccount {
+                user_id: id.clone(),
+                account_id: id.clone(),
+                provider_id: "credential".to_string(),
+                access_token: None,
+                refresh_token: None,
+                id_token: None,
+                access_token_expires_at: None,
+                refresh_token_expires_at: None,
+                scope: None,
+                password: Some(password_hash),
+            })
+            .await?;
+        }
+
+        self.get_user_by_id(&id)
+            .await?
+            .ok_or_else(|| AuthError::not_found("User not found"))
     }
 
     async fn get_user_by_id(&self, id: &str) -> AuthResult<Option<User>> {
-        let sql = format!(
-            "SELECT * FROM {table} WHERE {id_col} = {placeholder}",
-            table = self.table("user"),
+        let sql = self.user_select_sql(&format!(
+            "u.{id_col} = {placeholder}",
             id_col = quoted("id"),
             placeholder = self.placeholder(1),
-        );
+        ));
         self.fetch_optional_row(sql, vec![SqlParam::String(id.to_string())])?
             .map(decode_user)
             .transpose()
     }
 
     async fn get_user_by_email(&self, email: &str) -> AuthResult<Option<User>> {
-        let sql = format!(
-            "SELECT * FROM {table} WHERE {email_col} = {placeholder}",
-            table = self.table("user"),
+        let sql = self.user_select_sql(&format!(
+            "u.{email_col} = {placeholder}",
             email_col = quoted("email"),
             placeholder = self.placeholder(1),
-        );
+        ));
         self.fetch_optional_row(sql, vec![SqlParam::String(email.to_string())])?
             .map(decode_user)
             .transpose()
     }
 
     async fn get_user_by_username(&self, username: &str) -> AuthResult<Option<User>> {
-        let sql = format!(
-            "SELECT * FROM {table} WHERE {username_col} = {placeholder}",
-            table = self.table("user"),
+        let sql = self.user_select_sql(&format!(
+            "u.{username_col} = {placeholder}",
             username_col = quoted("username"),
             placeholder = self.placeholder(1),
-        );
+        ));
         self.fetch_optional_row(sql, vec![SqlParam::String(username.to_string())])?
             .map(decode_user)
             .transpose()
     }
 
     async fn update_user(&self, id: &str, update: UpdateUser) -> AuthResult<User> {
-        let mut sets = vec![format!(
-            "{} = {}",
-            quoted("updatedAt"),
-            self.placeholder(1)
-        )];
-        let mut params = vec![SqlParam::String(now_text())];
+        let mut sets = vec![format!("{} = {}", quoted("updatedAt"), self.placeholder(1))];
+        let mut params = vec![now_datetime_param()];
 
         let mut push_update = |column: &str, value: SqlParam| {
             params.push(value);
@@ -731,14 +790,12 @@ impl UserOps for SharedSqlDatabaseAdapter {
             push_update("banReason", SqlParam::String(value));
         }
         if let Some(value) = update.ban_expires {
-            push_update("banExpires", SqlParam::String(value.to_rfc3339()));
+            push_update("banExpires", SqlParam::DateTime(value.to_rfc3339()));
         }
         if let Some(value) = update.two_factor_enabled {
             push_update("twoFactorEnabled", SqlParam::Boolean(value));
         }
-        if let Some(value) = update.metadata {
-            push_update("metadata", SqlParam::Json(value));
-        }
+        let _metadata = update.metadata;
 
         params.push(SqlParam::String(id.to_string()));
         let sql = format!(
@@ -891,9 +948,9 @@ impl SessionOps for SharedSqlDatabaseAdapter {
                 SqlParam::String(id),
                 SqlParam::String(session.user_id),
                 SqlParam::String(token),
-                SqlParam::String(session.expires_at.to_rfc3339()),
-                SqlParam::String(now.clone()),
-                SqlParam::String(now),
+                SqlParam::DateTime(session.expires_at.to_rfc3339()),
+                SqlParam::DateTime(now.clone()),
+                SqlParam::DateTime(now),
                 match session.ip_address {
                     Some(value) => SqlParam::String(value),
                     None => SqlParam::Null,
@@ -952,8 +1009,8 @@ impl SessionOps for SharedSqlDatabaseAdapter {
         self.execute_affected(
             sql,
             vec![
-                SqlParam::String(expires_at.to_rfc3339()),
-                SqlParam::String(now_text()),
+                SqlParam::DateTime(expires_at.to_rfc3339()),
+                now_datetime_param(),
                 SqlParam::String(token.to_string()),
             ],
         )?;
@@ -989,7 +1046,7 @@ impl SessionOps for SharedSqlDatabaseAdapter {
             expiresAt_col = quoted("expiresAt"),
             placeholder = self.placeholder(1),
         );
-        self.execute_affected(sql, vec![SqlParam::String(now_text())])
+        self.execute_affected(sql, vec![now_datetime_param()])
     }
 
     async fn update_session_active_organization(
@@ -1008,9 +1065,18 @@ impl AccountOps for SharedSqlDatabaseAdapter {
     type Account = Account;
 
     async fn create_account(&self, account: CreateAccount) -> AuthResult<Account> {
+        if let Some(existing) = self
+            .get_account(&account.provider_id, &account.account_id)
+            .await?
+        {
+            return Ok(existing);
+        }
+
         let id = Uuid::new_v4().to_string();
         let now = now_text();
-        let placeholders = self.placeholders(1, 13);
+        let mut placeholders = self.placeholders(1, 13);
+        placeholders[7] = self.datetime_placeholder(8);
+        placeholders[8] = self.datetime_placeholder(9);
         let sql = format!(
             "INSERT INTO {table} ({id_col}, {accountId_col}, {providerId_col}, {userId_col}, {accessToken_col}, \
              {refreshToken_col}, {idToken_col}, {access_expires_col}, {refresh_expires_col}, {scope_col}, \
@@ -1045,8 +1111,8 @@ impl AccountOps for SharedSqlDatabaseAdapter {
                 option_date_param(account.refresh_token_expires_at),
                 option_string_param(account.scope),
                 option_string_param(account.password),
-                SqlParam::String(now.clone()),
-                SqlParam::String(now),
+                SqlParam::DateTime(now.clone()),
+                SqlParam::DateTime(now),
             ],
         )?;
         decode_account(row)
@@ -1091,12 +1157,8 @@ impl AccountOps for SharedSqlDatabaseAdapter {
     }
 
     async fn update_account(&self, id: &str, update: UpdateAccount) -> AuthResult<Account> {
-        let mut sets = vec![format!(
-            "{} = {}",
-            quoted("updatedAt"),
-            self.placeholder(1)
-        )];
-        let mut params = vec![SqlParam::String(now_text())];
+        let mut sets = vec![format!("{} = {}", quoted("updatedAt"), self.placeholder(1))];
+        let mut params = vec![now_datetime_param()];
 
         let mut push_update = |column: &str, value: SqlParam| {
             params.push(value);
@@ -1119,13 +1181,13 @@ impl AccountOps for SharedSqlDatabaseAdapter {
         if let Some(value) = update.access_token_expires_at {
             push_update(
                 "accessTokenExpiresAt",
-                SqlParam::String(value.to_rfc3339()),
+                SqlParam::DateTime(value.to_rfc3339()),
             );
         }
         if let Some(value) = update.refresh_token_expires_at {
             push_update(
                 "refreshTokenExpiresAt",
-                SqlParam::String(value.to_rfc3339()),
+                SqlParam::DateTime(value.to_rfc3339()),
             );
         }
         if let Some(value) = update.scope {
@@ -1188,9 +1250,9 @@ impl VerificationOps for SharedSqlDatabaseAdapter {
                 SqlParam::String(id),
                 SqlParam::String(verification.identifier),
                 SqlParam::String(verification.value),
-                SqlParam::String(verification.expires_at.to_rfc3339()),
-                SqlParam::String(now.clone()),
-                SqlParam::String(now),
+                SqlParam::DateTime(verification.expires_at.to_rfc3339()),
+                SqlParam::DateTime(now.clone()),
+                SqlParam::DateTime(now),
             ],
         )?;
         decode_verification(row)
@@ -1217,7 +1279,7 @@ impl VerificationOps for SharedSqlDatabaseAdapter {
             vec![
                 SqlParam::String(identifier.to_string()),
                 SqlParam::String(value.to_string()),
-                SqlParam::String(now_text()),
+                now_datetime_param(),
             ],
         )?
         .map(decode_verification)
@@ -1235,10 +1297,7 @@ impl VerificationOps for SharedSqlDatabaseAdapter {
         );
         self.fetch_optional_row(
             sql,
-            vec![
-                SqlParam::String(value.to_string()),
-                SqlParam::String(now_text()),
-            ],
+            vec![SqlParam::String(value.to_string()), now_datetime_param()],
         )?
         .map(decode_verification)
         .transpose()
@@ -1261,7 +1320,7 @@ impl VerificationOps for SharedSqlDatabaseAdapter {
             sql,
             vec![
                 SqlParam::String(identifier.to_string()),
-                SqlParam::String(now_text()),
+                now_datetime_param(),
             ],
         )?
         .map(decode_verification)
@@ -1289,7 +1348,7 @@ impl VerificationOps for SharedSqlDatabaseAdapter {
             vec![
                 SqlParam::String(identifier.to_string()),
                 SqlParam::String(value.to_string()),
-                SqlParam::String(now_text()),
+                now_datetime_param(),
             ],
         )?
         .map(decode_verification)
@@ -1314,7 +1373,7 @@ impl VerificationOps for SharedSqlDatabaseAdapter {
             expires_col = quoted("expiresAt"),
             placeholder = self.placeholder(1),
         );
-        self.execute_affected(sql, vec![SqlParam::String(now_text())])
+        self.execute_affected(sql, vec![now_datetime_param()])
     }
 }
 
@@ -1611,7 +1670,7 @@ fn option_string_param(value: Option<String>) -> SqlParam {
 
 fn option_date_param(value: Option<DateTime<Utc>>) -> SqlParam {
     match value {
-        Some(value) => SqlParam::String(value.to_rfc3339()),
+        Some(value) => SqlParam::DateTime(value.to_rfc3339()),
         None => SqlParam::Null,
     }
 }
