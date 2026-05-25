@@ -33,7 +33,7 @@ void main() {
       pool.executed.any(
         (statement) =>
             statement.sql ==
-            'INSERT INTO $schema.migrations (version, name) VALUES (\$1, \$2)',
+            'INSERT INTO $schema.migrations (version, name, checksum) VALUES (\$1, \$2, \$3)',
       ),
       isTrue,
     );
@@ -73,9 +73,105 @@ void main() {
       pool.executed.any(
         (statement) =>
             statement.sql ==
-            'INSERT INTO app_meta.migrations (version, name) VALUES (\$1, \$2)',
+            'INSERT INTO app_meta.migrations (version, name, checksum) VALUES (\$1, \$2, \$3)',
       ),
       isTrue,
+    );
+  });
+
+  test('detects changed migration SQL after it was applied', () async {
+    final pool = _RecordingPool(SqlDialect.postgres);
+    final original = DartEdgeSqlMigrator(
+      pool: pool,
+      migrations: [
+        SqlMigration(
+          version: '0001',
+          name: 'create_users',
+          up: SqlMigrationPlan.sql(['CREATE TABLE users (id BIGINT)']),
+        ),
+      ],
+    );
+
+    await original.migrateToLatest();
+
+    final changed = DartEdgeSqlMigrator(
+      pool: pool,
+      migrations: [
+        SqlMigration(
+          version: '0001',
+          name: 'create_users',
+          up: SqlMigrationPlan.sql([
+            'CREATE TABLE users (id BIGINT, email TEXT)',
+          ]),
+        ),
+      ],
+    );
+
+    expect(
+      changed.status,
+      throwsA(
+        isA<StateError>().having(
+          (error) => error.message,
+          'message',
+          contains('checksum does not match'),
+        ),
+      ),
+    );
+  });
+
+  test('baselines applied versions without executing migration SQL', () async {
+    final pool = _RecordingPool(SqlDialect.postgres);
+    final migrator = DartEdgeSqlMigrator(
+      pool: pool,
+      migrations: [
+        SqlMigration(
+          version: '0001',
+          name: 'create_users',
+          up: SqlMigrationPlan.sql(['CREATE TABLE users (id BIGINT)']),
+        ),
+        SqlMigration(
+          version: '0002',
+          name: 'create_audit_log',
+          up: SqlMigrationPlan.sql(['CREATE TABLE audit_log (id BIGINT)']),
+        ),
+      ],
+    );
+
+    expect(await migrator.baselineAppliedVersions(['0001']), 1);
+
+    final status = await migrator.status();
+    expect(status.canBaseline, isFalse);
+    expect(status.applied.map((migration) => migration.version), ['0001']);
+    expect(status.pending.map((migration) => migration.version), ['0002']);
+    expect(
+      pool.executed.any(
+        (statement) => statement.sql == 'CREATE TABLE users (id BIGINT)',
+      ),
+      isFalse,
+    );
+  });
+
+  test('rejects non-prefix baseline versions', () {
+    final pool = _RecordingPool(SqlDialect.postgres);
+    final migrator = DartEdgeSqlMigrator(
+      pool: pool,
+      migrations: [
+        SqlMigration(
+          version: '0001',
+          name: 'create_users',
+          up: SqlMigrationPlan.sql(['CREATE TABLE users (id BIGINT)']),
+        ),
+        SqlMigration(
+          version: '0002',
+          name: 'create_audit_log',
+          up: SqlMigrationPlan.sql(['CREATE TABLE audit_log (id BIGINT)']),
+        ),
+      ],
+    );
+
+    expect(
+      () => migrator.baselineAppliedVersions(['0002']),
+      throwsArgumentError,
     );
   });
 
@@ -154,6 +250,7 @@ class _RecordingSession implements SqlSession {
               'version': migration.version,
               'name': migration.name,
               'applied_at': migration.appliedAt,
+              'checksum': migration.checksum,
             }),
         ],
       );
@@ -165,6 +262,7 @@ class _RecordingSession implements SqlSession {
         AppliedSqlMigration(
           version: parameters[0]! as String,
           name: parameters[1]! as String,
+          checksum: parameters[2]! as String,
           appliedAt: DateTime.utc(2026, 1, 1, 0, 0, pool._applied.length),
         ),
       );

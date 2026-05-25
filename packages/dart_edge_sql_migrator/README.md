@@ -76,6 +76,33 @@ and sorts them numerically by version segment rather than as plain strings.
 See [example/file_based_sql_migrations.dart](example/file_based_sql_migrations.dart)
 for a runnable folder-based example.
 
+## Baselining Existing Databases
+
+If a database was already migrated by another tool, such as Flyway, baseline it
+once so Dart Edge records the existing migration history without rerunning SQL:
+
+```dart
+final status = await migrator.status();
+
+if (status.canBaseline && shouldBaselineExistingDatabase) {
+  await migrator.baselineToVersion('42');
+}
+
+await migrator.migrateToLatest();
+```
+
+`baselineToVersion` takes the migration version, not the migration name. For a
+Flyway-style file named `V42__create_users.sql`, the version is `42` and the
+name is `create_users`.
+
+Baselining records Dart Edge metadata rows and SHA-256 checksums, but does not
+execute migration SQL. By default, baseline calls fail if Dart Edge already has
+applied migration metadata, so the operation is safe to use as a one-time
+handoff step. Use `baselineToLatest()` when every configured migration already
+exists in the physical schema, or `baselineAppliedVersions([...])` when importing
+an external successful-version list that matches the configured migration
+prefix.
+
 ## Data Asset Migrations
 
 Build hooks can turn the same folder layout into one Dart data asset containing

@@ -1,6 +1,6 @@
 name: dart_edge_sql_migrator
 description: SQL migration manager for Dart Edge SQLite and PostgreSQL apps.
-version: 0.3.10
+version: 0.3.11
 publish_to: "https://registry.hippolabs.org/pub/internal-pub/"
 repository: https://github.com/hipposphere/dart_edge/tree/main/packages/dart_edge_sql_migrator
 
@@ -11,6 +11,7 @@ resolution: workspace
 
 dependencies:
   code_builder: ^4.11.1
+  crypto: ^3.0.7
   dart_edge_sql:
     hosted: "https://registry.hippolabs.org/pub/internal-pub/"
     version: ^0.3.18

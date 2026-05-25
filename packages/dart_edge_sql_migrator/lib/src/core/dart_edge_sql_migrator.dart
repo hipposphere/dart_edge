@@ -1,3 +1,6 @@
+import 'dart:convert';
+
+import 'package:crypto/crypto.dart';
 import 'package:dart_edge_sql/dart_edge_sql.dart';
 
 import 'applied_sql_migration.dart';
@@ -126,6 +129,99 @@ final class DartEdgeSqlMigrator {
     });
   }
 
+  /// Records all known migrations as applied without executing their SQL.
+  ///
+  /// This is intended for a one-time handoff from another migration manager
+  /// when the physical database schema already exists. By default, the Dart
+  /// Edge metadata table must be empty so this cannot mask existing state.
+  Future<int> baselineToLatest({bool requireEmptyMetadata = true}) {
+    return pool.withTransaction((transaction) {
+      return _baselineToIndex(
+        transaction,
+        migrations.isEmpty ? -1 : migrations.length - 1,
+        requireEmptyMetadata: requireEmptyMetadata,
+      );
+    });
+  }
+
+  /// Records migrations up to [version] as applied without executing their SQL.
+  ///
+  /// [version] is the migration version, not the migration name. For example,
+  /// `V42__create_users.sql` maps to version `42`.
+  Future<int> baselineToVersion(
+    String version, {
+    bool requireEmptyMetadata = true,
+  }) {
+    final targetIndex = migrations.indexWhere(
+      (migration) => migration.version == version,
+    );
+    if (targetIndex == -1) {
+      throw ArgumentError.value(
+        version,
+        'version',
+        'Unknown migration version.',
+      );
+    }
+
+    return pool.withTransaction((transaction) {
+      return _baselineToIndex(
+        transaction,
+        targetIndex,
+        requireEmptyMetadata: requireEmptyMetadata,
+      );
+    });
+  }
+
+  /// Records [versions] as applied without executing their SQL.
+  ///
+  /// The supplied versions must match a prefix of this migrator's configured
+  /// migration order. This is useful when importing successful versions from an
+  /// external migration history table.
+  Future<int> baselineAppliedVersions(
+    Iterable<String> versions, {
+    bool requireEmptyMetadata = true,
+  }) {
+    final versionList = List<String>.unmodifiable(versions);
+    if (versionList.isEmpty) {
+      return pool.withTransaction((transaction) {
+        return _baselineToIndex(
+          transaction,
+          -1,
+          requireEmptyMetadata: requireEmptyMetadata,
+        );
+      });
+    }
+
+    if (versionList.length > migrations.length) {
+      throw ArgumentError.value(
+        versions,
+        'versions',
+        'Baseline versions contain more migrations than this migrator knows about.',
+      );
+    }
+
+    for (var index = 0; index < versionList.length; index += 1) {
+      final expected = migrations[index].version;
+      final actual = versionList[index];
+      if (actual != expected) {
+        throw ArgumentError.value(
+          versions,
+          'versions',
+          'Baseline versions must match the configured migration prefix. '
+              'Expected "$expected" at position ${index + 1}, but found "$actual".',
+        );
+      }
+    }
+
+    return pool.withTransaction((transaction) {
+      return _baselineToIndex(
+        transaction,
+        versionList.length - 1,
+        requireEmptyMetadata: requireEmptyMetadata,
+      );
+    });
+  }
+
   /// Migrates the database to [version].
   ///
   /// If [version] is ahead of the current database state, pending migrations
@@ -198,11 +294,45 @@ final class DartEdgeSqlMigrator {
     return revertedCount;
   }
 
+  Future<int> _baselineToIndex(
+    SqlTransaction transaction,
+    int targetIndex, {
+    required bool requireEmptyMetadata,
+  }) async {
+    await _ensureMetadataTable(transaction);
+    final applied = await _loadAppliedMigrations(transaction);
+    _ensureAppliedPrefix(applied);
+
+    if (requireEmptyMetadata && applied.isNotEmpty) {
+      throw StateError(
+        'Cannot baseline because the Dart Edge migration metadata table '
+        'already contains applied migrations.',
+      );
+    }
+
+    final currentIndex = applied.length - 1;
+    if (currentIndex >= targetIndex) {
+      return 0;
+    }
+
+    var recordedCount = 0;
+    for (var index = currentIndex + 1; index <= targetIndex; index += 1) {
+      await _recordAppliedMigration(transaction, migrations[index]);
+      recordedCount += 1;
+    }
+    return recordedCount;
+  }
+
   Future<void> _ensureMetadataTable(SqlExecutor executor) async {
     if (executor.dialect == SqlDialect.postgres) {
       await executor.execute(_createMetadataSchemaStatement());
     }
     await executor.execute(_createMetadataTableStatement(executor.dialect));
+    if (!await _metadataChecksumColumnExists(executor)) {
+      await executor.execute(
+        _addMetadataChecksumColumnStatement(executor.dialect),
+      );
+    }
   }
 
   Future<List<AppliedSqlMigration>> _loadAppliedMigrations(
@@ -215,6 +345,7 @@ final class DartEdgeSqlMigrator {
           version: row.read<String>('version'),
           name: row.read<String>('name'),
           appliedAt: _readAppliedAt(row.read<Object?>('applied_at')),
+          checksum: row.readNullable<String>('checksum'),
         ),
     ]);
   }
@@ -235,8 +366,19 @@ final class DartEdgeSqlMigrator {
       await transaction.execute(statement);
     }
 
+    await _recordAppliedMigration(transaction, migration);
+  }
+
+  Future<void> _recordAppliedMigration(
+    SqlTransaction transaction,
+    SqlMigration migration,
+  ) async {
     await transaction.execute(
-      _insertAppliedMigrationStatement(transaction.dialect, migration),
+      _insertAppliedMigrationStatement(
+        transaction.dialect,
+        migration,
+        checksum: _migrationChecksum(migration, transaction.dialect),
+      ),
     );
   }
 
@@ -285,6 +427,19 @@ final class DartEdgeSqlMigrator {
           'but found "${actual.version}".',
         );
       }
+
+      final actualChecksum = actual.checksum;
+      if (actualChecksum == null) {
+        continue;
+      }
+
+      final expectedChecksum = _migrationChecksum(expected, pool.dialect);
+      if (expectedChecksum != actualChecksum) {
+        throw StateError(
+          'Database migration "${actual.version}" checksum does not match '
+          'the configured migration SQL.',
+        );
+      }
     }
   }
 
@@ -299,6 +454,7 @@ final class DartEdgeSqlMigrator {
         CREATE TABLE IF NOT EXISTS $metadataTable (
           version TEXT PRIMARY KEY,
           name TEXT NOT NULL,
+          checksum TEXT NOT NULL,
           applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         )
         '''),
@@ -306,16 +462,55 @@ final class DartEdgeSqlMigrator {
         CREATE TABLE IF NOT EXISTS $metadataTable (
           version TEXT PRIMARY KEY,
           name TEXT NOT NULL,
+          checksum TEXT NOT NULL,
           applied_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
         )
         '''),
     };
   }
 
+  Future<bool> _metadataChecksumColumnExists(SqlExecutor executor) async {
+    final result = await executor.execute(
+      _metadataChecksumColumnExistsStatement(executor.dialect),
+    );
+    return result.rows.any((row) {
+      final name = row['name'] ?? row['column_name'];
+      return name == 'checksum';
+    });
+  }
+
+  SqlStatement _metadataChecksumColumnExistsStatement(SqlDialect dialect) {
+    return switch (dialect) {
+      SqlDialect.sqlite => sql('PRAGMA table_info($tableName)'),
+      SqlDialect.postgres => SqlStatement.positional(
+        '''
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_schema = \$1
+          AND table_name = \$2
+          AND column_name = 'checksum'
+        ''',
+        [tableSchema, tableName],
+      ),
+    };
+  }
+
+  SqlStatement _addMetadataChecksumColumnStatement(SqlDialect dialect) {
+    final metadataTable = _metadataTableSql(dialect);
+    return switch (dialect) {
+      SqlDialect.sqlite => sql(
+        'ALTER TABLE $metadataTable ADD COLUMN checksum TEXT',
+      ),
+      SqlDialect.postgres => sql(
+        'ALTER TABLE $metadataTable ADD COLUMN IF NOT EXISTS checksum TEXT',
+      ),
+    };
+  }
+
   SqlStatement _selectAppliedMigrationsStatement() {
     final metadataTable = _metadataTableSql(pool.dialect);
     return sql('''
-      SELECT version, name, applied_at
+      SELECT version, name, applied_at, checksum
       FROM $metadataTable
       ORDER BY applied_at ASC, version ASC
       ''');
@@ -323,17 +518,18 @@ final class DartEdgeSqlMigrator {
 
   SqlStatement _insertAppliedMigrationStatement(
     SqlDialect dialect,
-    SqlMigration migration,
-  ) {
+    SqlMigration migration, {
+    required String checksum,
+  }) {
     final metadataTable = _metadataTableSql(dialect);
     return switch (dialect) {
       SqlDialect.sqlite => SqlStatement.positional(
-        'INSERT INTO $metadataTable (version, name) VALUES (?, ?)',
-        [migration.version, migration.name],
+        'INSERT INTO $metadataTable (version, name, checksum) VALUES (?, ?, ?)',
+        [migration.version, migration.name, checksum],
       ),
       SqlDialect.postgres => SqlStatement.positional(
-        'INSERT INTO $metadataTable (version, name) VALUES (\$1, \$2)',
-        [migration.version, migration.name],
+        'INSERT INTO $metadataTable (version, name, checksum) VALUES (\$1, \$2, \$3)',
+        [migration.version, migration.name, checksum],
       ),
     };
   }
@@ -418,6 +614,16 @@ DateTime _readAppliedAt(Object? value) {
     ),
     null => throw StateError('Missing applied_at value in migration metadata.'),
   };
+}
+
+String _migrationChecksum(SqlMigration migration, SqlDialect dialect) {
+  final buffer = StringBuffer();
+  for (final statement in migration.up.forDialect(dialect)) {
+    buffer
+      ..writeln(statement.sql)
+      ..writeCharCode(0);
+  }
+  return sha256.convert(utf8.encode(buffer.toString())).toString();
 }
 
 final _sqlIdentifierPattern = RegExp(r'^[A-Za-z_][A-Za-z0-9_]*$');

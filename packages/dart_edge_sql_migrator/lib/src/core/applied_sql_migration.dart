@@ -4,6 +4,7 @@ final class AppliedSqlMigration {
     required this.version,
     required this.name,
     required this.appliedAt,
+    this.checksum,
   });
 
   /// Stable migration version identifier.
@@ -14,4 +15,9 @@ final class AppliedSqlMigration {
 
   /// Timestamp when the migration was recorded as applied.
   final DateTime appliedAt;
+
+  /// SHA-256 checksum recorded for the migration SQL.
+  ///
+  /// Older metadata tables may not have a checksum for already-applied rows.
+  final String? checksum;
 }
