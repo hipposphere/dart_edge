@@ -64,7 +64,7 @@ final class DartEdgeAuthSignInResult implements JsonEncodable {
     final twoFactorRedirect = json['twoFactorRedirect'] == true;
     return DartEdgeAuthSignInResult(
       redirect: json['redirect'] as bool? ?? false,
-      token: _authRequiredString(json, 'token'),
+      token: authRequiredString(json, 'token'),
       url: json['url'] as String?,
       user: twoFactorRedirect
           ? null

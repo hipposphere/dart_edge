@@ -5,13 +5,17 @@ import 'dart:typed_data';
 import 'package:dart_edge_core/dart_edge_core.dart';
 
 import 'dart_edge_auth_config.dart';
+import 'generated/tables.g.dart';
+import 'models/model_helpers.dart';
+import 'models/session.dart';
+import 'models/user.dart';
 import 'native/dart_edge_auth_native.dart';
 
-part 'generated/model_helpers.g.dart';
+export 'generated/tables.g.dart';
+export 'models/session.dart';
+export 'models/user.dart';
+
 part 'generated/schema.g.dart';
-part 'generated/tables.g.dart';
-part 'generated/models/session.g.dart';
-part 'generated/models/user.g.dart';
 part 'dart_edge_auth_api_types.dart';
 part 'dart_edge_auth_api.dart';
 part 'dart_edge_auth_admin_api.dart';

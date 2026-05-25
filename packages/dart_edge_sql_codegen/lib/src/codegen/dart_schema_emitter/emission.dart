@@ -248,7 +248,7 @@ String emitDartSchemaLibrary(
 /// generated [SqlTable] descriptors from an introspected SQL schema.
 String emitDartTableDescriptorLibrary(
   IntrospectedDatabase database, {
-  required String partOf,
+  String? partOf,
   DartSchemaNaming? naming,
   String? schemaClassName,
   String schemaFieldName = 'databaseSchema',
@@ -258,13 +258,59 @@ String emitDartTableDescriptorLibrary(
   final library = Library((builder) {
     builder
       ..comments.add('GENERATED CODE - DO NOT MODIFY BY HAND.')
-      ..directives.add(Directive.partOf(partOf));
+      ..directives.add(
+        partOf == null
+            ? Directive.import('package:dart_edge_core/dart_edge_core.dart')
+            : Directive.partOf(partOf),
+      );
 
     for (final group in schemaGroups) {
       for (final table in group.tables) {
         builder.body
           ..add(_tableClass(table, effectiveNaming, encodeMapValues: true))
           ..add(_tableColumnsExtension(table, effectiveNaming));
+      }
+    }
+
+    if (schemaClassName case final className?) {
+      builder.body.add(
+        _existingSchemaTablesExtension(
+          className,
+          schemaGroups.expand((group) => group.tables),
+          effectiveNaming,
+          schemaFieldName: schemaFieldName,
+        ),
+      );
+    }
+  });
+  return _format(library);
+}
+
+/// Emits SQL row, insert, update, and table models without database wrappers.
+///
+/// This is intended for packages that want generated table models inside an
+/// existing public library or `part` file structure.
+String emitDartTableModelLibrary(
+  IntrospectedDatabase database, {
+  String? partOf,
+  DartSchemaNaming? naming,
+  String? schemaClassName,
+  String schemaFieldName = 'databaseSchema',
+}) {
+  final effectiveNaming = naming ?? DartSchemaNaming.defaults;
+  final schemaGroups = _groupBySchema(database);
+  final library = Library((builder) {
+    builder
+      ..comments.add('GENERATED CODE - DO NOT MODIFY BY HAND.')
+      ..directives.add(
+        partOf == null
+            ? Directive.import('package:dart_edge_core/dart_edge_core.dart')
+            : Directive.partOf(partOf),
+      );
+
+    for (final group in schemaGroups) {
+      for (final table in group.tables) {
+        builder.body.addAll(_tableSpecs(table, effectiveNaming));
       }
     }
 

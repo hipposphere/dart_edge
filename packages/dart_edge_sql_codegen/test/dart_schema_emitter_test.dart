@@ -285,6 +285,64 @@ void main() {
     );
   });
 
+  test('emits table models without database wrappers', () {
+    const database = IntrospectedDatabase(
+      dialect: SqlCodegenDialect.sqlite,
+      tables: [
+        IntrospectedTable(
+          name: 'users',
+          columns: [
+            IntrospectedColumn(
+              name: 'id',
+              databaseType: 'TEXT',
+              dartType: 'String',
+              primaryKey: true,
+            ),
+          ],
+        ),
+      ],
+    );
+
+    final library = emitDartTableModelLibrary(
+      database,
+      partOf: '../dart_edge_auth.dart',
+      schemaClassName: 'DartEdgeAuthSchema',
+      naming: DartSchemaNaming(
+        modelNameBuilder: (context) => switch (context.kind) {
+          DartSchemaModelKind.row => 'DartEdgeAuthUserRow',
+          DartSchemaModelKind.insert => 'DartEdgeAuthUserInsert',
+          DartSchemaModelKind.update => 'DartEdgeAuthUserUpdate',
+          DartSchemaModelKind.table => 'DartEdgeAuthUsersTable',
+        },
+      ),
+    );
+
+    expect(library, contains("part of '../dart_edge_auth.dart';"));
+    expect(
+      library,
+      contains('final class DartEdgeAuthUserRow implements JsonEncodable'),
+    );
+    expect(
+      library,
+      contains('final class DartEdgeAuthUserInsert implements JsonEncodable'),
+    );
+    expect(
+      library,
+      contains('final class DartEdgeAuthUserUpdate implements JsonEncodable'),
+    );
+    expect(
+      library,
+      allOf(
+        contains('DartEdgeAuthUserRow,'),
+        contains('DartEdgeAuthUserInsert,'),
+        contains('DartEdgeAuthUserUpdate'),
+      ),
+    );
+    expect(library, isNot(contains('final class GeneratedDatabaseSchema')));
+    expect(library, isNot(contains('final class DefaultSchema')));
+    expect(library, contains('extension DartEdgeAuthSchemaTables'));
+  });
+
   test('keeps same-named tables isolated by schema', () {
     const database = IntrospectedDatabase(
       dialect: SqlCodegenDialect.postgres,

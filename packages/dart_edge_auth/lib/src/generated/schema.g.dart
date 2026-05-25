@@ -3,10 +3,9 @@
 
 part of '../dart_edge_auth.dart';
 
-/// Generated model, route result schema, and table descriptors for Better Auth.
+/// Generated route result schema registry and table descriptors for Better Auth.
 final class DartEdgeAuthSchema {
   const DartEdgeAuthSchema({this.databaseSchema});
-  const DartEdgeAuthSchema._() : databaseSchema = null;
 
   /// Optional database schema that contains the Better Auth tables.
   final String? databaseSchema;
@@ -40,4 +39,12 @@ final class DartEdgeAuthSchema {
   static const JsonSchemaRegistry jsonSchemas = JsonSchemaRegistry(
     schemas: schemas,
   );
+}
+
+extension DartEdgeAuthSchemaTables on DartEdgeAuthSchema {
+  DartEdgeAuthSessionsTable get sessions =>
+      DartEdgeAuthSessionsTable.withSchema(databaseSchema);
+
+  DartEdgeAuthUsersTable get users =>
+      DartEdgeAuthUsersTable.withSchema(databaseSchema);
 }

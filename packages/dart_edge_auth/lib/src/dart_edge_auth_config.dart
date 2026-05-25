@@ -81,7 +81,7 @@ final class DartEdgeAuthConfig {
     'enableAccountManagement': enableAccountManagement,
     'enableEmailVerification': enableEmailVerification,
     'enableRateLimit': enableRateLimit,
-    if (admin case final admin?) 'admin': admin.toJson(),
+    'admin': ?admin?.toJson(),
   };
 }
 

@@ -315,7 +315,13 @@ Class _tableClass(
         }),
       ])
       ..fields.addAll([
-        _instanceFinalField('schema', refer('String?')),
+        Field((field) {
+          field
+            ..annotations.add(refer('override'))
+            ..modifier = FieldModifier.final$
+            ..type = refer('String?')
+            ..name = 'schema';
+        }),
         _staticConstField(
           name: 'table',
           assignment: refer(tableClassName).constInstanceNamed('_', const []),
@@ -385,17 +391,11 @@ Constructor _tableConstConstructor(IntrospectedTable table) {
     constructor
       ..constant = true
       ..name = '_'
-      ..optionalParameters.add(
-        Parameter((parameter) {
-          parameter
-            ..name = 'schema'
-            ..named = true
-            ..toThis = true
-            ..defaultTo = switch (table.schema) {
-              final schema? => literalString(schema).code,
-              null => literalNull.code,
-            };
-        }),
+      ..initializers.add(
+        refer('schema').assign(switch (table.schema) {
+          final schema? => literalString(schema),
+          null => literalNull,
+        }).code,
       );
   });
 }

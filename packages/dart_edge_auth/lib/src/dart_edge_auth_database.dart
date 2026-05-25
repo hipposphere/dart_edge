@@ -139,7 +139,7 @@ final class SharedDartEdgeAuthDatabase extends DartEdgeAuthDatabase {
   Map<String, Object?> toJson() => {
     'kind': 'shared',
     'dialect': dialect.name,
-    if (schema case final schema?) 'schema': schema,
+    'schema': ?schema,
     'manageMigrations': manageMigrations,
   };
 }

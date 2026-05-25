@@ -59,8 +59,8 @@ final session = await auth.api.withBearerToken(token).getSession();
 final user = session.user;
 ```
 
-Typed auth models are generated from the Better Auth SQL schema and exported by
-this package:
+Typed auth table row models are generated from the Better Auth SQL schema and
+exported by this package:
 
 ```dart
 final users = await database.typed
@@ -69,7 +69,7 @@ final users = await database.typed
     .where(DartEdgeAuthUsersTable.email.equals('ada@example.com'))
     .execute();
 
-final typedUser = users.single; // DartEdgeAuthUser
+final typedUser = users.single; // DartEdgeAuthUserRow
 ```
 
 Regenerate the model files after SQL schema changes:
