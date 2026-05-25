@@ -605,6 +605,14 @@ void main() {
         'accessTokenExpiresAt.value?.toIso8601String(),',
       ),
     );
+    expect(
+      sessionsTable,
+      contains('accessTokenExpiresAt: switch (row.readNullable<Object?>('),
+    );
+    expect(
+      sessionsTable,
+      contains('final String value => DateTime.parse(value),'),
+    );
   });
 
   test('emits Postgres enum types and enum-aware table models', () {

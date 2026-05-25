@@ -255,6 +255,31 @@ Expression _rowReadExpression(IntrospectedColumn column) {
           [refer('Object?')],
         );
   }
+  if (type == 'DateTime') {
+    final source = column.nullable
+        ? refer('row')
+              .property('readNullable')
+              .call([literalString(fieldKey)], const {}, [refer('Object?')])
+        : refer('row')
+              .property('read')
+              .call([literalString(fieldKey)], const {}, [refer('Object?')]);
+    final expression = switch (column.nullable) {
+      true =>
+        'switch (${_code(source)}) { '
+            'null => null, '
+            'final DateTime value => value, '
+            'final String value => DateTime.parse(value), '
+            'final value => value as DateTime '
+            '}',
+      false =>
+        'switch (${_code(source)}) { '
+            'final DateTime value => value, '
+            'final String value => DateTime.parse(value), '
+            'final value => value as DateTime '
+            '}',
+    };
+    return CodeExpression(Code(expression));
+  }
   if (column.nullable) {
     return refer('row')
         .property('readNullable')
