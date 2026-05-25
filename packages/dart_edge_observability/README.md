@@ -61,6 +61,8 @@ The built-in HTTP observer records:
 - `http_server_request_duration_seconds`
 - `http_server_request_body_bytes`
 - `http_server_response_body_bytes`
+- `http_server_active_requests`
+- `http_server_in_flight_requests`
 
 Routes are labeled by normalized route pattern, not raw URL.
 

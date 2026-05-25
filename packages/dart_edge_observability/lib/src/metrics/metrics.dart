@@ -248,6 +248,16 @@ final class StandardHttpMetrics {
         'http_server_response_body_bytes',
         help: 'HTTP response body size in bytes when available.',
         labelNames: const <String>['method', 'route', 'status'],
+      ),
+      activeRequests = registry.gauge(
+        'http_server_active_requests',
+        help: 'Active HTTP requests by method and normalized route.',
+        labelNames: const <String>['method', 'route'],
+      ),
+      inFlightRequests = registry.gauge(
+        'http_server_in_flight_requests',
+        help: 'Active HTTP requests across all routes.',
+        labelNames: const <String>[],
       );
 
   final Counter requestCounter;
@@ -255,6 +265,8 @@ final class StandardHttpMetrics {
   final Histogram latencyHistogram;
   final Histogram requestBodySize;
   final Histogram responseBodySize;
+  final Gauge activeRequests;
+  final Gauge inFlightRequests;
 }
 
 final class _HistogramValue {

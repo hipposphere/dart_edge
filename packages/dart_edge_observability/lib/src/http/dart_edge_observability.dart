@@ -77,6 +77,10 @@ final class ObservabilityHttpRequestObserver<TServices>
         fields: requestContext.toLogFields(),
       );
     }
+    observability.httpMetrics.activeRequests.inc(
+      labels: <String, String>{'method': method, 'route': route},
+    );
+    observability.httpMetrics.inFlightRequests.inc();
 
     try {
       final result = await next();
@@ -139,6 +143,11 @@ final class ObservabilityHttpRequestObserver<TServices>
         },
       );
       rethrow;
+    } finally {
+      observability.httpMetrics.activeRequests.dec(
+        labels: <String, String>{'method': method, 'route': route},
+      );
+      observability.httpMetrics.inFlightRequests.dec();
     }
   }
 

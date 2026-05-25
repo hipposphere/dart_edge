@@ -31,4 +31,27 @@ void main() {
     );
     expect(output, contains('process_uptime_seconds'));
   });
+
+  test('scrapes gauges after increments and decrements', () {
+    final registry = MetricsRegistry();
+    final httpMetrics = StandardHttpMetrics(registry);
+
+    httpMetrics.activeRequests.inc(
+      labels: const {'method': 'POST', 'route': '/api/transcriptions'},
+    );
+    httpMetrics.activeRequests.dec(
+      labels: const {'method': 'POST', 'route': '/api/transcriptions'},
+    );
+    httpMetrics.inFlightRequests.inc();
+    httpMetrics.inFlightRequests.dec();
+
+    final output = registry.scrape();
+    expect(
+      output,
+      contains(
+        'http_server_active_requests{method="POST",route="/api/transcriptions"} 0.0',
+      ),
+    );
+    expect(output, contains('http_server_in_flight_requests 0.0'));
+  });
 }
