@@ -75,8 +75,23 @@ void main() {
     expect(entrypoint, contains('...DefaultSchema.schemas,'));
 
     expect(defaultSchema, contains('final class DefaultSchema {'));
+    expect(
+      defaultSchema,
+      contains('const DefaultSchema({this.databaseSchema});'),
+    );
+    expect(defaultSchema, contains('final String? databaseSchema;'));
     expect(defaultSchema, contains("static const schemaName = 'default';"));
     expect(defaultSchema, contains('static const users = UsersTable.table;'));
+    expect(
+      defaultSchema,
+      contains('extension DefaultSchemaTables on DefaultSchema'),
+    );
+    expect(
+      defaultSchema,
+      contains(
+        'UsersTable.withSchema(databaseSchema ?? UsersTable.table.schema)',
+      ),
+    );
     expect(
       defaultSchema,
       contains(
@@ -97,6 +112,9 @@ void main() {
       usersTable,
       isNot(contains("import 'package:dart_edge_sql/dart_edge_sql.dart';")),
     );
+    expect(usersTable, contains('const UsersTable.withSchema(this.schema);'));
+    expect(usersTable, contains('final String? schema;'));
+    expect(usersTable, contains('extension UsersTableColumns on UsersTable'));
     expect(
       usersTable,
       contains('final class UsersRow implements JsonEncodable {'),
@@ -198,6 +216,73 @@ void main() {
     expect(library, contains('final class UsersTable extends SqlTable<'));
     expect(library, contains('factory UsersRow.decode(Object? value)'));
     expect(_avoidableDoubleQuotedStrings(library), isEmpty);
+  });
+
+  test('emits table descriptors for external row and map models', () {
+    const database = IntrospectedDatabase(
+      dialect: SqlCodegenDialect.sqlite,
+      tables: [
+        IntrospectedTable(
+          name: 'users',
+          columns: [
+            IntrospectedColumn(
+              name: 'id',
+              databaseType: 'TEXT',
+              dartType: 'String',
+              primaryKey: true,
+            ),
+            IntrospectedColumn(
+              name: 'email',
+              databaseType: 'TEXT',
+              dartType: 'String',
+            ),
+          ],
+        ),
+      ],
+    );
+
+    final library = emitDartTableDescriptorLibrary(
+      database,
+      partOf: '../dart_edge_auth.dart',
+      schemaClassName: 'DartEdgeAuthSchema',
+      naming: DartSchemaNaming(
+        modelNameBuilder: (context) => switch (context.kind) {
+          DartSchemaModelKind.row => 'DartEdgeAuthUser',
+          DartSchemaModelKind.insert => 'Map<String, Object?>',
+          DartSchemaModelKind.update => 'Map<String, Object?>',
+          DartSchemaModelKind.table => 'DartEdgeAuthUsersTable',
+        },
+      ),
+    );
+
+    expect(library, contains("part of '../dart_edge_auth.dart';"));
+    expect(library, contains('final class DartEdgeAuthUsersTable'));
+    expect(
+      library,
+      contains(
+        'SqlTable<DartEdgeAuthUser, Map<String, Object?>, '
+        'Map<String, Object?>>',
+      ),
+    );
+    expect(library, contains('const DartEdgeAuthUsersTable.withSchema'));
+    expect(library, contains('final String? schema;'));
+    expect(library, contains('extension DartEdgeAuthUsersTableColumns'));
+    expect(
+      library,
+      contains(
+        'Map<String, Object?> encodeInsert(Map<String, Object?> value) => '
+        'value;',
+      ),
+    );
+    expect(library, contains('extension DartEdgeAuthSchemaTables'));
+    expect(
+      library,
+      contains(
+        'DartEdgeAuthUsersTable.withSchema(\n'
+        '    databaseSchema ?? DartEdgeAuthUsersTable.table.schema,\n'
+        '  )',
+      ),
+    );
   });
 
   test('keeps same-named tables isolated by schema', () {
@@ -1227,7 +1312,7 @@ void main() {
         .contents;
 
     expect(tableFile, contains('static final nameColumn = SqlColumn<String>('));
-    expect(tableFile, contains('nameColumn.asObjectColumn,'));
+    expect(tableFile, contains("column<String>('name'"));
     expect(tableFile, contains("String get name => 'schema_migrations';"));
   });
 }

@@ -9,6 +9,7 @@ import 'native/dart_edge_auth_native.dart';
 
 part 'generated/model_helpers.g.dart';
 part 'generated/schema.g.dart';
+part 'generated/tables.g.dart';
 part 'generated/models/session.g.dart';
 part 'generated/models/user.g.dart';
 part 'dart_edge_auth_api_types.dart';

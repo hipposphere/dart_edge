@@ -8,13 +8,13 @@ CREATE TABLE IF NOT EXISTS "users" (
     email TEXT NOT NULL UNIQUE,
     username TEXT UNIQUE,
     display_username TEXT,
-    email_verified INTEGER NOT NULL DEFAULT 0,
+    email_verified BOOLEAN NOT NULL DEFAULT 0,
     image TEXT,
     role TEXT NOT NULL DEFAULT 'user',
-    banned INTEGER NOT NULL DEFAULT 0,
+    banned BOOLEAN NOT NULL DEFAULT 0,
     ban_reason TEXT,
     ban_expires TEXT,
-    two_factor_enabled INTEGER NOT NULL DEFAULT 0,
+    two_factor_enabled BOOLEAN NOT NULL DEFAULT 0,
     metadata TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS "sessions" (
     expires_at TEXT NOT NULL,
     active_organization_id TEXT,
     impersonated_by TEXT,
-    active INTEGER NOT NULL DEFAULT 1,
+    active BOOLEAN NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
@@ -127,8 +127,8 @@ CREATE TABLE IF NOT EXISTS "api_keys" (
     start TEXT,
     prefix TEXT,
     "key" TEXT NOT NULL,
-    enabled INTEGER NOT NULL DEFAULT 1,
-    rate_limit_enabled INTEGER NOT NULL DEFAULT 0,
+    enabled BOOLEAN NOT NULL DEFAULT 1,
+    rate_limit_enabled BOOLEAN NOT NULL DEFAULT 0,
     rate_limit_time_window INTEGER,
     rate_limit_max INTEGER,
     request_count INTEGER,
@@ -155,7 +155,7 @@ CREATE TABLE IF NOT EXISTS "passkeys" (
     public_key TEXT NOT NULL,
     counter INTEGER NOT NULL DEFAULT 0,
     device_type TEXT NOT NULL DEFAULT '',
-    backed_up INTEGER NOT NULL DEFAULT 0,
+    backed_up BOOLEAN NOT NULL DEFAULT 0,
     transports TEXT,
     created_at TEXT NOT NULL
 );

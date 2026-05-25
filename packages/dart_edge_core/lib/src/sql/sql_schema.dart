@@ -16,6 +16,20 @@ abstract base class SqlTable<TRow, TInsert, TUpdate> {
   /// All columns that belong to the table.
   List<SqlColumn<Object?>> get columns;
 
+  /// Creates a column descriptor bound to this table instance.
+  SqlColumn<TValue> column<TValue>(
+    String name, {
+    bool nullable = false,
+    String? databaseType,
+  }) {
+    return SqlColumn<TValue>(
+      table: this,
+      name: name,
+      nullable: nullable,
+      databaseType: databaseType,
+    );
+  }
+
   /// Maps one raw [SqlRow] into the typed row model.
   TRow mapRow(SqlRow row, {String prefix = ''});
 
@@ -87,6 +101,7 @@ final class SqlRawTable
   List<SqlColumn<Object?>> get columns => const <SqlColumn<Object?>>[];
 
   /// Creates a column descriptor attached to this raw table expression.
+  @override
   SqlColumn<TValue> column<TValue>(
     String name, {
     bool nullable = false,

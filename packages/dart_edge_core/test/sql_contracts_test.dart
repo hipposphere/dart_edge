@@ -20,12 +20,18 @@ void main() {
     expect(_UsersTable.id.qualifiedName, 'public.users.id');
     expect(_UsersTable.id.asObjectColumn.name, 'id');
     expect(_UsersTable.id.databaseType, 'uuid');
+
+    const tenantUsers = _UsersTable.withSchema('tenant_auth');
+    final tenantId = tenantUsers.column<int>('id', databaseType: 'uuid');
+    expect(tenantUsers.qualifiedName, 'tenant_auth.users');
+    expect(tenantId.qualifiedName, 'tenant_auth.users.id');
   });
 }
 
 final class _UsersTable
     extends SqlTable<SqlRow, Map<String, Object?>, Map<String, Object?>> {
-  const _UsersTable._();
+  const _UsersTable._() : schema = 'public';
+  const _UsersTable.withSchema(this.schema);
 
   static const table = _UsersTable._();
   static const id = SqlColumn<int>(
@@ -38,7 +44,7 @@ final class _UsersTable
   String get name => 'users';
 
   @override
-  String? get schema => 'public';
+  final String? schema;
 
   @override
   List<SqlColumn<Object?>> get columns => <SqlColumn<Object?>>[

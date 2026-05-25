@@ -19,6 +19,7 @@ Iterable<Spec> _tableSpecs(
   yield _insertClass(table, naming);
   yield _updateClass(table, naming);
   yield _tableClass(table, naming);
+  yield _tableColumnsExtension(table, naming);
 }
 
 Code _extensionValueTypeSpec(IntrospectedColumn column) {
@@ -279,7 +280,11 @@ Class _updateClass(IntrospectedTable table, DartSchemaNaming naming) {
   });
 }
 
-Class _tableClass(IntrospectedTable table, DartSchemaNaming naming) {
+Class _tableClass(
+  IntrospectedTable table,
+  DartSchemaNaming naming, {
+  bool encodeMapValues = false,
+}) {
   final rowType = _rowClassName(table, naming);
   final insertType = _insertClassName(table, naming);
   final updateType = _updateClassName(table, naming);
@@ -294,8 +299,23 @@ Class _tableClass(IntrospectedTable table, DartSchemaNaming naming) {
         refer(insertType),
         refer(updateType),
       ])
-      ..constructors.add(_privateConstConstructor())
+      ..constructors.addAll([
+        _tableConstConstructor(table),
+        Constructor((constructor) {
+          constructor
+            ..constant = true
+            ..name = 'withSchema'
+            ..requiredParameters.add(
+              Parameter((parameter) {
+                parameter
+                  ..name = 'schema'
+                  ..toThis = true;
+              }),
+            );
+        }),
+      ])
       ..fields.addAll([
+        _instanceFinalField('schema', refer('String?')),
         _staticConstField(
           name: 'table',
           assignment: refer(tableClassName).constInstanceNamed('_', const []),
@@ -319,16 +339,11 @@ Class _tableClass(IntrospectedTable table, DartSchemaNaming naming) {
       ..methods.addAll([
         _getter('name', refer('String'), literalString(table.name)),
         _getter(
-          'schema',
-          refer('String?'),
-          table.schema == null ? literalNull : literalString(table.schema!),
-        ),
-        _getter(
           'columns',
           _listOf(_type('SqlColumn', [refer('Object?')])),
           literalList([
             for (final column in table.columns)
-              refer(_columnFieldName(column.name)).property('asObjectColumn'),
+              _instanceColumnExpression(column).property('asObjectColumn'),
           ], _type('SqlColumn', [refer('Object?')])),
         ),
         Method((method) {
@@ -353,10 +368,70 @@ Class _tableClass(IntrospectedTable table, DartSchemaNaming naming) {
                 )
                 .code;
         }),
-        _encodeMethod('encodeInsert', insertType),
-        _encodeMethod('encodeUpdate', updateType),
+        if (encodeMapValues)
+          _encodeMapMethod('encodeInsert')
+        else
+          _encodeMethod('encodeInsert', insertType),
+        if (encodeMapValues)
+          _encodeMapMethod('encodeUpdate')
+        else
+          _encodeMethod('encodeUpdate', updateType),
       ]);
   });
+}
+
+Constructor _tableConstConstructor(IntrospectedTable table) {
+  return Constructor((constructor) {
+    constructor
+      ..constant = true
+      ..name = '_'
+      ..optionalParameters.add(
+        Parameter((parameter) {
+          parameter
+            ..name = 'schema'
+            ..named = true
+            ..toThis = true
+            ..defaultTo = switch (table.schema) {
+              final schema? => literalString(schema).code,
+              null => literalNull.code,
+            };
+        }),
+      );
+  });
+}
+
+Extension _tableColumnsExtension(
+  IntrospectedTable table,
+  DartSchemaNaming naming,
+) {
+  final tableClassName = _tableClassName(table, naming);
+  return Extension((builder) {
+    builder
+      ..name = '${tableClassName}Columns'
+      ..on = refer(tableClassName)
+      ..methods.addAll([
+        for (final column in table.columns)
+          Method((method) {
+            method
+              ..type = MethodType.getter
+              ..returns = _type('SqlColumn', [_sqlColumnType(column)])
+              ..name = _columnFieldName(column.name)
+              ..lambda = true
+              ..body = _instanceColumnExpression(column).code;
+          }),
+      ]);
+  });
+}
+
+Expression _instanceColumnExpression(IntrospectedColumn column) {
+  return refer('column').call(
+    [literalString(column.name)],
+    {
+      'nullable': literalBool(column.nullable),
+      'databaseType': literalString(_columnDatabaseType(column)),
+    },
+    [_sqlColumnType(column)],
+  );
 }
 
 List<_TableImportSpec> _tablePrimaryKeyTypeImports(

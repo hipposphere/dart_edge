@@ -200,7 +200,12 @@ String emitDartSchemaLibrary(
       )
       ..body.add(_databaseClass(databaseClassName, schemaGroups))
       ..body.addAll(
-        schemaGroups.map((group) => _schemaClass(group, effectiveNaming)),
+        schemaGroups.expand(
+          (group) => [
+            _schemaClass(group, effectiveNaming),
+            _schemaTablesExtension(group, effectiveNaming),
+          ],
+        ),
       );
 
     builder.body.addAll(
@@ -232,6 +237,46 @@ String emitDartSchemaLibrary(
       if (group.routines.isNotEmpty) {
         builder.body.add(_routinesClass(group));
       }
+    }
+  });
+  return _format(library);
+}
+
+/// Emits only SQL table descriptors for existing row/insert/update models.
+///
+/// This is intended for packages that already own their domain models but want
+/// generated [SqlTable] descriptors from an introspected SQL schema.
+String emitDartTableDescriptorLibrary(
+  IntrospectedDatabase database, {
+  required String partOf,
+  DartSchemaNaming? naming,
+  String? schemaClassName,
+  String schemaFieldName = 'databaseSchema',
+}) {
+  final effectiveNaming = naming ?? DartSchemaNaming.defaults;
+  final schemaGroups = _groupBySchema(database);
+  final library = Library((builder) {
+    builder
+      ..comments.add('GENERATED CODE - DO NOT MODIFY BY HAND.')
+      ..directives.add(Directive.partOf(partOf));
+
+    for (final group in schemaGroups) {
+      for (final table in group.tables) {
+        builder.body
+          ..add(_tableClass(table, effectiveNaming, encodeMapValues: true))
+          ..add(_tableColumnsExtension(table, effectiveNaming));
+      }
+    }
+
+    if (schemaClassName case final className?) {
+      builder.body.add(
+        _existingSchemaTablesExtension(
+          className,
+          schemaGroups.expand((group) => group.tables),
+          effectiveNaming,
+          schemaFieldName: schemaFieldName,
+        ),
+      );
     }
   });
   return _format(library);

@@ -36,6 +36,20 @@ Method _encodeMethod(String name, String valueType) {
   });
 }
 
+Method _encodeMapMethod(String name) {
+  return Method((method) {
+    method
+      ..annotations.add(refer('override'))
+      ..returns = _mapOf(refer('String'), refer('Object?'))
+      ..name = name
+      ..requiredParameters.add(
+        _typedParameter('value', _mapOf(refer('String'), refer('Object?'))),
+      )
+      ..lambda = true
+      ..body = refer('value').code;
+  });
+}
+
 Constructor _fieldConstructor(Iterable<Parameter> parameters) {
   return Constructor((constructor) {
     constructor

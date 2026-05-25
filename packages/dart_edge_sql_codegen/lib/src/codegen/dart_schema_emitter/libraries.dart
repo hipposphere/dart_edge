@@ -52,7 +52,10 @@ String _emitSchemaLibrary(_SchemaGroup group, DartSchemaNaming naming) {
     builder.directives.add(
       Directive.import('package:dart_edge_core/dart_edge_core.dart'),
     );
-    builder.body.add(_schemaClass(group, naming));
+    builder.body.addAll([
+      _schemaClass(group, naming),
+      _schemaTablesExtension(group, naming),
+    ]);
 
     for (final table in group.tables) {
       builder.directives.add(
@@ -170,8 +173,23 @@ Class _schemaClass(_SchemaGroup group, DartSchemaNaming naming) {
     builder
       ..modifier = ClassModifier.final$
       ..name = group.className
-      ..constructors.add(_privateConstConstructor())
+      ..constructors.addAll([
+        Constructor((constructor) {
+          constructor
+            ..constant = true
+            ..optionalParameters.add(_fieldParameter('databaseSchema'));
+        }),
+        Constructor((constructor) {
+          constructor
+            ..constant = true
+            ..name = '_'
+            ..initializers.add(
+              refer('databaseSchema').assign(literalNull).code,
+            );
+        }),
+      ])
       ..fields.addAll([
+        _instanceFinalField('databaseSchema', refer('String?')),
         _staticConstField(
           name: 'instance',
           assignment: refer(group.className).constInstanceNamed('_', const []),
@@ -208,6 +226,63 @@ Class _schemaClass(_SchemaGroup group, DartSchemaNaming naming) {
             'JsonSchemaRegistry',
           ).constInstance(const <Expression>[], {'schemas': refer('schemas')}),
         ),
+      ]);
+  });
+}
+
+Extension _schemaTablesExtension(_SchemaGroup group, DartSchemaNaming naming) {
+  return Extension((builder) {
+    builder
+      ..name = '${group.className}Tables'
+      ..on = refer(group.className)
+      ..methods.addAll([
+        for (final table in group.tables)
+          Method((method) {
+            method
+              ..type = MethodType.getter
+              ..returns = refer(_tableClassName(table, naming))
+              ..name = _schemaTableMemberName(table.name)
+              ..lambda = true
+              ..body = refer(_tableClassName(table, naming)).newInstanceNamed(
+                'withSchema',
+                [
+                  refer('databaseSchema').ifNullThen(
+                    refer(
+                      _tableClassName(table, naming),
+                    ).property('table').property('schema'),
+                  ),
+                ],
+              ).code;
+          }),
+      ]);
+  });
+}
+
+Extension _existingSchemaTablesExtension(
+  String schemaClassName,
+  Iterable<IntrospectedTable> tables,
+  DartSchemaNaming naming, {
+  required String schemaFieldName,
+}) {
+  return Extension((builder) {
+    builder
+      ..name = '${schemaClassName}Tables'
+      ..on = refer(schemaClassName)
+      ..methods.addAll([
+        for (final table in tables)
+          Method((method) {
+            final tableClassName = _tableClassName(table, naming);
+            method
+              ..type = MethodType.getter
+              ..returns = refer(tableClassName)
+              ..name = _lowerCamel(table.name)
+              ..lambda = true
+              ..body = refer(tableClassName).newInstanceNamed('withSchema', [
+                refer(schemaFieldName).ifNullThen(
+                  refer(tableClassName).property('table').property('schema'),
+                ),
+              ]).code;
+          }),
       ]);
   });
 }

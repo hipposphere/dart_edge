@@ -148,6 +148,18 @@ void main() {
       ]),
     );
   });
+
+  test('exposes generated auth tables with dynamic database schema', () {
+    const defaultTables = DartEdgeAuthSchema();
+    const authTables = DartEdgeAuthSchema(databaseSchema: 'auth');
+
+    expect(DartEdgeAuthSchema.users.qualifiedName, 'users');
+    expect(defaultTables.users.qualifiedName, 'users');
+    expect(authTables.users.qualifiedName, 'auth.users');
+    expect(authTables.sessions.userId.qualifiedName, 'auth.sessions.user_id');
+    expect(authTables.users.emailVerified, isA<SqlColumn<bool>>());
+    expect(authTables.sessions.active, isA<SqlColumn<bool>>());
+  });
 }
 
 final class _FakeSqlPool implements SqlPool {

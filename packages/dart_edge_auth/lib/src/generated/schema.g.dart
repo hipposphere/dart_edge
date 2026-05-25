@@ -5,7 +5,11 @@ part of '../dart_edge_auth.dart';
 
 /// Generated model, route result schema, and table descriptors for Better Auth.
 final class DartEdgeAuthSchema {
-  const DartEdgeAuthSchema._();
+  const DartEdgeAuthSchema({this.databaseSchema});
+  const DartEdgeAuthSchema._() : databaseSchema = null;
+
+  /// Optional database schema that contains the Better Auth tables.
+  final String? databaseSchema;
 
   static const users = DartEdgeAuthUsersTable.table;
   static const sessions = DartEdgeAuthSessionsTable.table;

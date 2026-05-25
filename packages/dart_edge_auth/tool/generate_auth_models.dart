@@ -1,74 +1,65 @@
 import 'dart:io';
 
+import 'package:dart_edge_sql/dart_edge_sql.dart';
+import 'package:dart_edge_sql_codegen/dart_edge_sql_codegen.dart';
+
 const _schemaPath =
     'rust/vendor/better-auth-diesel-sqlite/migrations/'
     '00000000000000_create_auth_tables/up.sql';
 
-const _outputs = <String, String>{
-  'lib/src/generated/model_helpers.g.dart': _modelHelpers,
-  'lib/src/generated/schema.g.dart': _schema,
-  'lib/src/generated/models/user.g.dart': _userModel,
-  'lib/src/generated/models/session.g.dart': _sessionModel,
-};
-
-void main() {
+Future<void> main() async {
   final schema = File(_schemaPath).readAsStringSync();
-  _assertColumns(schema, 'users', const [
-    'id',
-    'name',
-    'email',
-    'username',
-    'display_username',
-    'email_verified',
-    'image',
-    'role',
-    'banned',
-    'ban_reason',
-    'ban_expires',
-    'two_factor_enabled',
-    'metadata',
-    'created_at',
-    'updated_at',
-  ]);
-  _assertColumns(schema, 'sessions', const [
-    'id',
-    'user_id',
-    'token',
-    'ip_address',
-    'user_agent',
-    'expires_at',
-    'active_organization_id',
-    'impersonated_by',
-    'active',
-    'created_at',
-    'updated_at',
-  ]);
+  final database = await _introspectBetterAuthSchema(schema);
 
-  for (final entry in _outputs.entries) {
+  final outputs = <String, String>{
+    'lib/src/generated/model_helpers.g.dart': _modelHelpers,
+    'lib/src/generated/schema.g.dart': _schema,
+    'lib/src/generated/models/user.g.dart': _userModel,
+    'lib/src/generated/models/session.g.dart': _sessionModel,
+    'lib/src/generated/tables.g.dart': _emitTables(database),
+  };
+
+  for (final entry in outputs.entries) {
     final file = File(entry.key)..parent.createSync(recursive: true);
     file.writeAsStringSync(entry.value);
   }
 }
 
-void _assertColumns(String schema, String tableName, List<String> columns) {
-  final table = RegExp(
-    'CREATE TABLE IF NOT EXISTS "$tableName" \\((.*?)\\);',
-    dotAll: true,
-  ).firstMatch(schema);
-  if (table == null) {
-    throw StateError('Missing Better Auth SQL table "$tableName".');
+Future<IntrospectedDatabase> _introspectBetterAuthSchema(String schema) async {
+  final database = SqliteDatabase.inMemory();
+  try {
+    await database.execute(sql(schema));
+    final introspected = await SqliteIntrospector.fromDatabase(
+      database,
+      includeTables: const {'users', 'sessions'},
+    ).introspect();
+    return introspected;
+  } finally {
+    await database.close();
   }
+}
 
-  final body = table[1]!;
-  final actual = RegExp(
-    r'^\s+"?([A-Za-z_][A-Za-z0-9_]*)"?\s+',
-    multiLine: true,
-  ).allMatches(body).map((match) => match[1]!).toSet();
-  for (final column in columns) {
-    if (!actual.contains(column)) {
-      throw StateError('Missing Better Auth SQL column "$tableName.$column".');
-    }
-  }
+String _emitTables(IntrospectedDatabase database) {
+  return emitDartTableDescriptorLibrary(
+    database,
+    partOf: '../dart_edge_auth.dart',
+    schemaClassName: 'DartEdgeAuthSchema',
+    naming: DartSchemaNaming(modelNameBuilder: _authModelName),
+  );
+}
+
+String _authModelName(DartSchemaModelNameContext context) {
+  final tablePrefix = switch (context.tableName) {
+    'users' => 'DartEdgeAuthUser',
+    'sessions' => 'DartEdgeAuthSession',
+    final table => throw StateError('Unsupported Better Auth table "$table".'),
+  };
+  return switch (context.kind) {
+    DartSchemaModelKind.row => tablePrefix,
+    DartSchemaModelKind.insert => 'Map<String, Object?>',
+    DartSchemaModelKind.update => 'Map<String, Object?>',
+    DartSchemaModelKind.table => '${tablePrefix}sTable',
+  };
 }
 
 const _modelHelpers = r'''
@@ -191,7 +182,11 @@ part of '../dart_edge_auth.dart';
 
 /// Generated model, route result schema, and table descriptors for Better Auth.
 final class DartEdgeAuthSchema {
-  const DartEdgeAuthSchema._();
+  const DartEdgeAuthSchema({this.databaseSchema});
+  const DartEdgeAuthSchema._() : databaseSchema = null;
+
+  /// Optional database schema that contains the Better Auth tables.
+  final String? databaseSchema;
 
   static const users = DartEdgeAuthUsersTable.table;
   static const sessions = DartEdgeAuthSessionsTable.table;
@@ -410,130 +405,6 @@ final class DartEdgeAuthUser implements JsonEncodable {
     return 'DartEdgeAuthUser(id: $id, email: $email, role: $role)';
   }
 }
-
-/// Table descriptor for the Better Auth `users` table.
-final class DartEdgeAuthUsersTable
-    extends
-        SqlTable<
-          DartEdgeAuthUser,
-          Map<String, Object?>,
-          Map<String, Object?>
-        > {
-  const DartEdgeAuthUsersTable._();
-
-  static const table = DartEdgeAuthUsersTable._();
-
-  static final id = SqlColumn<String>(
-    table: table,
-    name: 'id',
-    nullable: false,
-  );
-  static final nameColumn = SqlColumn<String>(
-    table: table,
-    name: 'name',
-    nullable: true,
-  );
-  static final email = SqlColumn<String>(
-    table: table,
-    name: 'email',
-    nullable: false,
-  );
-  static final username = SqlColumn<String>(
-    table: table,
-    name: 'username',
-    nullable: true,
-  );
-  static final displayUsername = SqlColumn<String>(
-    table: table,
-    name: 'display_username',
-    nullable: true,
-  );
-  static final emailVerified = SqlColumn<bool>(
-    table: table,
-    name: 'email_verified',
-    nullable: false,
-  );
-  static final image = SqlColumn<String>(
-    table: table,
-    name: 'image',
-    nullable: true,
-  );
-  static final role = SqlColumn<String>(
-    table: table,
-    name: 'role',
-    nullable: false,
-  );
-  static final banned = SqlColumn<bool>(
-    table: table,
-    name: 'banned',
-    nullable: false,
-  );
-  static final banReason = SqlColumn<String>(
-    table: table,
-    name: 'ban_reason',
-    nullable: true,
-  );
-  static final banExpires = SqlColumn<String>(
-    table: table,
-    name: 'ban_expires',
-    nullable: true,
-  );
-  static final twoFactorEnabled = SqlColumn<bool>(
-    table: table,
-    name: 'two_factor_enabled',
-    nullable: false,
-  );
-  static final metadata = SqlColumn<Object?>(
-    table: table,
-    name: 'metadata',
-    nullable: true,
-  );
-  static final createdAt = SqlColumn<String>(
-    table: table,
-    name: 'created_at',
-    nullable: false,
-  );
-  static final updatedAt = SqlColumn<String>(
-    table: table,
-    name: 'updated_at',
-    nullable: false,
-  );
-
-  @override
-  String get name => 'users';
-
-  @override
-  String? get schema => null;
-
-  @override
-  List<SqlColumn<Object?>> get columns => <SqlColumn<Object?>>[
-    id.asObjectColumn,
-    nameColumn.asObjectColumn,
-    email.asObjectColumn,
-    username.asObjectColumn,
-    displayUsername.asObjectColumn,
-    emailVerified.asObjectColumn,
-    image.asObjectColumn,
-    role.asObjectColumn,
-    banned.asObjectColumn,
-    banReason.asObjectColumn,
-    banExpires.asObjectColumn,
-    twoFactorEnabled.asObjectColumn,
-    metadata.asObjectColumn,
-    createdAt.asObjectColumn,
-    updatedAt.asObjectColumn,
-  ];
-
-  @override
-  DartEdgeAuthUser mapRow(SqlRow row, {String prefix = ''}) =>
-      DartEdgeAuthUser.fromSqlRow(row, prefix: prefix);
-
-  @override
-  Map<String, Object?> encodeInsert(Map<String, Object?> value) => value;
-
-  @override
-  Map<String, Object?> encodeUpdate(Map<String, Object?> value) => value;
-}
 ''';
 
 const _sessionModel = r'''
@@ -690,105 +561,5 @@ final class DartEdgeAuthSession implements JsonEncodable {
   String toString() {
     return 'DartEdgeAuthSession(id: $id, userId: $userId, active: $active)';
   }
-}
-
-/// Table descriptor for the Better Auth `sessions` table.
-final class DartEdgeAuthSessionsTable
-    extends
-        SqlTable<
-          DartEdgeAuthSession,
-          Map<String, Object?>,
-          Map<String, Object?>
-        > {
-  const DartEdgeAuthSessionsTable._();
-
-  static const table = DartEdgeAuthSessionsTable._();
-
-  static final id = SqlColumn<String>(
-    table: table,
-    name: 'id',
-    nullable: false,
-  );
-  static final userId = SqlColumn<String>(
-    table: table,
-    name: 'user_id',
-    nullable: false,
-  );
-  static final token = SqlColumn<String>(
-    table: table,
-    name: 'token',
-    nullable: false,
-  );
-  static final ipAddress = SqlColumn<String>(
-    table: table,
-    name: 'ip_address',
-    nullable: true,
-  );
-  static final userAgent = SqlColumn<String>(
-    table: table,
-    name: 'user_agent',
-    nullable: true,
-  );
-  static final expiresAt = SqlColumn<String>(
-    table: table,
-    name: 'expires_at',
-    nullable: false,
-  );
-  static final activeOrganizationId = SqlColumn<String>(
-    table: table,
-    name: 'active_organization_id',
-    nullable: true,
-  );
-  static final impersonatedBy = SqlColumn<String>(
-    table: table,
-    name: 'impersonated_by',
-    nullable: true,
-  );
-  static final active = SqlColumn<bool>(
-    table: table,
-    name: 'active',
-    nullable: false,
-  );
-  static final createdAt = SqlColumn<String>(
-    table: table,
-    name: 'created_at',
-    nullable: false,
-  );
-  static final updatedAt = SqlColumn<String>(
-    table: table,
-    name: 'updated_at',
-    nullable: false,
-  );
-
-  @override
-  String get name => 'sessions';
-
-  @override
-  String? get schema => null;
-
-  @override
-  List<SqlColumn<Object?>> get columns => <SqlColumn<Object?>>[
-    id.asObjectColumn,
-    userId.asObjectColumn,
-    token.asObjectColumn,
-    ipAddress.asObjectColumn,
-    userAgent.asObjectColumn,
-    expiresAt.asObjectColumn,
-    activeOrganizationId.asObjectColumn,
-    impersonatedBy.asObjectColumn,
-    active.asObjectColumn,
-    createdAt.asObjectColumn,
-    updatedAt.asObjectColumn,
-  ];
-
-  @override
-  DartEdgeAuthSession mapRow(SqlRow row, {String prefix = ''}) =>
-      DartEdgeAuthSession.fromSqlRow(row, prefix: prefix);
-
-  @override
-  Map<String, Object?> encodeInsert(Map<String, Object?> value) => value;
-
-  @override
-  Map<String, Object?> encodeUpdate(Map<String, Object?> value) => value;
 }
 ''';
