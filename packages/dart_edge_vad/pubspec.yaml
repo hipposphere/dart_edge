@@ -1,6 +1,6 @@
 name: dart_edge_vad
 description: Voice activity detection and audio trimming APIs for Dart Edge.
-version: 0.1.1
+version: 0.1.2
 publish_to: "https://registry.hippolabs.org/pub/internal-pub/"
 repository: https://github.com/hipposphere/dart_edge/tree/main/packages/dart_edge_vad
 

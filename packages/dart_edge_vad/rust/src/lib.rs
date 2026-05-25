@@ -1,5 +1,8 @@
 use std::ffi::{CStr, CString, c_char};
-use std::sync::Mutex;
+use std::sync::{
+    Mutex, MutexGuard,
+    atomic::{AtomicUsize, Ordering},
+};
 
 use once_cell::sync::Lazy;
 use ort::session::Session;
@@ -11,11 +14,11 @@ const SILERO_CONTEXT_SAMPLES_16KHZ: usize = 64;
 const SILERO_VAD_V6_2_1: &[u8] = include_bytes!("../models/silero_vad_v6.2.1.onnx");
 
 static LAST_ERROR: Lazy<Mutex<Option<CString>>> = Lazy::new(|| Mutex::new(None));
-static SILERO_SESSION: Lazy<Mutex<Result<Session, String>>> = Lazy::new(|| {
-    let session = Session::builder()
-        .and_then(|mut builder| builder.commit_from_memory(SILERO_VAD_V6_2_1))
-        .map_err(|error| format!("Failed to load Silero VAD ONNX model: {error}"));
-    Mutex::new(session)
+static NEXT_SILERO_SESSION: AtomicUsize = AtomicUsize::new(0);
+static SILERO_SESSIONS: Lazy<Vec<Mutex<Option<Result<Session, String>>>>> = Lazy::new(|| {
+    (0..silero_session_pool_size())
+        .map(|_| Mutex::new(None))
+        .collect()
 });
 
 #[derive(Deserialize)]
@@ -47,6 +50,44 @@ struct NativeVadSegment {
     end_sample: usize,
     start_ms: u64,
     end_ms: u64,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct NativeVadStreamResult {
+    sample_rate_hz: u32,
+    total_samples: usize,
+    processed_samples: usize,
+    has_speech: bool,
+    finished: bool,
+    segments: Vec<NativeVadSegment>,
+    probabilities: Vec<f32>,
+}
+
+struct SileroScratch {
+    input_samples: Vec<f32>,
+}
+
+impl SileroScratch {
+    fn new(window_size_samples: usize) -> Self {
+        Self {
+            input_samples: Vec::with_capacity(SILERO_CONTEXT_SAMPLES_16KHZ + window_size_samples),
+        }
+    }
+}
+
+pub struct DartEdgeVadStream {
+    request: SileroDetectRequest,
+    state: Vec<f32>,
+    context: Vec<f32>,
+    scratch: SileroScratch,
+    pending: Vec<f32>,
+    total_samples: usize,
+    processed_samples: usize,
+    active_start: Option<usize>,
+    silence_start: Option<usize>,
+    has_speech: bool,
+    finished: bool,
 }
 
 #[unsafe(no_mangle)]
@@ -89,6 +130,81 @@ pub extern "C" fn dart_edge_vad_detect_silero(
 }
 
 #[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_vad_stream_create(
+    request_json: *const c_char,
+) -> *mut DartEdgeVadStream {
+    let Some(request_json) = (unsafe { read_c_string(request_json) }) else {
+        set_last_error("Missing VAD stream request.");
+        return std::ptr::null_mut();
+    };
+    let request = match serde_json::from_str::<SileroDetectRequest>(&request_json) {
+        Ok(value) => value,
+        Err(error) => {
+            set_last_error(format!("Invalid VAD stream request: {error}"));
+            return std::ptr::null_mut();
+        }
+    };
+    if let Err(error) = validate_silero_request(&request) {
+        set_last_error(error);
+        return std::ptr::null_mut();
+    }
+
+    clear_last_error();
+    Box::into_raw(Box::new(DartEdgeVadStream {
+        request,
+        state: vec![0.0_f32; 2 * 128],
+        context: vec![0.0_f32; SILERO_CONTEXT_SAMPLES_16KHZ],
+        scratch: SileroScratch::new(512),
+        pending: Vec::new(),
+        total_samples: 0,
+        processed_samples: 0,
+        active_start: None,
+        silence_start: None,
+        has_speech: false,
+        finished: false,
+    }))
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_vad_stream_process(
+    stream: *mut DartEdgeVadStream,
+    input_ptr: *const u8,
+    input_len: isize,
+    flush: i32,
+) -> *mut c_char {
+    if stream.is_null() {
+        set_last_error("Missing VAD stream.");
+        return std::ptr::null_mut();
+    }
+    let Some(input) = (unsafe { read_bytes(input_ptr, input_len) }) else {
+        set_last_error("Missing PCM16 byte input.");
+        return std::ptr::null_mut();
+    };
+
+    let stream = unsafe { &mut *stream };
+    match stream
+        .process(input, flush != 0)
+        .and_then(|result| encode_json_string(&result))
+    {
+        Ok(value) => {
+            clear_last_error();
+            value
+        }
+        Err(error) => {
+            set_last_error(error);
+            std::ptr::null_mut()
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_vad_stream_free(stream: *mut DartEdgeVadStream) {
+    if !stream.is_null() {
+        drop(unsafe { Box::from_raw(stream) });
+    }
+}
+
+#[unsafe(no_mangle)]
 pub extern "C" fn dart_edge_vad_take_last_error() -> *mut c_char {
     LAST_ERROR
         .lock()
@@ -105,18 +221,7 @@ pub extern "C" fn dart_edge_vad_free_string(value: *mut c_char) {
 }
 
 fn detect_silero(input: &[u8], request: SileroDetectRequest) -> Result<NativeVadResult, String> {
-    if request.model_version != "6.2.1" {
-        return Err(format!(
-            "Unsupported Silero VAD model version {}.",
-            request.model_version
-        ));
-    }
-    if request.sample_rate_hz != 16000 {
-        return Err("Silero VAD v6.2.1 expects 16000 Hz PCM input.".to_string());
-    }
-    if request.window_size_samples != 512 {
-        return Err("Silero VAD v6.2.1 expects 512-sample windows.".to_string());
-    }
+    validate_silero_request(&request)?;
     if input.len() % 2 != 0 {
         return Err("PCM16 byte input must contain complete i16 samples.".to_string());
     }
@@ -139,64 +244,293 @@ fn detect_silero(input: &[u8], request: SileroDetectRequest) -> Result<NativeVad
     })
 }
 
+fn validate_silero_request(request: &SileroDetectRequest) -> Result<(), String> {
+    if request.model_version != "6.2.1" {
+        return Err(format!(
+            "Unsupported Silero VAD model version {}.",
+            request.model_version
+        ));
+    }
+    if request.sample_rate_hz != 16000 {
+        return Err("Silero VAD v6.2.1 expects 16000 Hz PCM input.".to_string());
+    }
+    if request.window_size_samples != 512 {
+        return Err("Silero VAD v6.2.1 expects 512-sample windows.".to_string());
+    }
+    Ok(())
+}
+
 fn run_silero_probabilities(
     pcm: &[f32],
     request: &SileroDetectRequest,
 ) -> Result<Vec<f32>, String> {
-    let mut session_guard = SILERO_SESSION.lock().unwrap();
-    let session = session_guard.as_mut().map_err(|error| error.clone())?;
-    let mut probabilities = Vec::new();
-    let mut state = vec![0.0_f32; 2 * 128];
-    let mut context = vec![0.0_f32; SILERO_CONTEXT_SAMPLES_16KHZ];
+    with_silero_session(|session| {
+        let mut probabilities = Vec::with_capacity(pcm.len().div_ceil(request.window_size_samples));
+        let mut state = vec![0.0_f32; 2 * 128];
+        let mut context = vec![0.0_f32; SILERO_CONTEXT_SAMPLES_16KHZ];
+        let mut scratch = SileroScratch::new(request.window_size_samples);
 
-    for chunk_start in (0..pcm.len()).step_by(request.window_size_samples) {
-        let mut input_samples =
-            Vec::with_capacity(SILERO_CONTEXT_SAMPLES_16KHZ + request.window_size_samples);
-        input_samples.extend_from_slice(&context);
-        input_samples.resize(
-            SILERO_CONTEXT_SAMPLES_16KHZ + request.window_size_samples,
-            0.0,
-        );
-        let chunk_end = (chunk_start + request.window_size_samples).min(pcm.len());
-        input_samples
-            [SILERO_CONTEXT_SAMPLES_16KHZ..SILERO_CONTEXT_SAMPLES_16KHZ + chunk_end - chunk_start]
-            .copy_from_slice(&pcm[chunk_start..chunk_end]);
+        for chunk_start in (0..pcm.len()).step_by(request.window_size_samples) {
+            let chunk_end = (chunk_start + request.window_size_samples).min(pcm.len());
+            let probability = run_silero_window(
+                session,
+                &pcm[chunk_start..chunk_end],
+                request,
+                &mut state,
+                &mut context,
+                &mut scratch,
+            )?;
+            probabilities.push(probability);
+        }
 
-        let input = Tensor::from_array(([1_usize, input_samples.len()], input_samples.clone()))
-            .map_err(|error| format!("Failed to create Silero input tensor: {error}"))?;
-        let state_input = Tensor::from_array(([2_usize, 1_usize, 128_usize], state))
-            .map_err(|error| format!("Failed to create Silero state tensor: {error}"))?;
-        let sample_rate = Tensor::from_array(((), vec![request.sample_rate_hz as i64]))
-            .map_err(|error| format!("Failed to create Silero sample-rate tensor: {error}"))?;
+        Ok(probabilities)
+    })
+}
 
-        let outputs = session
-            .run(ort::inputs! {
-                "input" => input,
-                "state" => state_input,
-                "sr" => sample_rate,
-            })
-            .map_err(|error| format!("Silero VAD inference failed: {error}"))?;
+fn run_silero_window(
+    session: &mut Session,
+    chunk: &[f32],
+    request: &SileroDetectRequest,
+    state: &mut Vec<f32>,
+    context: &mut Vec<f32>,
+    scratch: &mut SileroScratch,
+) -> Result<f32, String> {
+    scratch.input_samples.clear();
+    scratch.input_samples.extend_from_slice(context);
+    scratch.input_samples.resize(
+        SILERO_CONTEXT_SAMPLES_16KHZ + request.window_size_samples,
+        0.0,
+    );
+    scratch.input_samples[SILERO_CONTEXT_SAMPLES_16KHZ..SILERO_CONTEXT_SAMPLES_16KHZ + chunk.len()]
+        .copy_from_slice(chunk);
 
-        let output = outputs
-            .get("output")
-            .ok_or_else(|| "Silero VAD output tensor is missing.".to_string())?;
-        let (_, output_data) = output
-            .try_extract_tensor::<f32>()
-            .map_err(|error| format!("Failed to read Silero output tensor: {error}"))?;
-        probabilities.push(*output_data.first().unwrap_or(&0.0));
+    let input = Tensor::from_array((
+        [1_usize, scratch.input_samples.len()],
+        scratch.input_samples.clone(),
+    ))
+    .map_err(|error| format!("Failed to create Silero input tensor: {error}"))?;
+    let state_input = Tensor::from_array(([2_usize, 1_usize, 128_usize], std::mem::take(state)))
+        .map_err(|error| format!("Failed to create Silero state tensor: {error}"))?;
+    let sample_rate = Tensor::from_array(((), vec![request.sample_rate_hz as i64]))
+        .map_err(|error| format!("Failed to create Silero sample-rate tensor: {error}"))?;
 
-        let state_output = outputs
-            .get("stateN")
-            .or_else(|| outputs.get("state_n"))
-            .ok_or_else(|| "Silero VAD state output tensor is missing.".to_string())?;
-        let (_, state_data) = state_output
-            .try_extract_tensor::<f32>()
-            .map_err(|error| format!("Failed to read Silero state tensor: {error}"))?;
-        state = state_data.to_vec();
-        context = input_samples[input_samples.len() - SILERO_CONTEXT_SAMPLES_16KHZ..].to_vec();
+    let outputs = session
+        .run(ort::inputs! {
+            "input" => input,
+            "state" => state_input,
+            "sr" => sample_rate,
+        })
+        .map_err(|error| format!("Silero VAD inference failed: {error}"))?;
+
+    let output = outputs
+        .get("output")
+        .ok_or_else(|| "Silero VAD output tensor is missing.".to_string())?;
+    let (_, output_data) = output
+        .try_extract_tensor::<f32>()
+        .map_err(|error| format!("Failed to read Silero output tensor: {error}"))?;
+    let probability = *output_data.first().unwrap_or(&0.0);
+
+    let state_output = outputs
+        .get("stateN")
+        .or_else(|| outputs.get("state_n"))
+        .ok_or_else(|| "Silero VAD state output tensor is missing.".to_string())?;
+    let (_, state_data) = state_output
+        .try_extract_tensor::<f32>()
+        .map_err(|error| format!("Failed to read Silero state tensor: {error}"))?;
+    *state = state_data.to_vec();
+    context.clear();
+    context.extend_from_slice(
+        &scratch.input_samples[scratch.input_samples.len() - SILERO_CONTEXT_SAMPLES_16KHZ..],
+    );
+
+    Ok(probability)
+}
+
+fn with_silero_session<T>(
+    run: impl FnOnce(&mut Session) -> Result<T, String>,
+) -> Result<T, String> {
+    let sessions = &*SILERO_SESSIONS;
+    let start = NEXT_SILERO_SESSION.fetch_add(1, Ordering::Relaxed);
+
+    let mut run = Some(run);
+    for offset in 0..sessions.len() {
+        let index = (start + offset) % sessions.len();
+        if let Ok(mut guard) = sessions[index].try_lock() {
+            return with_silero_session_guard(&mut guard, run.take().unwrap());
+        }
     }
 
-    Ok(probabilities)
+    let index = start % sessions.len();
+    let mut guard = sessions[index].lock().unwrap();
+    with_silero_session_guard(&mut guard, run.take().unwrap())
+}
+
+fn with_silero_session_guard<T>(
+    guard: &mut MutexGuard<'_, Option<Result<Session, String>>>,
+    run: impl FnOnce(&mut Session) -> Result<T, String>,
+) -> Result<T, String> {
+    if guard.is_none() {
+        **guard = Some(load_silero_session());
+    }
+
+    match guard.as_mut().unwrap() {
+        Ok(session) => run(session),
+        Err(error) => Err(error.clone()),
+    }
+}
+
+fn load_silero_session() -> Result<Session, String> {
+    Session::builder()
+        .and_then(|mut builder| builder.commit_from_memory(SILERO_VAD_V6_2_1))
+        .map_err(|error| format!("Failed to load Silero VAD ONNX model: {error}"))
+}
+
+fn silero_session_pool_size() -> usize {
+    std::env::var("DART_EDGE_VAD_SESSION_POOL_SIZE")
+        .ok()
+        .and_then(|value| value.parse::<usize>().ok())
+        .filter(|value| *value > 0)
+        .map(|value| value.min(32))
+        .unwrap_or_else(|| {
+            std::thread::available_parallelism()
+                .map(usize::from)
+                .unwrap_or(1)
+                .clamp(1, 4)
+        })
+}
+
+impl DartEdgeVadStream {
+    fn process(&mut self, input: &[u8], flush: bool) -> Result<NativeVadStreamResult, String> {
+        if self.finished {
+            return Err("VAD stream has already been finished.".to_string());
+        }
+        if input.len() % 2 != 0 {
+            return Err("PCM16 byte input must contain complete i16 samples.".to_string());
+        }
+
+        self.pending.extend(pcm16le_to_f32(input));
+        self.total_samples += input.len() / 2;
+
+        let mut probabilities = Vec::new();
+        let mut segments = Vec::new();
+        with_silero_session(|session| {
+            while self.pending.len() >= self.request.window_size_samples {
+                let chunk = self
+                    .pending
+                    .drain(..self.request.window_size_samples)
+                    .collect::<Vec<_>>();
+                let frame_start = self.processed_samples;
+                self.processed_samples += self.request.window_size_samples;
+                let frame_end = self.processed_samples;
+                let probability = run_silero_window(
+                    session,
+                    &chunk,
+                    &self.request,
+                    &mut self.state,
+                    &mut self.context,
+                    &mut self.scratch,
+                )?;
+                probabilities.push(probability);
+                self.consume_probability(probability, frame_start, frame_end, &mut segments);
+            }
+
+            if flush && !self.pending.is_empty() {
+                let chunk = std::mem::take(&mut self.pending);
+                let frame_start = self.processed_samples;
+                self.processed_samples = self.total_samples;
+                let frame_end = self.total_samples;
+                let probability = run_silero_window(
+                    session,
+                    &chunk,
+                    &self.request,
+                    &mut self.state,
+                    &mut self.context,
+                    &mut self.scratch,
+                )?;
+                probabilities.push(probability);
+                self.consume_probability(probability, frame_start, frame_end, &mut segments);
+            }
+
+            Ok(())
+        })?;
+
+        if flush {
+            if let Some(start) = self.active_start.take() {
+                append_segment(
+                    &mut segments,
+                    start,
+                    self.total_samples,
+                    self.total_samples,
+                    self.request.sample_rate_hz,
+                    millis_to_samples(
+                        self.request.min_speech_duration_ms,
+                        self.request.sample_rate_hz,
+                    ),
+                    millis_to_samples(self.request.speech_pad_ms, self.request.sample_rate_hz),
+                );
+                self.has_speech |= !segments.is_empty();
+            }
+            self.silence_start = None;
+            self.finished = true;
+        }
+
+        Ok(NativeVadStreamResult {
+            sample_rate_hz: self.request.sample_rate_hz,
+            total_samples: self.total_samples,
+            processed_samples: self.processed_samples,
+            has_speech: self.has_speech || !segments.is_empty(),
+            finished: self.finished,
+            segments,
+            probabilities,
+        })
+    }
+
+    fn consume_probability(
+        &mut self,
+        probability: f32,
+        frame_start: usize,
+        frame_end: usize,
+        segments: &mut Vec<NativeVadSegment>,
+    ) {
+        if probability >= self.request.threshold {
+            self.active_start.get_or_insert(frame_start);
+            self.silence_start = None;
+            return;
+        }
+
+        let Some(start) = self.active_start else {
+            return;
+        };
+        if probability >= self.request.neg_threshold {
+            return;
+        }
+
+        let silence = *self.silence_start.get_or_insert(frame_start);
+        let min_silence_samples = millis_to_samples(
+            self.request.min_silence_duration_ms,
+            self.request.sample_rate_hz,
+        );
+        if frame_end.saturating_sub(silence) < min_silence_samples {
+            return;
+        }
+
+        let previous_len = segments.len();
+        append_segment(
+            segments,
+            start,
+            silence,
+            self.total_samples,
+            self.request.sample_rate_hz,
+            millis_to_samples(
+                self.request.min_speech_duration_ms,
+                self.request.sample_rate_hz,
+            ),
+            millis_to_samples(self.request.speech_pad_ms, self.request.sample_rate_hz),
+        );
+        self.has_speech |= segments.len() > previous_len;
+        self.active_start = None;
+        self.silence_start = None;
+    }
 }
 
 fn speech_segments_from_probabilities(

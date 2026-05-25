@@ -28,5 +28,30 @@ external void dart_edge_vad_free_string(ffi.Pointer<ffi.Char> value);
 @ffi.Native<ffi.Int32 Function()>(isLeaf: true)
 external int dart_edge_vad_native_abi_version();
 
+@ffi.Native<ffi.Pointer<DartEdgeVadStream> Function(ffi.Pointer<ffi.Char>)>()
+external ffi.Pointer<DartEdgeVadStream> dart_edge_vad_stream_create(
+  ffi.Pointer<ffi.Char> request_json,
+);
+
+@ffi.Native<ffi.Void Function(ffi.Pointer<DartEdgeVadStream>)>()
+external void dart_edge_vad_stream_free(ffi.Pointer<DartEdgeVadStream> stream);
+
+@ffi.Native<
+  ffi.Pointer<ffi.Char> Function(
+    ffi.Pointer<DartEdgeVadStream>,
+    ffi.Pointer<ffi.Uint8>,
+    ffi.IntPtr,
+    ffi.Int32,
+  )
+>()
+external ffi.Pointer<ffi.Char> dart_edge_vad_stream_process(
+  ffi.Pointer<DartEdgeVadStream> stream,
+  ffi.Pointer<ffi.Uint8> input_ptr,
+  int input_len,
+  int flush,
+);
+
 @ffi.Native<ffi.Pointer<ffi.Char> Function()>()
 external ffi.Pointer<ffi.Char> dart_edge_vad_take_last_error();
+
+final class DartEdgeVadStream extends ffi.Opaque {}

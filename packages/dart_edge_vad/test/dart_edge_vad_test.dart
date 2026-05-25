@@ -31,6 +31,137 @@ void main() {
     );
   });
 
+  test('Silero VAD initialize warms native inference', () async {
+    final vad = SileroVad();
+
+    await vad.initialize(sessionCount: 2);
+
+    final result = await vad.detect(
+      pcm16KhzMono: Int16List(512),
+      sampleRateHz: 16000,
+    );
+    expect(result.totalSamples, 512);
+    expect(result.hasSpeech, isFalse);
+  });
+
+  test('Silero VAD detects from native PCM16 without wrapper copy', () async {
+    final buffer = NativePcm16Buffer(16000);
+    try {
+      final vad = SileroVad();
+      final result = await vad.detectNativeBuffer(
+        pcm16KhzMono: buffer,
+        sampleRateHz: 16000,
+      );
+
+      expect(result.sampleRateHz, 16000);
+      expect(result.totalSamples, 16000);
+      expect(result.hasSpeech, isFalse);
+      expect(result.segments, isEmpty);
+    } finally {
+      buffer.close();
+    }
+  });
+
+  test('Silero VAD worker reuses a long-lived isolate', () async {
+    final worker = await SileroVadWorker.spawn(initialize: true);
+    try {
+      final result = await worker.detect(
+        pcm16KhzMono: Int16List(16000),
+        sampleRateHz: 16000,
+      );
+
+      expect(result.sampleRateHz, 16000);
+      expect(result.totalSamples, 16000);
+      expect(result.hasSpeech, isFalse);
+      expect(result.segments, isEmpty);
+    } finally {
+      await worker.close();
+    }
+  });
+
+  test(
+    'Silero VAD worker detects from native PCM16 without wrapper copy',
+    () async {
+      final buffer = NativePcm16Buffer(16000);
+      final worker = await SileroVadWorker.spawn();
+      try {
+        final result = await worker.detectNativeBuffer(
+          pcm16KhzMono: buffer,
+          sampleRateHz: 16000,
+        );
+
+        expect(result.sampleRateHz, 16000);
+        expect(result.totalSamples, 16000);
+        expect(result.hasSpeech, isFalse);
+        expect(result.segments, isEmpty);
+      } finally {
+        await worker.close();
+        buffer.close();
+      }
+    },
+  );
+
+  test('Silero VAD streaming session processes incremental chunks', () {
+    final stream = SileroVadStreamingSession();
+    try {
+      final first = stream.addChunk(Int16List(512));
+      expect(first.sampleRateHz, 16000);
+      expect(first.totalSamples, 512);
+      expect(first.processedSamples, 512);
+      expect(first.finished, isFalse);
+      expect(first.segments, isEmpty);
+      expect(first.probabilities, hasLength(1));
+
+      final finish = stream.finish(Int16List(256));
+      expect(finish.totalSamples, 768);
+      expect(finish.processedSamples, 768);
+      expect(finish.finished, isTrue);
+      expect(finish.hasSpeech, isFalse);
+      expect(finish.segments, isEmpty);
+    } finally {
+      stream.close();
+    }
+  });
+
+  test(
+    'Silero VAD streaming initialize does not consume stream samples',
+    () async {
+      final stream = SileroVadStreamingSession();
+      try {
+        await stream.initialize();
+
+        final first = stream.addChunk(Int16List(512));
+        expect(first.totalSamples, 512);
+        expect(first.processedSamples, 512);
+      } finally {
+        stream.close();
+      }
+    },
+  );
+
+  test('Silero VAD streaming session processes native PCM16 chunks', () {
+    final chunk = NativePcm16Buffer(512);
+    final tail = NativePcm16Buffer(256);
+    final stream = SileroVadStreamingSession();
+    try {
+      final first = stream.addNativeChunk(chunk);
+      expect(first.sampleRateHz, 16000);
+      expect(first.totalSamples, 512);
+      expect(first.processedSamples, 512);
+      expect(first.probabilities, hasLength(1));
+
+      final finish = stream.finishNative(tail);
+      expect(finish.totalSamples, 768);
+      expect(finish.processedSamples, 768);
+      expect(finish.finished, isTrue);
+      expect(finish.segments, isEmpty);
+    } finally {
+      stream.close();
+      tail.close();
+      chunk.close();
+    }
+  });
+
   test('trims PCM16 by sample segments', () {
     final pcm = Int16List.fromList([1, 2, 3, 4, 5, 6]);
 
