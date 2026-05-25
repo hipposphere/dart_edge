@@ -201,6 +201,18 @@ void main() {
 
     expect(statement.positionalParameters.single, '{"name":"seeded"}');
   });
+
+  test('encodes explicitly cast text array parameters as array literals', () {
+    final statement = compileSqlStatement(
+      SqlDialect.postgres,
+      SqlStatement.named('SELECT @roles::text[]', {
+        'roles': ['admin', 'member'],
+      }),
+    );
+
+    expect(statement.sql, r'SELECT $1::text[]');
+    expect(statement.positionalParameters, ['{"admin","member"}']);
+  });
 }
 
 final class _RecordingExecutor implements SqlExecutor {

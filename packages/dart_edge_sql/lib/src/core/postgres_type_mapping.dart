@@ -12,6 +12,9 @@ abstract final class PostgresTypeMapping {
     }
 
     final normalized = normalizeTypeName(type);
+    if (arrayParameterCastFor(normalized) case final cast?) {
+      return cast;
+    }
     return switch (normalized) {
       'bool' => normalized,
       'int2' || 'int4' || 'int8' => normalized,
@@ -34,6 +37,24 @@ abstract final class PostgresTypeMapping {
     };
   }
 
+  /// Returns the canonical parameter cast for a PostgreSQL array type name.
+  static String? arrayParameterCastFor(String normalizedType) {
+    if (normalizedType.endsWith('[]')) {
+      final elementType = normalizedType.substring(
+        0,
+        normalizedType.length - 2,
+      );
+      if (elementType.isEmpty) {
+        return null;
+      }
+      return '${_arrayElementCastFor(elementType)}[]';
+    }
+    if (!normalizedType.startsWith('_') || normalizedType.length == 1) {
+      return null;
+    }
+    return '${_arrayElementCastFor(normalizedType.substring(1))}[]';
+  }
+
   /// Whether a PostgreSQL type should receive JSON text parameters.
   static bool usesJsonTextParameter(String? databaseType) {
     final type = databaseType?.trim();
@@ -44,6 +65,15 @@ abstract final class PostgresTypeMapping {
       'json' || 'jsonb' => true,
       _ => false,
     };
+  }
+
+  /// Whether a PostgreSQL type should receive array-literal text parameters.
+  static bool usesArrayTextParameter(String? databaseType) {
+    final type = databaseType?.trim();
+    if (type == null || type.isEmpty) {
+      return false;
+    }
+    return arrayParameterCastFor(normalizeTypeName(type)) != null;
   }
 
   /// Normalizes common PostgreSQL type aliases to catalog-style type names.
@@ -99,4 +129,11 @@ abstract final class PostgresTypeMapping {
     'jsonb',
     'bytea',
   };
+
+  static String _arrayElementCastFor(String normalizedElementType) {
+    final elementType = normalizeTypeName(normalizedElementType);
+    return isUserDefinedType(elementType)
+        ? quoteTypeName(elementType)
+        : elementType;
+  }
 }

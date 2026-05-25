@@ -75,7 +75,7 @@ String _routineSql(_SchemaGroup group, IntrospectedRoutine routine) {
   final qualifiedName =
       '"${_escapeSqlIdentifier(group.schemaName)}"."${_escapeSqlIdentifier(routine.name)}"';
   final arguments = routine.parameters
-      .map((parameter) => '@${_routineParameterMemberName(parameter.name)}')
+      .map((parameter) => _routineSqlArgument(parameter))
       .join(', ');
 
   return switch (routine.kind) {
@@ -85,6 +85,12 @@ String _routineSql(_SchemaGroup group, IntrospectedRoutine routine) {
     IntrospectedRoutineKind.function =>
       'SELECT $qualifiedName($arguments) AS value',
   };
+}
+
+String _routineSqlArgument(IntrospectedRoutineParameter parameter) {
+  final placeholder = '@${_routineParameterMemberName(parameter.name)}';
+  final cast = PostgresTypeMapping.parameterCastFor(parameter.databaseType);
+  return cast == null ? placeholder : '$placeholder::$cast';
 }
 
 String _routineParameterMemberName(String parameterName) {

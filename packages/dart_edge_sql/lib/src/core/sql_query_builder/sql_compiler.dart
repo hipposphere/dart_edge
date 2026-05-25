@@ -226,6 +226,8 @@ final class _SqlCompiler {
     final parameterName = 'p${++_parameterIndex}';
     final value = parameters[name];
     _parameters[parameterName] = switch (dialect) {
+      SqlDialect.postgres when _hasArrayCast(sql, end) =>
+        _encodePostgresArrayTextParameter(value),
       SqlDialect.postgres when _hasJsonCast(sql, end) =>
         _encodeJsonTextParameter(value),
       _ => value,
@@ -297,6 +299,9 @@ Object? _encodePostgresParameterValue(
   Object? value,
   SqlColumn<dynamic>? column,
 ) {
+  if (PostgresTypeMapping.usesArrayTextParameter(column?.databaseType)) {
+    return _encodePostgresArrayTextParameter(value);
+  }
   if (!PostgresTypeMapping.usesJsonTextParameter(column?.databaseType)) {
     return value;
   }
@@ -341,8 +346,27 @@ Object? _normalizeJsonValue(Object? value) {
 }
 
 bool _hasJsonCast(String sql, int index) {
-  if (!_startsWith(sql, index, '::')) {
+  final type = _castTypeAt(sql, index);
+  if (type == null) {
     return false;
+  }
+  return switch (PostgresTypeMapping.normalizeTypeName(type)) {
+    'json' || 'jsonb' => true,
+    _ => false,
+  };
+}
+
+bool _hasArrayCast(String sql, int index) {
+  final type = _castTypeAt(sql, index);
+  if (type == null) {
+    return false;
+  }
+  return PostgresTypeMapping.usesArrayTextParameter(type);
+}
+
+String? _castTypeAt(String sql, int index) {
+  if (!_startsWith(sql, index, '::')) {
+    return null;
   }
   var typeStart = index + 2;
   while (_peek(sql, typeStart) == ' ') {
@@ -350,26 +374,57 @@ bool _hasJsonCast(String sql, int index) {
   }
   final typeEnd = _readCastTypeEnd(sql, typeStart);
   if (typeEnd == typeStart) {
-    return false;
+    return null;
   }
-  final type = sql.substring(typeStart, typeEnd).replaceAll('"', '');
-  return switch (PostgresTypeMapping.normalizeTypeName(type)) {
-    'json' || 'jsonb' => true,
-    _ => false,
-  };
+  return sql.substring(typeStart, typeEnd).replaceAll('"', '');
 }
 
 int _readCastTypeEnd(String sql, int start) {
   var index = start;
   while (index < sql.length) {
     final char = sql[index];
-    if (_isIdentifierPart(char) || char == '.' || char == '"') {
+    if (_isIdentifierPart(char) ||
+        char == '.' ||
+        char == '"' ||
+        char == '[' ||
+        char == ']') {
       index += 1;
       continue;
     }
     break;
   }
   return index;
+}
+
+Object? _encodePostgresArrayTextParameter(Object? value) {
+  return switch (value) {
+    null || String() => value,
+    final Iterable<Object?> value =>
+      '{${value.map(_postgresArrayElement).join(',')}}',
+    _ => throw ArgumentError.value(
+      value,
+      'value',
+      'PostgreSQL array parameters must be an Iterable, String, or null.',
+    ),
+  };
+}
+
+String _postgresArrayElement(Object? value) {
+  if (value == null) {
+    return 'NULL';
+  }
+  final text = switch (value) {
+    final DateTime value => value.toUtc().toIso8601String(),
+    final String value => value,
+    final bool value => value.toString(),
+    final num value => value.toString(),
+    _ => throw ArgumentError.value(
+      value,
+      'value',
+      'Unsupported PostgreSQL array parameter element.',
+    ),
+  };
+  return '"${text.replaceAll(r'\', r'\\').replaceAll('"', r'\"')}"';
 }
 
 _SelectedProjection _normalizeProjection(Object value) {

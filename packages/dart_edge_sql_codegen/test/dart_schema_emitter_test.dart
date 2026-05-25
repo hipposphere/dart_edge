@@ -1263,6 +1263,54 @@ void main() {
     expect(routines, contains('CALL "public"."refresh_stats"()'));
   });
 
+  test('casts Postgres routine parameters with database-specific types', () {
+    const database = IntrospectedDatabase(
+      dialect: SqlCodegenDialect.postgres,
+      tables: [],
+      routines: [
+        IntrospectedRoutine(
+          name: 'user_has_workspace_access',
+          schema: 'workspace',
+          kind: IntrospectedRoutineKind.function,
+          returnDatabaseType: 'bool',
+          returnDartType: 'bool',
+          parameters: [
+            IntrospectedRoutineParameter(
+              name: 'p_workspace_id',
+              databaseType: 'uuid',
+              dartType: 'String',
+            ),
+            IntrospectedRoutineParameter(
+              name: 'p_user_id',
+              databaseType: 'text',
+              dartType: 'String',
+            ),
+            IntrospectedRoutineParameter(
+              name: 'p_required_roles',
+              databaseType: '_text',
+              dartType: 'List<Object?>',
+            ),
+          ],
+        ),
+      ],
+    );
+
+    final emission = emitDartSchema(database, databaseClassName: 'AppSchema');
+    final routines = emission
+        .fileAt('schemas/workspace/routines/routines.g.dart')
+        .contents;
+
+    expect(routines, contains('required String pWorkspaceId'));
+    expect(routines, contains('required List<Object?> pRequiredRoles'));
+    expect(
+      routines,
+      contains(
+        'SELECT "workspace"."user_has_workspace_access"'
+        '(@pWorkspaceId::uuid, @pUserId, @pRequiredRoles::text[]) AS value',
+      ),
+    );
+  });
+
   test('keeps routine wrappers isolated by schema', () {
     const database = IntrospectedDatabase(
       dialect: SqlCodegenDialect.postgres,
