@@ -1,3 +1,8 @@
+## 0.3.20
+
+- Add first-class Dart HTTP request observers around route dispatch.
+- Require `dart_edge_core` 0.3.17.
+
 ## 0.3.19
 
 - Decode schema-backed multipart form-data bodies through route-local decoders.

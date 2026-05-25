@@ -30,6 +30,44 @@ void main() {
     },
   );
 
+  test('runs request observers around Dart HTTP routes', () async {
+    final observations = <HttpRequestObservation>[];
+    final results = <HttpRequestObservationResult>[];
+    final app = DartEdge<void>(
+      services: () {},
+      requestObservers: [_RecordingObserver(observations, results)],
+    );
+    app.get(
+      '/users/<id>',
+      options: const RouteOptions(
+        operationId: 'getUser',
+        success: ResponseSpec.json(status: HttpStatus.accepted),
+      ),
+      handler: (ctx) => {'id': ctx.req.param('id')},
+    );
+
+    final server = await app.listen(port: 0);
+    final client = HttpClient();
+
+    addTearDown(() async {
+      client.close(force: true);
+      await server.close();
+    });
+
+    final response = await (await client.getUrl(
+      Uri.http('127.0.0.1:${server.port}', '/users/42'),
+    )).close();
+    await response.drain<void>();
+
+    expect(response.statusCode, HttpStatus.accepted);
+    expect(observations, hasLength(1));
+    expect(observations.single.method, HttpMethod.get);
+    expect(observations.single.route, '/users/<id>');
+    expect(observations.single.operationId, 'getUser');
+    expect(results.single.statusCode, HttpStatus.accepted);
+    expect(results.single.responseBodySize, isPositive);
+  });
+
   test('starts with webtransport routes in the native manifest', () async {
     final app = DartEdge<void>(services: () {});
     app.webtransport(
@@ -684,6 +722,25 @@ List<String> _csvHeaderValues(String? value) {
           .where((part) => part.isNotEmpty)
           .toList(growable: false) ??
       const <String>[];
+}
+
+final class _RecordingObserver implements HttpRequestObserver<void> {
+  const _RecordingObserver(this.observations, this.results);
+
+  final List<HttpRequestObservation> observations;
+  final List<HttpRequestObservationResult> results;
+
+  @override
+  Future<HttpRequestObservationResult> observe({
+    required RequestContext<void> context,
+    required HttpRequestObservation request,
+    required Future<HttpRequestObservationResult> Function() next,
+  }) async {
+    observations.add(request);
+    final result = await next();
+    results.add(result);
+    return result;
+  }
 }
 
 final class _GuardedContractRoute extends HttpRouteDefinition<void, String> {

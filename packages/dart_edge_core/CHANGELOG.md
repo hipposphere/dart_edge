@@ -1,3 +1,8 @@
+## 0.3.17
+
+- Add first-class HTTP request observer contracts for route-level
+  instrumentation.
+
 ## 0.3.16
 
 - Add multipart form-data body contracts and `@FromMultipartSchema`.

@@ -8,6 +8,7 @@ import 'package:dart_edge_core/dart_edge_core.dart';
 
 import '../native/dart_edge_native.dart';
 import '../native/native_transport_web_socket.dart';
+import 'compiled_route.dart';
 import 'compiled_route_table.dart';
 import 'dart_edge_codec.dart';
 import 'dart_edge_server.dart';
@@ -37,8 +38,12 @@ class DartEdge<TServices> extends Router<TServices> {
     this.services,
     OpenApiDocument? openApiDocument,
     List<RustMiddleware>? middlewares,
+    List<HttpRequestObserver<TServices>>? requestObservers,
     DartEdgeCodecRegistry codecs = DartEdgeCodecRegistry.empty,
   }) : middlewares = List.unmodifiable(middlewares ?? const <RustMiddleware>[]),
+       requestObservers = List.unmodifiable(
+         requestObservers ?? <HttpRequestObserver<TServices>>[],
+       ),
        openApiDocument = openApiDocument ?? OpenApiDocument(),
        _codecRegistry = codecs;
 
@@ -47,6 +52,9 @@ class DartEdge<TServices> extends Router<TServices> {
 
   /// Native middleware configuration applied before requests reach Dart.
   final List<RustMiddleware> middlewares;
+
+  /// Dart-side request observers applied around every Dart HTTP route.
+  final List<HttpRequestObserver<TServices>> requestObservers;
 
   /// Application-level OpenAPI metadata attached to the app.
   final OpenApiDocument openApiDocument;
@@ -268,45 +276,77 @@ class DartEdge<TServices> extends Router<TServices> {
       services: _createServices(),
       req: input,
     );
-    for (final guard in compiledRoute.guards) {
-      final decision = await Future.sync(() => guard.authorize(ctx));
-      if (!decision.isAllowed) {
-        final response = encodeResponse(
-          spec: compiledRoute.options.responses.success,
-          body: decision.response,
-          response: ctx.res,
-        );
-        DartEdgeNative.tryRespond(
-          requestId,
-          status: response.status,
-          contentType: response.contentType,
-          body: response.bodyBytes,
-          headers: response.headers,
-        );
-        return;
+    await _observeHttpRequest(ctx, compiledRoute, () async {
+      for (final guard in compiledRoute.guards) {
+        final decision = await Future.sync(() => guard.authorize(ctx));
+        if (!decision.isAllowed) {
+          final response = encodeResponse(
+            spec: compiledRoute.options.responses.success,
+            body: decision.response,
+            response: ctx.res,
+          );
+          DartEdgeNative.tryRespond(
+            requestId,
+            status: response.status,
+            contentType: response.contentType,
+            body: response.bodyBytes,
+            headers: response.headers,
+          );
+          return HttpRequestObservationResult(
+            statusCode: response.status,
+            responseBodySize: response.bodyBytes.length,
+          );
+        }
       }
-    }
 
-    final body = await Future.sync(() => compiledRoute.route.handle(ctx));
-    final sseResponse = _resolveSseResponse(body, ctx.res);
-    if (sseResponse != null) {
-      await _streamSseResponse(requestId, sseResponse);
-      return;
-    }
+      final body = await Future.sync(() => compiledRoute.route.handle(ctx));
+      final sseResponse = _resolveSseResponse(body, ctx.res);
+      if (sseResponse != null) {
+        await _streamSseResponse(requestId, sseResponse);
+        return HttpRequestObservationResult(
+          statusCode: compiledRoute.options.responses.success.status,
+        );
+      }
 
-    final response = encodeResponse(
-      spec: compiledRoute.options.responses.success,
-      body: body,
-      response: ctx.res,
+      final response = encodeResponse(
+        spec: compiledRoute.options.responses.success,
+        body: body,
+        response: ctx.res,
+      );
+
+      DartEdgeNative.tryRespond(
+        requestId,
+        status: response.status,
+        contentType: response.contentType,
+        body: response.bodyBytes,
+        headers: response.headers,
+      );
+      return HttpRequestObservationResult(
+        statusCode: response.status,
+        responseBodySize: response.bodyBytes.length,
+      );
+    });
+  }
+
+  Future<HttpRequestObservationResult> _observeHttpRequest(
+    RequestContext<TServices> ctx,
+    CompiledRoute<TServices> route,
+    Future<HttpRequestObservationResult> Function() next,
+  ) {
+    final request = HttpRequestObservation(
+      method: route.method,
+      route: route.path,
+      operationId: route.options.operationId!,
+      successStatusCode: route.options.responses.success.status,
     );
-
-    DartEdgeNative.tryRespond(
-      requestId,
-      status: response.status,
-      contentType: response.contentType,
-      body: response.bodyBytes,
-      headers: response.headers,
-    );
+    Future<HttpRequestObservationResult> Function() wrapped = next;
+    for (final observer in requestObservers.reversed) {
+      final inner = wrapped;
+      wrapped = () async {
+        return observer.observe(context: ctx, request: request, next: inner);
+      };
+    }
+    return wrapped();
   }
 
   Future<void> _handleWebSocketHandshake(
