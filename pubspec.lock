@@ -317,10 +317,10 @@ packages:
     dependency: transitive
     description:
       name: hippo_auth_backend
-      sha256: "546adeefc2d1e3655d1fe576c17f05fd1ead4ca922a4e6945f3c937a7f428c8c"
+      sha256: "5a1b618fcdbed0a97b97b89e4da3f88011724d633276940f923a8ebced425efa"
       url: "https://registry.hippolabs.org/pub/internal-pub/"
     source: hosted
-    version: "0.1.6"
+    version: "0.1.11"
   hooks:
     dependency: transitive
     description:
