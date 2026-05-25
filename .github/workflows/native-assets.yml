@@ -22,6 +22,7 @@ on:
           - dart_edge_sip
           - dart_edge_sql
           - dart_edge_sql_pglite
+          - dart_edge_vad
 
 permissions:
   contents: write

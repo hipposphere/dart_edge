@@ -42,6 +42,7 @@ jobs:
             dart_edge_sip
             dart_edge_sql
             dart_edge_sql_pglite
+            dart_edge_vad
           )
 
           selected_file="$RUNNER_TEMP/native-packages.jsonl"
