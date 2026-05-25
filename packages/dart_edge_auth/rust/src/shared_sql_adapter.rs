@@ -29,17 +29,17 @@ CREATE TABLE IF NOT EXISTS "user" (
     name TEXT,
     email TEXT NOT NULL UNIQUE,
     username TEXT UNIQUE,
-    display_username TEXT,
-    email_verified BOOLEAN NOT NULL DEFAULT FALSE,
+    "displayUsername" TEXT,
+    "emailVerified" BOOLEAN NOT NULL DEFAULT FALSE,
     image TEXT,
     role TEXT NOT NULL DEFAULT 'user',
     banned BOOLEAN NOT NULL DEFAULT FALSE,
-    ban_reason TEXT,
-    ban_expires TEXT,
-    two_factor_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+    "banReason" TEXT,
+    "banExpires" TEXT,
+    "twoFactorEnabled" BOOLEAN NOT NULL DEFAULT FALSE,
     metadata JSONB,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
+    "createdAt" TEXT NOT NULL,
+    "updatedAt" TEXT NOT NULL
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_user_email ON "user" (email);
@@ -47,47 +47,47 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_user_username ON "user" (username);
 
 CREATE TABLE IF NOT EXISTS "session" (
     id TEXT PRIMARY KEY NOT NULL,
-    user_id TEXT NOT NULL REFERENCES "user" (id) ON DELETE CASCADE,
+    "userId" TEXT NOT NULL REFERENCES "user" (id) ON DELETE CASCADE,
     token TEXT NOT NULL UNIQUE,
-    ip_address TEXT,
-    user_agent TEXT,
-    expires_at TEXT NOT NULL,
-    active_organization_id TEXT,
-    impersonated_by TEXT,
+    "ipAddress" TEXT,
+    "userAgent" TEXT,
+    "expiresAt" TEXT NOT NULL,
+    "activeOrganizationId" TEXT,
+    "impersonatedBy" TEXT,
     active BOOLEAN NOT NULL DEFAULT TRUE,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
+    "createdAt" TEXT NOT NULL,
+    "updatedAt" TEXT NOT NULL
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_session_token ON "session" (token);
-CREATE INDEX IF NOT EXISTS idx_session_user_id ON "session" (user_id);
+CREATE INDEX IF NOT EXISTS idx_session_user_id ON "session" ("userId");
 
 CREATE TABLE IF NOT EXISTS "account" (
     id TEXT PRIMARY KEY NOT NULL,
-    user_id TEXT NOT NULL REFERENCES "user" (id) ON DELETE CASCADE,
-    account_id TEXT NOT NULL,
-    provider_id TEXT NOT NULL,
-    access_token TEXT,
-    refresh_token TEXT,
-    id_token TEXT,
-    access_token_expires_at TEXT,
-    refresh_token_expires_at TEXT,
+    "userId" TEXT NOT NULL REFERENCES "user" (id) ON DELETE CASCADE,
+    "accountId" TEXT NOT NULL,
+    "providerId" TEXT NOT NULL,
+    "accessToken" TEXT,
+    "refreshToken" TEXT,
+    "idToken" TEXT,
+    "accessTokenExpiresAt" TEXT,
+    "refreshTokenExpiresAt" TEXT,
     scope TEXT,
     password TEXT,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
+    "createdAt" TEXT NOT NULL,
+    "updatedAt" TEXT NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_account_user_id ON "account" (user_id);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_account_provider ON "account" (provider_id, account_id);
+CREATE INDEX IF NOT EXISTS idx_account_user_id ON "account" ("userId");
+CREATE UNIQUE INDEX IF NOT EXISTS idx_account_provider ON "account" ("providerId", "accountId");
 
 CREATE TABLE IF NOT EXISTS "verification" (
     id TEXT PRIMARY KEY NOT NULL,
     identifier TEXT NOT NULL,
     value TEXT NOT NULL,
-    expires_at TEXT NOT NULL,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
+    "expiresAt" TEXT NOT NULL,
+    "createdAt" TEXT NOT NULL,
+    "updatedAt" TEXT NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_verification_identifier ON "verification" (identifier);
@@ -99,23 +99,23 @@ CREATE TABLE IF NOT EXISTS "organization" (
     slug TEXT NOT NULL UNIQUE,
     logo TEXT,
     metadata JSONB,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
+    "createdAt" TEXT NOT NULL,
+    "updatedAt" TEXT NOT NULL
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_organization_slug ON "organization" (slug);
 
 CREATE TABLE IF NOT EXISTS "member" (
     id TEXT PRIMARY KEY NOT NULL,
-    user_id TEXT NOT NULL REFERENCES "user" (id) ON DELETE CASCADE,
+    "userId" TEXT NOT NULL REFERENCES "user" (id) ON DELETE CASCADE,
     organization_id TEXT NOT NULL REFERENCES "organization" (id) ON DELETE CASCADE,
     role TEXT NOT NULL DEFAULT 'member',
-    created_at TEXT NOT NULL
+    "createdAt" TEXT NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_member_user_id ON "member" (user_id);
+CREATE INDEX IF NOT EXISTS idx_member_user_id ON "member" ("userId");
 CREATE INDEX IF NOT EXISTS idx_member_org_id ON "member" (organization_id);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_member_user_org ON "member" (user_id, organization_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_member_user_org ON "member" ("userId", organization_id);
 
 CREATE TABLE IF NOT EXISTS "invitation" (
     id TEXT PRIMARY KEY NOT NULL,
@@ -124,8 +124,8 @@ CREATE TABLE IF NOT EXISTS "invitation" (
     role TEXT NOT NULL DEFAULT 'member',
     status TEXT NOT NULL DEFAULT 'pending',
     inviter_id TEXT NOT NULL REFERENCES "user" (id),
-    expires_at TEXT NOT NULL,
-    created_at TEXT NOT NULL
+    "expiresAt" TEXT NOT NULL,
+    "createdAt" TEXT NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_invitation_org_id ON "invitation" (organization_id);
@@ -133,18 +133,18 @@ CREATE INDEX IF NOT EXISTS idx_invitation_email ON "invitation" (email);
 
 CREATE TABLE IF NOT EXISTS "two_factor" (
     id TEXT PRIMARY KEY NOT NULL,
-    user_id TEXT NOT NULL UNIQUE REFERENCES "user" (id) ON DELETE CASCADE,
+    "userId" TEXT NOT NULL UNIQUE REFERENCES "user" (id) ON DELETE CASCADE,
     secret TEXT NOT NULL,
     backup_codes TEXT,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
+    "createdAt" TEXT NOT NULL,
+    "updatedAt" TEXT NOT NULL
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_two_factor_user_id ON "two_factor" (user_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_two_factor_user_id ON "two_factor" ("userId");
 
 CREATE TABLE IF NOT EXISTS "api_keys" (
     id TEXT PRIMARY KEY NOT NULL,
-    user_id TEXT NOT NULL REFERENCES "user" (id) ON DELETE CASCADE,
+    "userId" TEXT NOT NULL REFERENCES "user" (id) ON DELETE CASCADE,
     name TEXT,
     start TEXT,
     prefix TEXT,
@@ -159,19 +159,19 @@ CREATE TABLE IF NOT EXISTS "api_keys" (
     refill_amount BIGINT,
     last_refill_at TEXT,
     last_request TEXT,
-    expires_at TEXT,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
+    "expiresAt" TEXT,
+    "createdAt" TEXT NOT NULL,
+    "updatedAt" TEXT NOT NULL,
     permissions TEXT,
     metadata TEXT
 );
 
-CREATE INDEX IF NOT EXISTS idx_api_keys_user_id ON "api_keys" (user_id);
+CREATE INDEX IF NOT EXISTS idx_api_keys_user_id ON "api_keys" ("userId");
 CREATE INDEX IF NOT EXISTS idx_api_keys_key ON "api_keys" ("key");
 
 CREATE TABLE IF NOT EXISTS "passkeys" (
     id TEXT PRIMARY KEY NOT NULL,
-    user_id TEXT NOT NULL REFERENCES "user" (id) ON DELETE CASCADE,
+    "userId" TEXT NOT NULL REFERENCES "user" (id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     credential_id TEXT NOT NULL UNIQUE,
     public_key TEXT NOT NULL,
@@ -179,10 +179,10 @@ CREATE TABLE IF NOT EXISTS "passkeys" (
     device_type TEXT NOT NULL DEFAULT '',
     backed_up BOOLEAN NOT NULL DEFAULT FALSE,
     transports TEXT,
-    created_at TEXT NOT NULL
+    "createdAt" TEXT NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_passkeys_user_id ON "passkeys" (user_id);
+CREATE INDEX IF NOT EXISTS idx_passkeys_user_id ON "passkeys" ("userId");
 CREATE UNIQUE INDEX IF NOT EXISTS idx_passkeys_credential_id ON "passkeys" (credential_id);
 "#;
 
@@ -533,17 +533,17 @@ fn decode_user(row: RowMap) -> AuthResult<User> {
         id: row.string("id")?,
         name: row.opt_string("name")?,
         email: row.opt_string("email")?,
-        email_verified: row.boolean("email_verified")?,
+        email_verified: row.boolean("emailVerified")?,
         image: row.opt_string("image")?,
-        created_at: row.datetime("created_at")?,
-        updated_at: row.datetime("updated_at")?,
+        created_at: row.datetime("createdAt")?,
+        updated_at: row.datetime("updatedAt")?,
         username: row.opt_string("username")?,
-        display_username: row.opt_string("display_username")?,
-        two_factor_enabled: row.boolean("two_factor_enabled")?,
+        display_username: row.opt_string("displayUsername")?,
+        two_factor_enabled: row.boolean("twoFactorEnabled")?,
         role: row.opt_string("role")?,
         banned: row.boolean("banned")?,
-        ban_reason: row.opt_string("ban_reason")?,
-        ban_expires: row.opt_datetime("ban_expires")?,
+        ban_reason: row.opt_string("banReason")?,
+        ban_expires: row.opt_datetime("banExpires")?,
         metadata: row.json_or_default("metadata")?,
     })
 }
@@ -552,15 +552,15 @@ fn decode_session(row: RowMap) -> AuthResult<Session> {
     let row = RowReader::new(&row);
     Ok(Session {
         id: row.string("id")?,
-        expires_at: row.datetime("expires_at")?,
+        expires_at: row.datetime("expiresAt")?,
         token: row.string("token")?,
-        created_at: row.datetime("created_at")?,
-        updated_at: row.datetime("updated_at")?,
-        ip_address: row.opt_string("ip_address")?,
-        user_agent: row.opt_string("user_agent")?,
-        user_id: row.string("user_id")?,
-        impersonated_by: row.opt_string("impersonated_by")?,
-        active_organization_id: row.opt_string("active_organization_id")?,
+        created_at: row.datetime("createdAt")?,
+        updated_at: row.datetime("updatedAt")?,
+        ip_address: row.opt_string("ipAddress")?,
+        user_agent: row.opt_string("userAgent")?,
+        user_id: row.string("userId")?,
+        impersonated_by: row.opt_string("impersonatedBy")?,
+        active_organization_id: row.opt_string("activeOrganizationId")?,
         active: row.boolean("active")?,
     })
 }
@@ -569,18 +569,18 @@ fn decode_account(row: RowMap) -> AuthResult<Account> {
     let row = RowReader::new(&row);
     Ok(Account {
         id: row.string("id")?,
-        account_id: row.string("account_id")?,
-        provider_id: row.string("provider_id")?,
-        user_id: row.string("user_id")?,
-        access_token: row.opt_string("access_token")?,
-        refresh_token: row.opt_string("refresh_token")?,
-        id_token: row.opt_string("id_token")?,
-        access_token_expires_at: row.opt_datetime("access_token_expires_at")?,
-        refresh_token_expires_at: row.opt_datetime("refresh_token_expires_at")?,
+        account_id: row.string("accountId")?,
+        provider_id: row.string("providerId")?,
+        user_id: row.string("userId")?,
+        access_token: row.opt_string("accessToken")?,
+        refresh_token: row.opt_string("refreshToken")?,
+        id_token: row.opt_string("idToken")?,
+        access_token_expires_at: row.opt_datetime("accessTokenExpiresAt")?,
+        refresh_token_expires_at: row.opt_datetime("refreshTokenExpiresAt")?,
         scope: row.opt_string("scope")?,
         password: row.opt_string("password")?,
-        created_at: row.datetime("created_at")?,
-        updated_at: row.datetime("updated_at")?,
+        created_at: row.datetime("createdAt")?,
+        updated_at: row.datetime("updatedAt")?,
     })
 }
 
@@ -590,9 +590,9 @@ fn decode_verification(row: RowMap) -> AuthResult<Verification> {
         id: row.string("id")?,
         identifier: row.string("identifier")?,
         value: row.string("value")?,
-        expires_at: row.datetime("expires_at")?,
-        created_at: row.datetime("created_at")?,
-        updated_at: row.datetime("updated_at")?,
+        expires_at: row.datetime("expiresAt")?,
+        created_at: row.datetime("createdAt")?,
+        updated_at: row.datetime("updatedAt")?,
     })
 }
 
@@ -606,19 +606,19 @@ impl UserOps for SharedSqlDatabaseAdapter {
         let placeholders = self.placeholders(1, 11);
         let sql = format!(
             "INSERT INTO {table} ({id_col}, {email_col}, {name_col}, {image_col}, {verified_col}, \
-             {username_col}, {display_username_col}, {role_col}, {created_at_col}, {updated_at_col}, {metadata_col}) \
+             {username_col}, {displayUsername_col}, {role_col}, {createdAt_col}, {updatedAt_col}, {metadata_col}) \
              VALUES ({values}) RETURNING *",
             table = self.table("user"),
             id_col = quoted("id"),
             email_col = quoted("email"),
             name_col = quoted("name"),
             image_col = quoted("image"),
-            verified_col = quoted("email_verified"),
+            verified_col = quoted("emailVerified"),
             username_col = quoted("username"),
-            display_username_col = quoted("display_username"),
+            displayUsername_col = quoted("displayUsername"),
             role_col = quoted("role"),
-            created_at_col = quoted("created_at"),
-            updated_at_col = quoted("updated_at"),
+            createdAt_col = quoted("createdAt"),
+            updatedAt_col = quoted("updatedAt"),
             metadata_col = quoted("metadata"),
             values = placeholders.join(", "),
         );
@@ -695,7 +695,7 @@ impl UserOps for SharedSqlDatabaseAdapter {
     async fn update_user(&self, id: &str, update: UpdateUser) -> AuthResult<User> {
         let mut sets = vec![format!(
             "{} = {}",
-            quoted("updated_at"),
+            quoted("updatedAt"),
             self.placeholder(1)
         )];
         let mut params = vec![SqlParam::String(now_text())];
@@ -719,13 +719,13 @@ impl UserOps for SharedSqlDatabaseAdapter {
             push_update("image", SqlParam::String(value));
         }
         if let Some(value) = update.email_verified {
-            push_update("email_verified", SqlParam::Boolean(value));
+            push_update("emailVerified", SqlParam::Boolean(value));
         }
         if let Some(value) = update.username {
             push_update("username", SqlParam::String(value));
         }
         if let Some(value) = update.display_username {
-            push_update("display_username", SqlParam::String(value));
+            push_update("displayUsername", SqlParam::String(value));
         }
         if let Some(value) = update.role {
             push_update("role", SqlParam::String(value));
@@ -733,18 +733,18 @@ impl UserOps for SharedSqlDatabaseAdapter {
         if let Some(value) = update.banned {
             push_update("banned", SqlParam::Boolean(value));
             if !value {
-                push_update("ban_reason", SqlParam::Null);
-                push_update("ban_expires", SqlParam::Null);
+                push_update("banReason", SqlParam::Null);
+                push_update("banExpires", SqlParam::Null);
             }
         }
         if let Some(value) = update.ban_reason {
-            push_update("ban_reason", SqlParam::String(value));
+            push_update("banReason", SqlParam::String(value));
         }
         if let Some(value) = update.ban_expires {
-            push_update("ban_expires", SqlParam::String(value.to_rfc3339()));
+            push_update("banExpires", SqlParam::String(value.to_rfc3339()));
         }
         if let Some(value) = update.two_factor_enabled {
-            push_update("two_factor_enabled", SqlParam::Boolean(value));
+            push_update("twoFactorEnabled", SqlParam::Boolean(value));
         }
         if let Some(value) = update.metadata {
             push_update("metadata", SqlParam::Json(value));
@@ -832,7 +832,7 @@ impl UserOps for SharedSqlDatabaseAdapter {
         let order_clause = if let Some(sort_by) = &params.sort_by {
             let column = quoted(match sort_by.as_str() {
                 "name" => "name",
-                "createdAt" | "created_at" => "created_at",
+                "createdAt" | "created_at" => "createdAt",
                 _ => "email",
             });
             let direction = if params.sort_direction.as_deref() == Some("desc") {
@@ -842,7 +842,7 @@ impl UserOps for SharedSqlDatabaseAdapter {
             };
             format!(" ORDER BY {column} {direction}")
         } else {
-            format!(" ORDER BY {} DESC", quoted("created_at"))
+            format!(" ORDER BY {} DESC", quoted("createdAt"))
         };
 
         let count_sql = format!(
@@ -881,20 +881,20 @@ impl SessionOps for SharedSqlDatabaseAdapter {
         let now = now_text();
         let placeholders = self.placeholders(1, 11);
         let sql = format!(
-            "INSERT INTO {table} ({id_col}, {user_id_col}, {token_col}, {expires_at_col}, {created_at_col}, \
-             {updated_at_col}, {ip_address_col}, {user_agent_col}, {impersonated_by_col}, {active_org_col}, {active_col}) \
+            "INSERT INTO {table} ({id_col}, {userId_col}, {token_col}, {expiresAt_col}, {createdAt_col}, \
+             {updatedAt_col}, {ipAddress_col}, {userAgent_col}, {impersonatedBy_col}, {active_org_col}, {active_col}) \
              VALUES ({values}) RETURNING *",
             table = self.table("session"),
             id_col = quoted("id"),
-            user_id_col = quoted("user_id"),
+            userId_col = quoted("userId"),
             token_col = quoted("token"),
-            expires_at_col = quoted("expires_at"),
-            created_at_col = quoted("created_at"),
-            updated_at_col = quoted("updated_at"),
-            ip_address_col = quoted("ip_address"),
-            user_agent_col = quoted("user_agent"),
-            impersonated_by_col = quoted("impersonated_by"),
-            active_org_col = quoted("active_organization_id"),
+            expiresAt_col = quoted("expiresAt"),
+            createdAt_col = quoted("createdAt"),
+            updatedAt_col = quoted("updatedAt"),
+            ipAddress_col = quoted("ipAddress"),
+            userAgent_col = quoted("userAgent"),
+            impersonatedBy_col = quoted("impersonatedBy"),
+            active_org_col = quoted("activeOrganizationId"),
             active_col = quoted("active"),
             values = placeholders.join(", "),
         );
@@ -945,13 +945,13 @@ impl SessionOps for SharedSqlDatabaseAdapter {
 
     async fn get_user_sessions(&self, user_id: &str) -> AuthResult<Vec<Session>> {
         let sql = format!(
-            "SELECT * FROM {table} WHERE {user_id_col} = {placeholder} AND {active_col} = {active_value} ORDER BY {created_at_col}",
+            "SELECT * FROM {table} WHERE {userId_col} = {placeholder} AND {active_col} = {active_value} ORDER BY {createdAt_col}",
             table = self.table("session"),
-            user_id_col = quoted("user_id"),
+            userId_col = quoted("userId"),
             placeholder = self.placeholder(1),
             active_col = quoted("active"),
             active_value = self.dialect.bool_literal(true),
-            created_at_col = quoted("created_at"),
+            createdAt_col = quoted("createdAt"),
         );
         self.fetch_all_rows(sql, vec![SqlParam::String(user_id.to_string())])?
             .into_iter()
@@ -965,12 +965,12 @@ impl SessionOps for SharedSqlDatabaseAdapter {
         expires_at: DateTime<Utc>,
     ) -> AuthResult<()> {
         let sql = format!(
-            "UPDATE {table} SET {expires_at_col} = {expires_placeholder}, {updated_at_col} = {updated_placeholder} \
+            "UPDATE {table} SET {expiresAt_col} = {expires_placeholder}, {updatedAt_col} = {updated_placeholder} \
              WHERE {token_col} = {token_placeholder} AND {active_col} = {active_value}",
             table = self.table("session"),
-            expires_at_col = quoted("expires_at"),
+            expiresAt_col = quoted("expiresAt"),
             expires_placeholder = self.placeholder(1),
-            updated_at_col = quoted("updated_at"),
+            updatedAt_col = quoted("updatedAt"),
             updated_placeholder = self.placeholder(2),
             token_col = quoted("token"),
             token_placeholder = self.placeholder(3),
@@ -1001,9 +1001,9 @@ impl SessionOps for SharedSqlDatabaseAdapter {
 
     async fn delete_user_sessions(&self, user_id: &str) -> AuthResult<()> {
         let sql = format!(
-            "DELETE FROM {table} WHERE {user_id_col} = {placeholder}",
+            "DELETE FROM {table} WHERE {userId_col} = {placeholder}",
             table = self.table("session"),
-            user_id_col = quoted("user_id"),
+            userId_col = quoted("userId"),
             placeholder = self.placeholder(1),
         );
         self.execute_affected(sql, vec![SqlParam::String(user_id.to_string())])?;
@@ -1012,9 +1012,9 @@ impl SessionOps for SharedSqlDatabaseAdapter {
 
     async fn delete_expired_sessions(&self) -> AuthResult<usize> {
         let sql = format!(
-            "DELETE FROM {table} WHERE {expires_at_col} < {placeholder} OR {active_col} = {inactive_value}",
+            "DELETE FROM {table} WHERE {expiresAt_col} < {placeholder} OR {active_col} = {inactive_value}",
             table = self.table("session"),
-            expires_at_col = quoted("expires_at"),
+            expiresAt_col = quoted("expiresAt"),
             placeholder = self.placeholder(1),
             active_col = quoted("active"),
             inactive_value = self.dialect.bool_literal(false),
@@ -1028,12 +1028,12 @@ impl SessionOps for SharedSqlDatabaseAdapter {
         organization_id: Option<&str>,
     ) -> AuthResult<Session> {
         let sql = format!(
-            "UPDATE {table} SET {active_org_col} = {org_placeholder}, {updated_at_col} = {updated_placeholder} \
+            "UPDATE {table} SET {active_org_col} = {org_placeholder}, {updatedAt_col} = {updated_placeholder} \
              WHERE {token_col} = {token_placeholder} AND {active_col} = {active_value} RETURNING *",
             table = self.table("session"),
-            active_org_col = quoted("active_organization_id"),
+            active_org_col = quoted("activeOrganizationId"),
             org_placeholder = self.placeholder(1),
-            updated_at_col = quoted("updated_at"),
+            updatedAt_col = quoted("updatedAt"),
             updated_placeholder = self.placeholder(2),
             token_col = quoted("token"),
             token_placeholder = self.placeholder(3),
@@ -1064,23 +1064,23 @@ impl AccountOps for SharedSqlDatabaseAdapter {
         let now = now_text();
         let placeholders = self.placeholders(1, 13);
         let sql = format!(
-            "INSERT INTO {table} ({id_col}, {account_id_col}, {provider_id_col}, {user_id_col}, {access_token_col}, \
-             {refresh_token_col}, {id_token_col}, {access_expires_col}, {refresh_expires_col}, {scope_col}, \
-             {password_col}, {created_at_col}, {updated_at_col}) VALUES ({values}) RETURNING *",
+            "INSERT INTO {table} ({id_col}, {accountId_col}, {providerId_col}, {userId_col}, {accessToken_col}, \
+             {refreshToken_col}, {idToken_col}, {access_expires_col}, {refresh_expires_col}, {scope_col}, \
+             {password_col}, {createdAt_col}, {updatedAt_col}) VALUES ({values}) RETURNING *",
             table = self.table("account"),
             id_col = quoted("id"),
-            account_id_col = quoted("account_id"),
-            provider_id_col = quoted("provider_id"),
-            user_id_col = quoted("user_id"),
-            access_token_col = quoted("access_token"),
-            refresh_token_col = quoted("refresh_token"),
-            id_token_col = quoted("id_token"),
-            access_expires_col = quoted("access_token_expires_at"),
-            refresh_expires_col = quoted("refresh_token_expires_at"),
+            accountId_col = quoted("accountId"),
+            providerId_col = quoted("providerId"),
+            userId_col = quoted("userId"),
+            accessToken_col = quoted("accessToken"),
+            refreshToken_col = quoted("refreshToken"),
+            idToken_col = quoted("idToken"),
+            access_expires_col = quoted("accessTokenExpiresAt"),
+            refresh_expires_col = quoted("refreshTokenExpiresAt"),
             scope_col = quoted("scope"),
             password_col = quoted("password"),
-            created_at_col = quoted("created_at"),
-            updated_at_col = quoted("updated_at"),
+            createdAt_col = quoted("createdAt"),
+            updatedAt_col = quoted("updatedAt"),
             values = placeholders.join(", "),
         );
         let row = self.fetch_one_row(
@@ -1112,9 +1112,9 @@ impl AccountOps for SharedSqlDatabaseAdapter {
         let sql = format!(
             "SELECT * FROM {table} WHERE {provider_col} = {provider_placeholder} AND {account_col} = {account_placeholder}",
             table = self.table("account"),
-            provider_col = quoted("provider_id"),
+            provider_col = quoted("providerId"),
             provider_placeholder = self.placeholder(1),
-            account_col = quoted("account_id"),
+            account_col = quoted("accountId"),
             account_placeholder = self.placeholder(2),
         );
         self.fetch_optional_row(
@@ -1130,11 +1130,11 @@ impl AccountOps for SharedSqlDatabaseAdapter {
 
     async fn get_user_accounts(&self, user_id: &str) -> AuthResult<Vec<Account>> {
         let sql = format!(
-            "SELECT * FROM {table} WHERE {user_id_col} = {placeholder} ORDER BY {created_at_col}",
+            "SELECT * FROM {table} WHERE {userId_col} = {placeholder} ORDER BY {createdAt_col}",
             table = self.table("account"),
-            user_id_col = quoted("user_id"),
+            userId_col = quoted("userId"),
             placeholder = self.placeholder(1),
-            created_at_col = quoted("created_at"),
+            createdAt_col = quoted("createdAt"),
         );
         self.fetch_all_rows(sql, vec![SqlParam::String(user_id.to_string())])?
             .into_iter()
@@ -1145,7 +1145,7 @@ impl AccountOps for SharedSqlDatabaseAdapter {
     async fn update_account(&self, id: &str, update: UpdateAccount) -> AuthResult<Account> {
         let mut sets = vec![format!(
             "{} = {}",
-            quoted("updated_at"),
+            quoted("updatedAt"),
             self.placeholder(1)
         )];
         let mut params = vec![SqlParam::String(now_text())];
@@ -1160,23 +1160,23 @@ impl AccountOps for SharedSqlDatabaseAdapter {
         };
 
         if let Some(value) = update.access_token {
-            push_update("access_token", SqlParam::String(value));
+            push_update("accessToken", SqlParam::String(value));
         }
         if let Some(value) = update.refresh_token {
-            push_update("refresh_token", SqlParam::String(value));
+            push_update("refreshToken", SqlParam::String(value));
         }
         if let Some(value) = update.id_token {
-            push_update("id_token", SqlParam::String(value));
+            push_update("idToken", SqlParam::String(value));
         }
         if let Some(value) = update.access_token_expires_at {
             push_update(
-                "access_token_expires_at",
+                "accessTokenExpiresAt",
                 SqlParam::String(value.to_rfc3339()),
             );
         }
         if let Some(value) = update.refresh_token_expires_at {
             push_update(
-                "refresh_token_expires_at",
+                "refreshTokenExpiresAt",
                 SqlParam::String(value.to_rfc3339()),
             );
         }
@@ -1229,9 +1229,9 @@ impl VerificationOps for SharedSqlDatabaseAdapter {
             id_col = quoted("id"),
             identifier_col = quoted("identifier"),
             value_col = quoted("value"),
-            expires_col = quoted("expires_at"),
-            created_col = quoted("created_at"),
-            updated_col = quoted("updated_at"),
+            expires_col = quoted("expiresAt"),
+            created_col = quoted("createdAt"),
+            updated_col = quoted("updatedAt"),
             values = placeholders.join(", "),
         );
         let row = self.fetch_one_row(
@@ -1261,7 +1261,7 @@ impl VerificationOps for SharedSqlDatabaseAdapter {
             identifier_placeholder = self.placeholder(1),
             value_col = quoted("value"),
             value_placeholder = self.placeholder(2),
-            expires_col = quoted("expires_at"),
+            expires_col = quoted("expiresAt"),
             expires_placeholder = self.placeholder(3),
         );
         self.fetch_optional_row(
@@ -1282,7 +1282,7 @@ impl VerificationOps for SharedSqlDatabaseAdapter {
             table = self.table("verification"),
             value_col = quoted("value"),
             value_placeholder = self.placeholder(1),
-            expires_col = quoted("expires_at"),
+            expires_col = quoted("expiresAt"),
             expires_placeholder = self.placeholder(2),
         );
         self.fetch_optional_row(
@@ -1306,7 +1306,7 @@ impl VerificationOps for SharedSqlDatabaseAdapter {
             table = self.table("verification"),
             identifier_col = quoted("identifier"),
             identifier_placeholder = self.placeholder(1),
-            expires_col = quoted("expires_at"),
+            expires_col = quoted("expiresAt"),
             expires_placeholder = self.placeholder(2),
         );
         self.fetch_optional_row(
@@ -1333,7 +1333,7 @@ impl VerificationOps for SharedSqlDatabaseAdapter {
             identifier_placeholder = self.placeholder(1),
             value_col = quoted("value"),
             value_placeholder = self.placeholder(2),
-            expires_col = quoted("expires_at"),
+            expires_col = quoted("expiresAt"),
             expires_placeholder = self.placeholder(3),
         );
         self.fetch_optional_row(
@@ -1363,7 +1363,7 @@ impl VerificationOps for SharedSqlDatabaseAdapter {
         let sql = format!(
             "DELETE FROM {table} WHERE {expires_col} < {placeholder}",
             table = self.table("verification"),
-            expires_col = quoted("expires_at"),
+            expires_col = quoted("expiresAt"),
             placeholder = self.placeholder(1),
         );
         self.execute_affected(sql, vec![SqlParam::String(now_text())])

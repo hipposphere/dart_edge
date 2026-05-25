@@ -156,7 +156,7 @@ void main() {
     expect(DartEdgeAuthSchema.users.qualifiedName, 'user');
     expect(defaultTables.users.qualifiedName, 'user');
     expect(authTables.users.qualifiedName, 'auth.user');
-    expect(authTables.sessions.userId.qualifiedName, 'auth.session.user_id');
+    expect(authTables.sessions.userId.qualifiedName, 'auth.session.userId');
     expect(authTables.users.emailVerified, isA<SqlColumn<bool>>());
     expect(authTables.sessions.active, isA<SqlColumn<bool>>());
   });
