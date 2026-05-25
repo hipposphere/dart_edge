@@ -197,6 +197,7 @@ enum NativeDatabaseConfig {
     },
     Shared {
         dialect: NativeSharedSqlDialect,
+        schema: Option<String>,
         #[serde(default = "default_manage_migrations")]
         manage_migrations: bool,
     },
@@ -569,6 +570,7 @@ async fn build_auth(
         }
         NativeDatabaseConfig::Shared {
             dialect,
+            schema,
             manage_migrations,
         } => {
             let Some((shared_dialect, callbacks)) = shared_database else {
@@ -579,8 +581,17 @@ async fn build_auth(
                     "Shared database dialect did not match the requested callbacks.".to_string(),
                 );
             }
+            if shared_dialect == SharedSqlDialect::Sqlite && schema.is_some() {
+                return Err(
+                    "SQLite auth databases do not support schema-qualified tables.".to_string(),
+                );
+            }
 
-            let adapter = SharedSqlDatabaseAdapter::new(shared_dialect, callbacks);
+            let adapter = SharedSqlDatabaseAdapter::new(
+                shared_dialect,
+                callbacks,
+                normalize_database_schema(schema)?,
+            );
             if *manage_migrations {
                 adapter
                     .run_migrations()
@@ -1200,7 +1211,29 @@ fn default_database() -> NativeDatabaseConfig {
 }
 
 fn default_manage_migrations() -> bool {
-    true
+    false
+}
+
+fn normalize_database_schema(value: &Option<String>) -> Result<Option<String>, String> {
+    let Some(value) = value else {
+        return Ok(None);
+    };
+
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+
+    if !trimmed
+        .chars()
+        .all(|char| char == '_' || char.is_ascii_alphanumeric())
+    {
+        return Err(format!(
+            "Unsupported database schema name \"{trimmed}\". Use only ASCII letters, digits, and underscores."
+        ));
+    }
+
+    Ok(Some(trimmed.to_string()))
 }
 
 impl NativeAuthResponseHandle {

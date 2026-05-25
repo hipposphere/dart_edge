@@ -50,7 +50,10 @@ void main() {
       DartEdgeAuthConfig(
         secret: 'test-secret-key-that-is-at-least-32-characters-long',
         baseUrl: 'http://localhost:3000',
-        database: DartEdgeAuthDatabase.fromDatabase(database),
+        database: DartEdgeAuthDatabase.fromDatabase(
+          database,
+          manageMigrations: true,
+        ),
       ),
     );
 

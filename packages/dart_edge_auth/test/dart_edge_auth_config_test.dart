@@ -18,14 +18,11 @@ void main() {
     });
   });
 
-  test('serializes sqlite migration management config', () {
+  test('disables sqlite migration management by default', () {
     const config = DartEdgeAuthConfig(
       secret: 'test-secret-key-that-is-at-least-32-characters-long',
       baseUrl: 'http://localhost:3000',
-      database: DartEdgeAuthDatabase.sqlite(
-        path: 'auth.db',
-        manageMigrations: false,
-      ),
+      database: DartEdgeAuthDatabase.sqlite(path: 'auth.db'),
     );
 
     expect(config.toJson()['database'], {
@@ -33,6 +30,24 @@ void main() {
       'path': 'auth.db',
       'inMemory': false,
       'manageMigrations': false,
+    });
+  });
+
+  test('serializes sqlite migration management config', () {
+    const config = DartEdgeAuthConfig(
+      secret: 'test-secret-key-that-is-at-least-32-characters-long',
+      baseUrl: 'http://localhost:3000',
+      database: DartEdgeAuthDatabase.sqlite(
+        path: 'auth.db',
+        manageMigrations: true,
+      ),
+    );
+
+    expect(config.toJson()['database'], {
+      'kind': 'sqlite',
+      'path': 'auth.db',
+      'inMemory': false,
+      'manageMigrations': true,
     });
   });
 
@@ -88,6 +103,24 @@ void main() {
     });
   });
 
+  test('serializes shared postgres auth schema config', () {
+    final config = DartEdgeAuthConfig(
+      secret: 'test-secret-key-that-is-at-least-32-characters-long',
+      baseUrl: 'http://localhost:3000',
+      database: DartEdgeAuthDatabase.fromDatabase(
+        const _FakeSqlPool(SqlDialect.postgres),
+        schema: 'auth',
+      ),
+    );
+
+    expect(config.toJson()['database'], {
+      'kind': 'shared',
+      'dialect': 'postgres',
+      'schema': 'auth',
+      'manageMigrations': false,
+    });
+  });
+
   test('exposes auth schemas with stable schema ids and refs', () {
     expect(DartEdgeAuthUser.schemaId, 'DartEdgeAuthUser');
     expect(DartEdgeAuthUser.schemaRef.toJson(), {
@@ -115,4 +148,31 @@ void main() {
       ]),
     );
   });
+}
+
+final class _FakeSqlPool implements SqlPool {
+  const _FakeSqlPool(this.dialect);
+
+  @override
+  final SqlDialect dialect;
+
+  @override
+  Future<SqlResult> execute(SqlStatement statement) {
+    throw UnsupportedError('Fake pool only supports config serialization.');
+  }
+
+  @override
+  Future<T> withSession<T>(Future<T> Function(SqlSession session) action) {
+    throw UnsupportedError('Fake pool only supports config serialization.');
+  }
+
+  @override
+  Future<T> withTransaction<T>(
+    Future<T> Function(SqlTransaction transaction) action,
+  ) {
+    throw UnsupportedError('Fake pool only supports config serialization.');
+  }
+
+  @override
+  Future<void> close() async {}
 }

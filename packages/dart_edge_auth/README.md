@@ -135,7 +135,10 @@ final auth = DartEdgeAuth(
   DartEdgeAuthConfig(
     secret: 'change-me-to-a-long-secret-that-is-at-least-32-chars',
     baseUrl: 'http://localhost:8080',
-    database: DartEdgeAuthDatabase.fromDatabase(database),
+    database: DartEdgeAuthDatabase.fromDatabase(
+      database,
+      manageMigrations: true,
+    ),
   ),
 );
 ```
@@ -151,7 +154,10 @@ final auth = DartEdgeAuth(
   DartEdgeAuthConfig(
     secret: 'change-me-to-a-long-secret-that-is-at-least-32-chars',
     baseUrl: 'http://localhost:8080',
-    database: DartEdgeAuthDatabase.fromDatabase(database),
+    database: DartEdgeAuthDatabase.fromDatabase(
+      database,
+      manageMigrations: true,
+    ),
   ),
 );
 ```
@@ -163,8 +169,9 @@ If you want `dart_edge_auth` to own a separate backend, keep using the explicit
 `DartEdgeAuthDatabase.postgres(...)` or `DartEdgeAuthDatabase.sqlite(...)`
 constructors.
 
-If you manage the Better Auth schema yourself, disable auth-side migration
-management on the database config:
+Auth-side migration management is disabled by default for shared and dedicated
+SQLite database configs. Opt in only when you want `dart_edge_auth` to create
+or update the Better Auth tables:
 
 ```dart
 final auth = DartEdgeAuth(
@@ -173,13 +180,28 @@ final auth = DartEdgeAuth(
     baseUrl: 'http://localhost:8080',
     database: DartEdgeAuthDatabase.fromDatabase(
       database,
-      manageMigrations: false,
+      manageMigrations: true,
     ),
   ),
 );
 ```
 
-The same option is available on dedicated SQLite configs:
+Shared PostgreSQL databases can place Better Auth tables in a dedicated schema:
+
+```dart
+final auth = DartEdgeAuth(
+  DartEdgeAuthConfig(
+    secret: 'change-me-to-a-long-secret-that-is-at-least-32-chars',
+    baseUrl: 'http://localhost:8080',
+    database: DartEdgeAuthDatabase.fromDatabase(
+      database,
+      schema: 'auth',
+    ),
+  ),
+);
+```
+
+The migration option is also available on dedicated SQLite configs:
 
 ```dart
 final auth = DartEdgeAuth(
@@ -188,7 +210,7 @@ final auth = DartEdgeAuth(
     baseUrl: 'http://localhost:8080',
     database: DartEdgeAuthDatabase.sqlite(
       path: 'var/auth.db',
-      manageMigrations: false,
+      manageMigrations: true,
     ),
   ),
 );

@@ -26,10 +26,12 @@ sealed class DartEdgeAuthDatabase {
   /// Shares an existing native `dart_edge_sql` database with Better Auth.
   factory DartEdgeAuthDatabase.fromDatabase(
     SqlPool database, {
-    bool manageMigrations = true,
+    String? schema,
+    bool manageMigrations = false,
   }) {
     return SharedDartEdgeAuthDatabase(
       database: database,
+      schema: schema,
       manageMigrations: manageMigrations,
     );
   }
@@ -37,10 +39,12 @@ sealed class DartEdgeAuthDatabase {
   /// Derives a PostgreSQL auth database config from an existing native pool.
   factory DartEdgeAuthDatabase.fromPostgresPool(
     PostgresPool pool, {
-    bool manageMigrations = true,
+    String? schema,
+    bool manageMigrations = false,
   }) {
     return DartEdgeAuthDatabase.fromDatabase(
       pool,
+      schema: schema,
       manageMigrations: manageMigrations,
     );
   }
@@ -51,7 +55,7 @@ sealed class DartEdgeAuthDatabase {
   /// `:memory:` SQLite databases.
   factory DartEdgeAuthDatabase.fromSqliteDatabase(
     SqliteDatabase database, {
-    bool manageMigrations = true,
+    bool manageMigrations = false,
   }) {
     return DartEdgeAuthDatabase.fromDatabase(
       database,
@@ -94,7 +98,7 @@ final class SqliteDartEdgeAuthDatabase extends DartEdgeAuthDatabase {
   const SqliteDartEdgeAuthDatabase({
     required this.path,
     this.inMemory = false,
-    this.manageMigrations = true,
+    this.manageMigrations = false,
   });
 
   final String path;
@@ -114,10 +118,18 @@ final class SqliteDartEdgeAuthDatabase extends DartEdgeAuthDatabase {
 final class SharedDartEdgeAuthDatabase extends DartEdgeAuthDatabase {
   SharedDartEdgeAuthDatabase({
     required this.database,
-    this.manageMigrations = true,
-  });
+    String? schema,
+    this.manageMigrations = false,
+  }) : schema = _normalizeSchema(schema);
 
   final SqlPool database;
+
+  /// Optional PostgreSQL schema containing Better Auth tables.
+  ///
+  /// This is supported for shared PostgreSQL pools. SQLite databases do not
+  /// have a PostgreSQL-style schema namespace.
+  final String? schema;
+
   @override
   final bool manageMigrations;
 
@@ -127,6 +139,15 @@ final class SharedDartEdgeAuthDatabase extends DartEdgeAuthDatabase {
   Map<String, Object?> toJson() => {
     'kind': 'shared',
     'dialect': dialect.name,
+    if (schema case final schema?) 'schema': schema,
     'manageMigrations': manageMigrations,
   };
+}
+
+String? _normalizeSchema(String? value) {
+  final trimmed = value?.trim();
+  if (trimmed == null || trimmed.isEmpty) {
+    return null;
+  }
+  return trimmed;
 }
