@@ -192,12 +192,14 @@ enum NativeDatabaseConfig {
         path: String,
         #[serde(rename = "inMemory")]
         in_memory: bool,
+        #[serde(rename = "manageMigrations")]
         #[serde(default = "default_manage_migrations")]
         manage_migrations: bool,
     },
     Shared {
         dialect: NativeSharedSqlDialect,
         schema: Option<String>,
+        #[serde(rename = "manageMigrations")]
         #[serde(default = "default_manage_migrations")]
         manage_migrations: bool,
     },
