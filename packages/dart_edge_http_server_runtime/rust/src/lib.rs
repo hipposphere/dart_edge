@@ -1718,7 +1718,7 @@ async fn handle_web_socket_session(
         );
     }
     notify_transport_event(
-        runtime_state.callback,
+        &runtime_state,
         TransportEventKind::WebSocketOpened,
         session_id,
     );
@@ -1736,7 +1736,7 @@ async fn handle_web_socket_session(
                                 body: text.as_str().as_bytes().to_vec(),
                             },
                         );
-                        notify_transport_event(runtime_state.callback, TransportEventKind::WebSocketMessageReady, session_id);
+                        notify_transport_event(&runtime_state, TransportEventKind::WebSocketMessageReady, session_id);
                     }
                     Some(Ok(Message::Binary(bytes))) => {
                         push_web_socket_message(
@@ -1747,7 +1747,7 @@ async fn handle_web_socket_session(
                                 body: bytes.to_vec(),
                             },
                         );
-                        notify_transport_event(runtime_state.callback, TransportEventKind::WebSocketMessageReady, session_id);
+                        notify_transport_event(&runtime_state, TransportEventKind::WebSocketMessageReady, session_id);
                     }
                     Some(Ok(Message::Close(_))) | None => break,
                     Some(Ok(Message::Ping(_))) | Some(Ok(Message::Pong(_))) => {}
@@ -1778,7 +1778,7 @@ async fn handle_web_socket_session(
 
     let _ = WEB_SOCKET_SESSIONS.lock().unwrap().remove(&session_id);
     notify_transport_event(
-        runtime_state.callback,
+        &runtime_state,
         TransportEventKind::WebSocketClosed,
         session_id,
     );
@@ -1950,7 +1950,7 @@ async fn handle_web_transport_session(
         );
     }
     notify_transport_event(
-        runtime_state.callback,
+        &runtime_state,
         TransportEventKind::WebTransportOpened,
         session_id,
     );
@@ -1968,7 +1968,7 @@ async fn handle_web_transport_session(
                             },
                         );
                         notify_transport_event(
-                            runtime_state.callback,
+                            &runtime_state,
                             TransportEventKind::WebTransportDatagramReady,
                             session_id,
                         );
@@ -1986,7 +1986,7 @@ async fn handle_web_transport_session(
                                     WebTransportIncomingStream { session_id, body },
                                 );
                                 notify_transport_event(
-                                    runtime_state.callback,
+                                    &runtime_state,
                                     TransportEventKind::WebTransportStreamReady,
                                     session_id,
                                 );
@@ -2033,7 +2033,7 @@ async fn handle_web_transport_session(
 
     let _ = WEB_TRANSPORT_SESSIONS.lock().unwrap().remove(&session_id);
     notify_transport_event(
-        runtime_state.callback,
+        &runtime_state,
         TransportEventKind::WebTransportClosed,
         session_id,
     );
@@ -2057,11 +2057,7 @@ fn dispatch_request_to_dart(
         );
     }
 
-    if !notify_transport_event(
-        runtime_state.callback,
-        TransportEventKind::RequestReady,
-        request_id,
-    ) {
+    if !notify_transport_event(runtime_state, TransportEventKind::RequestReady, request_id) {
         let _ = PENDING_REQUESTS.lock().unwrap().remove(&request_id);
         return Err(response(
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -2104,11 +2100,19 @@ fn send_pending_response_message(
 }
 
 fn notify_transport_event(
-    callback: TransportEventCallback,
+    runtime_state: &ServerRuntimeState,
     event_kind: TransportEventKind,
     event_id: i64,
 ) -> bool {
-    callback(event_kind as i32, event_id);
+    if !SERVER_STATES
+        .lock()
+        .unwrap()
+        .contains_key(&runtime_state.server_id)
+    {
+        return false;
+    }
+
+    (runtime_state.callback)(event_kind as i32, event_id);
     true
 }
 
