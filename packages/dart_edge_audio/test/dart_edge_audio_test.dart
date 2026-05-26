@@ -262,6 +262,36 @@ void main() {
     expect(result.metadata.bitDepth, 16);
   });
 
+  test('initialize warms and reuses a shared audio worker', () async {
+    await DartEdgeAudio.initialize();
+    addTearDown(DartEdgeAudio.close);
+
+    final input = await File('test/fixtures/tone.mp3').readAsBytes();
+    final metadata = await DartEdgeAudio.probeBytes(
+      input,
+      fileNameHint: 'tone.mp3',
+      mimeTypeHint: 'audio/mpeg',
+    );
+
+    expect(metadata.container, 'mp3');
+    expect(metadata.codec, 'mp3');
+
+    final converted = await DartEdgeAudio.convertBytes(
+      AudioBytesConversionRequest(
+        inputBytes: input,
+        targetFormat: AudioTargetFormat.wavPcm16,
+        targetSampleRate: 16000,
+        channelLayout: AudioChannelLayout.mono,
+        fileNameHint: 'tone.mp3',
+        mimeTypeHint: 'audio/mpeg',
+      ),
+    );
+
+    expect(converted.mimeType, 'audio/wav');
+    expect(converted.metadata.sampleRate, 16000);
+    expect(converted.metadata.channelCount, 1);
+  });
+
   test('probeFile surfaces missing-file errors', () async {
     await expectLater(
       () => DartEdgeAudio.probeFile('test/fixtures/missing.mp3'),

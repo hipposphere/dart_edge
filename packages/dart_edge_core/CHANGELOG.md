@@ -1,3 +1,7 @@
+## 0.3.19
+
+- Add a reusable long-lived isolate request worker for native-backed services.
+
 ## 0.3.17
 
 - Add first-class HTTP request observer contracts for route-level

@@ -14,16 +14,46 @@ import 'audio_file_conversion_result.dart';
 import 'audio_metadata.dart';
 import 'audio_probe_mode.dart';
 import 'audio_target_format.dart';
+import 'dart_edge_audio_worker.dart';
 import 'native/dart_edge_audio_native.dart';
 
 /// Stateless facade for native-backed audio probing and conversion.
 abstract final class DartEdgeAudio {
+  static DartEdgeAudioWorker? _sharedWorker;
+  static Future<DartEdgeAudioWorker>? _sharedWorkerFuture;
+
+  /// Starts and warms a shared worker used by the static facade methods.
+  ///
+  /// Await this during server startup to move native audio initialization and
+  /// isolate startup out of the first real request.
+  static Future<void> initialize() async {
+    await _ensureSharedWorker();
+  }
+
+  /// Closes the shared worker created by [initialize].
+  static Future<void> close() async {
+    final worker = _sharedWorker;
+    final workerFuture = _sharedWorkerFuture;
+    _sharedWorker = null;
+    _sharedWorkerFuture = null;
+    if (worker != null) {
+      await worker.close();
+      return;
+    }
+    final pendingWorker = await workerFuture;
+    await pendingWorker?.close();
+  }
+
   static Future<AudioMetadata> probeFile(
     String path, {
     AudioProbeMode mode = AudioProbeMode.adaptive,
   }) async {
     if (path.isEmpty) {
       throw ArgumentError.value(path, 'path', 'path must not be empty.');
+    }
+    final worker = _sharedWorker;
+    if (worker != null) {
+      return worker.probeFile(path, mode: mode);
     }
 
     final resultJson = await Isolate.run(
@@ -39,6 +69,15 @@ abstract final class DartEdgeAudio {
     AudioProbeMode mode = AudioProbeMode.adaptive,
   }) async {
     _ensureBytes(bytes);
+    final worker = _sharedWorker;
+    if (worker != null) {
+      return worker.probeBytes(
+        bytes,
+        fileNameHint: fileNameHint,
+        mimeTypeHint: mimeTypeHint,
+        mode: mode,
+      );
+    }
 
     final transferable = TransferableTypedData.fromList([bytes]);
     final resultJson = await Isolate.run(() {
@@ -67,6 +106,15 @@ abstract final class DartEdgeAudio {
     AudioProbeMode mode = AudioProbeMode.adaptive,
   }) async {
     _ensureNativeBytes(bytes);
+    final worker = _sharedWorker;
+    if (worker != null) {
+      return worker.probeNativeBytes(
+        bytes,
+        fileNameHint: fileNameHint,
+        mimeTypeHint: mimeTypeHint,
+        mode: mode,
+      );
+    }
 
     final bytesPtrAddress = bytes.ptr.address;
     final bytesLength = bytes.len;
@@ -90,6 +138,10 @@ abstract final class DartEdgeAudio {
     AudioFileConversionRequest request,
   ) async {
     _ensureFileRequest(request);
+    final worker = _sharedWorker;
+    if (worker != null) {
+      return worker.convertFile(request);
+    }
     final requestJson = jsonEncode(request.toJson());
 
     final resultJson = await Isolate.run(
@@ -103,6 +155,10 @@ abstract final class DartEdgeAudio {
   ) async {
     _ensureBytes(request.inputBytes);
     _ensurePositiveSampleRate(request.targetSampleRate);
+    final worker = _sharedWorker;
+    if (worker != null) {
+      return worker.convertBytes(request);
+    }
 
     final requestJson = jsonEncode(request.toJson());
     final transferable = TransferableTypedData.fromList([request.inputBytes]);
@@ -143,6 +199,17 @@ abstract final class DartEdgeAudio {
   }) async {
     _ensureNativeBytes(bytes);
     _ensurePositiveSampleRate(targetSampleRate);
+    final worker = _sharedWorker;
+    if (worker != null) {
+      return worker.convertNativeBytes(
+        bytes: bytes,
+        targetFormat: targetFormat,
+        targetSampleRate: targetSampleRate,
+        channelLayout: channelLayout,
+        fileNameHint: fileNameHint,
+        mimeTypeHint: mimeTypeHint,
+      );
+    }
 
     final requestJson = jsonEncode({
       'targetFormat': targetFormat.wireValue,
@@ -223,6 +290,25 @@ abstract final class DartEdgeAudio {
         'sampleRate must be at least 1.',
       );
     }
+  }
+
+  static Future<DartEdgeAudioWorker> _ensureSharedWorker() {
+    final worker = _sharedWorker;
+    if (worker != null) {
+      return Future.value(worker);
+    }
+    return _sharedWorkerFuture ??= DartEdgeAudioWorker.spawn(initialize: true)
+        .then(
+          (worker) {
+            _sharedWorker = worker;
+            _sharedWorkerFuture = null;
+            return worker;
+          },
+          onError: (Object error, StackTrace stackTrace) {
+            _sharedWorkerFuture = null;
+            Error.throwWithStackTrace(error, stackTrace);
+          },
+        );
   }
 }
 

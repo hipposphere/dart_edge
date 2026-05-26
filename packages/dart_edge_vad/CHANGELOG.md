@@ -1,3 +1,7 @@
+## 0.1.3
+
+- Move `SileroVadWorker` onto the shared `DartEdgeIsolateWorker` foundation.
+
 ## 0.1.2
 
 - Add pooled native Silero ONNX sessions for concurrent VAD requests.

@@ -1,8 +1,9 @@
-import 'dart:async';
 import 'dart:convert';
 import 'dart:ffi';
 import 'dart:isolate';
 import 'dart:typed_data';
+
+import 'package:dart_edge_core/dart_edge_core.dart';
 
 import 'native/dart_edge_vad_native.dart';
 import 'native_pcm16_buffer.dart';
@@ -17,46 +18,27 @@ import 'vad_result.dart';
 /// session pool, so multiple workers can run concurrently up to that pool size.
 final class SileroVadWorker implements Vad {
   SileroVadWorker._({
-    required this._isolate,
-    required this._sendPort,
-    required ReceivePort receivePort,
+    required this._worker,
     required this.model,
     required this.options,
-  }) : _receivePort = receivePort {
-    _subscription = receivePort.listen(_handleMessage);
-  }
+  });
 
   final SileroVadModel model;
 
   final SileroVadOptions options;
 
-  final Isolate _isolate;
-  final SendPort _sendPort;
-  final ReceivePort _receivePort;
-  late final StreamSubscription<Object?> _subscription;
-  final _pending = <int, Completer<String>>{};
-  var _nextId = 0;
-  var _closed = false;
+  final DartEdgeIsolateWorker _worker;
 
   static Future<SileroVadWorker> spawn({
     SileroVadModel model = SileroVadModel.latest,
     SileroVadOptions options = const SileroVadOptions(),
     bool initialize = false,
   }) async {
-    final readyPort = ReceivePort();
-    final isolate = await Isolate.spawn(
-      _sileroVadWorkerMain,
-      readyPort.sendPort,
-    );
-    final sendPort = await readyPort.first as SendPort;
-    readyPort.close();
-    final receivePort = ReceivePort();
-    sendPort.send(['listen', receivePort.sendPort]);
-
     final worker = SileroVadWorker._(
-      isolate: isolate,
-      sendPort: sendPort,
-      receivePort: receivePort,
+      worker: await DartEdgeIsolateWorker.spawn(
+        handler: _handleSileroVadWorkerRequest,
+        debugName: 'SileroVadWorker',
+      ),
       model: model,
       options: options,
     );
@@ -79,9 +61,6 @@ final class SileroVadWorker implements Vad {
     required Int16List pcm16KhzMono,
     required int sampleRateHz,
   }) async {
-    if (_closed) {
-      throw StateError('Silero VAD worker is closed.');
-    }
     if (sampleRateHz != model.sampleRateHz) {
       throw ArgumentError.value(
         sampleRateHz,
@@ -95,12 +74,8 @@ final class SileroVadWorker implements Vad {
       pcm16KhzMono.offsetInBytes,
       pcm16KhzMono.lengthInBytes,
     );
-    final id = _nextId++;
-    final completer = Completer<String>();
-    _pending[id] = completer;
-    _sendPort.send([
+    final resultJson = await _worker.request<String>([
       'detect',
-      id,
       sileroVadRequestJson(
         model: model,
         options: options,
@@ -109,7 +84,6 @@ final class SileroVadWorker implements Vad {
       TransferableTypedData.fromList([bytes]),
     ]);
 
-    final resultJson = await completer.future;
     return readVadResult(
       jsonDecode(resultJson) as Map<String, Object?>,
       expectedSampleRateHz: sampleRateHz,
@@ -140,9 +114,6 @@ final class SileroVadWorker implements Vad {
     required int sampleLength,
     required int sampleRateHz,
   }) async {
-    if (_closed) {
-      throw StateError('Silero VAD worker is closed.');
-    }
     if (sampleRateHz != model.sampleRateHz) {
       throw ArgumentError.value(
         sampleRateHz,
@@ -160,12 +131,8 @@ final class SileroVadWorker implements Vad {
       );
     }
 
-    final id = _nextId++;
-    final completer = Completer<String>();
-    _pending[id] = completer;
-    _sendPort.send([
+    final resultJson = await _worker.request<String>([
       'detectPointer',
-      id,
       sileroVadRequestJson(
         model: model,
         options: options,
@@ -175,7 +142,6 @@ final class SileroVadWorker implements Vad {
       pcm16ByteLength,
     ]);
 
-    final resultJson = await completer.future;
     return readVadResult(
       jsonDecode(resultJson) as Map<String, Object?>,
       expectedSampleRateHz: sampleRateHz,
@@ -183,81 +149,30 @@ final class SileroVadWorker implements Vad {
     );
   }
 
-  Future<void> close() async {
-    if (_closed) {
-      return;
-    }
-    _closed = true;
-    _sendPort.send(['close']);
-    await _subscription.cancel();
-    _receivePort.close();
-    _isolate.kill(priority: Isolate.immediate);
-    for (final completer in _pending.values) {
-      if (!completer.isCompleted) {
-        completer.completeError(StateError('Silero VAD worker is closed.'));
-      }
-    }
-    _pending.clear();
-  }
-
-  void _handleMessage(Object? message) {
-    final values = message as List<Object?>;
-    final id = values[0] as int;
-    final success = values[1] as bool;
-    final payload = values[2] as String;
-    final completer = _pending.remove(id);
-    if (completer == null || completer.isCompleted) {
-      return;
-    }
-    if (success) {
-      completer.complete(payload);
-    } else {
-      completer.completeError(StateError(payload));
-    }
-  }
+  Future<void> close() => _worker.close();
 }
 
-void _sileroVadWorkerMain(SendPort readyPort) {
-  final commandPort = ReceivePort();
-  SendPort? responsePort;
-  readyPort.send(commandPort.sendPort);
-
-  commandPort.listen((message) {
-    final values = message as List<Object?>;
-    switch (values[0]) {
-      case 'listen':
-        responsePort = values[1] as SendPort;
-      case 'close':
-        commandPort.close();
-      case 'detect':
-        final id = values[1] as int;
-        final requestJson = values[2] as String;
-        final transferable = values[3] as TransferableTypedData;
-        try {
-          final input = transferable.materialize().asUint8List();
-          final resultJson = DartEdgeVadNative.detectSilero(requestJson, input);
-          responsePort?.send([id, true, resultJson]);
-        } catch (error) {
-          responsePort?.send([id, false, error.toString()]);
-        }
-      case 'detectPointer':
-        final id = values[1] as int;
-        final requestJson = values[2] as String;
-        final inputAddress = values[3] as int;
-        final inputLength = values[4] as int;
-        try {
-          final inputPtr = inputAddress == 0
-              ? nullptr
-              : Pointer<Uint8>.fromAddress(inputAddress);
-          final resultJson = DartEdgeVadNative.detectSileroPointer(
-            requestJson,
-            inputPtr,
-            inputLength,
-          );
-          responsePort?.send([id, true, resultJson]);
-        } catch (error) {
-          responsePort?.send([id, false, error.toString()]);
-        }
-    }
-  });
+Object? _handleSileroVadWorkerRequest(Object? request) {
+  final values = request as List<Object?>;
+  switch (values[0]) {
+    case 'detect':
+      final requestJson = values[1] as String;
+      final transferable = values[2] as TransferableTypedData;
+      final input = transferable.materialize().asUint8List();
+      return DartEdgeVadNative.detectSilero(requestJson, input);
+    case 'detectPointer':
+      final requestJson = values[1] as String;
+      final inputAddress = values[2] as int;
+      final inputLength = values[3] as int;
+      final inputPtr = inputAddress == 0
+          ? nullptr
+          : Pointer<Uint8>.fromAddress(inputAddress);
+      return DartEdgeVadNative.detectSileroPointer(
+        requestJson,
+        inputPtr,
+        inputLength,
+      );
+    default:
+      throw StateError('Unknown Silero VAD worker command: ${values[0]}');
+  }
 }

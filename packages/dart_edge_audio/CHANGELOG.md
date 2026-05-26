@@ -1,3 +1,8 @@
+## 0.3.6
+
+- Add a long-lived `DartEdgeAudioWorker` and `DartEdgeAudio.initialize()` for
+  warming audio probing/conversion before latency-sensitive requests.
+
 ## 0.3.4
 
 - Bump the native artifact version to 0.1.3 for Rust 1.95 and dependency
