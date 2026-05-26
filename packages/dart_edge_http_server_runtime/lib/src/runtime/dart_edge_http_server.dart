@@ -278,7 +278,10 @@ class DartEdge<TServices> extends Router<TServices> {
     );
     await _observeHttpRequest(ctx, compiledRoute, () async {
       for (final guard in compiledRoute.guards) {
-        final decision = await Future.sync(() => guard.authorize(ctx));
+        final decisionResult = guard.authorize(ctx);
+        final decision = decisionResult is Future<GuardResult>
+            ? await decisionResult
+            : decisionResult;
         if (!decision.isAllowed) {
           final response = encodeResponse(
             spec: compiledRoute.options.responses.success,
@@ -299,7 +302,8 @@ class DartEdge<TServices> extends Router<TServices> {
         }
       }
 
-      final body = await Future.sync(() => compiledRoute.route.handle(ctx));
+      final bodyResult = compiledRoute.route.handle(ctx);
+      final body = bodyResult is Future ? await bodyResult : bodyResult;
       final sseResponse = _resolveSseResponse(body, ctx.res);
       if (sseResponse != null) {
         await _streamSseResponse(requestId, sseResponse);

@@ -7,18 +7,16 @@ final class EncodedResponse {
   const EncodedResponse({
     required this.status,
     required this.contentType,
-    required this._bodyBytes,
+    required this.bodyBytes,
     this.headers = const <HttpHeader>[],
   });
 
   final int status;
   final String contentType;
   final List<HttpHeader> headers;
-  final Uint8List _bodyBytes;
+  final Uint8List bodyBytes;
 
-  Uint8List get bodyBytes => Uint8List.fromList(_bodyBytes);
-
-  String get body => utf8.decode(_bodyBytes, allowMalformed: true);
+  String get body => utf8.decode(bodyBytes, allowMalformed: true);
 }
 
 EncodedResponse encodeResponse({
