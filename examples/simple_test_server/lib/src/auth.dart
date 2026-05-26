@@ -7,6 +7,7 @@ DartEdgeAuth buildAuth(
 }) {
   return DartEdgeAuth(
     DartEdgeAuthConfig(
+      workerPoolSize: 1,
       secret:
           '1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef',
       baseUrl: baseUrl,

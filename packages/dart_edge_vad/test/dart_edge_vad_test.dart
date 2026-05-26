@@ -101,6 +101,47 @@ void main() {
     },
   );
 
+  test('Silero VAD worker pool handles concurrent requests', () async {
+    final pool = await SileroVadWorkerPool.spawn(size: 2, initialize: true);
+    try {
+      final results = await Future.wait([
+        pool.detect(pcm16KhzMono: Int16List(16000), sampleRateHz: 16000),
+        pool.detect(pcm16KhzMono: Int16List(512), sampleRateHz: 16000),
+      ]);
+
+      expect(results[0].sampleRateHz, 16000);
+      expect(results[0].totalSamples, 16000);
+      expect(results[0].hasSpeech, isFalse);
+      expect(results[1].sampleRateHz, 16000);
+      expect(results[1].totalSamples, 512);
+      expect(results[1].hasSpeech, isFalse);
+    } finally {
+      await pool.close();
+    }
+  });
+
+  test(
+    'Silero VAD worker pool detects from native PCM16 without wrapper copy',
+    () async {
+      final buffer = NativePcm16Buffer(16000);
+      final pool = await SileroVadWorkerPool.spawn(size: 2);
+      try {
+        final result = await pool.detectNativeBuffer(
+          pcm16KhzMono: buffer,
+          sampleRateHz: 16000,
+        );
+
+        expect(result.sampleRateHz, 16000);
+        expect(result.totalSamples, 16000);
+        expect(result.hasSpeech, isFalse);
+        expect(result.segments, isEmpty);
+      } finally {
+        await pool.close();
+        buffer.close();
+      }
+    },
+  );
+
   test('Silero VAD streaming session processes incremental chunks', () {
     final stream = SileroVadStreamingSession();
     try {

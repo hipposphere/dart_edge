@@ -34,6 +34,8 @@ Future<void> main() async {
 
 - `SileroVad`: app-facing detector facade
 - `SileroVadWorker`: long-lived isolate-backed detector for repeated requests
+- `SileroVadWorkerPool`: pool of long-lived isolate-backed detectors for
+  concurrent repeated requests
 - `SileroVadStreamingSession`: stateful chunked detector for low-latency input
 - `NativePcm16Buffer`: native-memory PCM16 input buffer for avoiding wrapper
   copies before FFI
@@ -61,9 +63,11 @@ dart pub -C packages/dart_edge_vad run ffigen --config tool/ffigen.yaml
 
 `SileroVad.detect` remains the simplest API and offloads work with
 `Isolate.run`. For repeated calls, prefer `SileroVadWorker.spawn()` so the
-worker isolate stays alive. For live audio, prefer `SileroVadStreamingSession`
-and feed 16 kHz mono PCM16 chunks; the native stream keeps Silero state between
-calls and only emits newly finalized segments.
+worker isolate stays alive. For concurrent repeated calls, prefer
+`SileroVadWorkerPool.spawn(size: n)` so requests use the shared Dart Edge
+isolate worker pool. For live audio, prefer `SileroVadStreamingSession` and feed
+16 kHz mono PCM16 chunks; the native stream keeps Silero state between calls and
+only emits newly finalized segments.
 
 Native Silero sessions are pooled. Set `DART_EDGE_VAD_SESSION_POOL_SIZE` to tune
 the maximum number of concurrent ONNX sessions; by default the pool is capped at
@@ -73,7 +77,8 @@ Call `initialize()` during application startup to pay native ONNX cold-start
 latency before real audio arrives. `SileroVad.initialize(sessionCount: n)` warms
 multiple native sessions for concurrent traffic, and
 `SileroVadWorker.spawn(initialize: true)` warms a long-lived worker before it is
-returned.
+returned. `SileroVadWorkerPool.spawn(initialize: true)` warms each worker in the
+pool.
 
 The standard `Int16List` APIs copy Dart heap memory into native memory before
 calling FFI because ordinary Dart typed lists do not expose stable C pointers.

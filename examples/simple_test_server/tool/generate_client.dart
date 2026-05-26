@@ -10,6 +10,7 @@ Future<void> main() async {
   final server = DartEdge<SimpleTestServices>();
   final auth = DartEdgeAuth(
     const DartEdgeAuthConfig(
+      workerPoolSize: 1,
       secret:
           '1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef',
       baseUrl: 'http://localhost:3100',

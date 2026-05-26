@@ -6,6 +6,7 @@ import 'benchmark_config.dart';
 DartEdgeAuth createAuth({required int port, required SqliteDatabase database}) {
   return DartEdgeAuth(
     DartEdgeAuthConfig(
+      workerPoolSize: 1,
       secret: benchmarkAuthSecret,
       baseUrl: benchmarkOriginForPort(port),
       basePath: '/auth',

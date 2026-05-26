@@ -19,7 +19,7 @@ final class DartEdgeAuthConfig {
     this.enableEmailVerification = false,
     this.enableRateLimit = true,
     this.admin,
-  });
+  }) : assert(workerPoolSize > 0, 'workerPoolSize must be at least 1.');
 
   /// Secret used to sign tokens and session state.
   final String secret;
