@@ -35,7 +35,7 @@ void main() {
 
     for (final fixture in cases) {
       test('reads ${fixture.container} metadata', () async {
-        final metadata = await DartEdgeAudio.probeFile(fixture.path);
+        final metadata = await DartEdgeAudio.probeFile(fixture.resolvedPath);
         _expectFixtureMetadata(
           metadata,
           container: fixture.container,
@@ -46,13 +46,14 @@ void main() {
   });
 
   test('probeFile supports explicit shallow and full modes', () async {
+    final toneMp3 = _fixturePath('tone.mp3');
     final shallow = await DartEdgeAudio.probeFile(
-      'test/fixtures/tone.mp3',
+      toneMp3,
       mode: AudioProbeMode.shallow,
     );
-    final adaptive = await DartEdgeAudio.probeFile('test/fixtures/tone.mp3');
+    final adaptive = await DartEdgeAudio.probeFile(toneMp3);
     final full = await DartEdgeAudio.probeFile(
-      'test/fixtures/tone.mp3',
+      toneMp3,
       mode: AudioProbeMode.full,
     );
 
@@ -95,7 +96,7 @@ void main() {
 
     for (final fixture in cases) {
       test('reads ${fixture.container} metadata from bytes', () async {
-        final bytes = await File(fixture.path).readAsBytes();
+        final bytes = await File(fixture.resolvedPath).readAsBytes();
         final metadata = await DartEdgeAudio.probeBytes(
           bytes,
           fileNameHint: fixture.fileName,
@@ -113,7 +114,7 @@ void main() {
   test(
     'probeBytes adaptive uses shallow metadata when duration is available',
     () async {
-      final bytes = await File('test/fixtures/tone.wav').readAsBytes();
+      final bytes = await File(_fixturePath('tone.wav')).readAsBytes();
       final shallow = await DartEdgeAudio.probeBytes(
         bytes,
         fileNameHint: 'tone.wav',
@@ -154,7 +155,7 @@ void main() {
       test(
         'reads ${fixture.container} metadata from borrowed native bytes',
         () async {
-          final bytes = await File(fixture.path).readAsBytes();
+          final bytes = await File(fixture.resolvedPath).readAsBytes();
           final nativeBytes = _allocateNativeBytes(bytes);
           addTearDown(nativeBytes.dispose);
 
@@ -180,7 +181,7 @@ void main() {
     final outputPath = '${tempDir.path}/converted.wav';
     final result = await DartEdgeAudio.convertFile(
       AudioFileConversionRequest(
-        inputPath: 'test/fixtures/tone.mp3',
+        inputPath: _fixturePath('tone.mp3'),
         outputPath: outputPath,
         targetFormat: AudioTargetFormat.wavPcm16,
         targetSampleRate: 16000,
@@ -206,7 +207,7 @@ void main() {
   });
 
   test('convertBytes returns wav bytes and metadata', () async {
-    final input = await File('test/fixtures/tone.flac').readAsBytes();
+    final input = await File(_fixturePath('tone.flac')).readAsBytes();
 
     final result = await DartEdgeAudio.convertBytes(
       AudioBytesConversionRequest(
@@ -240,7 +241,7 @@ void main() {
   });
 
   test('convertNativeBytes returns wav bytes and metadata', () async {
-    final input = await File('test/fixtures/tone.flac').readAsBytes();
+    final input = await File(_fixturePath('tone.flac')).readAsBytes();
     final nativeBytes = _allocateNativeBytes(input);
     addTearDown(nativeBytes.dispose);
 
@@ -266,7 +267,7 @@ void main() {
     await DartEdgeAudio.initialize();
     addTearDown(DartEdgeAudio.close);
 
-    final input = await File('test/fixtures/tone.mp3').readAsBytes();
+    final input = await File(_fixturePath('tone.mp3')).readAsBytes();
     final metadata = await DartEdgeAudio.probeBytes(
       input,
       fileNameHint: 'tone.mp3',
@@ -294,7 +295,7 @@ void main() {
 
   test('probeFile surfaces missing-file errors', () async {
     await expectLater(
-      () => DartEdgeAudio.probeFile('test/fixtures/missing.mp3'),
+      () => DartEdgeAudio.probeFile(_fixturePath('missing.mp3')),
       throwsA(isA<StateError>()),
     );
   });
@@ -320,7 +321,7 @@ void main() {
     await expectLater(
       () => DartEdgeAudio.convertFile(
         AudioFileConversionRequest(
-          inputPath: 'test/fixtures/tone.mp3',
+          inputPath: _fixturePath('tone.mp3'),
           outputPath: outputFile.path,
           targetFormat: AudioTargetFormat.wavPcm16,
           overwriteExisting: false,
@@ -386,6 +387,18 @@ final class _FixtureCase {
   final String? mimeType;
 
   String get fileName => path.split('/').last;
+
+  String get resolvedPath => _fixturePath(fileName);
+}
+
+String _fixturePath(String fileName) {
+  final packageFixture = File(
+    'packages/dart_edge_audio/test/fixtures/$fileName',
+  );
+  if (packageFixture.existsSync()) {
+    return packageFixture.path;
+  }
+  return 'test/fixtures/$fileName';
 }
 
 void _expectFixtureMetadata(
