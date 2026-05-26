@@ -2,15 +2,15 @@ use std::collections::{HashMap, VecDeque};
 use std::ffi::{CStr, CString, c_char};
 use std::net::{IpAddr, SocketAddr};
 use std::sync::atomic::{AtomicI64, Ordering};
-use std::sync::{Mutex, RwLock};
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
 use axum::Router;
 use axum::body::{Body, Bytes};
-use axum::extract::FromRequestParts;
 use axum::extract::Request;
 use axum::extract::ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade, close_code};
+use axum::extract::{FromRequestParts, State};
 use axum::http::{HeaderMap, HeaderName, HeaderValue, Method, Response, StatusCode, header};
 use axum::middleware::{self, Next};
 use axum::response::IntoResponse;
@@ -34,29 +34,27 @@ use wtransport::{
     ServerConfig as WebTransportServerConfig, VarInt,
 };
 
-const DART_EDGE_HTTP_SERVER_RUNTIME_NATIVE_ABI_VERSION: i32 = 12;
+const DART_EDGE_HTTP_SERVER_RUNTIME_NATIVE_ABI_VERSION: i32 = 13;
 const SCHEMA_REGISTRY_URI: &str = "urn:dart-edge:schema-registry";
 
 type TransportEventCallback = extern "C" fn(i32, i64);
 
 static NEXT_REQUEST_ID: AtomicI64 = AtomicI64::new(1);
+static NEXT_SERVER_ID: AtomicI64 = AtomicI64::new(1);
 static NEXT_WEB_SOCKET_SESSION_ID: AtomicI64 = AtomicI64::new(1);
 static NEXT_WEB_TRANSPORT_SESSION_ID: AtomicI64 = AtomicI64::new(1);
 static LAST_ERROR: Lazy<Mutex<Option<String>>> = Lazy::new(|| Mutex::new(None));
-static TRANSPORT_EVENT_CALLBACK: Lazy<Mutex<Option<TransportEventCallback>>> =
-    Lazy::new(|| Mutex::new(None));
 static PENDING_REQUESTS: Lazy<Mutex<HashMap<i64, PendingRequest>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
 static WEB_SOCKET_SESSIONS: Lazy<Mutex<HashMap<i64, WebSocketSessionState>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
 static WEB_TRANSPORT_SESSIONS: Lazy<Mutex<HashMap<i64, WebTransportSessionState>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
-static SERVER_STATE: Lazy<Mutex<Option<ServerState>>> = Lazy::new(|| Mutex::new(None));
-static COMPILED_ROUTES: Lazy<RwLock<Vec<CompiledRoute>>> = Lazy::new(|| RwLock::new(Vec::new()));
-static COMPILED_SCHEMAS: Lazy<RwLock<HashMap<String, jsonschema::Validator>>> =
-    Lazy::new(|| RwLock::new(HashMap::new()));
+static SERVER_STATES: Lazy<Mutex<HashMap<i64, ServerState>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
 
 struct PendingRequest {
+    server_id: i64,
     request: Option<TransportRequest>,
     response_tx: mpsc::UnboundedSender<PendingResponseMessage>,
 }
@@ -64,6 +62,14 @@ struct PendingRequest {
 struct ServerState {
     shutdown_tx: Option<watch::Sender<bool>>,
     join_handle: Option<thread::JoinHandle<()>>,
+}
+
+#[derive(Clone)]
+struct ServerRuntimeState {
+    server_id: i64,
+    routes: Arc<Vec<CompiledRoute>>,
+    schemas: Arc<HashMap<String, jsonschema::Validator>>,
+    callback: TransportEventCallback,
 }
 
 #[repr(C)]
@@ -259,6 +265,7 @@ enum PendingResponseMessage {
 }
 
 struct WebSocketSessionState {
+    server_id: i64,
     connection: Option<WebSocketConnection>,
     messages: VecDeque<WebSocketIncomingMessage>,
     command_tx: mpsc::UnboundedSender<WebSocketCommand>,
@@ -280,6 +287,7 @@ struct WebSocketIncomingMessage {
 }
 
 struct WebTransportSessionState {
+    server_id: i64,
     connection: Option<WebTransportConnectionInfo>,
     datagrams: VecDeque<WebTransportIncomingDatagram>,
     streams: VecDeque<WebTransportIncomingStream>,
@@ -443,6 +451,7 @@ struct ValidatedRouteRequest {
     query: HashMap<String, String>,
     headers: HashMap<String, String>,
     body: Option<ValidatedBody>,
+    runtime_state: ServerRuntimeState,
 }
 
 #[derive(Clone)]
@@ -566,14 +575,13 @@ pub extern "C" fn dart_edge_http_server_runtime_start_server(
         }
     };
 
-    let mut server_state = SERVER_STATE.lock().unwrap();
-    if server_state.is_some() {
-        return -1;
-    }
-
-    *COMPILED_ROUTES.write().unwrap() = compiled_manifest.routes;
-    *COMPILED_SCHEMAS.write().unwrap() = compiled_manifest.schemas;
-    *TRANSPORT_EVENT_CALLBACK.lock().unwrap() = Some(callback);
+    let server_id = NEXT_SERVER_ID.fetch_add(1, Ordering::Relaxed);
+    let runtime_state = ServerRuntimeState {
+        server_id,
+        routes: Arc::new(compiled_manifest.routes),
+        schemas: Arc::new(compiled_manifest.schemas),
+        callback,
+    };
 
     let (ready_tx, ready_rx) = std::sync::mpsc::channel();
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
@@ -619,7 +627,11 @@ pub extern "C" fn dart_edge_http_server_runtime_start_server(
 
             let mut app = Router::new()
                 .fallback(any(handle_validated_request))
-                .layer(middleware::from_fn(validate_request_middleware));
+                .layer(middleware::from_fn_with_state(
+                    runtime_state.clone(),
+                    validate_request_middleware,
+                ))
+                .with_state(runtime_state.clone());
             if let Some(cors_layer) = cors_layer {
                 app = app.layer(cors_layer);
             }
@@ -636,6 +648,7 @@ pub extern "C" fn dart_edge_http_server_runtime_start_server(
                 result = run_web_transport_listener(
                     SocketAddr::new(bind_address.ip(), local_port),
                     web_transport_shutdown_rx,
+                    runtime_state,
                 ) => {
                     if let Err(error) = result {
                         eprintln!("dart_edge_http_server_runtime WebTransport listener failed: {error}");
@@ -647,25 +660,22 @@ pub extern "C" fn dart_edge_http_server_runtime_start_server(
 
     match ready_rx.recv() {
         Ok(Ok(bound_port)) => {
-            *server_state = Some(ServerState {
-                shutdown_tx: Some(shutdown_tx),
-                join_handle: Some(join_handle),
-            });
-            bound_port as i64
+            SERVER_STATES.lock().unwrap().insert(
+                server_id,
+                ServerState {
+                    shutdown_tx: Some(shutdown_tx),
+                    join_handle: Some(join_handle),
+                },
+            );
+            (server_id << 16) | i64::from(bound_port)
         }
         Ok(Err(error)) => {
             eprintln!("dart_edge_http_server_runtime transport startup failed: {error}");
-            *TRANSPORT_EVENT_CALLBACK.lock().unwrap() = None;
-            *COMPILED_ROUTES.write().unwrap() = Vec::new();
-            *COMPILED_SCHEMAS.write().unwrap() = HashMap::new();
             let _ = join_handle.join();
             -1
         }
         Err(error) => {
             eprintln!("dart_edge_http_server_runtime transport startup failed: {error}");
-            *TRANSPORT_EVENT_CALLBACK.lock().unwrap() = None;
-            *COMPILED_ROUTES.write().unwrap() = Vec::new();
-            *COMPILED_SCHEMAS.write().unwrap() = HashMap::new();
             let _ = join_handle.join();
             -1
         }
@@ -674,13 +684,31 @@ pub extern "C" fn dart_edge_http_server_runtime_start_server(
 
 #[unsafe(no_mangle)]
 pub extern "C" fn dart_edge_http_server_runtime_stop_server() {
-    *TRANSPORT_EVENT_CALLBACK.lock().unwrap() = None;
-    *COMPILED_ROUTES.write().unwrap() = Vec::new();
-    *COMPILED_SCHEMAS.write().unwrap() = HashMap::new();
+    let server_ids = SERVER_STATES
+        .lock()
+        .unwrap()
+        .keys()
+        .copied()
+        .collect::<Vec<_>>();
+    for server_id in server_ids {
+        dart_edge_http_server_runtime_stop_server_by_id(server_id);
+    }
+}
 
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_http_server_runtime_stop_server_by_id(server_id: i64) {
     {
         let mut pending = PENDING_REQUESTS.lock().unwrap();
-        for (_, request) in pending.drain() {
+        let request_ids = pending
+            .iter()
+            .filter_map(|(request_id, request)| {
+                (request.server_id == server_id).then_some(*request_id)
+            })
+            .collect::<Vec<_>>();
+        for request_id in request_ids {
+            let Some(request) = pending.remove(&request_id) else {
+                continue;
+            };
             let _ = request
                 .response_tx
                 .send(PendingResponseMessage::Http(TransportResponse {
@@ -695,7 +723,16 @@ pub extern "C" fn dart_edge_http_server_runtime_stop_server() {
 
     {
         let mut sessions = WEB_SOCKET_SESSIONS.lock().unwrap();
-        for (_, session) in sessions.drain() {
+        let session_ids = sessions
+            .iter()
+            .filter_map(|(session_id, session)| {
+                (session.server_id == server_id).then_some(*session_id)
+            })
+            .collect::<Vec<_>>();
+        for session_id in session_ids {
+            let Some(session) = sessions.remove(&session_id) else {
+                continue;
+            };
             let _ = session.command_tx.send(WebSocketCommand::Close {
                 code: Some(1012),
                 reason: Some("Server stopped".to_string()),
@@ -705,7 +742,16 @@ pub extern "C" fn dart_edge_http_server_runtime_stop_server() {
 
     {
         let mut sessions = WEB_TRANSPORT_SESSIONS.lock().unwrap();
-        for (_, session) in sessions.drain() {
+        let session_ids = sessions
+            .iter()
+            .filter_map(|(session_id, session)| {
+                (session.server_id == server_id).then_some(*session_id)
+            })
+            .collect::<Vec<_>>();
+        for session_id in session_ids {
+            let Some(session) = sessions.remove(&session_id) else {
+                continue;
+            };
             let _ = session.command_tx.send(WebTransportCommand::Close {
                 code: Some(1012),
                 reason: Some("Server stopped".to_string()),
@@ -713,7 +759,7 @@ pub extern "C" fn dart_edge_http_server_runtime_stop_server() {
         }
     }
 
-    let server_state = SERVER_STATE.lock().unwrap().take();
+    let server_state = SERVER_STATES.lock().unwrap().remove(&server_id);
     if let Some(mut state) = server_state {
         if let Some(shutdown_tx) = state.shutdown_tx.take() {
             let _ = shutdown_tx.send(true);
@@ -1204,7 +1250,11 @@ pub extern "C" fn dart_edge_http_server_runtime_send_response(
     )
 }
 
-async fn validate_request_middleware(request: Request<Body>, next: Next) -> Response<Body> {
+async fn validate_request_middleware(
+    State(runtime_state): State<ServerRuntimeState>,
+    request: Request<Body>,
+    next: Next,
+) -> Response<Body> {
     let (parts, body) = request.into_parts();
     let requested_kind = if wants_web_socket_upgrade(&parts.headers) {
         RouteTransportKind::WebSocket
@@ -1212,7 +1262,12 @@ async fn validate_request_middleware(request: Request<Body>, next: Next) -> Resp
         RouteTransportKind::Http
     };
 
-    let route_match = match match_route(parts.method.as_str(), parts.uri.path(), requested_kind) {
+    let route_match = match match_route(
+        &runtime_state,
+        parts.method.as_str(),
+        parts.uri.path(),
+        requested_kind,
+    ) {
         Some(route_match) => route_match,
         None => {
             return response(
@@ -1231,6 +1286,7 @@ async fn validate_request_middleware(request: Request<Body>, next: Next) -> Resp
         &route_match.path_params,
         route_match.params_schema_id.as_deref(),
         "Path parameters",
+        &runtime_state,
     ) {
         return error_response;
     }
@@ -1238,6 +1294,7 @@ async fn validate_request_middleware(request: Request<Body>, next: Next) -> Resp
         &query,
         route_match.query_schema_id.as_deref(),
         "Query parameters",
+        &runtime_state,
     ) {
         return error_response;
     }
@@ -1245,6 +1302,7 @@ async fn validate_request_middleware(request: Request<Body>, next: Next) -> Resp
         &headers,
         route_match.headers_schema_id.as_deref(),
         "Headers",
+        &runtime_state,
     ) {
         return error_response;
     }
@@ -1270,7 +1328,9 @@ async fn validate_request_middleware(request: Request<Body>, next: Next) -> Resp
                 Err(error_response) => return error_response,
             };
             if let Some(request_body) = route_match.request_body.as_ref() {
-                if let Err(error_response) = validate_request_body(&body, request_body) {
+                if let Err(error_response) =
+                    validate_request_body(&body, request_body, &runtime_state)
+                {
                     return error_response;
                 }
             }
@@ -1283,6 +1343,7 @@ async fn validate_request_middleware(request: Request<Body>, next: Next) -> Resp
                 query,
                 headers,
                 body: Some(body),
+                runtime_state,
             });
             next.run(request).await
         }
@@ -1295,6 +1356,7 @@ async fn validate_request_middleware(request: Request<Body>, next: Next) -> Resp
                 query,
                 headers,
                 body: None,
+                runtime_state,
             });
             next.run(request).await
         }
@@ -1328,6 +1390,7 @@ async fn handle_validated_request(mut request: Request<Body>) -> Response<Body> 
                 validated.query,
                 validated.headers,
                 validated.body.unwrap_or_else(ValidatedBody::none),
+                &validated.runtime_state,
             )
             .await
         }
@@ -1338,6 +1401,7 @@ async fn handle_validated_request(mut request: Request<Body>) -> Response<Body> 
                 validated.route_match,
                 validated.query,
                 validated.headers,
+                validated.runtime_state,
             )
             .await
         }
@@ -1354,6 +1418,7 @@ async fn handle_http_request(
     query: HashMap<String, String>,
     headers: HashMap<String, String>,
     body: ValidatedBody,
+    runtime_state: &ServerRuntimeState,
 ) -> Response<Body> {
     let transport_request = TransportRequest {
         route_id: route_match.route_id,
@@ -1365,10 +1430,11 @@ async fn handle_http_request(
         body_kind: body.kind,
     };
 
-    let (_request_id, mut response_rx) = match dispatch_request_to_dart(transport_request) {
-        Ok(value) => value,
-        Err(error_response) => return error_response,
-    };
+    let (_request_id, mut response_rx) =
+        match dispatch_request_to_dart(transport_request, runtime_state) {
+            Ok(value) => value,
+            Err(error_response) => return error_response,
+        };
 
     match response_rx.recv().await {
         Some(PendingResponseMessage::Http(transport_response)) => response_body_with_headers(
@@ -1561,6 +1627,7 @@ async fn handle_web_socket_request(
     route_match: NativeRouteMatch,
     query: HashMap<String, String>,
     headers: HashMap<String, String>,
+    runtime_state: ServerRuntimeState,
 ) -> Response<Body> {
     let route_id = route_match.route_id;
     let path_params = route_match.path_params;
@@ -1574,10 +1641,11 @@ async fn handle_web_socket_request(
         body_kind: NativeBodyKind::None,
     };
 
-    let (request_id, mut response_rx) = match dispatch_request_to_dart(transport_request) {
-        Ok(value) => value,
-        Err(error_response) => return error_response,
-    };
+    let (request_id, mut response_rx) =
+        match dispatch_request_to_dart(transport_request, &runtime_state) {
+            Ok(value) => value,
+            Err(error_response) => return error_response,
+        };
 
     match response_rx.recv().await {
         Some(PendingResponseMessage::Http(transport_response)) => response_body_with_headers(
@@ -1604,6 +1672,7 @@ async fn handle_web_socket_request(
                         path_params,
                         query,
                         headers,
+                        runtime_state,
                     )
                 })
                 .into_response();
@@ -1625,6 +1694,7 @@ async fn handle_web_socket_session(
     path_params: HashMap<String, String>,
     query: HashMap<String, String>,
     headers: HashMap<String, String>,
+    runtime_state: ServerRuntimeState,
 ) {
     let session_id = NEXT_WEB_SOCKET_SESSION_ID.fetch_add(1, Ordering::Relaxed);
     let (command_tx, mut command_rx) = mpsc::unbounded_channel::<WebSocketCommand>();
@@ -1633,6 +1703,7 @@ async fn handle_web_socket_session(
         sessions.insert(
             session_id,
             WebSocketSessionState {
+                server_id: runtime_state.server_id,
                 connection: Some(WebSocketConnection {
                     session_id,
                     request_id,
@@ -1646,7 +1717,11 @@ async fn handle_web_socket_session(
             },
         );
     }
-    notify_transport_event(TransportEventKind::WebSocketOpened, session_id);
+    notify_transport_event(
+        runtime_state.callback,
+        TransportEventKind::WebSocketOpened,
+        session_id,
+    );
 
     loop {
         tokio::select! {
@@ -1661,7 +1736,7 @@ async fn handle_web_socket_session(
                                 body: text.as_str().as_bytes().to_vec(),
                             },
                         );
-                        notify_transport_event(TransportEventKind::WebSocketMessageReady, session_id);
+                        notify_transport_event(runtime_state.callback, TransportEventKind::WebSocketMessageReady, session_id);
                     }
                     Some(Ok(Message::Binary(bytes))) => {
                         push_web_socket_message(
@@ -1672,7 +1747,7 @@ async fn handle_web_socket_session(
                                 body: bytes.to_vec(),
                             },
                         );
-                        notify_transport_event(TransportEventKind::WebSocketMessageReady, session_id);
+                        notify_transport_event(runtime_state.callback, TransportEventKind::WebSocketMessageReady, session_id);
                     }
                     Some(Ok(Message::Close(_))) | None => break,
                     Some(Ok(Message::Ping(_))) | Some(Ok(Message::Pong(_))) => {}
@@ -1702,12 +1777,17 @@ async fn handle_web_socket_session(
     }
 
     let _ = WEB_SOCKET_SESSIONS.lock().unwrap().remove(&session_id);
-    notify_transport_event(TransportEventKind::WebSocketClosed, session_id);
+    notify_transport_event(
+        runtime_state.callback,
+        TransportEventKind::WebSocketClosed,
+        session_id,
+    );
 }
 
 async fn run_web_transport_listener(
     bind_address: SocketAddr,
     mut shutdown_rx: watch::Receiver<bool>,
+    runtime_state: ServerRuntimeState,
 ) -> Result<(), String> {
     let identity = Identity::self_signed(["localhost", "127.0.0.1", "::1"])
         .map_err(|error| format!("Failed to create WebTransport TLS identity: {error}"))?;
@@ -1726,8 +1806,9 @@ async fn run_web_transport_listener(
                 return Ok(());
             }
             incoming_session = endpoint.accept() => {
+                let runtime_state = runtime_state.clone();
                 tokio::spawn(async move {
-                    if let Err(error) = handle_web_transport_incoming_session(incoming_session).await {
+                    if let Err(error) = handle_web_transport_incoming_session(incoming_session, runtime_state).await {
                         eprintln!("dart_edge_http_server_runtime WebTransport session failed: {error}");
                     }
                 });
@@ -1738,12 +1819,18 @@ async fn run_web_transport_listener(
 
 async fn handle_web_transport_incoming_session(
     incoming_session: wtransport::endpoint::IncomingSession,
+    runtime_state: ServerRuntimeState,
 ) -> Result<(), String> {
     let session_request = incoming_session
         .await
         .map_err(|error| format!("Failed to read WebTransport session request: {error}"))?;
     let (path, query) = split_web_transport_path(session_request.path());
-    let route_match = match match_route("GET", &path, RouteTransportKind::WebTransport) {
+    let route_match = match match_route(
+        &runtime_state,
+        "GET",
+        &path,
+        RouteTransportKind::WebTransport,
+    ) {
         Some(route_match) => route_match,
         None => {
             session_request.forbidden().await;
@@ -1758,18 +1845,21 @@ async fn handle_web_transport_incoming_session(
         &route_match.path_params,
         route_match.params_schema_id.as_deref(),
         "Path parameters",
+        &runtime_state,
     )
     .is_err()
         || validate_string_map(
             &query,
             route_match.query_schema_id.as_deref(),
             "Query parameters",
+            &runtime_state,
         )
         .is_err()
         || validate_string_map(
             &headers,
             route_match.headers_schema_id.as_deref(),
             "Headers",
+            &runtime_state,
         )
         .is_err()
     {
@@ -1789,13 +1879,14 @@ async fn handle_web_transport_incoming_session(
         body_kind: NativeBodyKind::None,
     };
 
-    let (request_id, mut response_rx) = match dispatch_request_to_dart(transport_request) {
-        Ok(value) => value,
-        Err(_) => {
-            session_request.forbidden().await;
-            return Ok(());
-        }
-    };
+    let (request_id, mut response_rx) =
+        match dispatch_request_to_dart(transport_request, &runtime_state) {
+            Ok(value) => value,
+            Err(_) => {
+                session_request.forbidden().await;
+                return Ok(());
+            }
+        };
 
     match response_rx.recv().await {
         Some(PendingResponseMessage::Http(_)) => {
@@ -1815,6 +1906,7 @@ async fn handle_web_transport_incoming_session(
                 path_params,
                 query,
                 headers,
+                runtime_state,
             )
             .await;
         }
@@ -1833,6 +1925,7 @@ async fn handle_web_transport_session(
     path_params: HashMap<String, String>,
     query: HashMap<String, String>,
     headers: HashMap<String, String>,
+    runtime_state: ServerRuntimeState,
 ) {
     let session_id = NEXT_WEB_TRANSPORT_SESSION_ID.fetch_add(1, Ordering::Relaxed);
     let (command_tx, mut command_rx) = mpsc::unbounded_channel::<WebTransportCommand>();
@@ -1841,6 +1934,7 @@ async fn handle_web_transport_session(
         sessions.insert(
             session_id,
             WebTransportSessionState {
+                server_id: runtime_state.server_id,
                 connection: Some(WebTransportConnectionInfo {
                     session_id,
                     request_id,
@@ -1855,7 +1949,11 @@ async fn handle_web_transport_session(
             },
         );
     }
-    notify_transport_event(TransportEventKind::WebTransportOpened, session_id);
+    notify_transport_event(
+        runtime_state.callback,
+        TransportEventKind::WebTransportOpened,
+        session_id,
+    );
 
     loop {
         tokio::select! {
@@ -1870,6 +1968,7 @@ async fn handle_web_transport_session(
                             },
                         );
                         notify_transport_event(
+                            runtime_state.callback,
                             TransportEventKind::WebTransportDatagramReady,
                             session_id,
                         );
@@ -1887,6 +1986,7 @@ async fn handle_web_transport_session(
                                     WebTransportIncomingStream { session_id, body },
                                 );
                                 notify_transport_event(
+                                    runtime_state.callback,
                                     TransportEventKind::WebTransportStreamReady,
                                     session_id,
                                 );
@@ -1932,11 +2032,16 @@ async fn handle_web_transport_session(
     }
 
     let _ = WEB_TRANSPORT_SESSIONS.lock().unwrap().remove(&session_id);
-    notify_transport_event(TransportEventKind::WebTransportClosed, session_id);
+    notify_transport_event(
+        runtime_state.callback,
+        TransportEventKind::WebTransportClosed,
+        session_id,
+    );
 }
 
 fn dispatch_request_to_dart(
     transport_request: TransportRequest,
+    runtime_state: &ServerRuntimeState,
 ) -> Result<(i64, mpsc::UnboundedReceiver<PendingResponseMessage>), Response<Body>> {
     let request_id = NEXT_REQUEST_ID.fetch_add(1, Ordering::Relaxed);
     let (response_tx, response_rx) = mpsc::unbounded_channel::<PendingResponseMessage>();
@@ -1945,13 +2050,18 @@ fn dispatch_request_to_dart(
         pending.insert(
             request_id,
             PendingRequest {
+                server_id: runtime_state.server_id,
                 request: Some(transport_request),
                 response_tx,
             },
         );
     }
 
-    if !notify_transport_event(TransportEventKind::RequestReady, request_id) {
+    if !notify_transport_event(
+        runtime_state.callback,
+        TransportEventKind::RequestReady,
+        request_id,
+    ) {
         let _ = PENDING_REQUESTS.lock().unwrap().remove(&request_id);
         return Err(response(
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -1993,12 +2103,11 @@ fn send_pending_response_message(
     false
 }
 
-fn notify_transport_event(event_kind: TransportEventKind, event_id: i64) -> bool {
-    let callback = *TRANSPORT_EVENT_CALLBACK.lock().unwrap();
-    let Some(callback) = callback else {
-        return false;
-    };
-
+fn notify_transport_event(
+    callback: TransportEventCallback,
+    event_kind: TransportEventKind,
+    event_id: i64,
+) -> bool {
     callback(event_kind as i32, event_id);
     true
 }
@@ -2643,14 +2752,14 @@ impl NativeMultipartFormHandle {
 }
 
 fn match_route(
+    runtime_state: &ServerRuntimeState,
     method: &str,
     path: &str,
     requested_kind: RouteTransportKind,
 ) -> Option<NativeRouteMatch> {
     let request_segments = path_segments(path);
-    let routes = COMPILED_ROUTES.read().unwrap();
 
-    for route in routes.iter() {
+    for route in runtime_state.routes.iter() {
         if !route_kind_matches(route.kind, requested_kind) {
             continue;
         }
@@ -2811,6 +2920,7 @@ fn validate_string_map(
     values: &HashMap<String, String>,
     schema_id: Option<&str>,
     label: &str,
+    runtime_state: &ServerRuntimeState,
 ) -> Result<(), Response<Body>> {
     let Some(schema_id) = schema_id else {
         return Ok(());
@@ -2822,12 +2932,13 @@ fn validate_string_map(
             .map(|(key, value)| (key.clone(), serde_json::Value::String(value.clone())))
             .collect(),
     );
-    validate_schema_value(schema_id, &instance, label)
+    validate_schema_value(schema_id, &instance, label, runtime_state)
 }
 
 fn validate_request_body(
     body: &ValidatedBody,
     request_body: &RequestBodyValidation,
+    runtime_state: &ServerRuntimeState,
 ) -> Result<(), Response<Body>> {
     let Some(schema_id) = request_body.schema_id.as_deref() else {
         return Ok(());
@@ -2847,16 +2958,16 @@ fn validate_request_body(
         NativeBodyKind::Multipart | NativeBodyKind::None => serde_json::Value::Null,
     };
 
-    validate_schema_value(schema_id, &instance, "Request body")
+    validate_schema_value(schema_id, &instance, "Request body", runtime_state)
 }
 
 fn validate_schema_value(
     schema_id: &str,
     instance: &serde_json::Value,
     label: &str,
+    runtime_state: &ServerRuntimeState,
 ) -> Result<(), Response<Body>> {
-    let schemas = COMPILED_SCHEMAS.read().unwrap();
-    let Some(validator) = schemas.get(schema_id) else {
+    let Some(validator) = runtime_state.schemas.get(schema_id) else {
         return Err(response(
             StatusCode::INTERNAL_SERVER_ERROR,
             "text/plain; charset=utf-8",

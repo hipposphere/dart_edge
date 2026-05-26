@@ -156,6 +156,9 @@ external bool dart_edge_http_server_runtime_start_sse_response(
 @ffi.Native<ffi.Void Function()>()
 external void dart_edge_http_server_runtime_stop_server();
 
+@ffi.Native<ffi.Void Function(ffi.Int64)>()
+external void dart_edge_http_server_runtime_stop_server_by_id(int server_id);
+
 @ffi.Native<ffi.Pointer<ffi.Char> Function()>()
 external ffi.Pointer<ffi.Char> dart_edge_http_server_runtime_take_last_error();
 

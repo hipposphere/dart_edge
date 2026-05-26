@@ -96,6 +96,8 @@ int64_t dart_edge_http_server_runtime_start_server(
 
 void dart_edge_http_server_runtime_stop_server(void);
 
+void dart_edge_http_server_runtime_stop_server_by_id(int64_t server_id);
+
 NativeTransportRequest* dart_edge_http_server_runtime_take_request(int64_t request_id);
 
 void dart_edge_http_server_runtime_free_request(NativeTransportRequest* value);

@@ -112,6 +112,49 @@ void main() {
     expect(body, containsPair('status', 'ok'));
   });
 
+  test('runs two native HTTP servers on independent ports', () async {
+    final firstApp = DartEdge<void>(services: () {});
+    final secondApp = DartEdge<void>(services: () {});
+    firstApp.get('/first', handler: (_) => const {'server': 'first'});
+    secondApp.get('/second', handler: (_) => const {'server': 'second'});
+
+    final firstServer = await firstApp.listen(host: '127.0.0.1', port: 0);
+    final secondServer = await secondApp.listen(host: '127.0.0.1', port: 0);
+    final client = HttpClient();
+
+    addTearDown(() async {
+      client.close(force: true);
+      await secondServer.close();
+      await firstServer.close();
+    });
+
+    expect(firstServer.port, isPositive);
+    expect(secondServer.port, isPositive);
+    expect(secondServer.port, isNot(firstServer.port));
+
+    final firstResponse = await (await client.getUrl(
+      Uri.http('127.0.0.1:${firstServer.port}', '/first'),
+    )).close();
+    final secondResponse = await (await client.getUrl(
+      Uri.http('127.0.0.1:${secondServer.port}', '/second'),
+    )).close();
+    final crossResponse = await (await client.getUrl(
+      Uri.http('127.0.0.1:${firstServer.port}', '/second'),
+    )).close();
+
+    expect(firstResponse.statusCode, HttpStatus.ok);
+    expect(secondResponse.statusCode, HttpStatus.ok);
+    expect(crossResponse.statusCode, HttpStatus.notFound);
+
+    expect(jsonDecode(await utf8.decoder.bind(firstResponse).join()), {
+      'server': 'first',
+    });
+    expect(jsonDecode(await utf8.decoder.bind(secondResponse).join()), {
+      'server': 'second',
+    });
+    await crossResponse.drain<void>();
+  });
+
   test('serves raw binary responses without UTF-8 string encoding', () async {
     final app = DartEdge<void>(services: () {});
     final bytes = Uint8List.fromList([0, 255, 1, 2, 128, 3]);

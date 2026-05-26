@@ -818,11 +818,13 @@ typedef _NativeTransportEvent = Void Function(Int32, Int64);
 
 final class _RustTransportSession {
   _RustTransportSession._({
+    required this.serverId,
     required this.host,
     required this.port,
     required this.callback,
   });
 
+  final int serverId;
   final String host;
   final int port;
   final NativeCallable<_NativeTransportEvent> callback;
@@ -845,7 +847,7 @@ final class _RustTransportSession {
     callback = NativeCallable<_NativeTransportEvent>.listener(
       handleTransportEvent,
     );
-    final port = DartEdgeNative.startServer(
+    final startResult = DartEdgeNative.startServer(
       host,
       requestedPort,
       workers: workers,
@@ -853,12 +855,17 @@ final class _RustTransportSession {
       middlewaresJson: middlewaresJson,
       callback: callback.nativeFunction,
     );
-    if (port <= 0) {
+    if (startResult.port <= 0 || startResult.serverId <= 0) {
       callback.close();
       throw StateError('Failed to start Rust-backed transport runtime.');
     }
 
-    return _RustTransportSession._(host: host, port: port, callback: callback);
+    return _RustTransportSession._(
+      serverId: startResult.serverId,
+      host: host,
+      port: startResult.port,
+      callback: callback,
+    );
   }
 
   Future<void> close() async {
@@ -866,7 +873,7 @@ final class _RustTransportSession {
       return;
     }
     _closed = true;
-    DartEdgeNative.stopServer();
+    DartEdgeNative.stopServerById(serverId);
     callback.close();
   }
 }

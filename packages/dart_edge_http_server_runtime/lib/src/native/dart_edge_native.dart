@@ -16,6 +16,13 @@ import 'native_transport_web_transport.dart';
 
 typedef NativeTransportEvent = Void Function(Int32, Int64);
 
+final class NativeServerStartResult {
+  const NativeServerStartResult({required this.serverId, required this.port});
+
+  final int serverId;
+  final int port;
+}
+
 final class NativeTransportRequestLease {
   NativeTransportRequestLease._({
     required this.request,
@@ -46,10 +53,10 @@ abstract final class DartEdgeNative {
       gen.dart_edge_http_server_runtime_native_abi_version();
 
   /// Whether the current process can load the bundled runtime asset.
-  static bool get hasBundledRuntime => abiVersion >= 12;
+  static bool get hasBundledRuntime => abiVersion >= 13;
 
   /// Starts the native HTTP server.
-  static int startServer(
+  static NativeServerStartResult startServer(
     String host,
     int port, {
     required int workers,
@@ -62,13 +69,20 @@ abstract final class DartEdgeNative {
     final middlewaresJsonPtr = middlewaresJson.toNativeUtf8();
 
     try {
-      return gen.dart_edge_http_server_runtime_start_server(
+      final result = gen.dart_edge_http_server_runtime_start_server(
         hostPtr.cast<Char>(),
         port,
         workers,
         routesJsonPtr.cast<Char>(),
         middlewaresJsonPtr.cast<Char>(),
         callback,
+      );
+      if (result <= 0) {
+        return const NativeServerStartResult(serverId: -1, port: -1);
+      }
+      return NativeServerStartResult(
+        serverId: result >> 16,
+        port: result & 0xffff,
       );
     } finally {
       calloc.free(hostPtr);
@@ -80,6 +94,11 @@ abstract final class DartEdgeNative {
   /// Stops the active native server, if one is running.
   static void stopServer() {
     gen.dart_edge_http_server_runtime_stop_server();
+  }
+
+  /// Stops one active native server by native server id.
+  static void stopServerById(int serverId) {
+    gen.dart_edge_http_server_runtime_stop_server_by_id(serverId);
   }
 
   /// Reads one queued request from the native runtime.
