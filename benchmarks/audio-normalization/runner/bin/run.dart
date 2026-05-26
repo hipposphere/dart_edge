@@ -18,7 +18,7 @@ Future<void> main(List<String> args) async {
   }
 
   final results = <Map<String, Object?>>[];
-  final vad = SileroVad();
+  final vad = NativeVad();
   for (final fixture in audioFixtureManifest) {
     final file = File(fixture.pathIn(fixturesDir.path));
     if (!file.existsSync()) {
