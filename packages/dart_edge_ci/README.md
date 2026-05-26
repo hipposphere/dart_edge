@@ -19,6 +19,9 @@ dart run dart_edge_ci docker build --push server
 dart run dart_edge_ci docker bake
 dart run dart_edge_ci docker print-config
 dart run dart_edge_ci package-version packages/server
+dart run dart_edge_ci test routes --suite packages/my_test_suite --base-url http://localhost:3000
+dart run dart_edge_ci test e2e --suite packages/my_test_suite --compose-file environment/compose.yaml
+dart run dart_edge_ci bench server --url http://localhost:3000/ --duration 30 --concurrency 32
 ```
 
 `build` prints the generated Dockerfile path and the exact
@@ -214,6 +217,50 @@ JSON output is also available:
 ```sh
 dart run dart_edge_ci package-version --json packages/server
 ```
+
+## Route And E2E Test Suites
+
+Project repos can keep product-specific test scenarios in a standalone package
+and let `dart_edge_ci` handle the repeated CI mechanics:
+
+```sh
+dart run dart_edge_ci test routes \
+  --suite packages/my_test_suite \
+  --base-url http://localhost:3000 \
+  --compose-file environment/compose.yaml
+```
+
+The command starts the optional Docker Compose environment, waits for the health
+URL, runs `dart test` inside the suite package, and tears the environment down
+again. `--base-url` is passed to tests as `TEST_BASE_URL`. Extra `dart test`
+arguments can be appended after `--`.
+
+`test e2e` uses the same options and defaults to `test/e2e` inside the suite
+package. `test env up` and `test env down` are available when CI or local
+debugging needs to manage the compose stack separately.
+
+## Server Benchmarks
+
+`bench server` runs a lightweight HTTP throughput benchmark that is stable
+enough for trend tracking without adding a separate load-testing runtime:
+
+```sh
+dart run dart_edge_ci bench server \
+  --url http://localhost:3000/ \
+  --compose-file environment/compose.yaml \
+  --container my-server \
+  --duration 60 \
+  --warmup 10 \
+  --concurrency 64 \
+  --output build/reports/bench/server.json \
+  --github-summary
+```
+
+The JSON report includes request count, error count, throughput, p50/p95/p99
+latency, status codes, and optional Docker CPU/memory samples from
+`docker stats`. Use `--max-p95-latency-ms` and `--min-throughput` only for
+stable runners; otherwise publish the report as a non-blocking artifact and use
+nightly runs for regression tracking.
 
 ## GitHub Actions
 

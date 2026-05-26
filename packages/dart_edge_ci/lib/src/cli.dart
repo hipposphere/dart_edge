@@ -5,6 +5,8 @@ import 'package:path/path.dart' as p;
 
 import 'docker_generator.dart';
 import 'package_version.dart';
+import 'server_benchmark.dart';
+import 'test_suite_runner.dart';
 
 Future<int> runDartEdgeCi(
   List<String> arguments, {
@@ -17,7 +19,9 @@ Future<int> runDartEdgeCi(
           'CI utilities for Dart Edge workspaces.',
         )
         ..addCommand(_DockerCommand(projectRoot, processRunner))
-        ..addCommand(_PackageVersionCommand(projectRoot));
+        ..addCommand(_PackageVersionCommand(projectRoot))
+        ..addCommand(_TestCommand(projectRoot))
+        ..addCommand(_BenchCommand(projectRoot));
 
   try {
     return await runner.run(arguments) ?? 0;
@@ -32,9 +36,306 @@ Future<int> runDartEdgeCi(
   } on PackageVersionException catch (error) {
     stderr.writeln('Package version error: ${error.message}');
     return 78;
+  } on TestSuiteException catch (error) {
+    stderr.writeln('Test suite error: ${error.message}');
+    return 78;
   } on Object catch (error) {
     stderr.writeln('dart_edge_ci failed: $error');
     return 1;
+  }
+}
+
+final class _TestCommand extends Command<int> {
+  _TestCommand(Directory? projectRoot) {
+    addSubcommand(_RunSuiteCommand(projectRoot, name: 'routes'));
+    addSubcommand(_RunSuiteCommand(projectRoot, name: 'e2e'));
+    addSubcommand(_EnvCommand(projectRoot));
+  }
+
+  @override
+  String get description => 'Run route, end-to-end, and environment tests.';
+
+  @override
+  String get name => 'test';
+}
+
+final class _RunSuiteCommand extends Command<int> {
+  _RunSuiteCommand(this._projectRoot, {required this.name}) {
+    argParser
+      ..addOption(
+        'suite',
+        defaultsTo: 'packages/dart_edge_test_suite',
+        help: 'Path to the project-specific test suite package.',
+      )
+      ..addOption(
+        'path',
+        defaultsTo: 'test/$name',
+        help: 'Path inside the suite package to run with dart test.',
+      )
+      ..addOption(
+        'base-url',
+        help: 'Base URL exposed to tests as TEST_BASE_URL.',
+      )
+      ..addOption(
+        'compose-file',
+        help: 'Optional Docker Compose file to start before tests.',
+      )
+      ..addOption(
+        'compose-project-name',
+        help: 'Optional Docker Compose project name.',
+      )
+      ..addFlag(
+        'compose-down',
+        defaultsTo: true,
+        help: 'Run docker compose down after tests.',
+      )
+      ..addOption(
+        'health-url',
+        help: 'Optional URL to poll before running tests.',
+      )
+      ..addOption(
+        'health-timeout',
+        defaultsTo: '90',
+        help: 'Seconds to wait for the health URL.',
+      )
+      ..addOption(
+        'reporter',
+        defaultsTo: 'expanded',
+        help: 'dart test reporter to use.',
+      )
+      ..addOption(
+        'dart',
+        defaultsTo: 'dart',
+        help: 'Dart executable used to run tests.',
+      );
+  }
+
+  final Directory? _projectRoot;
+
+  @override
+  final String name;
+
+  @override
+  String get description => 'Run the $name test suite.';
+
+  @override
+  String get invocation =>
+      'dart_edge_ci test $name [options] [-- dart-test-args]';
+
+  @override
+  Future<int> run() {
+    final baseUrl = argResults!.option('base-url');
+    final healthUrl = argResults!.option('health-url') ?? baseUrl;
+    return TestSuiteRunner().run(
+      TestSuiteConfig(
+        projectRoot: _projectRoot ?? Directory.current,
+        suitePath: argResults!.option('suite')!,
+        testPath: argResults!.option('path')!,
+        environment: _testEnvironment(baseUrl),
+        extraTestArguments: argResults!.rest,
+        reporter: argResults!.option('reporter')!,
+        composeFile: argResults!.option('compose-file'),
+        composeProjectName: argResults!.option('compose-project-name'),
+        composeDown: argResults!.flag('compose-down'),
+        healthUrl: healthUrl == null ? null : Uri.parse(healthUrl),
+        healthTimeout: Duration(
+          seconds: int.parse(argResults!.option('health-timeout')!),
+        ),
+        dartExecutable: argResults!.option('dart')!,
+      ),
+    );
+  }
+}
+
+final class _EnvCommand extends Command<int> {
+  _EnvCommand(Directory? projectRoot) {
+    addSubcommand(_ComposeCommand(projectRoot, name: 'up'));
+    addSubcommand(_ComposeCommand(projectRoot, name: 'down'));
+  }
+
+  @override
+  String get description => 'Manage a Docker Compose test environment.';
+
+  @override
+  String get name => 'env';
+}
+
+final class _ComposeCommand extends Command<int> {
+  _ComposeCommand(this._projectRoot, {required this.name}) {
+    argParser
+      ..addOption(
+        'compose-file',
+        defaultsTo: 'environment/compose.yaml',
+        help: 'Docker Compose file to use.',
+      )
+      ..addOption(
+        'compose-project-name',
+        help: 'Optional Docker Compose project name.',
+      );
+  }
+
+  final Directory? _projectRoot;
+
+  @override
+  final String name;
+
+  @override
+  String get description => name == 'up'
+      ? 'Start the Docker Compose test environment.'
+      : 'Stop the Docker Compose test environment.';
+
+  @override
+  Future<int> run() async {
+    final command = [
+      'docker',
+      'compose',
+      '--file',
+      argResults!.option('compose-file')!,
+      if (argResults!.option('compose-project-name')
+          case final projectName?) ...[
+        '--project-name',
+        projectName,
+      ],
+      if (name == 'up') ...[
+        'up',
+        '--build',
+        '--detach',
+      ] else ...[
+        'down',
+        '--remove-orphans',
+      ],
+    ];
+    stdout.writeln('Running: ${shellCommand(command)}');
+    final process = await Process.start(
+      command.first,
+      command.skip(1).toList(),
+      workingDirectory: (_projectRoot ?? Directory.current).path,
+      mode: ProcessStartMode.inheritStdio,
+    );
+    return process.exitCode;
+  }
+}
+
+final class _BenchCommand extends Command<int> {
+  _BenchCommand(Directory? projectRoot) {
+    addSubcommand(_ServerBenchCommand(projectRoot));
+  }
+
+  @override
+  String get description => 'Run reproducible benchmark suites.';
+
+  @override
+  String get name => 'bench';
+}
+
+final class _ServerBenchCommand extends Command<int> {
+  _ServerBenchCommand(this._projectRoot) {
+    argParser
+      ..addOption('url', mandatory: true, help: 'HTTP endpoint to benchmark.')
+      ..addOption('method', defaultsTo: 'GET', help: 'HTTP method to use.')
+      ..addMultiOption(
+        'header',
+        help:
+            'HTTP header in "Name: value" format. May be passed multiple times.',
+      )
+      ..addOption(
+        'duration',
+        defaultsTo: '30',
+        help: 'Benchmark duration in seconds.',
+      )
+      ..addOption(
+        'warmup',
+        defaultsTo: '5',
+        help: 'Warmup duration in seconds.',
+      )
+      ..addOption(
+        'concurrency',
+        defaultsTo: '16',
+        help: 'Number of concurrent request loops.',
+      )
+      ..addOption(
+        'output',
+        defaultsTo: 'build/reports/bench/server.json',
+        help: 'JSON report path.',
+      )
+      ..addOption(
+        'compose-file',
+        help: 'Optional Docker Compose file to start before benchmarking.',
+      )
+      ..addOption(
+        'compose-project-name',
+        help: 'Optional Docker Compose project name.',
+      )
+      ..addFlag(
+        'compose-down',
+        defaultsTo: true,
+        help: 'Run docker compose down after benchmarking.',
+      )
+      ..addOption(
+        'health-url',
+        help: 'Optional URL to poll before benchmarking.',
+      )
+      ..addOption(
+        'health-timeout',
+        defaultsTo: '90',
+        help: 'Seconds to wait for the health URL.',
+      )
+      ..addOption(
+        'container',
+        help: 'Optional Docker container name for CPU/memory sampling.',
+      )
+      ..addOption(
+        'max-p95-latency-ms',
+        help: 'Fail if p95 latency exceeds this threshold.',
+      )
+      ..addOption(
+        'min-throughput',
+        help: 'Fail if throughput is below this requests/sec threshold.',
+      )
+      ..addFlag(
+        'github-summary',
+        help: 'Append a benchmark summary to GITHUB_STEP_SUMMARY.',
+      );
+  }
+
+  final Directory? _projectRoot;
+
+  @override
+  String get description => 'Benchmark a server HTTP endpoint.';
+
+  @override
+  String get name => 'server';
+
+  @override
+  Future<int> run() {
+    final url = Uri.parse(argResults!.option('url')!);
+    return ServerBenchmarkRunner().run(
+      ServerBenchmarkConfig(
+        projectRoot: _projectRoot ?? Directory.current,
+        url: url,
+        duration: Duration(seconds: int.parse(argResults!.option('duration')!)),
+        concurrency: int.parse(argResults!.option('concurrency')!),
+        warmup: Duration(seconds: int.parse(argResults!.option('warmup')!)),
+        outputPath: argResults!.option('output')!,
+        headers: _parseHeaders(argResults!.multiOption('header')),
+        method: argResults!.option('method')!,
+        githubSummary: argResults!.flag('github-summary'),
+        composeFile: argResults!.option('compose-file'),
+        composeProjectName: argResults!.option('compose-project-name'),
+        composeDown: argResults!.flag('compose-down'),
+        healthUrl: Uri.parse(
+          argResults!.option('health-url') ?? url.toString(),
+        ),
+        healthTimeout: Duration(
+          seconds: int.parse(argResults!.option('health-timeout')!),
+        ),
+        container: argResults!.option('container'),
+        maxP95LatencyMs: _tryParseDouble(
+          argResults!.option('max-p95-latency-ms'),
+        ),
+        minThroughput: _tryParseDouble(argResults!.option('min-throughput')),
+      ),
+    );
   }
 }
 
@@ -278,6 +579,34 @@ final class _PackageVersionCommand extends Command<int> {
     stdout.write(argResults!.flag('json') ? version.toJson() : version.toEnv());
     return 0;
   }
+}
+
+Map<String, String> _parseHeaders(List<String> values) {
+  final headers = <String, String>{};
+  for (final value in values) {
+    final separator = value.indexOf(':');
+    if (separator <= 0) {
+      throw UsageException(
+        'Expected --header values in "Name: value" format.',
+        '',
+      );
+    }
+    headers[value.substring(0, separator).trim()] = value
+        .substring(separator + 1)
+        .trim();
+  }
+  return headers;
+}
+
+Map<String, String> _testEnvironment(String? baseUrl) {
+  return baseUrl == null ? const {} : {'TEST_BASE_URL': baseUrl};
+}
+
+double? _tryParseDouble(String? value) {
+  if (value == null || value.isEmpty) {
+    return null;
+  }
+  return double.parse(value);
 }
 
 extension<T> on List<T> {
