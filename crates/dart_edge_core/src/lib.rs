@@ -11,6 +11,8 @@
 #![deny(missing_docs)]
 
 mod bytes;
+mod dart_api;
+mod job_pool;
 mod owned;
 mod pairs;
 mod slice;
@@ -20,6 +22,8 @@ mod string;
 pub use bytes::{
     NativeBytes, NativeOwnedBytes, read_native_bytes, read_native_str, read_native_string,
 };
+pub use dart_api::{DartNativePort, NativeCompletionPort, initialize_dart_api_dl};
+pub use job_pool::{NativeJobPoll, NativeJobPool, NativeJobPoolMetrics, NativeJobSubmitError};
 pub use owned::{OwnedBytes, free_owned_bytes, into_native_owned_bytes};
 pub use pairs::{
     NativePair, OwnedPair, boxed_pairs_ptr, native_pairs_from_owned, owned_pairs_from_map,

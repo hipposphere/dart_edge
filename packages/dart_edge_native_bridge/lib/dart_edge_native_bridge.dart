@@ -14,3 +14,4 @@ export 'src/ffi/native_value_helpers.dart'
         maybeCopyNativeBytes,
         optionalNativeString,
         requiredNativeString;
+export 'src/native_completion_port.dart' show NativeCompletionPort;

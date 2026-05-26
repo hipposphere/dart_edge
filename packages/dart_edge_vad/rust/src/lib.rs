@@ -1,11 +1,15 @@
 use std::ffi::{CStr, CString, c_char};
+use std::os::raw::c_void;
 use std::sync::{
     Mutex, MutexGuard,
     atomic::{AtomicUsize, Ordering},
 };
 
+use dart_edge_core::{
+    NativeCompletionPort, NativeJobPool, NativeJobSubmitError, initialize_dart_api_dl,
+};
 use once_cell::sync::Lazy;
-use ort::session::Session;
+use ort::session::{Session, builder::GraphOptimizationLevel};
 use ort::value::Tensor;
 use serde::{Deserialize, Serialize};
 
@@ -90,9 +94,32 @@ pub struct DartEdgeVadStream {
     finished: bool,
 }
 
+pub struct DartEdgeVadPool {
+    jobs: NativeJobPool<NativeVadPoolJob, String>,
+}
+
+struct NativeVadPoolJob {
+    request_json: String,
+    input: Vec<u8>,
+}
+
 #[unsafe(no_mangle)]
 pub extern "C" fn dart_edge_vad_native_abi_version() -> i32 {
     DART_EDGE_VAD_NATIVE_ABI_VERSION
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_vad_initialize_dart_api_dl(data: *mut c_void) -> i32 {
+    match unsafe { initialize_dart_api_dl(data) } {
+        Ok(()) => {
+            clear_last_error();
+            1
+        }
+        Err(error) => {
+            set_last_error(error);
+            0
+        }
+    }
 }
 
 #[unsafe(no_mangle)]
@@ -205,6 +232,148 @@ pub extern "C" fn dart_edge_vad_stream_free(stream: *mut DartEdgeVadStream) {
 }
 
 #[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_vad_pool_create(
+    worker_count: usize,
+    max_queue_size: usize,
+    completion_port: i64,
+) -> *mut DartEdgeVadPool {
+    if worker_count == 0 {
+        set_last_error("VAD pool worker_count must be at least 1.");
+        return std::ptr::null_mut();
+    }
+    if max_queue_size == 0 {
+        set_last_error("VAD pool max_queue_size must be at least 1.");
+        return std::ptr::null_mut();
+    }
+
+    let jobs = match NativeJobPool::new_with_completion(
+        worker_count,
+        max_queue_size,
+        NativeCompletionPort::new(completion_port),
+        create_vad_pool_handler,
+    ) {
+        Ok(jobs) => jobs,
+        Err(error) => {
+            set_last_error(error);
+            return std::ptr::null_mut();
+        }
+    };
+
+    clear_last_error();
+    Box::into_raw(Box::new(DartEdgeVadPool { jobs }))
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_vad_pool_submit_silero(
+    pool: *mut DartEdgeVadPool,
+    request_json: *const c_char,
+    input_ptr: *const u8,
+    input_len: isize,
+) -> i64 {
+    if pool.is_null() {
+        set_last_error("Missing VAD pool.");
+        return 0;
+    }
+    let Some(request_json) = (unsafe { read_c_string(request_json) }) else {
+        set_last_error("Missing VAD request.");
+        return 0;
+    };
+    let Some(input) = (unsafe { read_bytes(input_ptr, input_len) }) else {
+        set_last_error("Missing PCM16 byte input.");
+        return 0;
+    };
+
+    let pool = unsafe { &*pool };
+    match pool.jobs.submit(NativeVadPoolJob {
+        request_json,
+        input: input.to_vec(),
+    }) {
+        Ok(job_id) => {
+            clear_last_error();
+            job_id
+        }
+        Err(NativeJobSubmitError::QueueFull) => {
+            set_last_error("VAD pool queue is full.");
+            0
+        }
+        Err(NativeJobSubmitError::Closed) => {
+            set_last_error("VAD pool is closed.");
+            0
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_vad_pool_take_result(
+    pool: *mut DartEdgeVadPool,
+    job_id: i64,
+) -> *mut c_char {
+    if pool.is_null() {
+        set_last_error("Missing VAD pool.");
+        return std::ptr::null_mut();
+    }
+    let pool = unsafe { &*pool };
+    match pool.jobs.take_result(job_id) {
+        Some(Ok(json)) => {
+            clear_last_error();
+            c_string(json).into_raw()
+        }
+        Some(Err(error)) => {
+            set_last_error(error);
+            std::ptr::null_mut()
+        }
+        None => {
+            set_last_error("VAD pool job is not ready.");
+            std::ptr::null_mut()
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_vad_pool_metrics(pool: *mut DartEdgeVadPool) -> *mut c_char {
+    if pool.is_null() {
+        set_last_error("Missing VAD pool.");
+        return std::ptr::null_mut();
+    }
+    let pool = unsafe { &*pool };
+    let metrics = pool.jobs.metrics();
+    match serde_json::to_string(&serde_json::json!({
+        "workerCount": metrics.worker_count,
+        "maxQueueSize": metrics.max_queue_size,
+        "submittedJobs": metrics.submitted_jobs,
+        "acceptedJobs": metrics.accepted_jobs,
+        "rejectedQueueFullJobs": metrics.rejected_queue_full_jobs,
+        "rejectedClosedJobs": metrics.rejected_closed_jobs,
+        "startedJobs": metrics.started_jobs,
+        "completedSuccessJobs": metrics.completed_success_jobs,
+        "completedErrorJobs": metrics.completed_error_jobs,
+        "pendingResultCount": metrics.pending_result_count,
+        "queuedJobs": metrics.queued_jobs,
+        "activeJobs": metrics.active_jobs,
+        "maxObservedQueuedJobs": metrics.max_observed_queued_jobs,
+        "maxObservedActiveJobs": metrics.max_observed_active_jobs,
+        "completionPostFailedJobs": metrics.completion_post_failed_jobs,
+    })) {
+        Ok(json) => {
+            clear_last_error();
+            c_string(json).into_raw()
+        }
+        Err(error) => {
+            set_last_error(error.to_string());
+            std::ptr::null_mut()
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_vad_pool_free(pool: *mut DartEdgeVadPool) {
+    if pool.is_null() {
+        return;
+    }
+    drop(unsafe { Box::from_raw(pool) });
+}
+
+#[unsafe(no_mangle)]
 pub extern "C" fn dart_edge_vad_take_last_error() -> *mut c_char {
     LAST_ERROR
         .lock()
@@ -244,6 +413,53 @@ fn detect_silero(input: &[u8], request: SileroDetectRequest) -> Result<NativeVad
     })
 }
 
+fn detect_silero_with_session(
+    input: &[u8],
+    request: SileroDetectRequest,
+    session: &mut Session,
+) -> Result<NativeVadResult, String> {
+    validate_silero_request(&request)?;
+    if input.len() % 2 != 0 {
+        return Err("PCM16 byte input must contain complete i16 samples.".to_string());
+    }
+
+    let pcm = pcm16le_to_f32(input);
+    let probabilities = run_silero_probabilities_with_session(&pcm, &request, session)?;
+    let segments = speech_segments_from_probabilities(
+        &probabilities,
+        pcm.len(),
+        request.sample_rate_hz,
+        request.window_size_samples,
+        &request,
+    );
+
+    Ok(NativeVadResult {
+        sample_rate_hz: request.sample_rate_hz,
+        total_samples: pcm.len(),
+        has_speech: !segments.is_empty(),
+        segments,
+    })
+}
+
+fn create_vad_pool_handler() -> impl FnMut(NativeVadPoolJob) -> Result<String, String> + Send {
+    let mut session: Option<Result<Session, String>> = None;
+    move |job| {
+        let request = serde_json::from_str::<SileroDetectRequest>(&job.request_json)
+            .map_err(|error| format!("Invalid VAD request: {error}"))?;
+        if session.is_none() {
+            session = Some(load_silero_session());
+        }
+        match session.as_mut().unwrap() {
+            Ok(session) => {
+                detect_silero_with_session(&job.input, request, session).and_then(|result| {
+                    serde_json::to_string(&result).map_err(|error| error.to_string())
+                })
+            }
+            Err(error) => Err(error.clone()),
+        }
+    }
+}
+
 fn validate_silero_request(request: &SileroDetectRequest) -> Result<(), String> {
     if request.model_version != "6.2.1" {
         return Err(format!(
@@ -264,27 +480,33 @@ fn run_silero_probabilities(
     pcm: &[f32],
     request: &SileroDetectRequest,
 ) -> Result<Vec<f32>, String> {
-    with_silero_session(|session| {
-        let mut probabilities = Vec::with_capacity(pcm.len().div_ceil(request.window_size_samples));
-        let mut state = vec![0.0_f32; 2 * 128];
-        let mut context = vec![0.0_f32; SILERO_CONTEXT_SAMPLES_16KHZ];
-        let mut scratch = SileroScratch::new(request.window_size_samples);
+    with_silero_session(|session| run_silero_probabilities_with_session(pcm, request, session))
+}
 
-        for chunk_start in (0..pcm.len()).step_by(request.window_size_samples) {
-            let chunk_end = (chunk_start + request.window_size_samples).min(pcm.len());
-            let probability = run_silero_window(
-                session,
-                &pcm[chunk_start..chunk_end],
-                request,
-                &mut state,
-                &mut context,
-                &mut scratch,
-            )?;
-            probabilities.push(probability);
-        }
+fn run_silero_probabilities_with_session(
+    pcm: &[f32],
+    request: &SileroDetectRequest,
+    session: &mut Session,
+) -> Result<Vec<f32>, String> {
+    let mut probabilities = Vec::with_capacity(pcm.len().div_ceil(request.window_size_samples));
+    let mut state = vec![0.0_f32; 2 * 128];
+    let mut context = vec![0.0_f32; SILERO_CONTEXT_SAMPLES_16KHZ];
+    let mut scratch = SileroScratch::new(request.window_size_samples);
 
-        Ok(probabilities)
-    })
+    for chunk_start in (0..pcm.len()).step_by(request.window_size_samples) {
+        let chunk_end = (chunk_start + request.window_size_samples).min(pcm.len());
+        let probability = run_silero_window(
+            session,
+            &pcm[chunk_start..chunk_end],
+            request,
+            &mut state,
+            &mut context,
+            &mut scratch,
+        )?;
+        probabilities.push(probability);
+    }
+
+    Ok(probabilities)
 }
 
 fn run_silero_window(
@@ -380,8 +602,19 @@ fn with_silero_session_guard<T>(
 }
 
 fn load_silero_session() -> Result<Session, String> {
-    Session::builder()
-        .and_then(|mut builder| builder.commit_from_memory(SILERO_VAD_V6_2_1))
+    let builder = Session::builder()
+        .map_err(|error| format!("Failed to create Silero VAD ONNX session builder: {error}"))?;
+    let builder = builder
+        .with_optimization_level(GraphOptimizationLevel::All)
+        .map_err(|error| format!("Failed to configure Silero VAD graph optimization: {error}"))?;
+    let builder = builder
+        .with_intra_threads(1)
+        .map_err(|error| format!("Failed to configure Silero VAD intra threads: {error}"))?;
+    let mut builder = builder
+        .with_inter_threads(1)
+        .map_err(|error| format!("Failed to configure Silero VAD inter threads: {error}"))?;
+    builder
+        .commit_from_memory(SILERO_VAD_V6_2_1)
         .map_err(|error| format!("Failed to load Silero VAD ONNX model: {error}"))
 }
 

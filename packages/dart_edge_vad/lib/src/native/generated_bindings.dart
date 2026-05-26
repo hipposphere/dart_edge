@@ -25,8 +25,51 @@ external ffi.Pointer<ffi.Char> dart_edge_vad_detect_silero(
 @ffi.Native<ffi.Void Function(ffi.Pointer<ffi.Char>)>(isLeaf: true)
 external void dart_edge_vad_free_string(ffi.Pointer<ffi.Char> value);
 
+@ffi.Native<ffi.Int32 Function(ffi.Pointer<ffi.Void>)>()
+external int dart_edge_vad_initialize_dart_api_dl(ffi.Pointer<ffi.Void> data);
+
 @ffi.Native<ffi.Int32 Function()>(isLeaf: true)
 external int dart_edge_vad_native_abi_version();
+
+@ffi.Native<
+  ffi.Pointer<DartEdgeVadPool> Function(ffi.UintPtr, ffi.UintPtr, ffi.Int64)
+>()
+external ffi.Pointer<DartEdgeVadPool> dart_edge_vad_pool_create(
+  int worker_count,
+  int max_queue_size,
+  int completion_port,
+);
+
+@ffi.Native<ffi.Void Function(ffi.Pointer<DartEdgeVadPool>)>()
+external void dart_edge_vad_pool_free(ffi.Pointer<DartEdgeVadPool> pool);
+
+@ffi.Native<
+  ffi.Int64 Function(
+    ffi.Pointer<DartEdgeVadPool>,
+    ffi.Pointer<ffi.Char>,
+    ffi.Pointer<ffi.Uint8>,
+    ffi.IntPtr,
+  )
+>()
+external int dart_edge_vad_pool_submit_silero(
+  ffi.Pointer<DartEdgeVadPool> pool,
+  ffi.Pointer<ffi.Char> request_json,
+  ffi.Pointer<ffi.Uint8> input_ptr,
+  int input_len,
+);
+
+@ffi.Native<
+  ffi.Pointer<ffi.Char> Function(ffi.Pointer<DartEdgeVadPool>, ffi.Int64)
+>()
+external ffi.Pointer<ffi.Char> dart_edge_vad_pool_take_result(
+  ffi.Pointer<DartEdgeVadPool> pool,
+  int job_id,
+);
+
+@ffi.Native<ffi.Pointer<ffi.Char> Function(ffi.Pointer<DartEdgeVadPool>)>()
+external ffi.Pointer<ffi.Char> dart_edge_vad_pool_metrics(
+  ffi.Pointer<DartEdgeVadPool> pool,
+);
 
 @ffi.Native<ffi.Pointer<DartEdgeVadStream> Function(ffi.Pointer<ffi.Char>)>()
 external ffi.Pointer<DartEdgeVadStream> dart_edge_vad_stream_create(
@@ -53,5 +96,7 @@ external ffi.Pointer<ffi.Char> dart_edge_vad_stream_process(
 
 @ffi.Native<ffi.Pointer<ffi.Char> Function()>()
 external ffi.Pointer<ffi.Char> dart_edge_vad_take_last_error();
+
+final class DartEdgeVadPool extends ffi.Opaque {}
 
 final class DartEdgeVadStream extends ffi.Opaque {}

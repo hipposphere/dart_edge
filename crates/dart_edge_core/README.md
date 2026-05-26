@@ -18,3 +18,5 @@ Included primitives:
 - borrowed key/value pairs
 - borrowed typed slices for Rust-side FFI helpers
 - a small status/result envelope for future native APIs
+- a bounded native worker-thread pool for package-specific native jobs, with
+  queue and completion metrics

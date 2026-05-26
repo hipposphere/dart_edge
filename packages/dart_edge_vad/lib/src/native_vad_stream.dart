@@ -5,12 +5,12 @@ import 'dart:typed_data';
 import 'native/dart_edge_vad_native.dart';
 import 'native/generated_bindings.dart' as gen;
 import 'native_pcm16_buffer.dart';
-import 'silero_vad.dart';
+import 'native_vad.dart';
 import 'vad_result.dart';
 
-/// Incremental output from a [SileroVadStreamingSession] call.
-final class SileroVadStreamResult {
-  const SileroVadStreamResult({
+/// Incremental output from a [NativeVadStreamingSession] call.
+final class NativeVadStreamResult {
+  const NativeVadStreamResult({
     required this.segments,
     required this.sampleRateHz,
     required this.totalSamples,
@@ -26,7 +26,7 @@ final class SileroVadStreamResult {
   final int sampleRateHz;
 
   /// Samples received by the stream, including samples not yet processed into
-  /// a complete Silero window.
+  /// a complete model window.
   final int totalSamples;
 
   /// Samples processed by ONNX inference.
@@ -40,26 +40,26 @@ final class SileroVadStreamResult {
   final List<double> probabilities;
 }
 
-/// Stateful Silero VAD session for chunked PCM16 input.
+/// Stateful native VAD session for chunked PCM16 input.
 ///
-/// The native session keeps Silero recurrent state and context between calls,
-/// so callers can feed 512-sample-or-larger chunks without repeatedly running
-/// VAD over the entire accumulated audio.
-final class SileroVadStreamingSession {
-  SileroVadStreamingSession({
-    this.model = SileroVadModel.latest,
-    this.options = const SileroVadOptions(),
+/// The native session keeps model recurrent state and context between calls, so
+/// callers can feed window-sized chunks without repeatedly running VAD over the
+/// entire accumulated audio.
+final class NativeVadStreamingSession {
+  NativeVadStreamingSession({
+    this.model = NativeVadModel.silero,
+    this.options = const NativeVadOptions(),
     this.sampleRateHz = 16000,
   }) {
     if (sampleRateHz != model.sampleRateHz) {
       throw ArgumentError.value(
         sampleRateHz,
         'sampleRateHz',
-        'Silero VAD ${model.version} expects ${model.sampleRateHz} Hz audio.',
+        'Native VAD model ${model.name} expects ${model.sampleRateHz} Hz audio.',
       );
     }
     _streamPtr = DartEdgeVadNative.createSileroStream(
-      sileroVadRequestJson(
+      nativeVadRequestJson(
         model: model,
         options: options,
         sampleRateHz: sampleRateHz,
@@ -67,28 +67,33 @@ final class SileroVadStreamingSession {
     );
   }
 
-  final SileroVadModel model;
+  final NativeVadModel model;
 
-  final SileroVadOptions options;
+  final NativeVadOptions options;
 
   final int sampleRateHz;
 
   late final Pointer<gen.DartEdgeVadStream> _streamPtr;
   var _closed = false;
 
-  /// Warm this stream's native Silero inference path before real chunks arrive.
+  /// Warm the native VAD inference path before real chunks arrive.
   ///
-  /// This warms the shared native session pool without mutating this stream's
-  /// recurrent VAD state or sample offsets.
-  Future<void> initialize() {
-    return SileroVad(model: model, options: options).initialize();
+  /// This warms the native worker pool without mutating this stream's recurrent
+  /// VAD state or sample offsets.
+  Future<void> initialize() async {
+    final vad = NativeVad(model: model, options: options, workerCount: 1);
+    try {
+      await vad.initialize();
+    } finally {
+      await vad.close();
+    }
   }
 
-  SileroVadStreamResult addChunk(Int16List pcm16KhzMono) {
+  NativeVadStreamResult addChunk(Int16List pcm16KhzMono) {
     return _process(pcm16KhzMono, flush: false);
   }
 
-  SileroVadStreamResult addNativeChunk(NativePcm16Buffer pcm16KhzMono) {
+  NativeVadStreamResult addNativeChunk(NativePcm16Buffer pcm16KhzMono) {
     return processNativePointer(
       pcm16BytesPtr: pcm16KhzMono.bytesPtr,
       pcm16ByteLength: pcm16KhzMono.byteLength,
@@ -96,11 +101,11 @@ final class SileroVadStreamingSession {
     );
   }
 
-  SileroVadStreamResult finish([Int16List? pcm16KhzMono]) {
+  NativeVadStreamResult finish([Int16List? pcm16KhzMono]) {
     return _process(pcm16KhzMono ?? Int16List(0), flush: true);
   }
 
-  SileroVadStreamResult finishNative([NativePcm16Buffer? pcm16KhzMono]) {
+  NativeVadStreamResult finishNative([NativePcm16Buffer? pcm16KhzMono]) {
     return processNativePointer(
       pcm16BytesPtr: pcm16KhzMono?.bytesPtr ?? nullptr,
       pcm16ByteLength: pcm16KhzMono?.byteLength ?? 0,
@@ -109,13 +114,13 @@ final class SileroVadStreamingSession {
   }
 
   /// Process native PCM16 bytes without copying in the Dart FFI wrapper.
-  SileroVadStreamResult processNativePointer({
+  NativeVadStreamResult processNativePointer({
     required Pointer<Uint8> pcm16BytesPtr,
     required int pcm16ByteLength,
     required bool flush,
   }) {
     if (_closed) {
-      throw StateError('Silero VAD streaming session is closed.');
+      throw StateError('Native VAD streaming session is closed.');
     }
 
     final resultJson = DartEdgeVadNative.processSileroStreamPointer(
@@ -136,12 +141,12 @@ final class SileroVadStreamingSession {
     _closed = true;
   }
 
-  SileroVadStreamResult _process(
+  NativeVadStreamResult _process(
     Int16List pcm16KhzMono, {
     required bool flush,
   }) {
     if (_closed) {
-      throw StateError('Silero VAD streaming session is closed.');
+      throw StateError('Native VAD streaming session is closed.');
     }
 
     final bytes = Uint8List.view(
@@ -159,7 +164,7 @@ final class SileroVadStreamingSession {
   }
 }
 
-SileroVadStreamResult _readStreamResult(Map<String, Object?> json) {
+NativeVadStreamResult _readStreamResult(Map<String, Object?> json) {
   final sampleRateHz = json['sampleRateHz'] as int;
   final rawSegments = json['segments'] as List<Object?>? ?? const <Object?>[];
   final segments = rawSegments.map((rawSegment) {
@@ -173,7 +178,7 @@ SileroVadStreamResult _readStreamResult(Map<String, Object?> json) {
   final rawProbabilities =
       json['probabilities'] as List<Object?>? ?? const <Object?>[];
 
-  return SileroVadStreamResult(
+  return NativeVadStreamResult(
     segments: segments,
     sampleRateHz: sampleRateHz,
     totalSamples: json['totalSamples'] as int,

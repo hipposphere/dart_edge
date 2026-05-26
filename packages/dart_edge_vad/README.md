@@ -2,9 +2,10 @@
 
 Voice activity detection and audio trimming APIs for Dart Edge.
 
-The package exposes the app-facing API for Silero VAD trimming and implements
-Silero ONNX inference in Rust plus PCM/WAV trimming in Dart. The bundled model
-targets Silero VAD v6.2.1 and expects 16 kHz mono PCM input.
+The package exposes native voice activity detection and trimming APIs. It
+currently ships Silero VAD v6.2.1 as the default native model, implemented with
+ONNX inference in Rust plus PCM/WAV trimming in Dart. Input must be 16 kHz mono
+PCM.
 
 ## Quick Start
 
@@ -17,7 +18,8 @@ Future<void> main() async {
   final pcm = Int16List(16000);
   final wav = Uint8List(44);
 
-  final Vad vad = SileroVad();
+  final vad = NativeVad(workerCount: 4);
+  await vad.initialize();
   final result = await vad.detect(
     pcm16KhzMono: pcm,
     sampleRateHz: 16000,
@@ -27,20 +29,21 @@ Future<void> main() async {
     final trimmed = AudioTrimmer.trimBySegments(wav, result.segments);
     print(trimmed.length);
   }
+
+  await vad.close();
 }
 ```
 
 ## Main Types
 
-- `SileroVad`: app-facing detector facade
-- `SileroVadWorker`: long-lived isolate-backed detector for repeated requests
-- `SileroVadWorkerPool`: pool of long-lived isolate-backed detectors for
-  concurrent repeated requests
-- `SileroVadStreamingSession`: stateful chunked detector for low-latency input
+- `NativeVad`: native-thread detector with an internal bounded worker pool
+- `NativeVadPoolMetrics`: native worker pool counters exposed by
+  `NativeVad.metrics`
+- `NativeVadStreamingSession`: stateful chunked detector for low-latency input
 - `NativePcm16Buffer`: native-memory PCM16 input buffer for avoiding wrapper
   copies before FFI
-- `SileroVadModel`: supported Silero model metadata
-- `SileroVadOptions`: threshold and segment post-processing tunables
+- `NativeVadModel`: supported native model enum, currently `silero`
+- `NativeVadOptions`: threshold and segment post-processing tunables
 - `Vad`: detector interface for alternate VAD implementations
 - `VadResult` and `VadSegment`: speech detection output
 - `AudioTrimmer`: PCM16 and WAV trimming helpers
@@ -61,27 +64,38 @@ dart pub -C packages/dart_edge_vad run ffigen --config tool/ffigen.yaml
 
 ## Latency Notes
 
-`SileroVad.detect` remains the simplest API and offloads work with
-`Isolate.run`. For repeated calls, prefer `SileroVadWorker.spawn()` so the
-worker isolate stays alive. For concurrent repeated calls, prefer
-`SileroVadWorkerPool.spawn(size: n)` so requests use the shared Dart Edge
-isolate worker pool. For live audio, prefer `SileroVadStreamingSession` and feed
-16 kHz mono PCM16 chunks; the native stream keeps Silero state between calls and
-only emits newly finalized segments.
+`NativeVad` owns a bounded Rust worker-thread pool. Requests are queued and
+executed inside the native library; each worker owns one ONNX Runtime session.
+Create one detector during application startup, call `initialize()` to warm the
+workers, reuse it for requests, and call `close()` during shutdown.
 
-Native Silero sessions are pooled. Set `DART_EDGE_VAD_SESSION_POOL_SIZE` to tune
-the maximum number of concurrent ONNX sessions; by default the pool is capped at
-four sessions.
+`NativeVad.metrics` returns a point-in-time snapshot of worker count, queue
+size, submitted/accepted/rejected jobs, active/queued jobs, completed jobs, and
+completion notification failures. The current queue is bounded FIFO and
+non-blocking: when the queue is full, submission fails immediately instead of
+blocking or dropping older work.
 
-Call `initialize()` during application startup to pay native ONNX cold-start
-latency before real audio arrives. `SileroVad.initialize(sessionCount: n)` warms
-multiple native sessions for concurrent traffic, and
-`SileroVadWorker.spawn(initialize: true)` warms a long-lived worker before it is
-returned. `SileroVadWorkerPool.spawn(initialize: true)` warms each worker in the
-pool.
+For live audio, use `NativeVadStreamingSession` and feed 16 kHz mono PCM16
+chunks. The native stream keeps recurrent model state between calls and only
+emits newly finalized segments.
 
 The standard `Int16List` APIs copy Dart heap memory into native memory before
 calling FFI because ordinary Dart typed lists do not expose stable C pointers.
 For capture or streaming pipelines that can write directly into native memory,
 use `NativePcm16Buffer` with `detectNativeBuffer`, `addNativeChunk`, or
 `finishNative` to avoid that wrapper copy.
+
+## Benchmarks
+
+Run the package-local throughput benchmark with generated silence or a 16 kHz
+mono WAV file:
+
+```sh
+dart run packages/dart_edge_vad/tool/vad_throughput_benchmark.dart \
+  --worker-count 8 \
+  --concurrency 32 \
+  --iterations 256
+```
+
+Use `--file path/to/input.wav` to benchmark a real normalized sample. The tool
+prints JSON with wall duration, throughput, and request latency percentiles.

@@ -22,6 +22,10 @@ dart run dart_edge_ci package-version packages/server
 dart run dart_edge_ci test routes --suite packages/my_test_suite --base-url http://localhost:3000
 dart run dart_edge_ci test e2e --suite packages/my_test_suite --compose-file environment/compose.yaml
 dart run dart_edge_ci bench server --url http://localhost:3000/ --duration 30 --concurrency 32
+dart run dart_edge_ci flutter build ios_app_store
+dart run dart_edge_ci flutter build --all --dry-run
+dart run dart_edge_ci flutter publish ios-app-store --target ios_app_store
+dart run dart_edge_ci flutter artifact-paths android_play_store
 ```
 
 `build` prints the generated Dockerfile path and the exact
@@ -216,6 +220,146 @@ JSON output is also available:
 
 ```sh
 dart run dart_edge_ci package-version --json packages/server
+```
+
+## Flutter Release Builds
+
+`dart_edge_ci flutter` provides reusable Flutter release build orchestration for
+Hipposphere product workspaces. Projects define named build targets in
+`flutter_release.yaml`; each target declares its platform so a product can have
+multiple release targets for the same platform with different flavors, define
+files, or publishing settings.
+
+```yaml
+package: app
+flutter: flutter
+build_mode: release
+pub_get: true
+dart_define_from_file: ../.local.env.json
+
+targets:
+  macos_release:
+    platform: macos
+    dart_define_from_file:
+      - ../macos.env.json
+    signing:
+      enabled: true
+      required_env:
+        - MACOS_CERTIFICATE
+        - MACOS_CERTIFICATE_PASSWORD
+
+  windows_release:
+    platform: windows
+    signing:
+      enabled: true
+      required_env:
+        - WINDOWS_SIGNING_CERTIFICATE
+        - WINDOWS_SIGNING_CERTIFICATE_PASSWORD
+
+  linux_release:
+    platform: linux
+    enabled: true
+
+  web_release:
+    platform: web
+    build_args:
+      - --wasm
+
+  ios_app_store:
+    platform: ios
+    signing:
+      enabled: true
+      required_env:
+        - IOS_DISTRIBUTION_CERTIFICATE_BASE64
+        - IOS_DISTRIBUTION_CERTIFICATE_PASSWORD
+        - IOS_PROVISIONING_PROFILES_BASE64
+    publish:
+      app_store_connect:
+        ipa: build/ios/ipa/*.ipa
+        fastlane: bundle exec fastlane
+        submit_for_review: false
+        skip_metadata: true
+        skip_screenshots: true
+        api_key:
+          key_id_env: APP_STORE_CONNECT_KEY_ID
+          issuer_id_env: APP_STORE_CONNECT_ISSUER_ID
+          private_key_env: APP_STORE_CONNECT_PRIVATE_KEY
+
+  android_play_store:
+    platform: android
+    artifact: appbundle
+    signing:
+      enabled: true
+      required_env:
+        - ANDROID_UPLOAD_KEYSTORE_BASE64
+        - ANDROID_UPLOAD_KEYSTORE_PASSWORD
+```
+
+Build one target:
+
+```sh
+dart run dart_edge_ci flutter build ios_app_store
+```
+
+Print the commands without executing them:
+
+```sh
+dart run dart_edge_ci flutter build --all --dry-run
+```
+
+Print default artifact upload paths for GitHub Actions:
+
+```sh
+dart run dart_edge_ci flutter artifact-paths ios_app_store
+```
+
+Upload a signed iOS IPA to App Store Connect:
+
+```sh
+dart run dart_edge_ci flutter signing ios --target ios_app_store
+dart run dart_edge_ci flutter build ios_app_store
+dart run dart_edge_ci flutter publish ios-app-store --target ios_app_store
+```
+
+The first release-build layer intentionally builds signed Flutter artifacts.
+Packaging and publishing should be layered afterwards, for example DMG or PKG
+on macOS, MSIX or installer EXE on Windows, Flatpak/AppImage/deb/rpm on Linux,
+static hosting or container packaging for web, and store upload steps for iOS
+and Android.
+
+`dart_define_from_file` emits Flutter's native `--dart-define-from-file` build
+arguments. It can be configured once at the top level for every platform, or per
+target for additional files. A single string and a YAML list are both accepted.
+
+`flutter signing ios` installs the base64-encoded iOS distribution certificate
+and provisioning profiles from CI environment variables into a temporary
+keychain and the standard Xcode provisioning profile directory. It expects
+`IOS_DISTRIBUTION_CERTIFICATE_BASE64`,
+`IOS_DISTRIBUTION_CERTIFICATE_PASSWORD`,
+`IOS_PROVISIONING_PROFILES_BASE64`, and `KEYCHAIN_PASSWORD`.
+
+`flutter publish ios-app-store` resolves the configured IPA, writes a temporary
+fastlane App Store Connect API key JSON under `.dart_tool/dart_edge_ci/`, runs
+`fastlane deliver`, then deletes the temporary key file. Store submission is
+disabled by default; set `submit_for_review: true` only for release workflows
+that should immediately submit the uploaded build for review.
+
+GitHub repositories can call the reusable iOS release workflow from dart_edge:
+
+```yaml
+jobs:
+  release-ios:
+    uses: hipposphere/dart_edge/.github/workflows/release-flutter-ios.yml@main
+    with:
+      target: ios_app_store
+      publish: true
+    secrets:
+      APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+      APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+      APP_STORE_CONNECT_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
+      IOS_DISTRIBUTION_CERTIFICATE_BASE64: ${{ secrets.IOS_DISTRIBUTION_CERTIFICATE_BASE64 }}
+      IOS_DISTRIBUTION_CERTIFICATE_PASSWORD: ${{ secrets.IOS_DISTRIBUTION_CERTIFICATE_PASSWORD }}
+      IOS_PROVISIONING_PROFILES_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILES_BASE64 }}
 ```
 
 ## Route And E2E Test Suites

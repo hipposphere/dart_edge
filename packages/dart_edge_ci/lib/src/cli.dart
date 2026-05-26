@@ -4,6 +4,8 @@ import 'package:args/command_runner.dart';
 import 'package:path/path.dart' as p;
 
 import 'docker_generator.dart';
+import 'flutter_release_builder.dart';
+import 'flutter_release_config.dart';
 import 'package_version.dart';
 import 'server_benchmark.dart';
 import 'test_suite_runner.dart';
@@ -19,6 +21,7 @@ Future<int> runDartEdgeCi(
           'CI utilities for Dart Edge workspaces.',
         )
         ..addCommand(_DockerCommand(projectRoot, processRunner))
+        ..addCommand(_FlutterCommand(projectRoot))
         ..addCommand(_PackageVersionCommand(projectRoot))
         ..addCommand(_TestCommand(projectRoot))
         ..addCommand(_BenchCommand(projectRoot));
@@ -36,12 +39,262 @@ Future<int> runDartEdgeCi(
   } on PackageVersionException catch (error) {
     stderr.writeln('Package version error: ${error.message}');
     return 78;
+  } on FlutterReleaseException catch (error) {
+    stderr.writeln('Flutter release error: ${error.message}');
+    return 78;
   } on TestSuiteException catch (error) {
     stderr.writeln('Test suite error: ${error.message}');
     return 78;
   } on Object catch (error) {
     stderr.writeln('dart_edge_ci failed: $error');
     return 1;
+  }
+}
+
+final class _FlutterCommand extends Command<int> {
+  _FlutterCommand(Directory? projectRoot) {
+    addSubcommand(_FlutterBuildCommand(projectRoot));
+    addSubcommand(_FlutterPublishCommand(projectRoot));
+    addSubcommand(_FlutterSigningCommand(projectRoot));
+    addSubcommand(_FlutterPrintConfigCommand(projectRoot));
+    addSubcommand(_FlutterArtifactPathsCommand(projectRoot));
+  }
+
+  @override
+  String get description => 'Build Flutter release artifacts.';
+
+  @override
+  String get name => 'flutter';
+}
+
+final class _FlutterSigningCommand extends Command<int> {
+  _FlutterSigningCommand(Directory? projectRoot) {
+    addSubcommand(_FlutterSigningIosCommand(projectRoot));
+  }
+
+  @override
+  String get description => 'Install signing material for Flutter releases.';
+
+  @override
+  String get name => 'signing';
+}
+
+final class _FlutterSigningIosCommand extends Command<int> {
+  _FlutterSigningIosCommand(this._projectRoot) {
+    argParser
+      ..addOption(
+        'config',
+        defaultsTo: 'flutter_release.yaml',
+        help: 'Path to the Flutter release config file.',
+      )
+      ..addOption('target', help: 'iOS release target to validate.')
+      ..addFlag('dry-run', help: 'Print commands without executing them.');
+  }
+
+  final Directory? _projectRoot;
+
+  @override
+  String get description => 'Install iOS signing certificate and profiles.';
+
+  @override
+  String get name => 'ios';
+
+  @override
+  Future<int> run() async {
+    final root = _projectRoot ?? Directory.current;
+    final config = await _loadFlutterReleaseConfig(
+      root,
+      argResults!.option('config')!,
+    );
+    return FlutterReleaseBuilder(projectRoot: root).installIosSigningMaterial(
+      targetName: argResults!.option('target'),
+      config: config,
+      dryRun: argResults!.flag('dry-run'),
+    );
+  }
+}
+
+final class _FlutterPublishCommand extends Command<int> {
+  _FlutterPublishCommand(Directory? projectRoot) {
+    addSubcommand(_FlutterPublishIosAppStoreCommand(projectRoot));
+  }
+
+  @override
+  String get description => 'Publish Flutter release artifacts.';
+
+  @override
+  String get name => 'publish';
+}
+
+final class _FlutterPublishIosAppStoreCommand extends Command<int> {
+  _FlutterPublishIosAppStoreCommand(this._projectRoot) {
+    argParser
+      ..addOption(
+        'config',
+        defaultsTo: 'flutter_release.yaml',
+        help: 'Path to the Flutter release config file.',
+      )
+      ..addOption('target', help: 'Release target to publish.')
+      ..addFlag('dry-run', help: 'Print commands without executing them.');
+  }
+
+  final Directory? _projectRoot;
+
+  @override
+  String get description =>
+      'Upload the configured iOS IPA to App Store Connect.';
+
+  @override
+  String get name => 'ios-app-store';
+
+  @override
+  Future<int> run() async {
+    final root = _projectRoot ?? Directory.current;
+    final config = await _loadFlutterReleaseConfig(
+      root,
+      argResults!.option('config')!,
+    );
+    return FlutterReleaseBuilder(projectRoot: root).publishIosAppStore(
+      targetName: argResults!.option('target'),
+      config: config,
+      dryRun: argResults!.flag('dry-run'),
+    );
+  }
+}
+
+final class _FlutterBuildCommand extends Command<int> {
+  _FlutterBuildCommand(this._projectRoot) {
+    argParser
+      ..addOption(
+        'config',
+        defaultsTo: 'flutter_release.yaml',
+        help: 'Path to the Flutter release config file.',
+      )
+      ..addFlag('all', help: 'Build every enabled target in the config.')
+      ..addFlag('dry-run', help: 'Print commands without executing them.')
+      ..addFlag(
+        'github-output',
+        help: 'Append artifact paths to the GITHUB_OUTPUT file.',
+      );
+  }
+
+  final Directory? _projectRoot;
+
+  @override
+  String get description => 'Run flutter build for a configured target.';
+
+  @override
+  String get name => 'build';
+
+  @override
+  String get invocation =>
+      'dart_edge_ci flutter build [--all] [--dry-run] [target]';
+
+  @override
+  Future<int> run() async {
+    final root = _projectRoot ?? Directory.current;
+    final config = await _loadFlutterReleaseConfig(
+      root,
+      argResults!.option('config')!,
+    );
+    final targetNames = _selectedFlutterTargets(config);
+    final builder = FlutterReleaseBuilder(projectRoot: root);
+
+    for (final targetName in targetNames) {
+      final exitCode = await builder.build(
+        targetName,
+        config: config,
+        dryRun: argResults!.flag('dry-run'),
+      );
+      if (exitCode != 0) {
+        return exitCode;
+      }
+    }
+
+    if (argResults!.flag('github-output')) {
+      await _writeFlutterGithubOutput(config, targetNames);
+    }
+    return 0;
+  }
+
+  List<String> _selectedFlutterTargets(FlutterReleaseConfig config) {
+    if (argResults!.flag('all')) {
+      if (argResults!.rest.isNotEmpty) {
+        usageException('Do not pass a target when using --all.');
+      }
+      return [
+        for (final entry in config.targets.entries)
+          if (entry.value.enabled) entry.key,
+      ];
+    }
+    if (argResults!.rest.length != 1) {
+      usageException('Expected exactly one target, or pass --all.');
+    }
+    return [argResults!.rest.single];
+  }
+}
+
+final class _FlutterPrintConfigCommand extends Command<int> {
+  _FlutterPrintConfigCommand(this._projectRoot) {
+    argParser.addOption(
+      'config',
+      defaultsTo: 'flutter_release.yaml',
+      help: 'Path to the Flutter release config file.',
+    );
+  }
+
+  final Directory? _projectRoot;
+
+  @override
+  String get description => 'Print the normalized flutter_release.yaml model.';
+
+  @override
+  String get name => 'print-config';
+
+  @override
+  Future<int> run() async {
+    final config = await _loadFlutterReleaseConfig(
+      _projectRoot ?? Directory.current,
+      argResults!.option('config')!,
+    );
+    stdout.write(config.toPrettyJson());
+    return 0;
+  }
+}
+
+final class _FlutterArtifactPathsCommand extends Command<int> {
+  _FlutterArtifactPathsCommand(this._projectRoot) {
+    argParser.addOption(
+      'config',
+      defaultsTo: 'flutter_release.yaml',
+      help: 'Path to the Flutter release config file.',
+    );
+  }
+
+  final Directory? _projectRoot;
+
+  @override
+  String get description => 'Print default artifact upload paths.';
+
+  @override
+  String get name => 'artifact-paths';
+
+  @override
+  String get invocation => 'dart_edge_ci flutter artifact-paths [target]';
+
+  @override
+  Future<int> run() async {
+    if (argResults!.rest.length != 1) {
+      usageException('Expected exactly one target.');
+    }
+    final targetName = argResults!.rest.single;
+    final config = await _loadFlutterReleaseConfig(
+      _projectRoot ?? Directory.current,
+      argResults!.option('config')!,
+    );
+    stdout.write(flutterReleaseArtifactPaths(config, targetName).join('\n'));
+    stdout.writeln();
+    return 0;
   }
 }
 
@@ -607,6 +860,53 @@ double? _tryParseDouble(String? value) {
     return null;
   }
   return double.parse(value);
+}
+
+Future<FlutterReleaseConfig> _loadFlutterReleaseConfig(
+  Directory projectRoot,
+  String configPath,
+) async {
+  final file = File(
+    p.isAbsolute(configPath)
+        ? configPath
+        : p.join(projectRoot.path, configPath),
+  );
+  if (!await file.exists()) {
+    throw FlutterReleaseException('${p.basename(configPath)} not found.');
+  }
+  return FlutterReleaseConfig.parse(await file.readAsString());
+}
+
+Future<void> _writeFlutterGithubOutput(
+  FlutterReleaseConfig config,
+  List<String> targetNames,
+) async {
+  final githubOutput = Platform.environment['GITHUB_OUTPUT'];
+  if (githubOutput == null || githubOutput.isEmpty) {
+    throw const FlutterReleaseException('GITHUB_OUTPUT is not set.');
+  }
+  final buffer = StringBuffer();
+  if (targetNames.length == 1) {
+    final targetName = targetNames.single;
+    final target = config.target(targetName);
+    buffer
+      ..writeln('target=$targetName')
+      ..writeln('platform=${target.platform.name}')
+      ..writeln(
+        'artifact_path=${flutterReleaseArtifactPaths(config, targetName).join(',')}',
+      );
+  } else {
+    buffer.writeln('artifact_paths<<dart_edge_ci');
+    for (final targetName in targetNames) {
+      for (final path in flutterReleaseArtifactPaths(config, targetName)) {
+        buffer.writeln(path);
+      }
+    }
+    buffer.writeln('dart_edge_ci');
+  }
+  await File(
+    githubOutput,
+  ).writeAsString(buffer.toString(), mode: FileMode.append);
 }
 
 extension<T> on List<T> {

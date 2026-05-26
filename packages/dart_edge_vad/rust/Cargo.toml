@@ -1,6 +1,6 @@
 [package]
 name = "dart_edge_vad"
-version = "0.1.2"
+version = "0.2.0"
 edition = "2024"
 publish = false
 
@@ -8,6 +8,7 @@ publish = false
 crate-type = ["staticlib", "cdylib"]
 
 [dependencies]
+dart_edge_core = { path = "../../../crates/dart_edge_core", version = "0.2.0" }
 ndarray = "0.16"
 once_cell = "1.21"
 ort = "2.0.0-rc.12"

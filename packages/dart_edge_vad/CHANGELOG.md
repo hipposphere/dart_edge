@@ -1,3 +1,16 @@
+## 0.2.0
+
+- Replace isolate-backed VAD APIs with `NativeVad`, which owns a native worker
+  pool internally.
+- Add `NativeVadModel` and `NativeVadOptions` as the app-facing model and
+  tuning API.
+- Rename streaming APIs to `NativeVadStreamingSession` and
+  `NativeVadStreamResult`.
+- Add `NativeVadPoolMetrics` through `NativeVad.metrics` for observing native
+  worker pool throughput, queue pressure, and completion notification failures.
+- Complete native jobs through reusable Dart native-port notifications instead
+  of Dart-side polling.
+
 ## 0.1.3
 
 - Move `SileroVadWorker` onto the shared `DartEdgeIsolateWorker` foundation.

@@ -9,8 +9,10 @@ void main() {
     expect(DartEdgeVadNative.abiVersion, greaterThanOrEqualTo(1));
   });
 
-  test('Silero VAD runs ONNX inference for silence', () async {
-    final Vad vad = SileroVad();
+  test('Native VAD runs ONNX inference for silence', () async {
+    final vad = NativeVad(workerCount: 2);
+    addTearDown(vad.close);
+
     final result = await vad.detect(
       pcm16KhzMono: Int16List(16000),
       sampleRateHz: 16000,
@@ -22,8 +24,9 @@ void main() {
     expect(result.segments, isEmpty);
   });
 
-  test('Silero VAD rejects unsupported sample rates', () async {
-    final Vad vad = SileroVad();
+  test('Native VAD rejects unsupported sample rates', () async {
+    final Vad vad = NativeVad();
+    addTearDown((vad as NativeVad).close);
 
     await expectLater(
       vad.detect(pcm16KhzMono: Int16List(10), sampleRateHz: 8000),
@@ -31,10 +34,11 @@ void main() {
     );
   });
 
-  test('Silero VAD initialize warms native inference', () async {
-    final vad = SileroVad();
+  test('Native VAD initialize warms native workers', () async {
+    final vad = NativeVad(workerCount: 2);
+    addTearDown(vad.close);
 
-    await vad.initialize(sessionCount: 2);
+    await vad.initialize();
 
     final result = await vad.detect(
       pcm16KhzMono: Int16List(512),
@@ -44,10 +48,10 @@ void main() {
     expect(result.hasSpeech, isFalse);
   });
 
-  test('Silero VAD detects from native PCM16 without wrapper copy', () async {
+  test('Native VAD detects from native PCM16 without wrapper copy', () async {
     final buffer = NativePcm16Buffer(16000);
+    final vad = NativeVad(workerCount: 2);
     try {
-      final vad = SileroVad();
       final result = await vad.detectNativeBuffer(
         pcm16KhzMono: buffer,
         sampleRateHz: 16000,
@@ -58,55 +62,18 @@ void main() {
       expect(result.hasSpeech, isFalse);
       expect(result.segments, isEmpty);
     } finally {
+      await vad.close();
       buffer.close();
     }
   });
 
-  test('Silero VAD worker reuses a long-lived isolate', () async {
-    final worker = await SileroVadWorker.spawn(initialize: true);
+  test('Native VAD handles concurrent requests', () async {
+    final vad = NativeVad(workerCount: 2, maxQueueSize: 8);
     try {
-      final result = await worker.detect(
-        pcm16KhzMono: Int16List(16000),
-        sampleRateHz: 16000,
-      );
-
-      expect(result.sampleRateHz, 16000);
-      expect(result.totalSamples, 16000);
-      expect(result.hasSpeech, isFalse);
-      expect(result.segments, isEmpty);
-    } finally {
-      await worker.close();
-    }
-  });
-
-  test(
-    'Silero VAD worker detects from native PCM16 without wrapper copy',
-    () async {
-      final buffer = NativePcm16Buffer(16000);
-      final worker = await SileroVadWorker.spawn();
-      try {
-        final result = await worker.detectNativeBuffer(
-          pcm16KhzMono: buffer,
-          sampleRateHz: 16000,
-        );
-
-        expect(result.sampleRateHz, 16000);
-        expect(result.totalSamples, 16000);
-        expect(result.hasSpeech, isFalse);
-        expect(result.segments, isEmpty);
-      } finally {
-        await worker.close();
-        buffer.close();
-      }
-    },
-  );
-
-  test('Silero VAD worker pool handles concurrent requests', () async {
-    final pool = await SileroVadWorkerPool.spawn(size: 2, initialize: true);
-    try {
+      await vad.initialize();
       final results = await Future.wait([
-        pool.detect(pcm16KhzMono: Int16List(16000), sampleRateHz: 16000),
-        pool.detect(pcm16KhzMono: Int16List(512), sampleRateHz: 16000),
+        vad.detect(pcm16KhzMono: Int16List(16000), sampleRateHz: 16000),
+        vad.detect(pcm16KhzMono: Int16List(512), sampleRateHz: 16000),
       ]);
 
       expect(results[0].sampleRateHz, 16000);
@@ -116,34 +83,37 @@ void main() {
       expect(results[1].totalSamples, 512);
       expect(results[1].hasSpeech, isFalse);
     } finally {
-      await pool.close();
+      await vad.close();
     }
   });
 
-  test(
-    'Silero VAD worker pool detects from native PCM16 without wrapper copy',
-    () async {
-      final buffer = NativePcm16Buffer(16000);
-      final pool = await SileroVadWorkerPool.spawn(size: 2);
-      try {
-        final result = await pool.detectNativeBuffer(
-          pcm16KhzMono: buffer,
-          sampleRateHz: 16000,
-        );
+  test('Native VAD exposes native pool metrics', () async {
+    final vad = NativeVad(workerCount: 2, maxQueueSize: 8);
+    try {
+      final initial = vad.metrics;
+      expect(initial.workerCount, 2);
+      expect(initial.maxQueueSize, 8);
+      expect(initial.submittedJobs, 0);
+      expect(initial.pendingResultCount, 0);
 
-        expect(result.sampleRateHz, 16000);
-        expect(result.totalSamples, 16000);
-        expect(result.hasSpeech, isFalse);
-        expect(result.segments, isEmpty);
-      } finally {
-        await pool.close();
-        buffer.close();
-      }
-    },
-  );
+      await vad.detect(pcm16KhzMono: Int16List(512), sampleRateHz: 16000);
 
-  test('Silero VAD streaming session processes incremental chunks', () {
-    final stream = SileroVadStreamingSession();
+      final metrics = vad.metrics;
+      expect(metrics.submittedJobs, greaterThanOrEqualTo(1));
+      expect(metrics.acceptedJobs, greaterThanOrEqualTo(1));
+      expect(metrics.startedJobs, greaterThanOrEqualTo(1));
+      expect(metrics.completedSuccessJobs, greaterThanOrEqualTo(1));
+      expect(metrics.completedErrorJobs, 0);
+      expect(metrics.pendingResultCount, 0);
+      expect(metrics.activeJobs, 0);
+      expect(metrics.completionPostFailedJobs, 0);
+    } finally {
+      await vad.close();
+    }
+  });
+
+  test('Native VAD streaming session processes incremental chunks', () {
+    final stream = NativeVadStreamingSession();
     try {
       final first = stream.addChunk(Int16List(512));
       expect(first.sampleRateHz, 16000);
@@ -165,9 +135,9 @@ void main() {
   });
 
   test(
-    'Silero VAD streaming initialize does not consume stream samples',
+    'Native VAD streaming initialize does not consume stream samples',
     () async {
-      final stream = SileroVadStreamingSession();
+      final stream = NativeVadStreamingSession();
       try {
         await stream.initialize();
 
@@ -180,10 +150,10 @@ void main() {
     },
   );
 
-  test('Silero VAD streaming session processes native PCM16 chunks', () {
+  test('Native VAD streaming session processes native PCM16 chunks', () {
     final chunk = NativePcm16Buffer(512);
     final tail = NativePcm16Buffer(256);
-    final stream = SileroVadStreamingSession();
+    final stream = NativeVadStreamingSession();
     try {
       final first = stream.addNativeChunk(chunk);
       expect(first.sampleRateHz, 16000);

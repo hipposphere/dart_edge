@@ -1,0 +1,123 @@
+name: Release Flutter iOS
+
+on:
+  workflow_call:
+    inputs:
+      target:
+        description: flutter_release.yaml target to build and optionally publish.
+        required: false
+        type: string
+        default: ios_app_store
+      config:
+        description: Path to flutter_release.yaml.
+        required: false
+        type: string
+        default: flutter_release.yaml
+      flutter_version:
+        description: Flutter SDK version.
+        required: false
+        type: string
+        default: "3.44.0"
+      publish:
+        description: Upload the built IPA to App Store Connect.
+        required: false
+        type: boolean
+        default: true
+      artifact_name:
+        description: Uploaded IPA artifact name.
+        required: false
+        type: string
+        default: flutter-ios
+      runner:
+        description: macOS runner label.
+        required: false
+        type: string
+        default: macos-15
+      environment:
+        description: GitHub environment that provides release secrets.
+        required: false
+        type: string
+        default: release
+      dart_edge_ci_version:
+        description: dart_edge_ci release version passed to setup_ci.
+        required: false
+        type: string
+        default: "0.1.5"
+    secrets:
+      APP_STORE_CONNECT_KEY_ID:
+        required: false
+      APP_STORE_CONNECT_ISSUER_ID:
+        required: false
+      APP_STORE_CONNECT_PRIVATE_KEY:
+        required: false
+      IOS_DISTRIBUTION_CERTIFICATE_BASE64:
+        required: false
+      IOS_DISTRIBUTION_CERTIFICATE_PASSWORD:
+        required: false
+      IOS_PROVISIONING_PROFILES_BASE64:
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  release-ios:
+    name: Build and Publish iOS
+    runs-on: ${{ inputs.runner }}
+    environment: ${{ inputs.environment }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: hipposphere/dart_edge/actions/setup_ci@main
+        with:
+          version: ${{ inputs.dart_edge_ci_version }}
+          setup-flutter: "true"
+          flutter-version: ${{ inputs.flutter_version }}
+          pub-get: "true"
+
+      - name: Install iOS signing material
+        env:
+          IOS_DISTRIBUTION_CERTIFICATE_BASE64: ${{ secrets.IOS_DISTRIBUTION_CERTIFICATE_BASE64 }}
+          IOS_DISTRIBUTION_CERTIFICATE_PASSWORD: ${{ secrets.IOS_DISTRIBUTION_CERTIFICATE_PASSWORD }}
+          IOS_PROVISIONING_PROFILES_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILES_BASE64 }}
+          KEYCHAIN_PASSWORD: ${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          dart_edge_ci flutter signing ios \
+            --config "${{ inputs.config }}" \
+            --target "${{ inputs.target }}"
+
+      - name: Build iOS IPA
+        id: build
+        env:
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_CONNECT_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
+          IOS_DISTRIBUTION_CERTIFICATE_BASE64: ${{ secrets.IOS_DISTRIBUTION_CERTIFICATE_BASE64 }}
+          IOS_DISTRIBUTION_CERTIFICATE_PASSWORD: ${{ secrets.IOS_DISTRIBUTION_CERTIFICATE_PASSWORD }}
+          IOS_PROVISIONING_PROFILES_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILES_BASE64 }}
+        run: |
+          dart_edge_ci flutter build \
+            --config "${{ inputs.config }}" \
+            --github-output \
+            "${{ inputs.target }}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.artifact_name }}
+          path: ${{ steps.build.outputs.artifact_path }}
+          if-no-files-found: error
+
+      - name: Install fastlane
+        if: ${{ inputs.publish }}
+        run: sudo gem install fastlane -NV
+
+      - name: Upload IPA to App Store Connect
+        if: ${{ inputs.publish }}
+        env:
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_CONNECT_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
+        run: |
+          dart_edge_ci flutter publish ios-app-store \
+            --config "${{ inputs.config }}" \
+            --target "${{ inputs.target }}"

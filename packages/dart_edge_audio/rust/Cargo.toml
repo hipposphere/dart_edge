@@ -9,7 +9,7 @@ crate-type = ["staticlib", "cdylib"]
 
 [dependencies]
 audioadapter-buffers = "3.0"
-dart_edge_core = "0.1.0"
+dart_edge_core = "0.2.0"
 hound = "3.5"
 once_cell = "1.21"
 rubato = "2.0"

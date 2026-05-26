@@ -6,9 +6,8 @@ library;
 
 export 'src/audio_trimmer.dart';
 export 'src/native_pcm16_buffer.dart';
-export 'src/silero_vad.dart';
-export 'src/silero_vad_stream.dart';
-export 'src/silero_vad_worker.dart';
+export 'src/native_vad.dart';
+export 'src/native_vad_stream.dart';
 export 'src/vad.dart';
 export 'src/vad_result.dart';
 export 'src/wav_audio.dart';
