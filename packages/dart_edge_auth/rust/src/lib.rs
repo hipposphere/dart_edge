@@ -4,6 +4,8 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicI64, Ordering};
 
 use better_auth::adapters::{DatabaseAdapter, MemoryDatabaseAdapter, SqlxAdapter};
+use better_auth::plugins::OAuthPlugin;
+use better_auth::plugins::oauth::{OAuthConfig, OAuthProvider, OAuthUserInfo};
 use better_auth::plugins::{
     AccountManagementPlugin, AdminPlugin, EmailPasswordPlugin, EmailVerificationPlugin,
     PasswordManagementPlugin, SessionManagementPlugin,
@@ -87,7 +89,22 @@ struct NativeAuthConfig {
     enable_account_management: bool,
     enable_email_verification: bool,
     enable_rate_limit: bool,
+    #[serde(default)]
+    oauth_providers: Vec<NativeOAuthProviderConfig>,
     admin: Option<NativeAdminConfig>,
+}
+
+#[derive(Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct NativeOAuthProviderConfig {
+    provider_id: String,
+    client_id: String,
+    client_secret: String,
+    authorization_url: String,
+    token_url: String,
+    user_info_url: String,
+    #[serde(default = "default_oauth_scopes")]
+    scopes: Vec<String>,
 }
 
 #[derive(Clone, Deserialize)]
@@ -1195,6 +1212,11 @@ fn configure_builder<DB: DatabaseAdapter>(
     if config.enable_email_verification {
         builder = builder.plugin(EmailVerificationPlugin::new());
     }
+    if !config.oauth_providers.is_empty() {
+        builder = builder.plugin(OAuthPlugin::with_config(oauth_config(
+            &config.oauth_providers,
+        )));
+    }
     if let Some(admin) = &config.admin {
         builder = builder.plugin(
             AdminPlugin::new()
@@ -1206,6 +1228,63 @@ fn configure_builder<DB: DatabaseAdapter>(
         );
     }
     builder
+}
+
+fn oauth_config(providers: &[NativeOAuthProviderConfig]) -> OAuthConfig {
+    let mut config = OAuthConfig::default();
+    for provider in providers {
+        config.providers.insert(
+            provider.provider_id.clone(),
+            OAuthProvider {
+                client_id: provider.client_id.clone(),
+                client_secret: provider.client_secret.clone(),
+                auth_url: provider.authorization_url.clone(),
+                token_url: provider.token_url.clone(),
+                user_info_url: provider.user_info_url.clone(),
+                scopes: provider.scopes.clone(),
+                map_user_info: map_generic_oauth_user_info,
+            },
+        );
+    }
+    config
+}
+
+fn map_generic_oauth_user_info(value: serde_json::Value) -> Result<OAuthUserInfo, String> {
+    Ok(OAuthUserInfo {
+        id: json_string_field(&value, "sub")
+            .or_else(|| json_string_field(&value, "id"))
+            .ok_or_else(|| "missing sub or id".to_string())?,
+        email: json_string_field(&value, "email").ok_or_else(|| "missing email".to_string())?,
+        name: json_string_field(&value, "name"),
+        image: json_string_field(&value, "picture")
+            .or_else(|| json_string_field(&value, "avatar_url")),
+        email_verified: json_bool_field(&value, "email_verified")
+            .or_else(|| json_bool_field(&value, "verified"))
+            .unwrap_or(false),
+    })
+}
+
+fn json_string_field(value: &serde_json::Value, field: &str) -> Option<String> {
+    value
+        .get(field)
+        .and_then(|raw| raw.as_str().map(str::to_string))
+        .or_else(|| {
+            value
+                .get(field)
+                .and_then(|raw| raw.as_i64().map(|id| id.to_string()))
+        })
+}
+
+fn json_bool_field(value: &serde_json::Value, field: &str) -> Option<bool> {
+    value.get(field).and_then(|raw| raw.as_bool())
+}
+
+fn default_oauth_scopes() -> Vec<String> {
+    vec![
+        "openid".to_string(),
+        "email".to_string(),
+        "profile".to_string(),
+    ]
 }
 
 fn default_database() -> NativeDatabaseConfig {

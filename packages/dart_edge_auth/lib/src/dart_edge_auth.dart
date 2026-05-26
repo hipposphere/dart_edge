@@ -57,6 +57,14 @@ final class DartEdgeAuthOperation {
   );
   static const updateUser = DartEdgeAuthOperation._('update_user');
   static const changeEmail = DartEdgeAuthOperation._('change_email');
+  static const socialSignIn = DartEdgeAuthOperation._(
+    'social_sign_in',
+    pluginName: 'oauth',
+  );
+  static const oauthCallback = DartEdgeAuthOperation._(
+    'oauth_callback',
+    pluginName: 'oauth',
+  );
   static const adminSetRole = DartEdgeAuthOperation._(
     'admin_set_role',
     pluginName: 'admin',
@@ -319,6 +327,7 @@ JsonSchema? _successSchemaFor(String operationId) {
     'sign_in_email' => DartEdgeAuthSignInResult.jsonSchema,
     'get_session' || 'get_session_post' => DartEdgeAuthSessionResult.jsonSchema,
     'sign_out' => DartEdgeAuthSuccessResult.jsonSchema,
+    'social_sign_in' => DartEdgeAuthOAuthSignInResult.jsonSchema,
     'update_user' || 'change_email' => DartEdgeAuthStatusResult.jsonSchema,
     'admin_set_role' ||
     'admin_create_user' ||

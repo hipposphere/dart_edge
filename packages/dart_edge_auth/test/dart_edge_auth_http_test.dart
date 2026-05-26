@@ -35,6 +35,38 @@ void main() {
     expect(paths, isNot(contains('/auth/health')));
   });
 
+  test('registers OAuth routes when OAuth providers are configured', () {
+    final auth = DartEdgeAuth(
+      const DartEdgeAuthConfig(
+        workerPoolSize: 4,
+        secret: 'test-secret-key-that-is-at-least-32-characters-long',
+        baseUrl: 'http://localhost:3000',
+        oauthProviders: [
+          DartEdgeAuthOAuthProviderConfig(
+            providerId: 'uka',
+            clientId: 'client-id',
+            clientSecret: 'client-secret',
+            authorizationUrl: 'https://idp.example.test/oauth/authorize',
+            tokenUrl: 'https://idp.example.test/oauth/token',
+            userInfoUrl: 'https://idp.example.test/oauth/userinfo',
+          ),
+        ],
+      ),
+    );
+    addTearDown(auth.dispose);
+
+    final routes = auth.routes<TestServices>();
+    final operationIds = {
+      for (final mount in routes) mount.route.options.operationId,
+    };
+    final paths = {for (final mount in routes) mount.path};
+
+    expect(operationIds, contains('social_sign_in'));
+    expect(operationIds, contains('oauth_callback'));
+    expect(paths, contains('/auth/sign-in/social'));
+    expect(paths, contains('/auth/callback/<provider>'));
+  });
+
   test(
     'mounts better-auth routes and proxies status, body, and headers',
     () async {

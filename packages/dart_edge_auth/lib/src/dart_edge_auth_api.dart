@@ -185,6 +185,37 @@ final class DartEdgeAuthApi {
     );
   }
 
+  Future<DartEdgeAuthOAuthSignInResult> signInOAuth({
+    required String provider,
+    required String callbackUrl,
+    List<String>? scopes,
+  }) async {
+    return DartEdgeAuthOAuthSignInResult.fromResponse(
+      await callKnownOperation(
+        operation: DartEdgeAuthOperation.socialSignIn,
+        body: {
+          'provider': provider,
+          'callbackURL': callbackUrl,
+          'scopes': ?scopes,
+        },
+      ),
+    );
+  }
+
+  Future<DartEdgeAuthApiResponse> oauthCallback({
+    required String provider,
+    required String code,
+    required String state,
+    Map<String, String> headers = const <String, String>{},
+  }) {
+    return callKnownOperation(
+      operation: DartEdgeAuthOperation.oauthCallback,
+      pathParams: {'provider': provider},
+      query: {'code': code, 'state': state},
+      headers: headers,
+    );
+  }
+
   Future<DartEdgeAuthSessionResult> getSession({
     bool post = false,
     Map<String, String> headers = const <String, String>{},

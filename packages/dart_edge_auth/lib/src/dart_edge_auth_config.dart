@@ -17,7 +17,8 @@ final class DartEdgeAuthConfig {
     this.enablePasswordManagement = true,
     this.enableAccountManagement = true,
     this.enableEmailVerification = false,
-    this.enableRateLimit = true,
+    this.enableRateLimit = false,
+    this.oauthProviders = const <DartEdgeAuthOAuthProviderConfig>[],
     this.admin,
   }) : assert(workerPoolSize > 0, 'workerPoolSize must be at least 1.');
 
@@ -66,6 +67,9 @@ final class DartEdgeAuthConfig {
   /// Enables Better Auth's in-memory rate limiting middleware.
   final bool enableRateLimit;
 
+  /// OAuth providers registered with Better Auth's OAuth plugin.
+  final List<DartEdgeAuthOAuthProviderConfig> oauthProviders;
+
   /// Enables Better Auth's admin plugin when configured.
   final DartEdgeAuthAdminConfig? admin;
 
@@ -85,7 +89,41 @@ final class DartEdgeAuthConfig {
     'enableAccountManagement': enableAccountManagement,
     'enableEmailVerification': enableEmailVerification,
     'enableRateLimit': enableRateLimit,
+    'oauthProviders': oauthProviders
+        .map((provider) => provider.toJson())
+        .toList(),
     'admin': ?admin?.toJson(),
+  };
+}
+
+/// Configures one OAuth provider for Better Auth's OAuth plugin.
+final class DartEdgeAuthOAuthProviderConfig {
+  const DartEdgeAuthOAuthProviderConfig({
+    required this.providerId,
+    required this.clientId,
+    required this.clientSecret,
+    required this.authorizationUrl,
+    required this.tokenUrl,
+    required this.userInfoUrl,
+    this.scopes = const <String>['openid', 'email', 'profile'],
+  });
+
+  final String providerId;
+  final String clientId;
+  final String clientSecret;
+  final String authorizationUrl;
+  final String tokenUrl;
+  final String userInfoUrl;
+  final List<String> scopes;
+
+  Map<String, Object?> toJson() => {
+    'providerId': providerId,
+    'clientId': clientId,
+    'clientSecret': clientSecret,
+    'authorizationUrl': authorizationUrl,
+    'tokenUrl': tokenUrl,
+    'userInfoUrl': userInfoUrl,
+    'scopes': scopes,
   };
 }
 

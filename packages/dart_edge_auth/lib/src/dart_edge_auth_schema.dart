@@ -18,6 +18,7 @@ final class DartEdgeAuthSchema {
   static const List<JsonSchema> resultSchemas = <JsonSchema>[
     DartEdgeAuthSignUpResult.jsonSchema,
     DartEdgeAuthSignInResult.jsonSchema,
+    DartEdgeAuthOAuthSignInResult.jsonSchema,
     DartEdgeAuthSessionResult.jsonSchema,
     DartEdgeAuthUserResult.jsonSchema,
     DartEdgeAuthSessionUserResult.jsonSchema,

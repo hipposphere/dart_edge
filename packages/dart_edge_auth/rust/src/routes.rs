@@ -40,6 +40,26 @@ fn append_native_core_route_overrides(routes: &mut Vec<NativeHttpRoute>, base_pa
     push_route_if_missing(
         routes,
         NativeHttpRoute::new(
+            NativeHttpMethod::Post,
+            join_path(base_path, "/sign-in/social"),
+            "social_sign_in",
+            true,
+            Some("oauth".to_string()),
+        ),
+    );
+    push_route_if_missing(
+        routes,
+        NativeHttpRoute::new(
+            NativeHttpMethod::Get,
+            join_path(base_path, "/callback/{provider}"),
+            "oauth_callback",
+            false,
+            Some("oauth".to_string()),
+        ),
+    );
+    push_route_if_missing(
+        routes,
+        NativeHttpRoute::new(
             NativeHttpMethod::Get,
             join_path(base_path, core_paths::OPENAPI_SPEC),
             "openapi_spec",

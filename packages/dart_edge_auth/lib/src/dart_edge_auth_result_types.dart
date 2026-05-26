@@ -112,6 +112,52 @@ final class DartEdgeAuthSignInResult implements JsonEncodable {
   };
 }
 
+/// Typed result returned by OAuth sign-in initiation.
+final class DartEdgeAuthOAuthSignInResult implements JsonEncodable {
+  const DartEdgeAuthOAuthSignInResult({
+    required this.url,
+    required this.redirect,
+    required this.response,
+  });
+
+  factory DartEdgeAuthOAuthSignInResult.fromResponse(
+    DartEdgeAuthApiResponse response,
+  ) {
+    final json = _authSuccessJsonObject(response);
+    return DartEdgeAuthOAuthSignInResult(
+      url: authRequiredString(json, 'url'),
+      redirect: json['redirect'] as bool? ?? false,
+      response: response,
+    );
+  }
+
+  static const schemaId = 'DartEdgeAuthOAuthSignInResult';
+
+  static const schemaRef = JsonSchema.componentRef(schemaId);
+
+  static const jsonSchema = JsonSchema.object(
+    id: schemaId,
+    properties: <String, JsonSchema>{
+      'url': JsonSchema.string(),
+      'redirect': JsonSchema.boolean(),
+    },
+    required: <String>['url', 'redirect'],
+    additionalProperties: false,
+  );
+
+  final String url;
+  final bool redirect;
+
+  /// Raw HTTP response for headers such as `set-cookie`.
+  final DartEdgeAuthApiResponse response;
+
+  @override
+  Map<String, Object?> toJson() => <String, Object?>{
+    'url': url,
+    'redirect': redirect,
+  };
+}
+
 /// Typed result returned by get-session.
 final class DartEdgeAuthSessionResult implements JsonEncodable {
   const DartEdgeAuthSessionResult({

@@ -88,6 +88,37 @@ void main() {
     expect(config.toJson()['enableRateLimit'], false);
   });
 
+  test('serializes OAuth provider config', () {
+    const config = DartEdgeAuthConfig(
+      workerPoolSize: 4,
+      secret: 'test-secret-key-that-is-at-least-32-characters-long',
+      baseUrl: 'http://localhost:3000',
+      oauthProviders: [
+        DartEdgeAuthOAuthProviderConfig(
+          providerId: 'uka',
+          clientId: 'client-id',
+          clientSecret: 'client-secret',
+          authorizationUrl: 'https://idp.example.test/oauth/authorize',
+          tokenUrl: 'https://idp.example.test/oauth/token',
+          userInfoUrl: 'https://idp.example.test/oauth/userinfo',
+          scopes: ['openid', 'email'],
+        ),
+      ],
+    );
+
+    expect(config.toJson()['oauthProviders'], [
+      {
+        'providerId': 'uka',
+        'clientId': 'client-id',
+        'clientSecret': 'client-secret',
+        'authorizationUrl': 'https://idp.example.test/oauth/authorize',
+        'tokenUrl': 'https://idp.example.test/oauth/token',
+        'userInfoUrl': 'https://idp.example.test/oauth/userinfo',
+        'scopes': ['openid', 'email'],
+      },
+    ]);
+  });
+
   test('derives native sqlite auth database config from a sqlite database', () {
     final database = SqliteDatabase.inMemory();
     addTearDown(database.close);
