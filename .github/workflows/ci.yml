@@ -21,7 +21,9 @@ jobs:
           sdk: dev
 
       - name: Set up Rust
-        uses: dtolnay/rust-toolchain@stable
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
 
       - name: Resolve Dart workspace
         run: dart pub get
