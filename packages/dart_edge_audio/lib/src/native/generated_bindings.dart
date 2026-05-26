@@ -38,8 +38,102 @@ external void dart_edge_audio_free_bytes_result(
 @ffi.Native<ffi.Void Function(ffi.Pointer<ffi.Char>)>(isLeaf: true)
 external void dart_edge_audio_free_string(ffi.Pointer<ffi.Char> value);
 
+@ffi.Native<ffi.Int32 Function(ffi.Pointer<ffi.Void>)>()
+external int dart_edge_audio_initialize_dart_api_dl(ffi.Pointer<ffi.Void> data);
+
 @ffi.Native<ffi.Int32 Function()>(isLeaf: true)
 external int dart_edge_audio_native_abi_version();
+
+@ffi.Native<
+  ffi.Pointer<DartEdgeAudioPool> Function(ffi.UintPtr, ffi.UintPtr, ffi.Int64)
+>()
+external ffi.Pointer<DartEdgeAudioPool> dart_edge_audio_pool_create(
+  int worker_count,
+  int max_queue_size,
+  int completion_port,
+);
+
+@ffi.Native<ffi.Void Function(ffi.Pointer<DartEdgeAudioPool>)>()
+external void dart_edge_audio_pool_free(ffi.Pointer<DartEdgeAudioPool> pool);
+
+@ffi.Native<ffi.Pointer<ffi.Char> Function(ffi.Pointer<DartEdgeAudioPool>)>()
+external ffi.Pointer<ffi.Char> dart_edge_audio_pool_metrics(
+  ffi.Pointer<DartEdgeAudioPool> pool,
+);
+
+@ffi.Native<
+  ffi.Int64 Function(
+    ffi.Pointer<DartEdgeAudioPool>,
+    ffi.Pointer<ffi.Char>,
+    ffi.Pointer<ffi.Uint8>,
+    ffi.IntPtr,
+  )
+>()
+external int dart_edge_audio_pool_submit_convert_bytes(
+  ffi.Pointer<DartEdgeAudioPool> pool,
+  ffi.Pointer<ffi.Char> request_json,
+  ffi.Pointer<ffi.Uint8> input_ptr,
+  int input_len,
+);
+
+@ffi.Native<
+  ffi.Int64 Function(ffi.Pointer<DartEdgeAudioPool>, ffi.Pointer<ffi.Char>)
+>()
+external int dart_edge_audio_pool_submit_convert_file(
+  ffi.Pointer<DartEdgeAudioPool> pool,
+  ffi.Pointer<ffi.Char> request_json,
+);
+
+@ffi.Native<
+  ffi.Int64 Function(
+    ffi.Pointer<DartEdgeAudioPool>,
+    ffi.Pointer<ffi.Char>,
+    ffi.Pointer<ffi.Uint8>,
+    ffi.IntPtr,
+  )
+>()
+external int dart_edge_audio_pool_submit_probe_bytes(
+  ffi.Pointer<DartEdgeAudioPool> pool,
+  ffi.Pointer<ffi.Char> options_json,
+  ffi.Pointer<ffi.Uint8> input_ptr,
+  int input_len,
+);
+
+@ffi.Native<
+  ffi.Int64 Function(ffi.Pointer<DartEdgeAudioPool>, ffi.Pointer<ffi.Char>)
+>()
+external int dart_edge_audio_pool_submit_probe_file(
+  ffi.Pointer<DartEdgeAudioPool> pool,
+  ffi.Pointer<ffi.Char> request_json,
+);
+
+@ffi.Native<
+  ffi.Pointer<NativeAudioBytesResult> Function(
+    ffi.Pointer<DartEdgeAudioPool>,
+    ffi.Int64,
+  )
+>()
+external ffi.Pointer<NativeAudioBytesResult>
+dart_edge_audio_pool_take_convert_result(
+  ffi.Pointer<DartEdgeAudioPool> pool,
+  int job_id,
+);
+
+@ffi.Native<
+  ffi.Pointer<ffi.Char> Function(ffi.Pointer<DartEdgeAudioPool>, ffi.Int64)
+>()
+external ffi.Pointer<ffi.Char> dart_edge_audio_pool_take_file_result(
+  ffi.Pointer<DartEdgeAudioPool> pool,
+  int job_id,
+);
+
+@ffi.Native<
+  ffi.Pointer<ffi.Char> Function(ffi.Pointer<DartEdgeAudioPool>, ffi.Int64)
+>()
+external ffi.Pointer<ffi.Char> dart_edge_audio_pool_take_probe_result(
+  ffi.Pointer<DartEdgeAudioPool> pool,
+  int job_id,
+);
 
 @ffi.Native<
   ffi.Pointer<ffi.Char> Function(
@@ -61,6 +155,8 @@ external ffi.Pointer<ffi.Char> dart_edge_audio_probe_file(
 
 @ffi.Native<ffi.Pointer<ffi.Char> Function()>()
 external ffi.Pointer<ffi.Char> dart_edge_audio_take_last_error();
+
+final class DartEdgeAudioPool extends ffi.Opaque {}
 
 final class NativeAudioBytesResult extends ffi.Struct {
   external imp$1.NativeOwnedBytes bytes;

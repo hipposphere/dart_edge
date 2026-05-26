@@ -24,6 +24,33 @@ abstract final class DartEdgeAudioNative {
 
   static bool get hasBundledAsset => abiVersion >= 1;
 
+  static void initializeDartApiDl() {
+    final result = gen.dart_edge_audio_initialize_dart_api_dl(
+      NativeApi.initializeApiDLData,
+    );
+    if (result == 0) {
+      throw StateError(_takeLastError());
+    }
+  }
+
+  static Pointer<gen.DartEdgeAudioPool> createPool({
+    required int workerCount,
+    required int maxQueueSize,
+    required int completionPort,
+  }) {
+    RangeError.checkNotNegative(workerCount, 'workerCount');
+    RangeError.checkNotNegative(maxQueueSize, 'maxQueueSize');
+    final poolPtr = gen.dart_edge_audio_pool_create(
+      workerCount,
+      maxQueueSize,
+      completionPort,
+    );
+    if (poolPtr == nullptr) {
+      throw StateError(_takeLastError());
+    }
+    return poolPtr;
+  }
+
   static String probeFile(
     String path, {
     AudioProbeMode mode = AudioProbeMode.adaptive,
@@ -184,6 +211,241 @@ abstract final class DartEdgeAudioNative {
     } finally {
       calloc.free(requestPtr);
     }
+  }
+
+  static int submitPoolProbeBytes(
+    Pointer<gen.DartEdgeAudioPool> poolPtr,
+    String optionsJson,
+    Uint8List bytes,
+  ) {
+    final optionsPtr = optionsJson.toNativeUtf8();
+    final bytesPtr = bytes.isEmpty ? nullptr : calloc<Uint8>(bytes.length);
+
+    try {
+      if (bytesPtr != nullptr) {
+        bytesPtr.asTypedList(bytes.length).setAll(0, bytes);
+      }
+
+      return submitPoolProbeRawBytes(
+        poolPtr,
+        optionsPtr.cast<Char>(),
+        bytesPtr,
+        bytes.length,
+      );
+    } finally {
+      calloc.free(optionsPtr);
+      if (bytesPtr != nullptr) {
+        calloc.free(bytesPtr);
+      }
+    }
+  }
+
+  static int submitPoolProbeNativeBytes(
+    Pointer<gen.DartEdgeAudioPool> poolPtr,
+    String optionsJson,
+    Pointer<Uint8> bytesPtr,
+    int bytesLength,
+  ) {
+    final optionsPtr = optionsJson.toNativeUtf8();
+    try {
+      return submitPoolProbeRawBytes(
+        poolPtr,
+        optionsPtr.cast<Char>(),
+        bytesPtr,
+        bytesLength,
+      );
+    } finally {
+      calloc.free(optionsPtr);
+    }
+  }
+
+  static int submitPoolProbeRawBytes(
+    Pointer<gen.DartEdgeAudioPool> poolPtr,
+    Pointer<Char> optionsPtr,
+    Pointer<Uint8> bytesPtr,
+    int bytesLength,
+  ) {
+    RangeError.checkNotNegative(bytesLength, 'bytesLength');
+    final jobId = gen.dart_edge_audio_pool_submit_probe_bytes(
+      poolPtr,
+      optionsPtr,
+      bytesPtr,
+      bytesLength,
+    );
+    if (jobId == 0) {
+      throw StateError(_takeLastError());
+    }
+    return jobId;
+  }
+
+  static int submitPoolProbeFile(
+    Pointer<gen.DartEdgeAudioPool> poolPtr,
+    String requestJson,
+  ) {
+    final requestPtr = requestJson.toNativeUtf8();
+    try {
+      final jobId = gen.dart_edge_audio_pool_submit_probe_file(
+        poolPtr,
+        requestPtr.cast<Char>(),
+      );
+      if (jobId == 0) {
+        throw StateError(_takeLastError());
+      }
+      return jobId;
+    } finally {
+      calloc.free(requestPtr);
+    }
+  }
+
+  static int submitPoolConvertFile(
+    Pointer<gen.DartEdgeAudioPool> poolPtr,
+    String requestJson,
+  ) {
+    final requestPtr = requestJson.toNativeUtf8();
+    try {
+      final jobId = gen.dart_edge_audio_pool_submit_convert_file(
+        poolPtr,
+        requestPtr.cast<Char>(),
+      );
+      if (jobId == 0) {
+        throw StateError(_takeLastError());
+      }
+      return jobId;
+    } finally {
+      calloc.free(requestPtr);
+    }
+  }
+
+  static int submitPoolConvertBytes(
+    Pointer<gen.DartEdgeAudioPool> poolPtr,
+    String requestJson,
+    Uint8List bytes,
+  ) {
+    final requestPtr = requestJson.toNativeUtf8();
+    final bytesPtr = bytes.isEmpty ? nullptr : calloc<Uint8>(bytes.length);
+
+    try {
+      if (bytesPtr != nullptr) {
+        bytesPtr.asTypedList(bytes.length).setAll(0, bytes);
+      }
+
+      return submitPoolConvertRawBytes(
+        poolPtr,
+        requestPtr.cast<Char>(),
+        bytesPtr,
+        bytes.length,
+      );
+    } finally {
+      calloc.free(requestPtr);
+      if (bytesPtr != nullptr) {
+        calloc.free(bytesPtr);
+      }
+    }
+  }
+
+  static int submitPoolConvertNativeBytes(
+    Pointer<gen.DartEdgeAudioPool> poolPtr,
+    String requestJson,
+    Pointer<Uint8> bytesPtr,
+    int bytesLength,
+  ) {
+    final requestPtr = requestJson.toNativeUtf8();
+    try {
+      return submitPoolConvertRawBytes(
+        poolPtr,
+        requestPtr.cast<Char>(),
+        bytesPtr,
+        bytesLength,
+      );
+    } finally {
+      calloc.free(requestPtr);
+    }
+  }
+
+  static int submitPoolConvertRawBytes(
+    Pointer<gen.DartEdgeAudioPool> poolPtr,
+    Pointer<Char> requestPtr,
+    Pointer<Uint8> bytesPtr,
+    int bytesLength,
+  ) {
+    RangeError.checkNotNegative(bytesLength, 'bytesLength');
+    final jobId = gen.dart_edge_audio_pool_submit_convert_bytes(
+      poolPtr,
+      requestPtr,
+      bytesPtr,
+      bytesLength,
+    );
+    if (jobId == 0) {
+      throw StateError(_takeLastError());
+    }
+    return jobId;
+  }
+
+  static String takePoolFileResult(
+    Pointer<gen.DartEdgeAudioPool> poolPtr,
+    int jobId,
+  ) {
+    final resultPtr = gen.dart_edge_audio_pool_take_file_result(poolPtr, jobId);
+    return _readNativeString(resultPtr);
+  }
+
+  static String takePoolProbeResult(
+    Pointer<gen.DartEdgeAudioPool> poolPtr,
+    int jobId,
+  ) {
+    final resultPtr = gen.dart_edge_audio_pool_take_probe_result(
+      poolPtr,
+      jobId,
+    );
+    return _readNativeString(resultPtr);
+  }
+
+  static NativeBytesConversionResponse takePoolConvertResult(
+    Pointer<gen.DartEdgeAudioPool> poolPtr,
+    int jobId,
+  ) {
+    final resultPtr = gen.dart_edge_audio_pool_take_convert_result(
+      poolPtr,
+      jobId,
+    );
+    if (resultPtr == nullptr) {
+      throw StateError(_takeLastError());
+    }
+
+    try {
+      final response = resultPtr.ref;
+      return NativeBytesConversionResponse(
+        resultJson: response.result_json == nullptr
+            ? '{}'
+            : response.result_json.cast<Utf8>().toDartString(),
+        bytes: core_ffi.copyNativeOwnedBytes(response.bytes),
+      );
+    } finally {
+      gen.dart_edge_audio_free_bytes_result(resultPtr);
+    }
+  }
+
+  static String readPoolMetrics(Pointer<gen.DartEdgeAudioPool> poolPtr) {
+    final resultPtr = gen.dart_edge_audio_pool_metrics(poolPtr);
+    return _readNativeString(resultPtr);
+  }
+
+  static void freePool(Pointer<gen.DartEdgeAudioPool> poolPtr) {
+    if (poolPtr != nullptr) {
+      gen.dart_edge_audio_pool_free(poolPtr);
+    }
+  }
+}
+
+String _readNativeString(Pointer<Char> resultPtr) {
+  if (resultPtr == nullptr) {
+    throw StateError(_takeLastError());
+  }
+
+  try {
+    return resultPtr.cast<Utf8>().toDartString();
+  } finally {
+    gen.dart_edge_audio_free_string(resultPtr);
   }
 }
 

@@ -18,5 +18,9 @@ cd benchmarks/audio-normalization/runner
 dart run bin/run.dart \
   --iterations=10 \
   --warmups=2 \
+  --concurrency=1 \
   --json-out=latest.json
 ```
+
+Increase `--concurrency` to measure concurrent in-memory audio jobs on the
+warmed native audio pool.

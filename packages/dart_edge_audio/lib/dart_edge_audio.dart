@@ -13,4 +13,4 @@ export 'src/audio_metadata.dart';
 export 'src/audio_probe_mode.dart';
 export 'src/audio_target_format.dart';
 export 'src/dart_edge_audio.dart';
-export 'src/dart_edge_audio_worker.dart';
+export 'src/native_audio_pool.dart';

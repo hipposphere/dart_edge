@@ -1,7 +1,14 @@
+## 0.3.7
+
+- Add a native audio worker pool for in-memory probe and conversion jobs.
+- Route `DartEdgeAudio.initialize()` through the native pool so warmed bytes
+- Remove the legacy Dart worker path so audio APIs use the native pool.
+- Bump the native artifact version to 0.1.5 for the native pool ABI.
+
 ## 0.3.6
 
-- Add a long-lived `DartEdgeAudioWorker` and `DartEdgeAudio.initialize()` for
-  warming audio probing/conversion before latency-sensitive requests.
+- Add `DartEdgeAudio.initialize()` for warming audio probing/conversion before
+  latency-sensitive requests.
 
 ## 0.3.4
 

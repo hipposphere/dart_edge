@@ -262,7 +262,7 @@ void main() {
     expect(result.metadata.bitDepth, 16);
   });
 
-  test('initialize warms and reuses a shared audio worker', () async {
+  test('initialize warms and reuses a shared native audio pool', () async {
     await DartEdgeAudio.initialize();
     addTearDown(DartEdgeAudio.close);
 

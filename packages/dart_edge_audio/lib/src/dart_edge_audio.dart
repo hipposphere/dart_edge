@@ -1,6 +1,4 @@
-import 'dart:convert';
 import 'dart:ffi';
-import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:dart_edge_native_bridge/dart_edge_native_bridge.dart'
@@ -14,34 +12,33 @@ import 'audio_file_conversion_result.dart';
 import 'audio_metadata.dart';
 import 'audio_probe_mode.dart';
 import 'audio_target_format.dart';
-import 'dart_edge_audio_worker.dart';
-import 'native/dart_edge_audio_native.dart';
+import 'native_audio_pool.dart';
 
 /// Stateless facade for native-backed audio probing and conversion.
 abstract final class DartEdgeAudio {
-  static DartEdgeAudioWorker? _sharedWorker;
-  static Future<DartEdgeAudioWorker>? _sharedWorkerFuture;
+  static NativeAudioPool? _sharedPool;
+  static Future<NativeAudioPool>? _sharedPoolFuture;
 
-  /// Starts and warms a shared worker used by the static facade methods.
+  /// Starts and warms a shared native worker pool used by audio APIs.
   ///
   /// Await this during server startup to move native audio initialization and
-  /// isolate startup out of the first real request.
+  /// worker startup out of the first real request.
   static Future<void> initialize() async {
-    await _ensureSharedWorker();
+    await _ensureSharedPool();
   }
 
-  /// Closes the shared worker created by [initialize].
+  /// Closes the shared native worker pool created by [initialize].
   static Future<void> close() async {
-    final worker = _sharedWorker;
-    final workerFuture = _sharedWorkerFuture;
-    _sharedWorker = null;
-    _sharedWorkerFuture = null;
-    if (worker != null) {
-      await worker.close();
+    final pool = _sharedPool;
+    final poolFuture = _sharedPoolFuture;
+    _sharedPool = null;
+    _sharedPoolFuture = null;
+    if (pool != null) {
+      await pool.close();
       return;
     }
-    final pendingWorker = await workerFuture;
-    await pendingWorker?.close();
+    final pendingPool = await poolFuture;
+    await pendingPool?.close();
   }
 
   static Future<AudioMetadata> probeFile(
@@ -51,15 +48,7 @@ abstract final class DartEdgeAudio {
     if (path.isEmpty) {
       throw ArgumentError.value(path, 'path', 'path must not be empty.');
     }
-    final worker = _sharedWorker;
-    if (worker != null) {
-      return worker.probeFile(path, mode: mode);
-    }
-
-    final resultJson = await Isolate.run(
-      () => DartEdgeAudioNative.probeFile(path, mode: mode),
-    );
-    return AudioMetadata.fromJson(_decodeJsonObject(resultJson));
+    return (await _ensureSharedPool()).probeFile(path, mode: mode);
   }
 
   static Future<AudioMetadata> probeBytes(
@@ -69,28 +58,12 @@ abstract final class DartEdgeAudio {
     AudioProbeMode mode = AudioProbeMode.adaptive,
   }) async {
     _ensureBytes(bytes);
-    final worker = _sharedWorker;
-    if (worker != null) {
-      return worker.probeBytes(
-        bytes,
-        fileNameHint: fileNameHint,
-        mimeTypeHint: mimeTypeHint,
-        mode: mode,
-      );
-    }
-
-    final transferable = TransferableTypedData.fromList([bytes]);
-    final resultJson = await Isolate.run(() {
-      final materialized = transferable.materialize().asUint8List();
-      return DartEdgeAudioNative.probeBytes(
-        materialized,
-        fileNameHint: fileNameHint,
-        mimeTypeHint: mimeTypeHint,
-        mode: mode,
-      );
-    });
-
-    return AudioMetadata.fromJson(_decodeJsonObject(resultJson));
+    return (await _ensureSharedPool()).probeBytes(
+      bytes,
+      fileNameHint: fileNameHint,
+      mimeTypeHint: mimeTypeHint,
+      mode: mode,
+    );
   }
 
   /// Probes borrowed native audio bytes without first copying them into
@@ -106,48 +79,19 @@ abstract final class DartEdgeAudio {
     AudioProbeMode mode = AudioProbeMode.adaptive,
   }) async {
     _ensureNativeBytes(bytes);
-    final worker = _sharedWorker;
-    if (worker != null) {
-      return worker.probeNativeBytes(
-        bytes,
-        fileNameHint: fileNameHint,
-        mimeTypeHint: mimeTypeHint,
-        mode: mode,
-      );
-    }
-
-    final bytesPtrAddress = bytes.ptr.address;
-    final bytesLength = bytes.len;
-    final resultJson = await Isolate.run(() {
-      final bytesPtr = bytesPtrAddress == 0
-          ? nullptr.cast<Uint8>()
-          : Pointer<Uint8>.fromAddress(bytesPtrAddress);
-      return DartEdgeAudioNative.probeRawBytes(
-        bytesPtr,
-        bytesLength,
-        fileNameHint: fileNameHint,
-        mimeTypeHint: mimeTypeHint,
-        mode: mode,
-      );
-    });
-
-    return AudioMetadata.fromJson(_decodeJsonObject(resultJson));
+    return (await _ensureSharedPool()).probeNativeBytes(
+      bytes,
+      fileNameHint: fileNameHint,
+      mimeTypeHint: mimeTypeHint,
+      mode: mode,
+    );
   }
 
   static Future<AudioFileConversionResult> convertFile(
     AudioFileConversionRequest request,
   ) async {
     _ensureFileRequest(request);
-    final worker = _sharedWorker;
-    if (worker != null) {
-      return worker.convertFile(request);
-    }
-    final requestJson = jsonEncode(request.toJson());
-
-    final resultJson = await Isolate.run(
-      () => DartEdgeAudioNative.convertFile(requestJson),
-    );
-    return AudioFileConversionResult.fromJson(_decodeJsonObject(resultJson));
+    return (await _ensureSharedPool()).convertFile(request);
   }
 
   static Future<AudioBytesConversionResult> convertBytes(
@@ -155,32 +99,7 @@ abstract final class DartEdgeAudio {
   ) async {
     _ensureBytes(request.inputBytes);
     _ensurePositiveSampleRate(request.targetSampleRate);
-    final worker = _sharedWorker;
-    if (worker != null) {
-      return worker.convertBytes(request);
-    }
-
-    final requestJson = jsonEncode(request.toJson());
-    final transferable = TransferableTypedData.fromList([request.inputBytes]);
-
-    final payload = await Isolate.run(() {
-      final materialized = transferable.materialize().asUint8List();
-      final result = DartEdgeAudioNative.convertBytes(
-        requestJson,
-        materialized,
-      );
-      return <String, Object>{
-        'resultJson': result.resultJson,
-        'bytes': TransferableTypedData.fromList([result.bytes]),
-      };
-    });
-
-    return AudioBytesConversionResult.fromJson(
-      _decodeJsonObject(payload['resultJson'] as String),
-      bytes: (payload['bytes'] as TransferableTypedData)
-          .materialize()
-          .asUint8List(),
-    );
+    return (await _ensureSharedPool()).convertBytes(request);
   }
 
   /// Converts borrowed native audio bytes without first copying them into
@@ -199,48 +118,13 @@ abstract final class DartEdgeAudio {
   }) async {
     _ensureNativeBytes(bytes);
     _ensurePositiveSampleRate(targetSampleRate);
-    final worker = _sharedWorker;
-    if (worker != null) {
-      return worker.convertNativeBytes(
-        bytes: bytes,
-        targetFormat: targetFormat,
-        targetSampleRate: targetSampleRate,
-        channelLayout: channelLayout,
-        fileNameHint: fileNameHint,
-        mimeTypeHint: mimeTypeHint,
-      );
-    }
-
-    final requestJson = jsonEncode({
-      'targetFormat': targetFormat.wireValue,
-      'targetSampleRate': targetSampleRate,
-      'channelLayout': channelLayout.wireValue,
-      'fileNameHint': fileNameHint,
-      'mimeTypeHint': mimeTypeHint,
-    });
-    final bytesPtrAddress = bytes.ptr.address;
-    final bytesLength = bytes.len;
-
-    final payload = await Isolate.run(() {
-      final bytesPtr = bytesPtrAddress == 0
-          ? nullptr.cast<Uint8>()
-          : Pointer<Uint8>.fromAddress(bytesPtrAddress);
-      final result = DartEdgeAudioNative.convertRawBytes(
-        requestJson,
-        bytesPtr,
-        bytesLength,
-      );
-      return <String, Object>{
-        'resultJson': result.resultJson,
-        'bytes': TransferableTypedData.fromList([result.bytes]),
-      };
-    });
-
-    return AudioBytesConversionResult.fromJson(
-      _decodeJsonObject(payload['resultJson'] as String),
-      bytes: (payload['bytes'] as TransferableTypedData)
-          .materialize()
-          .asUint8List(),
+    return (await _ensureSharedPool()).convertNativeBytes(
+      bytes: bytes,
+      targetFormat: targetFormat,
+      targetSampleRate: targetSampleRate,
+      channelLayout: channelLayout,
+      fileNameHint: fileNameHint,
+      mimeTypeHint: mimeTypeHint,
     );
   }
 
@@ -292,26 +176,26 @@ abstract final class DartEdgeAudio {
     }
   }
 
-  static Future<DartEdgeAudioWorker> _ensureSharedWorker() {
-    final worker = _sharedWorker;
-    if (worker != null) {
-      return Future.value(worker);
+  static Future<NativeAudioPool> _ensureSharedPool() {
+    final pool = _sharedPool;
+    if (pool != null) {
+      return Future.value(pool);
     }
-    return _sharedWorkerFuture ??= DartEdgeAudioWorker.spawn(initialize: true)
-        .then(
-          (worker) {
-            _sharedWorker = worker;
-            _sharedWorkerFuture = null;
-            return worker;
+    return _sharedPoolFuture ??=
+        Future(() async {
+          final pool = NativeAudioPool();
+          await pool.initialize();
+          return pool;
+        }).then(
+          (pool) {
+            _sharedPool = pool;
+            _sharedPoolFuture = null;
+            return pool;
           },
           onError: (Object error, StackTrace stackTrace) {
-            _sharedWorkerFuture = null;
+            _sharedPoolFuture = null;
             Error.throwWithStackTrace(error, stackTrace);
           },
         );
   }
-}
-
-Map<String, Object?> _decodeJsonObject(String input) {
-  return jsonDecode(input) as Map<String, Object?>;
 }

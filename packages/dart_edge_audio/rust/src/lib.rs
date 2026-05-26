@@ -2,11 +2,15 @@ use std::collections::BTreeMap;
 use std::ffi::{CStr, CString, c_char};
 use std::fs;
 use std::io::Cursor;
+use std::os::raw::c_void;
 use std::path::Path;
 use std::sync::Mutex;
 
 use audioadapter_buffers::direct::SequentialSliceOfVecs;
-use dart_edge_core::{NativeOwnedBytes, free_owned_bytes, into_native_owned_bytes};
+use dart_edge_core::{
+    NativeCompletionPort, NativeJobPool, NativeJobSubmitError, NativeOwnedBytes, free_owned_bytes,
+    initialize_dart_api_dl, into_native_owned_bytes,
+};
 use hound::{SampleFormat, WavSpec, WavWriter};
 use once_cell::sync::Lazy;
 use rubato::{Async, FixedAsync, PolynomialDegree, Resampler};
@@ -34,6 +38,33 @@ static LAST_ERROR: Lazy<Mutex<Option<CString>>> = Lazy::new(|| Mutex::new(None))
 pub struct NativeAudioBytesResult {
     bytes: NativeOwnedBytes,
     result_json: *mut c_char,
+}
+
+pub struct DartEdgeAudioPool {
+    jobs: NativeJobPool<NativeAudioPoolJob, NativeAudioPoolResult, String>,
+}
+
+enum NativeAudioPoolJob {
+    ProbeFile {
+        request_json: String,
+    },
+    ProbeBytes {
+        options_json: Option<String>,
+        input: Vec<u8>,
+    },
+    ConvertFile {
+        request_json: String,
+    },
+    ConvertBytes {
+        request_json: String,
+        input: Vec<u8>,
+    },
+}
+
+enum NativeAudioPoolResult {
+    FileJson(String),
+    ProbeJson(String),
+    ConvertedBytes { bytes: Vec<u8>, result_json: String },
 }
 
 #[derive(Deserialize)]
@@ -168,6 +199,24 @@ pub extern "C" fn dart_edge_audio_native_abi_version() -> i32 {
 }
 
 #[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_audio_initialize_dart_api_dl(data: *mut c_void) -> i32 {
+    match unsafe { initialize_dart_api_dl(data) } {
+        Ok(()) => {
+            clear_last_error();
+            1
+        }
+        Err(error) if error == "Dart API DL initialization raced." => {
+            clear_last_error();
+            1
+        }
+        Err(error) => {
+            set_last_error(error);
+            0
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
 pub extern "C" fn dart_edge_audio_probe_file(path: *const c_char) -> *mut c_char {
     let Some(input) = (unsafe { read_c_string(path) }) else {
         set_last_error("Missing audio input path.");
@@ -293,6 +342,244 @@ pub extern "C" fn dart_edge_audio_convert_bytes(
             std::ptr::null_mut()
         }
     }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_audio_pool_create(
+    worker_count: usize,
+    max_queue_size: usize,
+    completion_port: i64,
+) -> *mut DartEdgeAudioPool {
+    if worker_count == 0 {
+        set_last_error("Audio pool worker_count must be at least 1.");
+        return std::ptr::null_mut();
+    }
+    if max_queue_size == 0 {
+        set_last_error("Audio pool max_queue_size must be at least 1.");
+        return std::ptr::null_mut();
+    }
+
+    let jobs = match NativeJobPool::new_with_completion(
+        worker_count,
+        max_queue_size,
+        NativeCompletionPort::new(completion_port),
+        create_audio_pool_handler,
+    ) {
+        Ok(jobs) => jobs,
+        Err(error) => {
+            set_last_error(error);
+            return std::ptr::null_mut();
+        }
+    };
+
+    clear_last_error();
+    Box::into_raw(Box::new(DartEdgeAudioPool { jobs }))
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_audio_pool_submit_probe_file(
+    pool: *mut DartEdgeAudioPool,
+    request_json: *const c_char,
+) -> i64 {
+    if pool.is_null() {
+        set_last_error("Missing audio pool.");
+        return 0;
+    }
+    let Some(request_json) = (unsafe { read_c_string(request_json) }) else {
+        set_last_error("Missing audio probe request.");
+        return 0;
+    };
+
+    submit_audio_pool_job(
+        unsafe { &*pool },
+        NativeAudioPoolJob::ProbeFile { request_json },
+    )
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_audio_pool_submit_probe_bytes(
+    pool: *mut DartEdgeAudioPool,
+    options_json: *const c_char,
+    input_ptr: *const u8,
+    input_len: isize,
+) -> i64 {
+    if pool.is_null() {
+        set_last_error("Missing audio pool.");
+        return 0;
+    }
+    let options_json = unsafe { read_c_string(options_json) };
+    let Some(input) = (unsafe { read_bytes(input_ptr, input_len) }) else {
+        set_last_error("Missing audio byte input.");
+        return 0;
+    };
+
+    submit_audio_pool_job(
+        unsafe { &*pool },
+        NativeAudioPoolJob::ProbeBytes {
+            options_json,
+            input,
+        },
+    )
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_audio_pool_submit_convert_file(
+    pool: *mut DartEdgeAudioPool,
+    request_json: *const c_char,
+) -> i64 {
+    if pool.is_null() {
+        set_last_error("Missing audio pool.");
+        return 0;
+    }
+    let Some(request_json) = (unsafe { read_c_string(request_json) }) else {
+        set_last_error("Missing audio conversion request.");
+        return 0;
+    };
+
+    submit_audio_pool_job(
+        unsafe { &*pool },
+        NativeAudioPoolJob::ConvertFile { request_json },
+    )
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_audio_pool_submit_convert_bytes(
+    pool: *mut DartEdgeAudioPool,
+    request_json: *const c_char,
+    input_ptr: *const u8,
+    input_len: isize,
+) -> i64 {
+    if pool.is_null() {
+        set_last_error("Missing audio pool.");
+        return 0;
+    }
+    let Some(request_json) = (unsafe { read_c_string(request_json) }) else {
+        set_last_error("Missing audio conversion request.");
+        return 0;
+    };
+    let Some(input) = (unsafe { read_bytes(input_ptr, input_len) }) else {
+        set_last_error("Missing audio byte input.");
+        return 0;
+    };
+
+    submit_audio_pool_job(
+        unsafe { &*pool },
+        NativeAudioPoolJob::ConvertBytes {
+            request_json,
+            input,
+        },
+    )
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_audio_pool_take_file_result(
+    pool: *mut DartEdgeAudioPool,
+    job_id: i64,
+) -> *mut c_char {
+    let Some(result) = take_audio_pool_result(pool, job_id) else {
+        return std::ptr::null_mut();
+    };
+    match result {
+        NativeAudioPoolResult::FileJson(json) => {
+            clear_last_error();
+            c_string(json).into_raw()
+        }
+        NativeAudioPoolResult::ProbeJson(_) | NativeAudioPoolResult::ConvertedBytes { .. } => {
+            set_last_error("Audio pool job result is not a file result.");
+            std::ptr::null_mut()
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_audio_pool_take_probe_result(
+    pool: *mut DartEdgeAudioPool,
+    job_id: i64,
+) -> *mut c_char {
+    let Some(result) = take_audio_pool_result(pool, job_id) else {
+        return std::ptr::null_mut();
+    };
+    match result {
+        NativeAudioPoolResult::ProbeJson(json) => {
+            clear_last_error();
+            c_string(json).into_raw()
+        }
+        NativeAudioPoolResult::FileJson(_) | NativeAudioPoolResult::ConvertedBytes { .. } => {
+            set_last_error("Audio pool job result is not a probe result.");
+            std::ptr::null_mut()
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_audio_pool_take_convert_result(
+    pool: *mut DartEdgeAudioPool,
+    job_id: i64,
+) -> *mut NativeAudioBytesResult {
+    let Some(result) = take_audio_pool_result(pool, job_id) else {
+        return std::ptr::null_mut();
+    };
+    match result {
+        NativeAudioPoolResult::ConvertedBytes { bytes, result_json } => {
+            match encode_bytes_result_json(bytes, result_json) {
+                Ok(value) => {
+                    clear_last_error();
+                    value
+                }
+                Err(error) => {
+                    set_last_error(error);
+                    std::ptr::null_mut()
+                }
+            }
+        }
+        NativeAudioPoolResult::FileJson(_) | NativeAudioPoolResult::ProbeJson(_) => {
+            set_last_error("Audio pool job result is not a conversion result.");
+            std::ptr::null_mut()
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_audio_pool_metrics(pool: *mut DartEdgeAudioPool) -> *mut c_char {
+    if pool.is_null() {
+        set_last_error("Missing audio pool.");
+        return std::ptr::null_mut();
+    }
+    let metrics = unsafe { &*pool }.jobs.metrics();
+    match serde_json::to_string(&serde_json::json!({
+        "workerCount": metrics.worker_count,
+        "maxQueueSize": metrics.max_queue_size,
+        "submittedJobs": metrics.submitted_jobs,
+        "acceptedJobs": metrics.accepted_jobs,
+        "rejectedQueueFullJobs": metrics.rejected_queue_full_jobs,
+        "rejectedClosedJobs": metrics.rejected_closed_jobs,
+        "startedJobs": metrics.started_jobs,
+        "completedSuccessJobs": metrics.completed_success_jobs,
+        "completedErrorJobs": metrics.completed_error_jobs,
+        "pendingResultCount": metrics.pending_result_count,
+        "queuedJobs": metrics.queued_jobs,
+        "activeJobs": metrics.active_jobs,
+        "maxObservedQueuedJobs": metrics.max_observed_queued_jobs,
+        "maxObservedActiveJobs": metrics.max_observed_active_jobs,
+        "completionPostFailedJobs": metrics.completion_post_failed_jobs,
+    })) {
+        Ok(json) => {
+            clear_last_error();
+            c_string(json).into_raw()
+        }
+        Err(error) => {
+            set_last_error(error.to_string());
+            std::ptr::null_mut()
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_audio_pool_free(pool: *mut DartEdgeAudioPool) {
+    if pool.is_null() {
+        return;
+    }
+    drop(unsafe { Box::from_raw(pool) });
 }
 
 #[unsafe(no_mangle)]
@@ -455,6 +742,21 @@ fn convert_bytes(
     bytes: Vec<u8>,
     request: NativeBytesConversionRequest,
 ) -> Result<*mut NativeAudioBytesResult, String> {
+    let result = convert_bytes_payload(bytes, request)?;
+    match result {
+        NativeAudioPoolResult::ConvertedBytes { bytes, result_json } => {
+            encode_bytes_result_json(bytes, result_json)
+        }
+        NativeAudioPoolResult::FileJson(_) | NativeAudioPoolResult::ProbeJson(_) => {
+            Err("Unexpected audio conversion result.".to_string())
+        }
+    }
+}
+
+fn convert_bytes_payload(
+    bytes: Vec<u8>,
+    request: NativeBytesConversionRequest,
+) -> Result<NativeAudioPoolResult, String> {
     validate_sample_rate(request.target_sample_rate)?;
 
     let decoded = decode_audio(
@@ -473,8 +775,106 @@ fn convert_bytes(
         mime_type: "audio/wav".to_string(),
         metadata: converted.metadata(),
     };
+    let result_json = serde_json::to_string(&result_json)
+        .map_err(|error| format!("Failed to encode JSON payload: {error}"))?;
 
-    encode_bytes_result(wav_bytes, &result_json)
+    Ok(NativeAudioPoolResult::ConvertedBytes {
+        bytes: wav_bytes,
+        result_json,
+    })
+}
+
+fn create_audio_pool_handler()
+-> impl FnMut(NativeAudioPoolJob) -> Result<NativeAudioPoolResult, String> + Send {
+    move |job| match job {
+        NativeAudioPoolJob::ProbeFile { request_json } => {
+            let request = serde_json::from_str::<NativeProbeFileRequest>(&request_json)
+                .map_err(|error| format!("Invalid audio probe request: {error}"))?;
+            let metadata = probe_file(&request.path, request.mode)?;
+            let json = serde_json::to_string(&metadata)
+                .map_err(|error| format!("Failed to encode JSON payload: {error}"))?;
+            Ok(NativeAudioPoolResult::FileJson(json))
+        }
+        NativeAudioPoolJob::ProbeBytes {
+            options_json,
+            input,
+        } => {
+            let options = match options_json {
+                Some(options_json) => {
+                    serde_json::from_str::<NativeProbeBytesRequest>(&options_json)
+                        .map_err(|error| format!("Invalid JSON payload: {error}"))?
+                }
+                None => NativeProbeBytesRequest {
+                    file_name_hint: None,
+                    mime_type_hint: None,
+                    mode: NativeAudioProbeMode::Adaptive,
+                },
+            };
+            let metadata = probe_bytes(
+                input,
+                options.file_name_hint.as_deref(),
+                options.mime_type_hint.as_deref(),
+                options.mode,
+            )?;
+            let json = serde_json::to_string(&metadata)
+                .map_err(|error| format!("Failed to encode JSON payload: {error}"))?;
+            Ok(NativeAudioPoolResult::ProbeJson(json))
+        }
+        NativeAudioPoolJob::ConvertFile { request_json } => {
+            let request = serde_json::from_str::<NativeFileConversionRequest>(&request_json)
+                .map_err(|error| format!("Invalid audio conversion request: {error}"))?;
+            let result = convert_file(request)?;
+            let json = serde_json::to_string(&result)
+                .map_err(|error| format!("Failed to encode JSON payload: {error}"))?;
+            Ok(NativeAudioPoolResult::FileJson(json))
+        }
+        NativeAudioPoolJob::ConvertBytes {
+            request_json,
+            input,
+        } => {
+            let request = serde_json::from_str::<NativeBytesConversionRequest>(&request_json)
+                .map_err(|error| format!("Invalid audio conversion request: {error}"))?;
+            convert_bytes_payload(input, request)
+        }
+    }
+}
+
+fn submit_audio_pool_job(pool: &DartEdgeAudioPool, job: NativeAudioPoolJob) -> i64 {
+    match pool.jobs.submit(job) {
+        Ok(job_id) => {
+            clear_last_error();
+            job_id
+        }
+        Err(NativeJobSubmitError::QueueFull) => {
+            set_last_error("Audio pool queue is full.");
+            0
+        }
+        Err(NativeJobSubmitError::Closed) => {
+            set_last_error("Audio pool is closed.");
+            0
+        }
+    }
+}
+
+fn take_audio_pool_result(
+    pool: *mut DartEdgeAudioPool,
+    job_id: i64,
+) -> Option<NativeAudioPoolResult> {
+    if pool.is_null() {
+        set_last_error("Missing audio pool.");
+        return None;
+    }
+    match unsafe { &*pool }.jobs.take_result(job_id) {
+        Some(Ok(result)) => Some(result),
+        Some(Err(error)) => {
+            set_last_error(error);
+            None
+        }
+        None => {
+            set_last_error("Audio pool job is not ready.");
+            None
+        }
+    }
 }
 
 fn decode_audio(
@@ -961,26 +1361,28 @@ fn validate_sample_rate(sample_rate: Option<u32>) -> Result<(), String> {
 fn encode_json_string<T: Serialize>(value: &T) -> Result<*mut c_char, String> {
     let json = serde_json::to_string(value)
         .map_err(|error| format!("Failed to encode JSON payload: {error}"))?;
-    CString::new(json)
-        .map(CString::into_raw)
-        .map_err(|error| format!("Failed to encode C string: {error}"))
+    Ok(c_string(json).into_raw())
 }
 
-fn encode_bytes_result<T: Serialize>(
+fn encode_bytes_result_json(
     bytes: Vec<u8>,
-    result: &T,
+    result_json: String,
 ) -> Result<*mut NativeAudioBytesResult, String> {
-    let result_json = serde_json::to_string(result)
-        .map_err(|error| format!("Failed to encode JSON payload: {error}"))?;
     let result_json =
         CString::new(result_json).map_err(|error| format!("Failed to encode C string: {error}"))?;
-
     let native_bytes = into_native_owned_bytes(bytes);
 
     Ok(Box::into_raw(Box::new(NativeAudioBytesResult {
         bytes: native_bytes,
         result_json: result_json.into_raw(),
     })))
+}
+
+fn c_string(value: impl Into<String>) -> CString {
+    let sanitized = value.into().replace('\0', " ");
+    CString::new(sanitized).unwrap_or_else(|_| {
+        CString::new("dart_edge_audio native call failed.").expect("valid fallback error")
+    })
 }
 
 fn metadata_from_track(

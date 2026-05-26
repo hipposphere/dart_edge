@@ -17,46 +17,57 @@ Future<void> main(List<String> args) async {
     );
   }
 
+  await DartEdgeAudio.initialize();
+
   final results = <Map<String, Object?>>[];
   final vad = NativeVad();
-  for (final fixture in audioFixtureManifest) {
-    final file = File(fixture.pathIn(fixturesDir.path));
-    if (!file.existsSync()) {
-      throw StateError(
-        'Missing ${fixture.fileName}. Run the fixture downloader first.',
+  try {
+    for (final fixture in audioFixtureManifest) {
+      final file = File(fixture.pathIn(fixturesDir.path));
+      if (!file.existsSync()) {
+        throw StateError(
+          'Missing ${fixture.fileName}. Run the fixture downloader first.',
+        );
+      }
+
+      final bytes = await file.readAsBytes();
+      for (var index = 0; index < options.warmups; index += 1) {
+        await _measureFixtureBatch(vad, fixture, bytes, options.concurrency);
+      }
+
+      final runs = <_FixtureRun>[];
+      for (var index = 0; index < options.iterations; index += 1) {
+        runs.addAll(
+          await _measureFixtureBatch(vad, fixture, bytes, options.concurrency),
+        );
+      }
+
+      final result = _summarize(fixture, bytes.length, runs);
+      results.add(result);
+      stdout.writeln(
+        '${fixture.format.padRight(4)} '
+        'probe=${result['probeLatencyMs']}ms '
+        'normalize=${result['normalizeLatencyMs']}ms '
+        'vad=${result['vadLatencyMs']}ms '
+        'trim=${result['trimLatencyMs']}ms '
+        'total=${result['totalLatencyMs']}ms '
+        'rt=${result['realtimeFactor']}x '
+        'out=${result['outputBytes']} bytes '
+        'trimmed=${result['trimmedBytes']} bytes '
+        'segments=${result['speechSegments']}',
       );
     }
-
-    final bytes = await file.readAsBytes();
-    for (var index = 0; index < options.warmups; index += 1) {
-      await _measureFixture(vad, fixture, bytes);
-    }
-
-    final runs = <_FixtureRun>[];
-    for (var index = 0; index < options.iterations; index += 1) {
-      runs.add(await _measureFixture(vad, fixture, bytes));
-    }
-
-    final result = _summarize(fixture, bytes.length, runs);
-    results.add(result);
-    stdout.writeln(
-      '${fixture.format.padRight(4)} '
-      'probe=${result['probeLatencyMs']}ms '
-      'normalize=${result['normalizeLatencyMs']}ms '
-      'vad=${result['vadLatencyMs']}ms '
-      'trim=${result['trimLatencyMs']}ms '
-      'total=${result['totalLatencyMs']}ms '
-      'rt=${result['realtimeFactor']}x '
-      'out=${result['outputBytes']} bytes '
-      'trimmed=${result['trimmedBytes']} bytes '
-      'segments=${result['speechSegments']}',
-    );
+  } finally {
+    await vad.close();
+    await DartEdgeAudio.close();
   }
 
   final report = <String, Object?>{
     'generatedAt': DateTime.now().toUtc().toIso8601String(),
     'iterations': options.iterations,
     'warmups': options.warmups,
+    'concurrency': options.concurrency,
+    'audioBackend': 'native-pool',
     'fixturesDir': fixturesDir.path,
     'results': results,
   };
@@ -134,6 +145,18 @@ Future<_FixtureRun> _measureFixture(
       (total, segment) => total + segment.lengthSamples,
     ),
   );
+}
+
+Future<List<_FixtureRun>> _measureFixtureBatch(
+  Vad vad,
+  AudioFixture fixture,
+  List<int> bytes,
+  int concurrency,
+) {
+  return Future.wait([
+    for (var index = 0; index < concurrency; index += 1)
+      _measureFixture(vad, fixture, bytes),
+  ]);
 }
 
 Map<String, Object?> _summarize(
@@ -225,12 +248,14 @@ final class _BenchmarkOptions {
   const _BenchmarkOptions({
     required this.iterations,
     required this.warmups,
+    required this.concurrency,
     required this.fixturesDir,
     this.jsonOut,
   });
 
   final int iterations;
   final int warmups;
+  final int concurrency;
   final String fixturesDir;
   final String? jsonOut;
 
@@ -247,10 +272,19 @@ final class _BenchmarkOptions {
     if (warmups < 0) {
       throw ArgumentError.value(warmups, 'warmups', 'Must not be negative.');
     }
+    final concurrency = _intOption(args, '--concurrency') ?? 1;
+    if (concurrency < 1) {
+      throw ArgumentError.value(
+        concurrency,
+        'concurrency',
+        'Must be at least 1.',
+      );
+    }
 
     return _BenchmarkOptions(
       iterations: iterations,
       warmups: warmups,
+      concurrency: concurrency,
       fixturesDir:
           _optionValue(args, '--fixtures-dir') ??
           _resolveRepoRelativePath(defaultAudioFixtureCachePath),
