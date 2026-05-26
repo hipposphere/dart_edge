@@ -317,10 +317,10 @@ packages:
     dependency: transitive
     description:
       name: hippo_auth_backend
-      sha256: "5a1b618fcdbed0a97b97b89e4da3f88011724d633276940f923a8ebced425efa"
+      sha256: "6928bfb885666dd52bcb603ed26edc4b82bbef7f7ab0cfee699d78defa9a441e"
       url: "https://registry.hippolabs.org/pub/internal-pub/"
     source: hosted
-    version: "0.1.11"
+    version: "0.1.13"
   hooks:
     dependency: transitive
     description:
@@ -477,10 +477,10 @@ packages:
     dependency: "direct dev"
     description:
       name: melos
-      sha256: "6dfe6cdf24863ef125bfe75d6b7b1eb192430570a27722e539a453f2cf9704e7"
+      sha256: "9dcac9ca25da86540d1e843f85fffb29967cc5c79d76ca1aacddb57590cee84e"
       url: "https://pub.dev"
     source: hosted
-    version: "7.7.0"
+    version: "7.8.0"
   meta:
     dependency: transitive
     description:

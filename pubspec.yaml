@@ -11,7 +11,7 @@ workspace:
 
 dev_dependencies:
   lints: ^6.0.0
-  melos: ^7.7.0
+  melos: ^7.8.0
 
 dependency_overrides:
   # shadcn_jaspr 0.4.3 has not widened its Jaspr constraint past ^0.22.0 yet,
