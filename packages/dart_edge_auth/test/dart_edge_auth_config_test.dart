@@ -5,6 +5,7 @@ import 'package:test/test.dart';
 void main() {
   test('serializes native postgres auth database config', () {
     const config = DartEdgeAuthConfig(
+      workerPoolSize: 4,
       secret: 'test-secret-key-that-is-at-least-32-characters-long',
       baseUrl: 'http://localhost:3000',
       database: DartEdgeAuthDatabase.postgres(
@@ -20,6 +21,7 @@ void main() {
 
   test('disables sqlite migration management by default', () {
     const config = DartEdgeAuthConfig(
+      workerPoolSize: 4,
       secret: 'test-secret-key-that-is-at-least-32-characters-long',
       baseUrl: 'http://localhost:3000',
       database: DartEdgeAuthDatabase.sqlite(path: 'auth.db'),
@@ -35,6 +37,7 @@ void main() {
 
   test('serializes sqlite migration management config', () {
     const config = DartEdgeAuthConfig(
+      workerPoolSize: 4,
       secret: 'test-secret-key-that-is-at-least-32-characters-long',
       baseUrl: 'http://localhost:3000',
       database: DartEdgeAuthDatabase.sqlite(
@@ -53,6 +56,7 @@ void main() {
 
   test('serializes admin plugin config', () {
     const config = DartEdgeAuthConfig(
+      workerPoolSize: 4,
       secret: 'test-secret-key-that-is-at-least-32-characters-long',
       baseUrl: 'http://localhost:3000',
       admin: DartEdgeAuthAdminConfig(
@@ -75,6 +79,7 @@ void main() {
 
   test('serializes rate-limit config', () {
     const config = DartEdgeAuthConfig(
+      workerPoolSize: 4,
       secret: 'test-secret-key-that-is-at-least-32-characters-long',
       baseUrl: 'http://localhost:3000',
       enableRateLimit: false,
@@ -88,6 +93,7 @@ void main() {
     addTearDown(database.close);
 
     final config = DartEdgeAuthConfig(
+      workerPoolSize: 4,
       secret: 'test-secret-key-that-is-at-least-32-characters-long',
       baseUrl: 'http://localhost:3000',
       database: DartEdgeAuthDatabase.fromDatabase(
@@ -105,6 +111,7 @@ void main() {
 
   test('serializes shared postgres auth schema config', () {
     final config = DartEdgeAuthConfig(
+      workerPoolSize: 4,
       secret: 'test-secret-key-that-is-at-least-32-characters-long',
       baseUrl: 'http://localhost:3000',
       database: DartEdgeAuthDatabase.fromDatabase(

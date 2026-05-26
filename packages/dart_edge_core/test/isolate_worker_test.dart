@@ -70,6 +70,34 @@ void main() {
 
     await expectLater(worker.request<int>('hello'), throwsA(isA<StateError>()));
   });
+
+  test('worker pool handles concurrent requests', () async {
+    final pool = await DartEdgeIsolateWorkerPool.spawn(
+      handler: _delayedEcho,
+      debugName: 'test-worker-pool',
+      size: 2,
+    );
+    addTearDown(pool.close);
+
+    final results = await Future.wait([
+      pool.request<String>('first'),
+      pool.request<String>('second'),
+    ]);
+
+    expect(results, ['first', 'second']);
+  });
+
+  test('worker pool rejects requests after close', () async {
+    final pool = await DartEdgeIsolateWorkerPool.spawn(
+      handler: _echoLength,
+      debugName: 'test-worker-pool',
+      size: 2,
+    );
+
+    await pool.close();
+
+    await expectLater(pool.request<int>('hello'), throwsA(isA<StateError>()));
+  });
 }
 
 int _echoLength(Object? request) => (request as String).length;

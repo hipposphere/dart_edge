@@ -16,6 +16,7 @@ Future<void> main() async {
   final app = DartEdge<NoServices>(services: NoServices.new);
   final auth = DartEdgeAuth(
     const DartEdgeAuthConfig(
+    workerPoolSize: 4,
       secret: 'change-me-to-a-long-secret-that-is-at-least-32-chars',
       baseUrl: 'http://localhost:8080',
     ),
@@ -85,6 +86,7 @@ config and use `auth.api.admin`:
 ```dart
 final auth = DartEdgeAuth(
   const DartEdgeAuthConfig(
+    workerPoolSize: 4,
     secret: 'change-me-to-a-long-secret-that-is-at-least-32-chars',
     baseUrl: 'http://localhost:8080',
     admin: DartEdgeAuthAdminConfig(),
@@ -133,6 +135,7 @@ final database = PostgresPool.withUrl(
 
 final auth = DartEdgeAuth(
   DartEdgeAuthConfig(
+    workerPoolSize: 4,
     secret: 'change-me-to-a-long-secret-that-is-at-least-32-chars',
     baseUrl: 'http://localhost:8080',
     database: DartEdgeAuthDatabase.fromDatabase(
@@ -152,6 +155,7 @@ final database = SqliteDatabase.open('var/auth.db');
 
 final auth = DartEdgeAuth(
   DartEdgeAuthConfig(
+    workerPoolSize: 4,
     secret: 'change-me-to-a-long-secret-that-is-at-least-32-chars',
     baseUrl: 'http://localhost:8080',
     database: DartEdgeAuthDatabase.fromDatabase(
@@ -176,6 +180,7 @@ or update the Better Auth tables:
 ```dart
 final auth = DartEdgeAuth(
   DartEdgeAuthConfig(
+    workerPoolSize: 4,
     secret: 'change-me-to-a-long-secret-that-is-at-least-32-chars',
     baseUrl: 'http://localhost:8080',
     database: DartEdgeAuthDatabase.fromDatabase(
@@ -191,6 +196,7 @@ Shared PostgreSQL databases can place Better Auth tables in a dedicated schema:
 ```dart
 final auth = DartEdgeAuth(
   DartEdgeAuthConfig(
+    workerPoolSize: 4,
     secret: 'change-me-to-a-long-secret-that-is-at-least-32-chars',
     baseUrl: 'http://localhost:8080',
     database: DartEdgeAuthDatabase.fromDatabase(
@@ -206,6 +212,7 @@ The migration option is also available on dedicated SQLite configs:
 ```dart
 final auth = DartEdgeAuth(
   const DartEdgeAuthConfig(
+    workerPoolSize: 4,
     secret: 'change-me-to-a-long-secret-that-is-at-least-32-chars',
     baseUrl: 'http://localhost:8080',
     database: DartEdgeAuthDatabase.sqlite(

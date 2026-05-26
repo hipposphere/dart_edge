@@ -9,6 +9,7 @@ void main() {
   test('supports direct sign-up and session calls without HTTP', () async {
     final auth = DartEdgeAuth(
       const DartEdgeAuthConfig(
+        workerPoolSize: 4,
         secret: 'test-secret-key-that-is-at-least-32-characters-long',
         baseUrl: 'http://localhost:3000',
       ),
@@ -49,6 +50,7 @@ void main() {
     final database = SqliteDatabase.inMemory();
     final auth = DartEdgeAuth(
       DartEdgeAuthConfig(
+        workerPoolSize: 4,
         secret: 'test-secret-key-that-is-at-least-32-characters-long',
         baseUrl: 'http://localhost:3000',
         database: DartEdgeAuthDatabase.fromDatabase(
@@ -97,6 +99,7 @@ void main() {
 
     final auth = DartEdgeAuth(
       DartEdgeAuthConfig(
+        workerPoolSize: 4,
         secret: 'test-secret-key-that-is-at-least-32-characters-long',
         baseUrl: 'http://localhost:3000',
         database: DartEdgeAuthDatabase.fromPostgresPool(
@@ -154,6 +157,7 @@ void main() {
 
     final auth = DartEdgeAuth(
       DartEdgeAuthConfig(
+        workerPoolSize: 4,
         secret: 'test-secret-key-that-is-at-least-32-characters-long',
         baseUrl: 'http://localhost:3000',
         database: DartEdgeAuthDatabase.fromDatabase(
@@ -188,6 +192,7 @@ void main() {
   test('throws a typed exception for failed direct auth calls', () async {
     final auth = DartEdgeAuth(
       const DartEdgeAuthConfig(
+        workerPoolSize: 4,
         secret: 'test-secret-key-that-is-at-least-32-characters-long',
         baseUrl: 'http://localhost:3000',
       ),
@@ -223,6 +228,7 @@ void main() {
     () async {
       final auth = DartEdgeAuth(
         const DartEdgeAuthConfig(
+          workerPoolSize: 4,
           secret: 'test-secret-key-that-is-at-least-32-characters-long',
           baseUrl: 'http://localhost:3000',
         ),
@@ -249,6 +255,7 @@ void main() {
   test('supports trusted admin calls without a session token', () async {
     final auth = DartEdgeAuth(
       const DartEdgeAuthConfig(
+        workerPoolSize: 4,
         secret: 'test-secret-key-that-is-at-least-32-characters-long',
         baseUrl: 'http://localhost:3000',
       ),
@@ -284,6 +291,7 @@ void main() {
   test('enables direct admin api calls when configured', () async {
     final auth = DartEdgeAuth(
       const DartEdgeAuthConfig(
+        workerPoolSize: 4,
         secret: 'test-secret-key-that-is-at-least-32-characters-long',
         baseUrl: 'http://localhost:3000',
         admin: DartEdgeAuthAdminConfig(),

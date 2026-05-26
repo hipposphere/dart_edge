@@ -194,14 +194,12 @@ final class DartEdgeAuthTrustedAdminApi {
     Object? body,
   }) async {
     _auth._ensureActive();
-    final response = await Isolate.run(
-      () => _performNativeTrustedAdminCall((
-        handle: _auth._nativeInstance.handle,
-        operation: operation,
-        query: query,
-        body: body,
-      )),
-    );
+    final response = await _auth._workerPool.request((
+      handle: _auth._nativeInstance.handle,
+      operation: operation,
+      query: query,
+      body: body,
+    ));
     return _responseFromAsync(response);
   }
 

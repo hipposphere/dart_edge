@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:dart_edge_core/dart_edge_core.dart';
@@ -23,6 +22,7 @@ part 'dart_edge_auth_trusted_admin_api.dart';
 part 'dart_edge_auth_result_types.dart';
 part 'dart_edge_auth_api_response.dart';
 part 'dart_edge_auth_route_table.dart';
+part 'dart_edge_auth_worker_pool.dart';
 
 /// Compile-time token for a Better Auth operation exposed by Dart Edge Auth.
 final class DartEdgeAuthOperation {
@@ -118,7 +118,12 @@ final class DartEdgeAuthOperation {
 /// Create one instance per configured auth backend, mount it on a [Router], and
 /// call [dispose] when you are done with it.
 final class DartEdgeAuth {
-  DartEdgeAuth._(this.config, this._nativeInstance, this._routeTable);
+  DartEdgeAuth._(
+    this.config,
+    this._nativeInstance,
+    this._routeTable,
+    this._workerPool,
+  );
 
   /// Creates a new native Better Auth instance from [config].
   factory DartEdgeAuth(DartEdgeAuthConfig config) {
@@ -130,6 +135,7 @@ final class DartEdgeAuth {
       config,
       nativeInstance,
       _DartEdgeAuthRouteTable(routes),
+      _DartEdgeAuthWorkerPool(size: config.workerPoolSize),
     );
   }
 
@@ -137,6 +143,7 @@ final class DartEdgeAuth {
   final DartEdgeAuthConfig config;
   final NativeAuthInstance _nativeInstance;
   final _DartEdgeAuthRouteTable _routeTable;
+  final _DartEdgeAuthWorkerPool _workerPool;
   List<AuthNativeRouteDescriptor> get _routes => _routeTable.routes;
   var _disposed = false;
   late final DartEdgeAuthApi api = DartEdgeAuthApi._(this);
@@ -203,6 +210,7 @@ final class DartEdgeAuth {
       return;
     }
     _disposed = true;
+    _workerPool.close();
     _nativeInstance.dispose();
   }
 

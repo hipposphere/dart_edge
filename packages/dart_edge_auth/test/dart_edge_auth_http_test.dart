@@ -9,6 +9,7 @@ void main() {
   test('exposes readable auth route debug strings', () {
     final auth = DartEdgeAuth(
       const DartEdgeAuthConfig(
+        workerPoolSize: 4,
         secret: 'test-secret-key-that-is-at-least-32-characters-long',
         baseUrl: 'http://localhost:3000',
       ),
@@ -40,6 +41,7 @@ void main() {
       final app = DartEdge<TestServices>(services: TestServices.new);
       final auth = DartEdgeAuth(
         const DartEdgeAuthConfig(
+          workerPoolSize: 4,
           secret: 'test-secret-key-that-is-at-least-32-characters-long',
           baseUrl: 'http://localhost:3000',
         ),
@@ -127,6 +129,7 @@ void main() {
     final app = DartEdge<TestServices>(services: TestServices.new);
     final auth = DartEdgeAuth(
       const DartEdgeAuthConfig(
+        workerPoolSize: 4,
         secret: 'test-secret-key-that-is-at-least-32-characters-long',
         baseUrl: 'http://localhost:3000',
       ),
@@ -172,6 +175,7 @@ void main() {
     final app = DartEdge<TestServices>(services: TestServices.new);
     final auth = DartEdgeAuth(
       const DartEdgeAuthConfig(
+        workerPoolSize: 4,
         secret: 'test-secret-key-that-is-at-least-32-characters-long',
         baseUrl: 'http://localhost:3000',
       ),
@@ -229,6 +233,7 @@ void main() {
     final app = DartEdge<TestServices>(services: TestServices.new);
     final auth = DartEdgeAuth(
       const DartEdgeAuthConfig(
+        workerPoolSize: 4,
         secret: 'test-secret-key-that-is-at-least-32-characters-long',
         baseUrl: 'http://localhost:3000',
       ),
@@ -248,6 +253,7 @@ void main() {
     final app = DartEdge<TestServices>(services: TestServices.new);
     final auth = DartEdgeAuth(
       const DartEdgeAuthConfig(
+        workerPoolSize: 4,
         secret: 'test-secret-key-that-is-at-least-32-characters-long',
         baseUrl: 'http://localhost:3000',
       ),

@@ -5,6 +5,7 @@ final class DartEdgeAuthConfig {
   const DartEdgeAuthConfig({
     required this.secret,
     required this.baseUrl,
+    required this.workerPoolSize,
     this.database = const DartEdgeAuthDatabase.memory(),
     this.basePath = '/auth',
     this.appName = 'Dart Edge',
@@ -25,6 +26,9 @@ final class DartEdgeAuthConfig {
 
   /// Public base URL where the application is served.
   final String baseUrl;
+
+  /// Number of long-lived worker isolates used by async auth API calls.
+  final int workerPoolSize;
 
   /// Database adapter configuration used by the native Better Auth runtime.
   final DartEdgeAuthDatabase database;

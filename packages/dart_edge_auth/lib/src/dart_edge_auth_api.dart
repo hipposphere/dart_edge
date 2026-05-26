@@ -55,15 +55,13 @@ final class DartEdgeAuthApi {
     Map<String, String> headers = const <String, String>{},
     Object? body,
   }) async {
-    final response = await Isolate.run(
-      () => _performNativeAuthRequest(
-        _requestForCall(
-          method: method,
-          path: path,
-          query: query,
-          headers: headers,
-          body: body,
-        ),
+    final response = await _auth._workerPool.request(
+      _requestForCall(
+        method: method,
+        path: path,
+        query: query,
+        headers: headers,
+        body: body,
       ),
     );
 

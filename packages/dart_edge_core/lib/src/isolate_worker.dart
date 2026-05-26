@@ -4,6 +4,15 @@ import 'dart:isolate';
 typedef DartEdgeIsolateRequestHandler =
     FutureOr<Object?> Function(Object? request);
 
+/// Selection strategy used by [DartEdgeIsolateWorkerPool].
+enum DartEdgeIsolateWorkerPoolStrategy {
+  /// Sends requests to workers in a fixed rotating order.
+  roundRobin,
+
+  /// Sends each request to the worker with the smallest pending queue.
+  leastPending,
+}
+
 final class DartEdgeIsolateWorker {
   DartEdgeIsolateWorker._({
     required this.debugName,
@@ -38,6 +47,8 @@ final class DartEdgeIsolateWorker {
   var _nextId = 0;
   var _closed = false;
   var _failed = false;
+
+  int get pendingRequestCount => _pending.length;
 
   static Future<DartEdgeIsolateWorker> spawn({
     required DartEdgeIsolateRequestHandler handler,
@@ -180,6 +191,86 @@ final class DartEdgeIsolateWorker {
         pending.completer.completeError(error);
       }
     }
+  }
+}
+
+/// Pool of long-lived isolate workers for repeated native-backed requests.
+final class DartEdgeIsolateWorkerPool {
+  DartEdgeIsolateWorkerPool._(
+    this._workers, {
+    required this.debugName,
+    required this.size,
+    required this.strategy,
+  });
+
+  final String debugName;
+  final int size;
+  final DartEdgeIsolateWorkerPoolStrategy strategy;
+  final List<DartEdgeIsolateWorker> _workers;
+  var _nextWorker = 0;
+  var _closed = false;
+
+  static Future<DartEdgeIsolateWorkerPool> spawn({
+    required DartEdgeIsolateRequestHandler handler,
+    required int size,
+    String debugName = 'DartEdgeIsolateWorkerPool',
+    DartEdgeIsolateWorkerPoolStrategy strategy =
+        DartEdgeIsolateWorkerPoolStrategy.leastPending,
+    int? maxPendingRequestsPerWorker,
+    Duration? defaultTimeout,
+  }) async {
+    if (size < 1) {
+      throw ArgumentError.value(size, 'size', 'size must be at least 1.');
+    }
+
+    final workers = await Future.wait([
+      for (var index = 0; index < size; index++)
+        DartEdgeIsolateWorker.spawn(
+          handler: handler,
+          debugName: '$debugName#$index',
+          maxPendingRequests: maxPendingRequestsPerWorker,
+          defaultTimeout: defaultTimeout,
+        ),
+    ]);
+    return DartEdgeIsolateWorkerPool._(
+      workers,
+      debugName: debugName,
+      size: size,
+      strategy: strategy,
+    );
+  }
+
+  Future<T> request<T>(Object? request, {Duration? timeout}) async {
+    if (_closed) {
+      throw StateError('$debugName is closed.');
+    }
+    return await _selectWorker().request<T>(request, timeout: timeout);
+  }
+
+  Future<void> close() async {
+    if (_closed) {
+      return;
+    }
+    _closed = true;
+    await Future.wait([for (final worker in _workers) worker.close()]);
+  }
+
+  DartEdgeIsolateWorker _selectWorker() {
+    return switch (strategy) {
+      DartEdgeIsolateWorkerPoolStrategy.roundRobin =>
+        _workers[_nextWorker++ % _workers.length],
+      DartEdgeIsolateWorkerPoolStrategy.leastPending => _leastPendingWorker(),
+    };
+  }
+
+  DartEdgeIsolateWorker _leastPendingWorker() {
+    var selected = _workers.first;
+    for (final worker in _workers.skip(1)) {
+      if (worker.pendingRequestCount < selected.pendingRequestCount) {
+        selected = worker;
+      }
+    }
+    return selected;
   }
 }
 
