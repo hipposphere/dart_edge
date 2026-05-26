@@ -4,16 +4,12 @@ import 'package:dart_edge_sql/dart_edge_sql.dart';
 import 'package:dart_edge_sql_codegen/dart_edge_sql_codegen.dart';
 import 'package:dart_edge_sql_pglite/dart_edge_sql_pglite.dart';
 
-const _sharedAdapterPath = 'rust/src/shared_sql_adapter.rs';
+const _schemaPath = 'migrations/better_auth_schema.sql';
 
 Future<void> main() async {
   final packageRoot = File.fromUri(Platform.script).parent.parent;
-  final schema = File(
-    '${packageRoot.path}/$_sharedAdapterPath',
-  ).readAsStringSync();
-  final database = await _introspectBetterAuthPostgresSchema(
-    _extractPostgresSchema(schema),
-  );
+  final schema = File('${packageRoot.path}/$_schemaPath').readAsStringSync();
+  final database = await _introspectBetterAuthPostgresSchema(schema);
 
   final emission = emitDartSchema(
     database,
@@ -34,7 +30,6 @@ Future<IntrospectedDatabase> _introspectBetterAuthPostgresSchema(
     }
     final introspected = await PostgresIntrospector.fromDatabase(
       database,
-      includeTables: const {'user', 'session'},
     ).introspect();
     return _withoutDefaultSchema(introspected);
   } finally {
@@ -67,28 +62,13 @@ IntrospectedDatabase _withoutDefaultSchema(IntrospectedDatabase database) {
   );
 }
 
-String _extractPostgresSchema(String source) {
-  const marker = 'const POSTGRES_SCHEMA_SQL: &str = r#"';
-  final start = source.indexOf(marker);
-  if (start < 0) {
-    throw StateError(
-      'Could not find POSTGRES_SCHEMA_SQL in $_sharedAdapterPath.',
-    );
-  }
-  final bodyStart = start + marker.length;
-  final end = source.indexOf('"#;', bodyStart);
-  if (end < 0) {
-    throw StateError(
-      'Could not parse POSTGRES_SCHEMA_SQL in $_sharedAdapterPath.',
-    );
-  }
-  return source.substring(bodyStart, end);
-}
-
 String _authModelName(DartSchemaModelNameContext context) {
   final tablePrefix = switch (context.tableName) {
     'user' => 'DartEdgeAuthUser',
     'session' => 'DartEdgeAuthSession',
+    'account' => 'DartEdgeAuthAccount',
+    'verification' => 'DartEdgeAuthVerification',
+    'passkey' => 'DartEdgeAuthPasskey',
     final table => throw StateError('Unsupported Better Auth table "$table".'),
   };
   return switch (context.kind) {

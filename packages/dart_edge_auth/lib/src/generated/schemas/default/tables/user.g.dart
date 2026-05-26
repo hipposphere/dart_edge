@@ -7,14 +7,14 @@ final class DartEdgeAuthUserRow implements JsonEncodable {
     required this.email,
     required this.emailVerified,
     required this.image,
+    required this.createdAt,
+    required this.updatedAt,
     required this.role,
     required this.banned,
     required this.banReason,
     required this.banExpires,
     required this.phoneNumber,
     required this.phoneNumberVerified,
-    required this.createdAt,
-    required this.updatedAt,
   });
 
   factory DartEdgeAuthUserRow.fromSqlRow(SqlRow row, {String prefix = ''}) =>
@@ -24,6 +24,16 @@ final class DartEdgeAuthUserRow implements JsonEncodable {
         email: row.read<String>('${prefix}email'),
         emailVerified: row.read<bool>('${prefix}emailVerified'),
         image: row.readNullable<String>('${prefix}image'),
+        createdAt: switch (row.read<Object?>('${prefix}createdAt')) {
+          final DateTime value => value,
+          final String value => DateTime.parse(value),
+          final value => value as DateTime,
+        },
+        updatedAt: switch (row.read<Object?>('${prefix}updatedAt')) {
+          final DateTime value => value,
+          final String value => DateTime.parse(value),
+          final value => value as DateTime,
+        },
         role: row.readNullable<String>('${prefix}role'),
         banned: row.readNullable<bool>('${prefix}banned'),
         banReason: row.readNullable<String>('${prefix}banReason'),
@@ -37,16 +47,6 @@ final class DartEdgeAuthUserRow implements JsonEncodable {
         phoneNumberVerified: row.readNullable<bool>(
           '${prefix}phoneNumberVerified',
         ),
-        createdAt: switch (row.read<Object?>('${prefix}createdAt')) {
-          final DateTime value => value,
-          final String value => DateTime.parse(value),
-          final value => value as DateTime,
-        },
-        updatedAt: switch (row.read<Object?>('${prefix}updatedAt')) {
-          final DateTime value => value,
-          final String value => DateTime.parse(value),
-          final value => value as DateTime,
-        },
       );
 
   factory DartEdgeAuthUserRow.fromColumns(
@@ -64,6 +64,8 @@ final class DartEdgeAuthUserRow implements JsonEncodable {
         email: (json['email'] as String),
         emailVerified: (json['emailVerified'] as bool),
         image: json['image'] == null ? null : (json['image'] as String),
+        createdAt: DateTime.parse((json['createdAt'] as String)),
+        updatedAt: DateTime.parse((json['updatedAt'] as String)),
         role: json['role'] == null ? null : (json['role'] as String),
         banned: json['banned'] == null ? null : (json['banned'] as bool),
         banReason: json['banReason'] == null
@@ -78,8 +80,6 @@ final class DartEdgeAuthUserRow implements JsonEncodable {
         phoneNumberVerified: json['phoneNumberVerified'] == null
             ? null
             : (json['phoneNumberVerified'] as bool),
-        createdAt: DateTime.parse((json['createdAt'] as String)),
-        updatedAt: DateTime.parse((json['updatedAt'] as String)),
       );
 
   static const schemaId = 'DartEdgeAuthUserRow';
@@ -94,14 +94,14 @@ final class DartEdgeAuthUserRow implements JsonEncodable {
       'email': JsonSchema.string(),
       'emailVerified': JsonSchema.boolean(),
       'image': JsonSchema.string(nullable: true),
+      'createdAt': JsonSchema.string(format: 'date-time'),
+      'updatedAt': JsonSchema.string(format: 'date-time'),
       'role': JsonSchema.string(nullable: true),
       'banned': JsonSchema.boolean(nullable: true),
       'banReason': JsonSchema.string(nullable: true),
       'banExpires': JsonSchema.string(nullable: true, format: 'date-time'),
       'phoneNumber': JsonSchema.string(nullable: true),
       'phoneNumberVerified': JsonSchema.boolean(nullable: true),
-      'createdAt': JsonSchema.string(format: 'date-time'),
-      'updatedAt': JsonSchema.string(format: 'date-time'),
     },
     required: <String>[
       'id',
@@ -109,14 +109,14 @@ final class DartEdgeAuthUserRow implements JsonEncodable {
       'email',
       'emailVerified',
       'image',
+      'createdAt',
+      'updatedAt',
       'role',
       'banned',
       'banReason',
       'banExpires',
       'phoneNumber',
       'phoneNumberVerified',
-      'createdAt',
-      'updatedAt',
     ],
     additionalProperties: false,
   );
@@ -131,6 +131,10 @@ final class DartEdgeAuthUserRow implements JsonEncodable {
 
   final String? image;
 
+  final DateTime createdAt;
+
+  final DateTime updatedAt;
+
   final String? role;
 
   final bool? banned;
@@ -143,24 +147,20 @@ final class DartEdgeAuthUserRow implements JsonEncodable {
 
   final bool? phoneNumberVerified;
 
-  final DateTime createdAt;
-
-  final DateTime updatedAt;
-
   DartEdgeAuthUserRow copyWith({
     String? id,
     String? name,
     String? email,
     bool? emailVerified,
     SqlValue<String?>? image,
+    DateTime? createdAt,
+    DateTime? updatedAt,
     SqlValue<String?>? role,
     SqlValue<bool?>? banned,
     SqlValue<String?>? banReason,
     SqlValue<DateTime?>? banExpires,
     SqlValue<String?>? phoneNumber,
     SqlValue<bool?>? phoneNumberVerified,
-    DateTime? createdAt,
-    DateTime? updatedAt,
   }) {
     return DartEdgeAuthUserRow(
       id: id ?? this.id,
@@ -168,6 +168,8 @@ final class DartEdgeAuthUserRow implements JsonEncodable {
       email: email ?? this.email,
       emailVerified: emailVerified ?? this.emailVerified,
       image: image == null || !image.isPresent ? this.image : image.value,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
       role: role == null || !role.isPresent ? this.role : role.value,
       banned: banned == null || !banned.isPresent ? this.banned : banned.value,
       banReason: banReason == null || !banReason.isPresent
@@ -183,8 +185,6 @@ final class DartEdgeAuthUserRow implements JsonEncodable {
           phoneNumberVerified == null || !phoneNumberVerified.isPresent
           ? this.phoneNumberVerified
           : phoneNumberVerified.value,
-      createdAt: createdAt ?? this.createdAt,
-      updatedAt: updatedAt ?? this.updatedAt,
     );
   }
 
@@ -194,14 +194,14 @@ final class DartEdgeAuthUserRow implements JsonEncodable {
     'email': email,
     'emailVerified': emailVerified,
     'image': image,
+    'createdAt': createdAt,
+    'updatedAt': updatedAt,
     'role': role,
     'banned': banned,
     'banReason': banReason,
     'banExpires': banExpires,
     'phoneNumber': phoneNumber,
     'phoneNumberVerified': phoneNumberVerified,
-    'createdAt': createdAt,
-    'updatedAt': updatedAt,
   };
 
   @override
@@ -211,19 +211,19 @@ final class DartEdgeAuthUserRow implements JsonEncodable {
     'email': email,
     'emailVerified': emailVerified,
     'image': image,
+    'createdAt': createdAt.toIso8601String(),
+    'updatedAt': updatedAt.toIso8601String(),
     'role': role,
     'banned': banned,
     'banReason': banReason,
     'banExpires': banExpires?.toIso8601String(),
     'phoneNumber': phoneNumber,
     'phoneNumberVerified': phoneNumberVerified,
-    'createdAt': createdAt.toIso8601String(),
-    'updatedAt': updatedAt.toIso8601String(),
   };
 
   @override
   String toString() =>
-      'DartEdgeAuthUserRow(id: $id, name: $name, email: $email, emailVerified: $emailVerified, image: $image, role: $role, banned: $banned, banReason: $banReason, banExpires: $banExpires, phoneNumber: $phoneNumber, phoneNumberVerified: $phoneNumberVerified, createdAt: $createdAt, updatedAt: $updatedAt)';
+      'DartEdgeAuthUserRow(id: $id, name: $name, email: $email, emailVerified: $emailVerified, image: $image, createdAt: $createdAt, updatedAt: $updatedAt, role: $role, banned: $banned, banReason: $banReason, banExpires: $banExpires, phoneNumber: $phoneNumber, phoneNumberVerified: $phoneNumberVerified)';
 }
 
 final class DartEdgeAuthUserInsert implements JsonEncodable {
@@ -231,16 +231,16 @@ final class DartEdgeAuthUserInsert implements JsonEncodable {
     this.id = const SqlValue.absent(),
     required this.name,
     required this.email,
-    this.emailVerified = const SqlValue.absent(),
+    required this.emailVerified,
     required this.image,
+    required this.createdAt,
+    required this.updatedAt,
     required this.role,
     required this.banned,
     required this.banReason,
     required this.banExpires,
     required this.phoneNumber,
     required this.phoneNumberVerified,
-    required this.createdAt,
-    required this.updatedAt,
   });
 
   factory DartEdgeAuthUserInsert.decode(Object? value) =>
@@ -253,10 +253,10 @@ final class DartEdgeAuthUserInsert implements JsonEncodable {
             : const SqlValue.absent(),
         name: (json['name'] as String),
         email: (json['email'] as String),
-        emailVerified: json.containsKey('emailVerified')
-            ? SqlValue<bool>((json['emailVerified'] as bool))
-            : const SqlValue.absent(),
+        emailVerified: (json['emailVerified'] as bool),
         image: json['image'] == null ? null : (json['image'] as String),
+        createdAt: DateTime.parse((json['createdAt'] as String)),
+        updatedAt: DateTime.parse((json['updatedAt'] as String)),
         role: json['role'] == null ? null : (json['role'] as String),
         banned: json['banned'] == null ? null : (json['banned'] as bool),
         banReason: json['banReason'] == null
@@ -271,8 +271,6 @@ final class DartEdgeAuthUserInsert implements JsonEncodable {
         phoneNumberVerified: json['phoneNumberVerified'] == null
             ? null
             : (json['phoneNumberVerified'] as bool),
-        createdAt: DateTime.parse((json['createdAt'] as String)),
-        updatedAt: DateTime.parse((json['updatedAt'] as String)),
       );
 
   static const schemaId = 'DartEdgeAuthUserInsert';
@@ -287,27 +285,28 @@ final class DartEdgeAuthUserInsert implements JsonEncodable {
       'email': JsonSchema.string(),
       'emailVerified': JsonSchema.boolean(),
       'image': JsonSchema.string(nullable: true),
+      'createdAt': JsonSchema.string(format: 'date-time'),
+      'updatedAt': JsonSchema.string(format: 'date-time'),
       'role': JsonSchema.string(nullable: true),
       'banned': JsonSchema.boolean(nullable: true),
       'banReason': JsonSchema.string(nullable: true),
       'banExpires': JsonSchema.string(nullable: true, format: 'date-time'),
       'phoneNumber': JsonSchema.string(nullable: true),
       'phoneNumberVerified': JsonSchema.boolean(nullable: true),
-      'createdAt': JsonSchema.string(format: 'date-time'),
-      'updatedAt': JsonSchema.string(format: 'date-time'),
     },
     required: <String>[
       'name',
       'email',
+      'emailVerified',
       'image',
+      'createdAt',
+      'updatedAt',
       'role',
       'banned',
       'banReason',
       'banExpires',
       'phoneNumber',
       'phoneNumberVerified',
-      'createdAt',
-      'updatedAt',
     ],
     additionalProperties: false,
   );
@@ -318,9 +317,13 @@ final class DartEdgeAuthUserInsert implements JsonEncodable {
 
   final String email;
 
-  final SqlValue<bool> emailVerified;
+  final bool emailVerified;
 
   final String? image;
+
+  final DateTime createdAt;
+
+  final DateTime updatedAt;
 
   final String? role;
 
@@ -334,24 +337,20 @@ final class DartEdgeAuthUserInsert implements JsonEncodable {
 
   final bool? phoneNumberVerified;
 
-  final DateTime createdAt;
-
-  final DateTime updatedAt;
-
   DartEdgeAuthUserInsert copyWith({
     SqlValue<String>? id,
     String? name,
     String? email,
-    SqlValue<bool>? emailVerified,
+    bool? emailVerified,
     SqlValue<String?>? image,
+    DateTime? createdAt,
+    DateTime? updatedAt,
     SqlValue<String?>? role,
     SqlValue<bool?>? banned,
     SqlValue<String?>? banReason,
     SqlValue<DateTime?>? banExpires,
     SqlValue<String?>? phoneNumber,
     SqlValue<bool?>? phoneNumberVerified,
-    DateTime? createdAt,
-    DateTime? updatedAt,
   }) {
     return DartEdgeAuthUserInsert(
       id: id ?? this.id,
@@ -359,6 +358,8 @@ final class DartEdgeAuthUserInsert implements JsonEncodable {
       email: email ?? this.email,
       emailVerified: emailVerified ?? this.emailVerified,
       image: image == null || !image.isPresent ? this.image : image.value,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
       role: role == null || !role.isPresent ? this.role : role.value,
       banned: banned == null || !banned.isPresent ? this.banned : banned.value,
       banReason: banReason == null || !banReason.isPresent
@@ -374,8 +375,6 @@ final class DartEdgeAuthUserInsert implements JsonEncodable {
           phoneNumberVerified == null || !phoneNumberVerified.isPresent
           ? this.phoneNumberVerified
           : phoneNumberVerified.value,
-      createdAt: createdAt ?? this.createdAt,
-      updatedAt: updatedAt ?? this.updatedAt,
     );
   }
 
@@ -383,16 +382,16 @@ final class DartEdgeAuthUserInsert implements JsonEncodable {
     if (id.isPresent) 'id': id.value,
     'name': name,
     'email': email,
-    if (emailVerified.isPresent) 'emailVerified': emailVerified.value,
+    'emailVerified': emailVerified,
     'image': image,
+    'createdAt': createdAt,
+    'updatedAt': updatedAt,
     'role': role,
     'banned': banned,
     'banReason': banReason,
     'banExpires': banExpires,
     'phoneNumber': phoneNumber,
     'phoneNumberVerified': phoneNumberVerified,
-    'createdAt': createdAt,
-    'updatedAt': updatedAt,
   };
 
   @override
@@ -400,21 +399,21 @@ final class DartEdgeAuthUserInsert implements JsonEncodable {
     if (id.isPresent) 'id': id.value,
     'name': name,
     'email': email,
-    if (emailVerified.isPresent) 'emailVerified': emailVerified.value,
+    'emailVerified': emailVerified,
     'image': image,
+    'createdAt': createdAt.toIso8601String(),
+    'updatedAt': updatedAt.toIso8601String(),
     'role': role,
     'banned': banned,
     'banReason': banReason,
     'banExpires': banExpires?.toIso8601String(),
     'phoneNumber': phoneNumber,
     'phoneNumberVerified': phoneNumberVerified,
-    'createdAt': createdAt.toIso8601String(),
-    'updatedAt': updatedAt.toIso8601String(),
   };
 
   @override
   String toString() =>
-      'DartEdgeAuthUserInsert(id: $id, name: $name, email: $email, emailVerified: $emailVerified, image: $image, role: $role, banned: $banned, banReason: $banReason, banExpires: $banExpires, phoneNumber: $phoneNumber, phoneNumberVerified: $phoneNumberVerified, createdAt: $createdAt, updatedAt: $updatedAt)';
+      'DartEdgeAuthUserInsert(id: $id, name: $name, email: $email, emailVerified: $emailVerified, image: $image, createdAt: $createdAt, updatedAt: $updatedAt, role: $role, banned: $banned, banReason: $banReason, banExpires: $banExpires, phoneNumber: $phoneNumber, phoneNumberVerified: $phoneNumberVerified)';
 }
 
 final class DartEdgeAuthUserUpdate implements JsonEncodable {
@@ -424,14 +423,14 @@ final class DartEdgeAuthUserUpdate implements JsonEncodable {
     this.email = const SqlValue.absent(),
     this.emailVerified = const SqlValue.absent(),
     this.image = const SqlValue.absent(),
+    this.createdAt = const SqlValue.absent(),
+    this.updatedAt = const SqlValue.absent(),
     this.role = const SqlValue.absent(),
     this.banned = const SqlValue.absent(),
     this.banReason = const SqlValue.absent(),
     this.banExpires = const SqlValue.absent(),
     this.phoneNumber = const SqlValue.absent(),
     this.phoneNumberVerified = const SqlValue.absent(),
-    this.createdAt = const SqlValue.absent(),
-    this.updatedAt = const SqlValue.absent(),
   });
 
   factory DartEdgeAuthUserUpdate.decode(Object? value) =>
@@ -455,6 +454,12 @@ final class DartEdgeAuthUserUpdate implements JsonEncodable {
             ? SqlValue<String?>(
                 json['image'] == null ? null : (json['image'] as String),
               )
+            : const SqlValue.absent(),
+        createdAt: json.containsKey('createdAt')
+            ? SqlValue<DateTime>(DateTime.parse((json['createdAt'] as String)))
+            : const SqlValue.absent(),
+        updatedAt: json.containsKey('updatedAt')
+            ? SqlValue<DateTime>(DateTime.parse((json['updatedAt'] as String)))
             : const SqlValue.absent(),
         role: json.containsKey('role')
             ? SqlValue<String?>(
@@ -494,12 +499,6 @@ final class DartEdgeAuthUserUpdate implements JsonEncodable {
                     : (json['phoneNumberVerified'] as bool),
               )
             : const SqlValue.absent(),
-        createdAt: json.containsKey('createdAt')
-            ? SqlValue<DateTime>(DateTime.parse((json['createdAt'] as String)))
-            : const SqlValue.absent(),
-        updatedAt: json.containsKey('updatedAt')
-            ? SqlValue<DateTime>(DateTime.parse((json['updatedAt'] as String)))
-            : const SqlValue.absent(),
       );
 
   static const schemaId = 'DartEdgeAuthUserUpdate';
@@ -514,14 +513,14 @@ final class DartEdgeAuthUserUpdate implements JsonEncodable {
       'email': JsonSchema.string(),
       'emailVerified': JsonSchema.boolean(),
       'image': JsonSchema.string(nullable: true),
+      'createdAt': JsonSchema.string(format: 'date-time'),
+      'updatedAt': JsonSchema.string(format: 'date-time'),
       'role': JsonSchema.string(nullable: true),
       'banned': JsonSchema.boolean(nullable: true),
       'banReason': JsonSchema.string(nullable: true),
       'banExpires': JsonSchema.string(nullable: true, format: 'date-time'),
       'phoneNumber': JsonSchema.string(nullable: true),
       'phoneNumberVerified': JsonSchema.boolean(nullable: true),
-      'createdAt': JsonSchema.string(format: 'date-time'),
-      'updatedAt': JsonSchema.string(format: 'date-time'),
     },
     required: <String>[],
     additionalProperties: false,
@@ -537,6 +536,10 @@ final class DartEdgeAuthUserUpdate implements JsonEncodable {
 
   final SqlValue<String?> image;
 
+  final SqlValue<DateTime> createdAt;
+
+  final SqlValue<DateTime> updatedAt;
+
   final SqlValue<String?> role;
 
   final SqlValue<bool?> banned;
@@ -549,24 +552,20 @@ final class DartEdgeAuthUserUpdate implements JsonEncodable {
 
   final SqlValue<bool?> phoneNumberVerified;
 
-  final SqlValue<DateTime> createdAt;
-
-  final SqlValue<DateTime> updatedAt;
-
   DartEdgeAuthUserUpdate copyWith({
     SqlValue<String>? id,
     SqlValue<String>? name,
     SqlValue<String>? email,
     SqlValue<bool>? emailVerified,
     SqlValue<String?>? image,
+    SqlValue<DateTime>? createdAt,
+    SqlValue<DateTime>? updatedAt,
     SqlValue<String?>? role,
     SqlValue<bool?>? banned,
     SqlValue<String?>? banReason,
     SqlValue<DateTime?>? banExpires,
     SqlValue<String?>? phoneNumber,
     SqlValue<bool?>? phoneNumberVerified,
-    SqlValue<DateTime>? createdAt,
-    SqlValue<DateTime>? updatedAt,
   }) {
     return DartEdgeAuthUserUpdate(
       id: id ?? this.id,
@@ -574,14 +573,14 @@ final class DartEdgeAuthUserUpdate implements JsonEncodable {
       email: email ?? this.email,
       emailVerified: emailVerified ?? this.emailVerified,
       image: image ?? this.image,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
       role: role ?? this.role,
       banned: banned ?? this.banned,
       banReason: banReason ?? this.banReason,
       banExpires: banExpires ?? this.banExpires,
       phoneNumber: phoneNumber ?? this.phoneNumber,
       phoneNumberVerified: phoneNumberVerified ?? this.phoneNumberVerified,
-      createdAt: createdAt ?? this.createdAt,
-      updatedAt: updatedAt ?? this.updatedAt,
     );
   }
 
@@ -591,6 +590,8 @@ final class DartEdgeAuthUserUpdate implements JsonEncodable {
     if (email.isPresent) 'email': email.value,
     if (emailVerified.isPresent) 'emailVerified': emailVerified.value,
     if (image.isPresent) 'image': image.value,
+    if (createdAt.isPresent) 'createdAt': createdAt.value,
+    if (updatedAt.isPresent) 'updatedAt': updatedAt.value,
     if (role.isPresent) 'role': role.value,
     if (banned.isPresent) 'banned': banned.value,
     if (banReason.isPresent) 'banReason': banReason.value,
@@ -598,8 +599,6 @@ final class DartEdgeAuthUserUpdate implements JsonEncodable {
     if (phoneNumber.isPresent) 'phoneNumber': phoneNumber.value,
     if (phoneNumberVerified.isPresent)
       'phoneNumberVerified': phoneNumberVerified.value,
-    if (createdAt.isPresent) 'createdAt': createdAt.value,
-    if (updatedAt.isPresent) 'updatedAt': updatedAt.value,
   };
 
   @override
@@ -609,6 +608,8 @@ final class DartEdgeAuthUserUpdate implements JsonEncodable {
     if (email.isPresent) 'email': email.value,
     if (emailVerified.isPresent) 'emailVerified': emailVerified.value,
     if (image.isPresent) 'image': image.value,
+    if (createdAt.isPresent) 'createdAt': createdAt.value?.toIso8601String(),
+    if (updatedAt.isPresent) 'updatedAt': updatedAt.value?.toIso8601String(),
     if (role.isPresent) 'role': role.value,
     if (banned.isPresent) 'banned': banned.value,
     if (banReason.isPresent) 'banReason': banReason.value,
@@ -616,13 +617,11 @@ final class DartEdgeAuthUserUpdate implements JsonEncodable {
     if (phoneNumber.isPresent) 'phoneNumber': phoneNumber.value,
     if (phoneNumberVerified.isPresent)
       'phoneNumberVerified': phoneNumberVerified.value,
-    if (createdAt.isPresent) 'createdAt': createdAt.value?.toIso8601String(),
-    if (updatedAt.isPresent) 'updatedAt': updatedAt.value?.toIso8601String(),
   };
 
   @override
   String toString() =>
-      'DartEdgeAuthUserUpdate(id: $id, name: $name, email: $email, emailVerified: $emailVerified, image: $image, role: $role, banned: $banned, banReason: $banReason, banExpires: $banExpires, phoneNumber: $phoneNumber, phoneNumberVerified: $phoneNumberVerified, createdAt: $createdAt, updatedAt: $updatedAt)';
+      'DartEdgeAuthUserUpdate(id: $id, name: $name, email: $email, emailVerified: $emailVerified, image: $image, createdAt: $createdAt, updatedAt: $updatedAt, role: $role, banned: $banned, banReason: $banReason, banExpires: $banExpires, phoneNumber: $phoneNumber, phoneNumberVerified: $phoneNumberVerified)';
 }
 
 final class DartEdgeAuthUsersTable
@@ -676,6 +675,20 @@ final class DartEdgeAuthUsersTable
     databaseType: 'text',
   );
 
+  static final createdAt = SqlColumn<DateTime>(
+    table: table,
+    name: 'createdAt',
+    nullable: false,
+    databaseType: 'timestamptz',
+  );
+
+  static final updatedAt = SqlColumn<DateTime>(
+    table: table,
+    name: 'updatedAt',
+    nullable: false,
+    databaseType: 'timestamptz',
+  );
+
   static final role = SqlColumn<String>(
     table: table,
     name: 'role',
@@ -718,20 +731,6 @@ final class DartEdgeAuthUsersTable
     databaseType: 'bool',
   );
 
-  static final createdAt = SqlColumn<DateTime>(
-    table: table,
-    name: 'createdAt',
-    nullable: false,
-    databaseType: 'timestamptz',
-  );
-
-  static final updatedAt = SqlColumn<DateTime>(
-    table: table,
-    name: 'updatedAt',
-    nullable: false,
-    databaseType: 'timestamptz',
-  );
-
   @override
   String get name => 'user';
 
@@ -758,6 +757,16 @@ final class DartEdgeAuthUsersTable
       nullable: true,
       databaseType: 'text',
     ).asObjectColumn,
+    column<DateTime>(
+      'createdAt',
+      nullable: false,
+      databaseType: 'timestamptz',
+    ).asObjectColumn,
+    column<DateTime>(
+      'updatedAt',
+      nullable: false,
+      databaseType: 'timestamptz',
+    ).asObjectColumn,
     column<String>('role', nullable: true, databaseType: 'text').asObjectColumn,
     column<bool>('banned', nullable: true, databaseType: 'bool').asObjectColumn,
     column<String>(
@@ -779,16 +788,6 @@ final class DartEdgeAuthUsersTable
       'phoneNumberVerified',
       nullable: true,
       databaseType: 'bool',
-    ).asObjectColumn,
-    column<DateTime>(
-      'createdAt',
-      nullable: false,
-      databaseType: 'timestamptz',
-    ).asObjectColumn,
-    column<DateTime>(
-      'updatedAt',
-      nullable: false,
-      databaseType: 'timestamptz',
     ).asObjectColumn,
   ];
 
@@ -821,6 +820,18 @@ extension DartEdgeAuthUsersTableColumns on DartEdgeAuthUsersTable {
   SqlColumn<String> get image =>
       column<String>('image', nullable: true, databaseType: 'text');
 
+  SqlColumn<DateTime> get createdAt => column<DateTime>(
+    'createdAt',
+    nullable: false,
+    databaseType: 'timestamptz',
+  );
+
+  SqlColumn<DateTime> get updatedAt => column<DateTime>(
+    'updatedAt',
+    nullable: false,
+    databaseType: 'timestamptz',
+  );
+
   SqlColumn<String> get role =>
       column<String>('role', nullable: true, databaseType: 'text');
 
@@ -841,16 +852,4 @@ extension DartEdgeAuthUsersTableColumns on DartEdgeAuthUsersTable {
 
   SqlColumn<bool> get phoneNumberVerified =>
       column<bool>('phoneNumberVerified', nullable: true, databaseType: 'bool');
-
-  SqlColumn<DateTime> get createdAt => column<DateTime>(
-    'createdAt',
-    nullable: false,
-    databaseType: 'timestamptz',
-  );
-
-  SqlColumn<DateTime> get updatedAt => column<DateTime>(
-    'updatedAt',
-    nullable: false,
-    databaseType: 'timestamptz',
-  );
 }
