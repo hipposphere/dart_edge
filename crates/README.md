@@ -19,7 +19,7 @@ dependencies.
 
 The repo root has a Cargo workspace for the crates in this directory. It also
 has `.cargo/config.toml` patch entries that point Cargo dependencies such as
-`dart_edge_core = "0.1.0"` back to these local crates while working in the
+`dart_edge_core = "0.2.0"` back to these local crates while working in the
 monorepo.
 
 Native asset crates under `packages/<package>/rust` are intentionally excluded
@@ -57,8 +57,8 @@ Recommended order:
 Package native asset manifests should use version dependencies, for example:
 
 ```toml
-dart_edge_core = "0.1.0"
-dart_edge_http_server_core = "0.1.0"
+dart_edge_core = "0.2.0"
+dart_edge_http_server_core = "0.1.1"
 dart_edge_sql_core = "0.1.0"
 ```
 
