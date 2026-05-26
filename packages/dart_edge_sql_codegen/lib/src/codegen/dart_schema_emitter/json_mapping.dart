@@ -74,6 +74,7 @@ List<Field> _schemaFields({
   required String className,
   required IntrospectedTable table,
   required _GeneratedShape shape,
+  required SqlInt8JsonEncoding int8JsonEncoding,
 }) {
   return <Field>[
     _staticConstField(name: 'schemaId', assignment: literalString(className)),
@@ -85,12 +86,20 @@ List<Field> _schemaFields({
     ),
     _staticConstField(
       name: 'jsonSchema',
-      assignment: _jsonSchemaForTable(table, shape),
+      assignment: _jsonSchemaForTable(
+        table,
+        shape,
+        int8JsonEncoding: int8JsonEncoding,
+      ),
     ),
   ];
 }
 
-Expression _jsonSchemaForTable(IntrospectedTable table, _GeneratedShape shape) {
+Expression _jsonSchemaForTable(
+  IntrospectedTable table,
+  _GeneratedShape shape, {
+  required SqlInt8JsonEncoding int8JsonEncoding,
+}) {
   return refer(
     'JsonSchema',
   ).constInstanceNamed('object', const <Expression>[], {
@@ -98,7 +107,10 @@ Expression _jsonSchemaForTable(IntrospectedTable table, _GeneratedShape shape) {
     'properties': literalConstMap(
       {
         for (final column in table.columns)
-          literalString(column.name): _jsonSchemaForColumn(column),
+          literalString(column.name): _jsonSchemaForColumn(
+            column,
+            int8JsonEncoding: int8JsonEncoding,
+          ),
       },
       refer('String'),
       refer('JsonSchema'),
@@ -163,8 +175,9 @@ Constructor _fromColumnsFactory(String rowType) {
 Constructor _fromJsonFactory(
   String typeName,
   IntrospectedTable table,
-  _GeneratedShape shape,
-) {
+  _GeneratedShape shape, {
+  required SqlInt8JsonEncoding int8JsonEncoding,
+}) {
   return Constructor((constructor) {
     constructor
       ..factory = true
@@ -180,14 +193,17 @@ Constructor _fromJsonFactory(
               column,
               source: _jsonLookup(column.name),
               nullable: column.nullable,
+              int8JsonEncoding: int8JsonEncoding,
             ),
             _GeneratedShape.insert => _sqlValueFromJsonExpression(
               column,
               optional: _isOptionalInsertColumn(column),
+              int8JsonEncoding: int8JsonEncoding,
             ),
             _GeneratedShape.update => _sqlValueFromJsonExpression(
               column,
               optional: true,
+              int8JsonEncoding: int8JsonEncoding,
             ),
           },
       }).code;
@@ -301,6 +317,7 @@ Expression _rowReadExpression(IntrospectedColumn column) {
 Expression _sqlValueFromJsonExpression(
   IntrospectedColumn column, {
   required bool optional,
+  required SqlInt8JsonEncoding int8JsonEncoding,
 }) {
   final key = column.name;
   final valueType = _nullableType(_valueType(column), column.nullable);
@@ -308,6 +325,7 @@ Expression _sqlValueFromJsonExpression(
     column,
     source: _jsonLookup(key),
     nullable: column.nullable,
+    int8JsonEncoding: int8JsonEncoding,
   );
   if (!optional) {
     return parsed;
@@ -325,6 +343,7 @@ Expression _fromJsonExpression(
   IntrospectedColumn column, {
   required Expression source,
   required bool nullable,
+  required SqlInt8JsonEncoding int8JsonEncoding,
 }) {
   final type = _valueType(column);
   final databaseType = _databaseValueType(column);
@@ -342,6 +361,14 @@ Expression _fromJsonExpression(
     final parsed = refer(
       type,
     ).property('fromDatabase').call([source.asA(refer('String'))]);
+    return wrapNullable(parsed);
+  }
+
+  if (_usesStringInt8JsonEncoding(column, int8JsonEncoding)) {
+    final parsed = _parseInt8JsonExpression(column, source);
+    if (_hasExtensionBackedValueType(column)) {
+      return wrapNullable(refer(type).call([parsed]));
+    }
     return wrapNullable(parsed);
   }
 
@@ -399,6 +426,7 @@ Expression _toJsonExpression(
   IntrospectedColumn column, {
   required Expression source,
   bool sourceNullable = false,
+  SqlInt8JsonEncoding int8JsonEncoding = SqlInt8JsonEncoding.number,
 }) {
   final databaseType = _databaseValueType(column);
   final valueNullable = column.nullable || sourceNullable;
@@ -420,6 +448,9 @@ Expression _toJsonExpression(
 
   if (_hasExtensionBackedValueType(column)) {
     final value = source.property('value');
+    if (_usesStringInt8JsonEncoding(column, int8JsonEncoding)) {
+      return wrapNullable(value.property('toString').call(const []));
+    }
     return switch (databaseType) {
       'DateTime' =>
         valueNullable
@@ -434,6 +465,10 @@ Expression _toJsonExpression(
       _ =>
         valueNullable ? CodeExpression(Code('${_code(source)}?.value')) : value,
     };
+  }
+
+  if (_usesStringInt8JsonEncoding(column, int8JsonEncoding)) {
+    return wrapNullable(source.property('toString').call(const []));
   }
 
   return switch (databaseType) {
@@ -451,7 +486,10 @@ Expression _toJsonExpression(
   };
 }
 
-Expression _jsonSchemaForColumn(IntrospectedColumn column) {
+Expression _jsonSchemaForColumn(
+  IntrospectedColumn column, {
+  required SqlInt8JsonEncoding int8JsonEncoding,
+}) {
   final type = _databaseValueType(column);
 
   if (_hasStringBackedValueType(column)) {
@@ -467,6 +505,14 @@ Expression _jsonSchemaForColumn(IntrospectedColumn column) {
 
   if (type == 'Object?') {
     return refer('JsonSchema').constInstanceNamed('any', const []);
+  }
+
+  if (_usesStringInt8JsonEncoding(column, int8JsonEncoding)) {
+    return _jsonSchemaFactory(
+      'string',
+      nullable: column.nullable,
+      format: 'int64',
+    );
   }
 
   return switch (type) {
@@ -536,6 +582,7 @@ Expression _mapExpression(Iterable<_MapEntrySpec> entries) {
 _MapEntrySpec _insertMapEntry(
   IntrospectedColumn column, {
   bool encodeJson = false,
+  SqlInt8JsonEncoding int8JsonEncoding = SqlInt8JsonEncoding.number,
 }) {
   final fieldName = _lowerCamel(column.name);
   final isOptional = _isOptionalInsertColumn(column);
@@ -545,7 +592,12 @@ _MapEntrySpec _insertMapEntry(
   return _MapEntrySpec(
     key: column.name,
     value: encodeJson
-        ? _toJsonExpression(column, source: source, sourceNullable: isOptional)
+        ? _toJsonExpression(
+            column,
+            source: source,
+            sourceNullable: isOptional,
+            int8JsonEncoding: int8JsonEncoding,
+          )
         : _toDatabaseExpression(
             column,
             source: source,
@@ -558,15 +610,52 @@ _MapEntrySpec _insertMapEntry(
 _MapEntrySpec _updateMapEntry(
   IntrospectedColumn column, {
   bool encodeJson = false,
+  SqlInt8JsonEncoding int8JsonEncoding = SqlInt8JsonEncoding.number,
 }) {
   final fieldName = _lowerCamel(column.name);
   final source = refer(fieldName).property('value');
   return _MapEntrySpec(
     key: column.name,
     value: encodeJson
-        ? _toJsonExpression(column, source: source, sourceNullable: true)
+        ? _toJsonExpression(
+            column,
+            source: source,
+            sourceNullable: true,
+            int8JsonEncoding: int8JsonEncoding,
+          )
         : _toDatabaseExpression(column, source: source, sourceNullable: true),
     condition: refer(fieldName).property('isPresent'),
+  );
+}
+
+bool _usesStringInt8JsonEncoding(
+  IntrospectedColumn column,
+  SqlInt8JsonEncoding int8JsonEncoding,
+) {
+  return int8JsonEncoding == SqlInt8JsonEncoding.string &&
+      _isPostgresInt8Column(column);
+}
+
+bool _isPostgresInt8Column(IntrospectedColumn column) {
+  return switch (_normalizeDatabaseType(column.databaseType)) {
+    'int8' || 'bigint' => true,
+    _ => false,
+  };
+}
+
+Expression _parseInt8JsonExpression(
+  IntrospectedColumn column,
+  Expression source,
+) {
+  final columnName = _escapeLiteral(column.name);
+  return CodeExpression(
+    Code(
+      'switch (${_code(source)}) { '
+      'final String value => int.parse(value), '
+      'final num value => value.toInt(), '
+      "final value => throw FormatException('Invalid $columnName: \$value'), "
+      '}',
+    ),
   );
 }
 

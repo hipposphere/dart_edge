@@ -1,6 +1,9 @@
 /// Database dialect supported by the SQL schema generator.
 enum SqlCodegenDialect { postgres, sqlite }
 
+/// JSON representation for PostgreSQL `int8`/`bigint` columns.
+enum SqlInt8JsonEncoding { number, string }
+
 /// Declares a generated value type for a primary key outside the generated
 /// table set.
 final class ExternalPrimaryKeySpec {
@@ -28,6 +31,7 @@ final class SqlCodegenConfig {
     this.excludeTables = const <String>{},
     this.databaseClassName = 'GeneratedDatabaseSchema',
     this.primaryKeyExtensionTypes = true,
+    this.int8JsonEncoding = SqlInt8JsonEncoding.number,
     this.externalPrimaryKeys = const <String, ExternalPrimaryKeySpec>{},
   });
 
@@ -58,6 +62,9 @@ final class SqlCodegenConfig {
   /// Whether generated models use extension types for single-column primary
   /// keys and matching single-column foreign keys.
   final bool primaryKeyExtensionTypes;
+
+  /// JSON representation for PostgreSQL `int8`/`bigint` columns.
+  final SqlInt8JsonEncoding int8JsonEncoding;
 
   /// External primary key specs keyed by `schema.table.column`.
   ///

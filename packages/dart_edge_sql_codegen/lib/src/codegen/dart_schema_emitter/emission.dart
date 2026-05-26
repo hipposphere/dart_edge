@@ -66,10 +66,15 @@ DartSchemaEmission emitDartSchema(
   String databaseClassName = 'GeneratedDatabaseSchema',
   DartSchemaNaming? naming,
   bool primaryKeyExtensionTypes = true,
+  SqlInt8JsonEncoding int8JsonEncoding = SqlInt8JsonEncoding.number,
   Map<String, ExternalPrimaryKeySpec> externalPrimaryKeys =
       const <String, ExternalPrimaryKeySpec>{},
 }) {
   final effectiveNaming = naming ?? DartSchemaNaming.defaults;
+  final effectiveInt8JsonEncoding = _effectiveInt8JsonEncoding(
+    database,
+    int8JsonEncoding,
+  );
   final normalizedExternalPrimaryKeys = _externalPrimaryKeyNames(
     externalPrimaryKeys,
   );
@@ -136,6 +141,7 @@ DartSchemaEmission emitDartSchema(
             externalPrimaryKeyTypeNames: {
               for (final type in externalPrimaryKeyTypes) type.typeName,
             },
+            int8JsonEncoding: effectiveInt8JsonEncoding,
           ),
         ),
       );
@@ -173,10 +179,15 @@ String emitDartSchemaLibrary(
   String databaseClassName = 'GeneratedDatabaseSchema',
   DartSchemaNaming? naming,
   bool primaryKeyExtensionTypes = true,
+  SqlInt8JsonEncoding int8JsonEncoding = SqlInt8JsonEncoding.number,
   Map<String, ExternalPrimaryKeySpec> externalPrimaryKeys =
       const <String, ExternalPrimaryKeySpec>{},
 }) {
   final effectiveNaming = naming ?? DartSchemaNaming.defaults;
+  final effectiveInt8JsonEncoding = _effectiveInt8JsonEncoding(
+    database,
+    int8JsonEncoding,
+  );
   final normalizedExternalPrimaryKeys = _externalPrimaryKeyNames(
     externalPrimaryKeys,
   );
@@ -232,7 +243,13 @@ String emitDartSchemaLibrary(
         builder.body.add(_enumSpec(value));
       }
       for (final table in group.tables) {
-        builder.body.addAll(_tableSpecs(table, effectiveNaming));
+        builder.body.addAll(
+          _tableSpecs(
+            table,
+            effectiveNaming,
+            int8JsonEncoding: effectiveInt8JsonEncoding,
+          ),
+        );
       }
       if (group.routines.isNotEmpty) {
         builder.body.add(_routinesClass(group));
@@ -296,8 +313,13 @@ String emitDartTableModelLibrary(
   DartSchemaNaming? naming,
   String? schemaClassName,
   String schemaFieldName = 'databaseSchema',
+  SqlInt8JsonEncoding int8JsonEncoding = SqlInt8JsonEncoding.number,
 }) {
   final effectiveNaming = naming ?? DartSchemaNaming.defaults;
+  final effectiveInt8JsonEncoding = _effectiveInt8JsonEncoding(
+    database,
+    int8JsonEncoding,
+  );
   final schemaGroups = _groupBySchema(database);
   final library = Library((builder) {
     builder
@@ -310,7 +332,13 @@ String emitDartTableModelLibrary(
 
     for (final group in schemaGroups) {
       for (final table in group.tables) {
-        builder.body.addAll(_tableSpecs(table, effectiveNaming));
+        builder.body.addAll(
+          _tableSpecs(
+            table,
+            effectiveNaming,
+            int8JsonEncoding: effectiveInt8JsonEncoding,
+          ),
+        );
       }
     }
 
@@ -326,4 +354,13 @@ String emitDartTableModelLibrary(
     }
   });
   return _format(library);
+}
+
+SqlInt8JsonEncoding _effectiveInt8JsonEncoding(
+  IntrospectedDatabase database,
+  SqlInt8JsonEncoding int8JsonEncoding,
+) {
+  return database.dialect == SqlCodegenDialect.postgres
+      ? int8JsonEncoding
+      : SqlInt8JsonEncoding.number;
 }

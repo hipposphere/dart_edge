@@ -47,6 +47,7 @@ Future<void> main(List<String> args) async {
     databaseClassName: options.value('class') ?? 'GeneratedDatabaseSchema',
     naming: _namingFromStyle(options.value('model-name-style')),
     primaryKeyExtensionTypes: !options.flag('no-primary-key-extension-types'),
+    int8JsonEncoding: _int8JsonEncoding(options.value('int8-json-encoding')),
     externalPrimaryKeys: externalPrimaryKeys,
   );
   final outputDirectory = options.value('out') ?? 'lib/generated';
@@ -117,6 +118,16 @@ DartSchemaNaming _namingFromStyle(String? style) {
     _ => throw FormatException(
       'Unsupported --model-name-style "$style". Expected default, '
       'schema_prefixed, or unprefixed.',
+    ),
+  };
+}
+
+SqlInt8JsonEncoding _int8JsonEncoding(String? value) {
+  return switch (value) {
+    null || 'number' => SqlInt8JsonEncoding.number,
+    'string' => SqlInt8JsonEncoding.string,
+    _ => throw FormatException(
+      'Unsupported --int8-json-encoding "$value". Expected number or string.',
     ),
   };
 }
@@ -225,6 +236,8 @@ Options:
   --class <name>    Root schema class. Defaults to GeneratedDatabaseSchema.
   --model-name-style <style>
                    Model class naming: default/schema_prefixed or unprefixed.
+  --int8-json-encoding <mode>
+                   PostgreSQL int8 JSON mode: number or string.
   --schemas <csv>   Comma-separated PostgreSQL schemas.
   --include <csv>   Comma-separated table allow-list.
   --exclude <csv>   Comma-separated table block-list.

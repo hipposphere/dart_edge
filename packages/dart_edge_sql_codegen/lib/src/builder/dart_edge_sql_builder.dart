@@ -48,6 +48,7 @@ final class DartEdgeSqlBuilder implements Builder {
         databaseClassName: databaseClassName,
         naming: naming,
         primaryKeyExtensionTypes: _primaryKeyExtensionTypes(options.config),
+        int8JsonEncoding: _int8JsonEncoding(options.config),
         externalPrimaryKeys: _externalPrimaryKeys(options.config),
       ),
     );
@@ -56,6 +57,17 @@ final class DartEdgeSqlBuilder implements Builder {
 
 bool _primaryKeyExtensionTypes(Map<String, dynamic> config) {
   return config['primary_key_extension_types'] as bool? ?? true;
+}
+
+SqlInt8JsonEncoding _int8JsonEncoding(Map<String, dynamic> config) {
+  final value = config['int8_json_encoding'] as String?;
+  return switch (value) {
+    null || 'number' => SqlInt8JsonEncoding.number,
+    'string' => SqlInt8JsonEncoding.string,
+    _ => throw FormatException(
+      'Unsupported SQL codegen int8_json_encoding "$value".',
+    ),
+  };
 }
 
 Map<String, ExternalPrimaryKeySpec> _externalPrimaryKeys(

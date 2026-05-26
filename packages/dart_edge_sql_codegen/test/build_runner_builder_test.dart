@@ -176,6 +176,45 @@ void main() {
     },
   );
 
+  test('honors int8 JSON encoding from builder options', () async {
+    final builder = dartEdgeSqlBuilder(
+      BuilderOptions(const <String, Object?>{'int8_json_encoding': 'string'}),
+    );
+    const database = IntrospectedDatabase(
+      dialect: SqlCodegenDialect.postgres,
+      tables: [
+        IntrospectedTable(
+          name: 'uploads',
+          schema: 'public',
+          columns: [
+            IntrospectedColumn(
+              name: 'file_size',
+              databaseType: 'int8',
+              dartType: 'int',
+            ),
+          ],
+        ),
+      ],
+    );
+
+    await testBuilder(
+      builder,
+      <String, String>{
+        'test_app|lib/app_schema.schema.json': jsonEncode(database.toJson()),
+      },
+      generateFor: const {'test_app|lib/app_schema.schema.json'},
+      outputs: {
+        'test_app|lib/app_schema.g.dart': decodedMatches(
+          allOf([
+            contains("'file_size': JsonSchema.string(format: 'int64')"),
+            contains("'file_size': fileSize.toString(),"),
+            contains("fileSize: switch (json['file_size'])"),
+          ]),
+        ),
+      },
+    );
+  });
+
   test('honors external primary key mappings from builder options', () async {
     final builder = dartEdgeSqlBuilder(
       BuilderOptions(const <String, Object?>{

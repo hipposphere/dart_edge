@@ -2,8 +2,9 @@ part of '../dart_schema_emitter.dart';
 
 Iterable<Spec> _tableSpecs(
   IntrospectedTable table,
-  DartSchemaNaming naming,
-) sync* {
+  DartSchemaNaming naming, {
+  required SqlInt8JsonEncoding int8JsonEncoding,
+}) sync* {
   final emittedExtensionTypes = <String>{};
   for (final column in table.columns.where(
     (column) => _declaresExtensionValueType(table, naming, column),
@@ -15,9 +16,9 @@ Iterable<Spec> _tableSpecs(
   for (final column in table.columns.where(_isConstrainedTextColumn)) {
     yield _constrainedTextTypeSpec(column);
   }
-  yield _rowClass(table, naming);
-  yield _insertClass(table, naming);
-  yield _updateClass(table, naming);
+  yield _rowClass(table, naming, int8JsonEncoding: int8JsonEncoding);
+  yield _insertClass(table, naming, int8JsonEncoding: int8JsonEncoding);
+  yield _updateClass(table, naming, int8JsonEncoding: int8JsonEncoding);
   yield _tableClass(table, naming);
   yield _tableColumnsExtension(table, naming);
 }
@@ -88,7 +89,11 @@ extension type const $typeName._(String value) {
 ''');
 }
 
-Class _rowClass(IntrospectedTable table, DartSchemaNaming naming) {
+Class _rowClass(
+  IntrospectedTable table,
+  DartSchemaNaming naming, {
+  required SqlInt8JsonEncoding int8JsonEncoding,
+}) {
   final rowType = _rowClassName(table, naming);
   return Class((builder) {
     builder
@@ -108,6 +113,7 @@ Class _rowClass(IntrospectedTable table, DartSchemaNaming naming) {
           className: rowType,
           table: table,
           shape: _GeneratedShape.row,
+          int8JsonEncoding: int8JsonEncoding,
         ),
         for (final column in table.columns)
           _instanceFinalField(_lowerCamel(column.name), _fieldType(column)),
@@ -116,7 +122,12 @@ Class _rowClass(IntrospectedTable table, DartSchemaNaming naming) {
         _fromSqlRowFactory(rowType, table),
         _fromColumnsFactory(rowType),
         _decodeFactory(rowType),
-        _fromJsonFactory(rowType, table, _GeneratedShape.row),
+        _fromJsonFactory(
+          rowType,
+          table,
+          _GeneratedShape.row,
+          int8JsonEncoding: int8JsonEncoding,
+        ),
       ])
       ..methods.addAll([
         _copyWithMethod(rowType, _copyWithFields(table, _GeneratedShape.row)),
@@ -143,6 +154,7 @@ Class _rowClass(IntrospectedTable table, DartSchemaNaming naming) {
                 value: _toJsonExpression(
                   column,
                   source: refer(_lowerCamel(column.name)),
+                  int8JsonEncoding: int8JsonEncoding,
                 ),
               ),
           ],
@@ -152,7 +164,11 @@ Class _rowClass(IntrospectedTable table, DartSchemaNaming naming) {
   });
 }
 
-Class _insertClass(IntrospectedTable table, DartSchemaNaming naming) {
+Class _insertClass(
+  IntrospectedTable table,
+  DartSchemaNaming naming, {
+  required SqlInt8JsonEncoding int8JsonEncoding,
+}) {
   final insertType = _insertClassName(table, naming);
   return Class((builder) {
     builder
@@ -180,6 +196,7 @@ Class _insertClass(IntrospectedTable table, DartSchemaNaming naming) {
           className: insertType,
           table: table,
           shape: _GeneratedShape.insert,
+          int8JsonEncoding: int8JsonEncoding,
         ),
         for (final column in table.columns)
           _instanceFinalField(
@@ -189,7 +206,12 @@ Class _insertClass(IntrospectedTable table, DartSchemaNaming naming) {
       ])
       ..constructors.addAll([
         _decodeFactory(insertType),
-        _fromJsonFactory(insertType, table, _GeneratedShape.insert),
+        _fromJsonFactory(
+          insertType,
+          table,
+          _GeneratedShape.insert,
+          int8JsonEncoding: int8JsonEncoding,
+        ),
       ])
       ..methods.addAll([
         _copyWithMethod(
@@ -207,7 +229,11 @@ Class _insertClass(IntrospectedTable table, DartSchemaNaming naming) {
           annotations: [refer('override')],
           entries: [
             for (final column in table.columns)
-              _insertMapEntry(column, encodeJson: true),
+              _insertMapEntry(
+                column,
+                encodeJson: true,
+                int8JsonEncoding: int8JsonEncoding,
+              ),
           ],
         ),
         _toStringMethod(
@@ -218,7 +244,11 @@ Class _insertClass(IntrospectedTable table, DartSchemaNaming naming) {
   });
 }
 
-Class _updateClass(IntrospectedTable table, DartSchemaNaming naming) {
+Class _updateClass(
+  IntrospectedTable table,
+  DartSchemaNaming naming, {
+  required SqlInt8JsonEncoding int8JsonEncoding,
+}) {
   final updateType = _updateClassName(table, naming);
   return Class((builder) {
     builder
@@ -242,6 +272,7 @@ Class _updateClass(IntrospectedTable table, DartSchemaNaming naming) {
           className: updateType,
           table: table,
           shape: _GeneratedShape.update,
+          int8JsonEncoding: int8JsonEncoding,
         ),
         for (final column in table.columns)
           _instanceFinalField(
@@ -251,7 +282,12 @@ Class _updateClass(IntrospectedTable table, DartSchemaNaming naming) {
       ])
       ..constructors.addAll([
         _decodeFactory(updateType),
-        _fromJsonFactory(updateType, table, _GeneratedShape.update),
+        _fromJsonFactory(
+          updateType,
+          table,
+          _GeneratedShape.update,
+          int8JsonEncoding: int8JsonEncoding,
+        ),
       ])
       ..methods.addAll([
         _copyWithMethod(
@@ -269,7 +305,11 @@ Class _updateClass(IntrospectedTable table, DartSchemaNaming naming) {
           annotations: [refer('override')],
           entries: [
             for (final column in table.columns)
-              _updateMapEntry(column, encodeJson: true),
+              _updateMapEntry(
+                column,
+                encodeJson: true,
+                int8JsonEncoding: int8JsonEncoding,
+              ),
           ],
         ),
         _toStringMethod(

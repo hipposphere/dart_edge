@@ -615,6 +615,97 @@ void main() {
     );
   });
 
+  test('can encode Postgres int8 JSON values as strings', () {
+    const database = IntrospectedDatabase(
+      dialect: SqlCodegenDialect.postgres,
+      tables: [
+        IntrospectedTable(
+          name: 'uploads',
+          schema: 'public',
+          columns: [
+            IntrospectedColumn(
+              name: 'id',
+              databaseType: 'int8',
+              dartType: 'int',
+              primaryKey: true,
+            ),
+            IntrospectedColumn(
+              name: 'file_size',
+              databaseType: 'int8',
+              dartType: 'int',
+            ),
+            IntrospectedColumn(
+              name: 'chunk_count',
+              databaseType: 'int4',
+              dartType: 'int',
+            ),
+          ],
+        ),
+      ],
+    );
+
+    final emission = emitDartSchema(
+      database,
+      databaseClassName: 'AppSchema',
+      int8JsonEncoding: SqlInt8JsonEncoding.string,
+    );
+    final uploadsTable = emission
+        .fileAt('schemas/public/tables/uploads.g.dart')
+        .contents;
+
+    expect(uploadsTable, contains('final PublicUploadId id;'));
+    expect(uploadsTable, contains('final int fileSize;'));
+    expect(uploadsTable, contains("'id': JsonSchema.string(format: 'int64')"));
+    expect(
+      uploadsTable,
+      contains("'file_size': JsonSchema.string(format: 'int64')"),
+    );
+    expect(uploadsTable, contains("'chunk_count': JsonSchema.integer()"));
+    expect(uploadsTable, contains("'id': id.value.toString(),"));
+    expect(uploadsTable, contains("'file_size': fileSize.toString(),"));
+    expect(uploadsTable, contains("'chunk_count': chunkCount,"));
+    expect(uploadsTable, contains("id: PublicUploadId(switch (json['id'])"));
+    expect(uploadsTable, contains("fileSize: switch (json['file_size'])"));
+    expect(uploadsTable, contains('final String value => int.parse(value),'));
+    expect(uploadsTable, contains('final num value => value.toInt(),'));
+    expect(
+      uploadsTable,
+      contains("throw FormatException('Invalid file_size: \$value')"),
+    );
+    expect(
+      uploadsTable,
+      contains('fileSize.value == null ? null : fileSize.value.toString()'),
+    );
+  });
+
+  test('does not apply int8 JSON string encoding to SQLite columns', () {
+    const database = IntrospectedDatabase(
+      dialect: SqlCodegenDialect.sqlite,
+      tables: [
+        IntrospectedTable(
+          name: 'uploads',
+          columns: [
+            IntrospectedColumn(
+              name: 'file_size',
+              databaseType: 'BIGINT',
+              dartType: 'int',
+            ),
+          ],
+        ),
+      ],
+    );
+
+    final library = emitDartSchemaLibrary(
+      database,
+      databaseClassName: 'AppSchema',
+      int8JsonEncoding: SqlInt8JsonEncoding.string,
+    );
+
+    expect(library, contains("'file_size': JsonSchema.integer()"));
+    expect(library, contains("'file_size': fileSize"));
+    expect(library, isNot(contains("'file_size': fileSize.toString(),")));
+  });
+
   test('emits Postgres enum types and enum-aware table models', () {
     const database = IntrospectedDatabase(
       dialect: SqlCodegenDialect.postgres,

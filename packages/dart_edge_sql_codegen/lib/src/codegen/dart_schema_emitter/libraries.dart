@@ -93,6 +93,7 @@ String _emitTableLibrary(
   List<_SchemaGroup> schemaGroups,
   DartSchemaNaming naming, {
   required Set<String> externalPrimaryKeyTypeNames,
+  required SqlInt8JsonEncoding int8JsonEncoding,
 }) {
   final library = Library((builder) {
     builder.directives.add(
@@ -111,7 +112,9 @@ String _emitTableLibrary(
     )) {
       builder.directives.add(Directive.import(import.path));
     }
-    builder.body.addAll(_tableSpecs(table, naming));
+    builder.body.addAll(
+      _tableSpecs(table, naming, int8JsonEncoding: int8JsonEncoding),
+    );
   });
   return _format(library);
 }
