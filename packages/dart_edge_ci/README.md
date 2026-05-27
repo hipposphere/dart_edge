@@ -103,7 +103,7 @@ images:
   migrator:
     type: db_migrator
     package: packages/db_migrator
-    target: bin/migrator.dart
+    target: bin/main.dart
     executable: migrator
     title: My Product Migrator
     description: Database migrator

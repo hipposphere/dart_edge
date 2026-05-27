@@ -24,7 +24,7 @@ images:
   migrator:
     type: db_migrator
     package: packages/db_migrator
-    target: bin/migrator.dart
+    target: bin/main.dart
     databases:
       all: true
   app:
