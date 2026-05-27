@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:dart_edge_auth/dart_edge_auth.dart';
@@ -144,12 +145,231 @@ void main() {
         parameters: {'userId': created.user.id},
       ),
     );
-    expect(accounts.rows.single['password'], isA<String>());
+    expect(accounts.rows.single['password'], _betterAuthTsPasswordHashPattern);
 
     final listed = await auth.trustedAdmin.listUsers(limit: 10);
     expect(listed.total, 1);
     expect(listed.users.single.email, 'pglite-trusted@example.com');
   });
+
+  test(
+    'signs in with credentials created by TypeScript Better Auth on PGlite',
+    () async {
+      final fixture = Directory('test/node_better_auth_interop');
+      if (!fixture.existsSync()) {
+        markTestSkipped('Node Better Auth interop fixture is missing.');
+        return;
+      }
+      if (!Directory('${fixture.path}/node_modules').existsSync()) {
+        markTestSkipped(
+          'Run `npm install` in ${fixture.path} to enable this interop test.',
+        );
+        return;
+      }
+
+      const secret = 'test-secret-key-that-is-at-least-32-characters-long';
+      const baseUrl = 'http://localhost:3000';
+      const email = 'typescript-better-auth@example.com';
+      const password = 'password123';
+      const name = 'TypeScript Better Auth User';
+
+      final endpoint = PgliteDatabase.temporary();
+      addTearDown(endpoint.close);
+
+      final seed = await Process.run('node', [
+        'seed-user.mjs',
+        jsonEncode({
+          'connectionString': endpoint.connectionString,
+          'secret': secret,
+          'baseUrl': baseUrl,
+          'email': email,
+          'password': password,
+          'name': name,
+        }),
+      ], workingDirectory: fixture.path);
+      if (seed.exitCode != 0) {
+        fail(
+          'TypeScript Better Auth seed failed with exit code '
+          '${seed.exitCode}.\nSTDOUT:\n${seed.stdout}\nSTDERR:\n${seed.stderr}',
+        );
+      }
+
+      final seedLines = LineSplitter.split(
+        (seed.stdout as String).trim(),
+      ).where((line) => line.trim().isNotEmpty).toList();
+      expect(seedLines, isNotEmpty);
+      final seedJson = jsonDecode(seedLines.last) as Map<String, Object?>;
+      expect(seedJson['email'], email);
+      expect(seedJson['hasToken'], isTrue);
+
+      final database = PostgresPool.withUrl(
+        endpoint.connectionString,
+        maxSessions: 1,
+      );
+      final userColumns = await database.execute(
+        sql('''
+          SELECT column_name
+          FROM information_schema.columns
+          WHERE table_schema = 'public' AND table_name = 'user'
+          ORDER BY ordinal_position
+          '''),
+      );
+      final accountColumns = await database.execute(
+        sql('''
+          SELECT column_name
+          FROM information_schema.columns
+          WHERE table_schema = 'public' AND table_name = 'account'
+          ORDER BY ordinal_position
+          '''),
+      );
+      printOnFailure(
+        'TypeScript Better Auth user columns: '
+        '${userColumns.rows.map((row) => row['column_name']).toList()}',
+      );
+      printOnFailure(
+        'TypeScript Better Auth account columns: '
+        '${accountColumns.rows.map((row) => row['column_name']).toList()}',
+      );
+
+      final auth = DartEdgeAuth(
+        DartEdgeAuthConfig(
+          workerPoolSize: 4,
+          secret: secret,
+          baseUrl: baseUrl,
+          database: DartEdgeAuthDatabase.fromPostgresPool(
+            database,
+            manageMigrations: false,
+          ),
+        ),
+      );
+
+      addTearDown(() async {
+        auth.dispose();
+        await database.close();
+      });
+
+      final signIn = await auth.api.signInEmail(
+        email: email,
+        password: password,
+      );
+
+      expect(signIn.user?.email, email);
+      expect(signIn.user?.name, name);
+      expect(signIn.token, isA<String>());
+
+      final accounts = await database.execute(
+        sql(
+          'SELECT "providerId", password FROM "account" '
+          'WHERE "userId" = @userId',
+          parameters: {'userId': signIn.user!.id},
+        ),
+      );
+      expect(accounts.rows.single['providerId'], 'credential');
+      expect(
+        accounts.rows.single['password'],
+        _betterAuthTsPasswordHashPattern,
+      );
+    },
+    timeout: const Timeout(Duration(seconds: 30)),
+  );
+
+  test(
+    'TypeScript Better Auth signs in with credentials created by Dart on PGlite',
+    () async {
+      final fixture = Directory('test/node_better_auth_interop');
+      if (!fixture.existsSync()) {
+        markTestSkipped('Node Better Auth interop fixture is missing.');
+        return;
+      }
+      if (!Directory('${fixture.path}/node_modules').existsSync()) {
+        markTestSkipped(
+          'Run `npm install` in ${fixture.path} to enable this interop test.',
+        );
+        return;
+      }
+
+      const secret = 'test-secret-key-that-is-at-least-32-characters-long';
+      const baseUrl = 'http://localhost:3000';
+      const email = 'dart-edge-auth@example.com';
+      const password = 'password123';
+      const name = 'Dart Edge Auth User';
+
+      final endpoint = PgliteDatabase.temporary();
+      final database = PostgresPool.withUrl(
+        endpoint.connectionString,
+        maxSessions: 1,
+      );
+      final auth = DartEdgeAuth(
+        DartEdgeAuthConfig(
+          workerPoolSize: 4,
+          secret: secret,
+          baseUrl: baseUrl,
+          database: DartEdgeAuthDatabase.fromPostgresPool(
+            database,
+            manageMigrations: true,
+          ),
+        ),
+      );
+
+      addTearDown(() async {
+        auth.dispose();
+        await database.close();
+        await endpoint.close();
+      });
+
+      final signup = DartEdgeAuthSignUpResult.fromResponse(
+        auth.api.callKnownOperationSync(
+          operation: DartEdgeAuthOperation.signUpEmail,
+          body: {'email': email, 'password': password, 'name': name},
+        ),
+      );
+      expect(signup.user.email, email);
+
+      final accounts = await database.execute(
+        sql(
+          'SELECT "providerId", password FROM "account" '
+          'WHERE "userId" = @userId',
+          parameters: {'userId': signup.user.id},
+        ),
+      );
+      expect(accounts.rows.single['providerId'], 'credential');
+      expect(
+        accounts.rows.single['password'],
+        _betterAuthTsPasswordHashPattern,
+      );
+
+      auth.dispose();
+      await database.close();
+
+      final signIn = await Process.run('node', [
+        'sign-in-user.mjs',
+        jsonEncode({
+          'connectionString': endpoint.connectionString,
+          'secret': secret,
+          'baseUrl': baseUrl,
+          'email': email,
+          'password': password,
+        }),
+      ], workingDirectory: fixture.path);
+      if (signIn.exitCode != 0) {
+        fail(
+          'TypeScript Better Auth sign-in failed with exit code '
+          '${signIn.exitCode}.\nSTDOUT:\n${signIn.stdout}\n'
+          'STDERR:\n${signIn.stderr}',
+        );
+      }
+
+      final signInLines = LineSplitter.split(
+        (signIn.stdout as String).trim(),
+      ).where((line) => line.trim().isNotEmpty).toList();
+      expect(signInLines, isNotEmpty);
+      final signInJson = jsonDecode(signInLines.last) as Map<String, Object?>;
+      expect(signInJson['email'], email);
+      expect(signInJson['userId'], signup.user.id);
+      expect(signInJson['hasToken'], isTrue);
+    },
+    timeout: const Timeout(Duration(seconds: 30)),
+  );
 
   test('can disable shared sqlite migration management', () async {
     final database = SqliteDatabase.inMemory();
@@ -336,6 +556,10 @@ void main() {
     );
   });
 }
+
+final _betterAuthTsPasswordHashPattern = matches(
+  RegExp(r'^[0-9a-f]{32}:[0-9a-f]{128}$'),
+);
 
 Future<void> _runSqliteAuthMigrations(SqliteDatabase database) async {
   final migrationSql = File(

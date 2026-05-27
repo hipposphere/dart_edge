@@ -1,14 +1,15 @@
 use std::collections::HashMap;
 use std::ffi::{CStr, CString, c_char};
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicI64, Ordering};
+use std::sync::{Arc, Mutex};
 
+use async_trait::async_trait;
 use better_auth::adapters::{DatabaseAdapter, MemoryDatabaseAdapter, SqlxAdapter};
 use better_auth::plugins::OAuthPlugin;
 use better_auth::plugins::oauth::{OAuthConfig, OAuthProvider, OAuthUserInfo};
 use better_auth::plugins::{
     AccountManagementPlugin, AdminPlugin, EmailPasswordPlugin, EmailVerificationPlugin,
-    PasswordManagementPlugin, SessionManagementPlugin,
+    PasswordHasher, PasswordManagementConfig, PasswordManagementPlugin, SessionManagementPlugin,
 };
 use better_auth::types_mod::{ListUsersParams, PASSWORD_HASH_KEY, UpdateAccount};
 use better_auth::{AuthAccount, AuthSession, AuthUser};
@@ -26,10 +27,13 @@ use dart_edge_http_server_core::{
     NativeHttpMethod, NativeHttpRequest, NativeHttpResponse, native_http_routes_to_json,
 };
 use once_cell::sync::Lazy;
+use scrypt::{Params as ScryptParams, scrypt};
 use serde::Deserialize;
 use serde_json::json;
 use shared_sql_adapter::{SharedSqlCallbacks, SharedSqlDatabaseAdapter, SharedSqlDialect};
 use tokio::runtime::Runtime;
+use unicode_normalization::UnicodeNormalization;
+use uuid::Uuid;
 
 mod routes;
 mod shared_sql_adapter;
@@ -42,12 +46,90 @@ static NEXT_INSTANCE_ID: AtomicI64 = AtomicI64::new(1);
 static INSTANCES: Lazy<Mutex<HashMap<i64, AuthInstance>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
 static LAST_ERROR: Lazy<Mutex<Option<CString>>> = Lazy::new(|| Mutex::new(None));
+static PASSWORD_HASHER: Lazy<Arc<dyn PasswordHasher>> =
+    Lazy::new(|| Arc::new(BetterAuthTsPasswordHasher));
 
 struct AuthInstance {
     base_path: String,
     admin_config: NativeAdminConfig,
     runtime: Runtime,
     auth: NativeAuthBackend,
+}
+
+struct BetterAuthTsPasswordHasher;
+
+#[async_trait]
+impl PasswordHasher for BetterAuthTsPasswordHasher {
+    async fn hash(&self, password: &str) -> AuthResult<String> {
+        better_auth_ts_hash_password(password)
+    }
+
+    async fn verify(&self, hash: &str, password: &str) -> AuthResult<bool> {
+        if is_better_auth_ts_hash(hash) {
+            return better_auth_ts_verify_password(hash, password);
+        }
+
+        // Keep already-created Rust Better Auth Argon2 accounts sign-inable
+        // after switching new hashes to Better Auth TS' scrypt format.
+        match better_auth::types_mod::verify_password(None, password, hash).await {
+            Ok(()) => Ok(true),
+            Err(AuthError::InvalidCredentials) => Ok(false),
+            Err(error) => Err(error),
+        }
+    }
+}
+
+fn better_auth_ts_hash_password(password: &str) -> AuthResult<String> {
+    let salt = hex_encode(Uuid::new_v4().as_bytes());
+    let key = better_auth_ts_scrypt_key(password, &salt)?;
+    Ok(format!("{salt}:{}", hex_encode(&key)))
+}
+
+fn better_auth_ts_verify_password(hash: &str, password: &str) -> AuthResult<bool> {
+    let Some((salt, expected_key)) = hash.split_once(':') else {
+        return Ok(false);
+    };
+    if salt.is_empty() || expected_key.is_empty() || expected_key.len() % 2 != 0 {
+        return Ok(false);
+    }
+
+    let key = better_auth_ts_scrypt_key(password, salt)?;
+    Ok(hex_encode(&key).eq_ignore_ascii_case(expected_key))
+}
+
+fn better_auth_ts_scrypt_key(password: &str, salt: &str) -> AuthResult<[u8; 64]> {
+    let normalized_password = password.nfkc().collect::<String>();
+    let mut key = [0u8; 64];
+    let params = ScryptParams::new(14, 16, 1, key.len())
+        .map_err(|error| AuthError::internal(format!("Invalid scrypt parameters: {error}")))?;
+    scrypt(
+        normalized_password.as_bytes(),
+        salt.as_bytes(),
+        &params,
+        &mut key,
+    )
+    .map_err(|error| AuthError::internal(format!("Failed to hash password: {error}")))?;
+    Ok(key)
+}
+
+fn is_better_auth_ts_hash(hash: &str) -> bool {
+    let Some((salt, key)) = hash.split_once(':') else {
+        return false;
+    };
+    !salt.is_empty()
+        && salt.bytes().all(|byte| byte.is_ascii_hexdigit())
+        && key.len() == 128
+        && key.bytes().all(|byte| byte.is_ascii_hexdigit())
+}
+
+fn hex_encode(bytes: &[u8]) -> String {
+    const DIGITS: &[u8; 16] = b"0123456789abcdef";
+    let mut output = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        output.push(DIGITS[(byte >> 4) as usize] as char);
+        output.push(DIGITS[(byte & 0x0f) as usize] as char);
+    }
+    output
 }
 
 enum NativeAuthBackend {
@@ -839,7 +921,7 @@ async fn trusted_create_user<DB: DatabaseAdapter>(
         )));
     }
 
-    let password_hash = better_auth::types_mod::hash_password(None, &body.password).await?;
+    let password_hash = PASSWORD_HASHER.hash(&body.password).await?;
     let role = body
         .role
         .clone()
@@ -1096,7 +1178,7 @@ async fn trusted_set_user_password<DB: DatabaseAdapter>(
         .get_user_by_id(&body.user_id)
         .await?
         .ok_or_else(|| AuthError::not_found("User not found"))?;
-    let password_hash = better_auth::types_mod::hash_password(None, &body.new_password).await?;
+    let password_hash = PASSWORD_HASHER.hash(&body.new_password).await?;
 
     auth.database()
         .update_user(
@@ -1198,13 +1280,22 @@ fn configure_builder<DB: DatabaseAdapter>(
     config: &NativeAuthConfig,
 ) -> TypedAuthBuilder<DB> {
     if config.enable_email_password {
-        builder = builder.plugin(EmailPasswordPlugin::new().enable_signup(config.enable_signup));
+        builder = builder.plugin(
+            EmailPasswordPlugin::new()
+                .enable_signup(config.enable_signup)
+                .password_hasher(PASSWORD_HASHER.clone()),
+        );
     }
     if config.enable_session_management {
         builder = builder.plugin(SessionManagementPlugin::new());
     }
     if config.enable_password_management {
-        builder = builder.plugin(PasswordManagementPlugin::new());
+        builder = builder.plugin(PasswordManagementPlugin::with_config(
+            PasswordManagementConfig {
+                password_hasher: Some(PASSWORD_HASHER.clone()),
+                ..Default::default()
+            },
+        ));
     }
     if config.enable_account_management {
         builder = builder.plugin(AccountManagementPlugin::new());

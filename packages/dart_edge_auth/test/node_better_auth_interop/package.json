@@ -1,0 +1,14 @@
+{
+  "name": "dart-edge-auth-node-interop",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "seed": "node seed-user.mjs",
+    "sign-in": "node sign-in-user.mjs"
+  },
+  "dependencies": {
+    "better-auth": "1.6.5",
+    "kysely": "0.28.14",
+    "pg": "^8.21.0"
+  }
+}
