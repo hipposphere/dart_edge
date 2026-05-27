@@ -10,7 +10,7 @@ use dart_edge_core::{
 };
 use once_cell::sync::Lazy;
 use ort::session::{Session, builder::GraphOptimizationLevel};
-use ort::value::Tensor;
+use ort::value::TensorRef;
 use serde::{Deserialize, Serialize};
 
 const DART_EDGE_VAD_NATIVE_ABI_VERSION: i32 = 1;
@@ -70,12 +70,14 @@ struct NativeVadStreamResult {
 
 struct SileroScratch {
     input_samples: Vec<f32>,
+    sample_rate: [i64; 1],
 }
 
 impl SileroScratch {
     fn new(window_size_samples: usize) -> Self {
         Self {
-            input_samples: Vec::with_capacity(SILERO_CONTEXT_SAMPLES_16KHZ + window_size_samples),
+            input_samples: vec![0.0; SILERO_CONTEXT_SAMPLES_16KHZ + window_size_samples],
+            sample_rate: [0],
         }
     }
 }
@@ -517,23 +519,20 @@ fn run_silero_window(
     context: &mut Vec<f32>,
     scratch: &mut SileroScratch,
 ) -> Result<f32, String> {
-    scratch.input_samples.clear();
-    scratch.input_samples.extend_from_slice(context);
-    scratch.input_samples.resize(
-        SILERO_CONTEXT_SAMPLES_16KHZ + request.window_size_samples,
-        0.0,
-    );
+    scratch.input_samples[..SILERO_CONTEXT_SAMPLES_16KHZ].copy_from_slice(context);
+    scratch.input_samples[SILERO_CONTEXT_SAMPLES_16KHZ..].fill(0.0);
     scratch.input_samples[SILERO_CONTEXT_SAMPLES_16KHZ..SILERO_CONTEXT_SAMPLES_16KHZ + chunk.len()]
         .copy_from_slice(chunk);
+    scratch.sample_rate[0] = request.sample_rate_hz as i64;
 
-    let input = Tensor::from_array((
+    let input = TensorRef::from_array_view((
         [1_usize, scratch.input_samples.len()],
-        scratch.input_samples.clone(),
+        scratch.input_samples.as_slice(),
     ))
     .map_err(|error| format!("Failed to create Silero input tensor: {error}"))?;
-    let state_input = Tensor::from_array(([2_usize, 1_usize, 128_usize], std::mem::take(state)))
+    let state_input = TensorRef::from_array_view(([2_usize, 1_usize, 128_usize], state.as_slice()))
         .map_err(|error| format!("Failed to create Silero state tensor: {error}"))?;
-    let sample_rate = Tensor::from_array(((), vec![request.sample_rate_hz as i64]))
+    let sample_rate = TensorRef::from_array_view(((), scratch.sample_rate.as_slice()))
         .map_err(|error| format!("Failed to create Silero sample-rate tensor: {error}"))?;
 
     let outputs = session
@@ -559,7 +558,7 @@ fn run_silero_window(
     let (_, state_data) = state_output
         .try_extract_tensor::<f32>()
         .map_err(|error| format!("Failed to read Silero state tensor: {error}"))?;
-    *state = state_data.to_vec();
+    state.copy_from_slice(state_data);
     context.clear();
     context.extend_from_slice(
         &scratch.input_samples[scratch.input_samples.len() - SILERO_CONTEXT_SAMPLES_16KHZ..],

@@ -1,3 +1,8 @@
+## 0.2.1
+
+- Reuse Silero VAD tensor input buffers and pass borrowed ONNX Runtime tensor
+  views to reduce per-window allocation and copy overhead.
+
 ## 0.2.0
 
 - Replace isolate-backed VAD APIs with `NativeVad`, which owns a native worker
