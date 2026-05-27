@@ -33,7 +33,7 @@ void main() {
       pool.executed.any(
         (statement) =>
             statement.sql ==
-            'INSERT INTO $schema.migrations (version, name, checksum) VALUES (\$1, \$2, \$3)',
+            'INSERT INTO $schema.migrations (version, name, applied_order, checksum) VALUES (\$1, \$2, \$3, \$4)',
       ),
       isTrue,
     );
@@ -73,7 +73,7 @@ void main() {
       pool.executed.any(
         (statement) =>
             statement.sql ==
-            'INSERT INTO app_meta.migrations (version, name, checksum) VALUES (\$1, \$2, \$3)',
+            'INSERT INTO app_meta.migrations (version, name, applied_order, checksum) VALUES (\$1, \$2, \$3, \$4)',
       ),
       isTrue,
     );
@@ -151,6 +151,56 @@ void main() {
     );
   });
 
+  test('backfills applied order from configured migration order', () async {
+    final pool = _RecordingPool(SqlDialect.postgres);
+    final appliedAt = DateTime.utc(2026);
+    pool._applied.addAll([
+      AppliedSqlMigration(
+        version: '0',
+        name: 'bootstrap',
+        appliedAt: appliedAt,
+      ),
+      AppliedSqlMigration(version: '1', name: 'setup', appliedAt: appliedAt),
+      AppliedSqlMigration(version: '10', name: 'ten', appliedAt: appliedAt),
+      AppliedSqlMigration(version: '2', name: 'two', appliedAt: appliedAt),
+    ]);
+    final migrator = DartEdgeSqlMigrator(
+      pool: pool,
+      migrations: [
+        SqlMigration(
+          version: '0',
+          name: 'bootstrap',
+          up: SqlMigrationPlan.sql(['SELECT 0']),
+        ),
+        SqlMigration(
+          version: '1',
+          name: 'setup',
+          up: SqlMigrationPlan.sql(['SELECT 1']),
+        ),
+        SqlMigration(
+          version: '2',
+          name: 'two',
+          up: SqlMigrationPlan.sql(['SELECT 2']),
+        ),
+        SqlMigration(
+          version: '10',
+          name: 'ten',
+          up: SqlMigrationPlan.sql(['SELECT 10']),
+        ),
+      ],
+    );
+
+    final status = await migrator.status();
+
+    expect(status.applied.map((migration) => migration.version), [
+      '0',
+      '1',
+      '2',
+      '10',
+    ]);
+    expect(pool._appliedOrders, {'0': 1, '1': 2, '10': 4, '2': 3});
+  });
+
   test('rejects non-prefix baseline versions', () {
     final pool = _RecordingPool(SqlDialect.postgres);
     final migrator = DartEdgeSqlMigrator(
@@ -207,6 +257,7 @@ final class _RecordingPool implements SqlPool {
 
   final List<SqlStatement> executed = <SqlStatement>[];
   final List<AppliedSqlMigration> _applied = <AppliedSqlMigration>[];
+  final Map<String, int?> _appliedOrders = <String, int?>{};
 
   @override
   Future<SqlResult> execute(SqlStatement statement) {
@@ -242,10 +293,47 @@ class _RecordingSession implements SqlSession {
     pool.executed.add(statement);
 
     final normalized = statement.sql.trimLeft().toUpperCase();
-    if (normalized.startsWith('SELECT VERSION, NAME, APPLIED_AT')) {
+    if (normalized.startsWith('SELECT COLUMN_NAME') ||
+        normalized.startsWith('PRAGMA TABLE_INFO')) {
+      return SqlResult(
+        rows: [
+          SqlRow({'column_name': 'checksum'}),
+          SqlRow({'column_name': 'applied_order'}),
+        ],
+      );
+    }
+
+    if (normalized.startsWith('SELECT VERSION, APPLIED_ORDER')) {
       return SqlResult(
         rows: [
           for (final migration in pool._applied)
+            SqlRow({
+              'version': migration.version,
+              'applied_order': pool._appliedOrders[migration.version],
+            }),
+        ],
+      );
+    }
+
+    if (normalized.startsWith('SELECT VERSION, NAME, APPLIED_AT')) {
+      final applied = pool._applied.toList()
+        ..sort((left, right) {
+          final leftOrder = pool._appliedOrders[left.version];
+          final rightOrder = pool._appliedOrders[right.version];
+          if (leftOrder == null && rightOrder == null) {
+            return 0;
+          }
+          if (leftOrder == null) {
+            return 1;
+          }
+          if (rightOrder == null) {
+            return -1;
+          }
+          return leftOrder.compareTo(rightOrder);
+        });
+      return SqlResult(
+        rows: [
+          for (final migration in applied)
             SqlRow({
               'version': migration.version,
               'name': migration.name,
@@ -262,16 +350,24 @@ class _RecordingSession implements SqlSession {
         AppliedSqlMigration(
           version: parameters[0]! as String,
           name: parameters[1]! as String,
-          checksum: parameters[2]! as String,
+          checksum: parameters[3]! as String,
           appliedAt: DateTime.utc(2026, 1, 1, 0, 0, pool._applied.length),
         ),
       );
+      pool._appliedOrders[parameters[0]! as String] = parameters[2]! as int;
+      return SqlResult(affectedRows: 1);
+    }
+
+    if (normalized.startsWith('UPDATE')) {
+      final parameters = statement.positionalParameters;
+      pool._appliedOrders[parameters[1]! as String] = parameters[0]! as int;
       return SqlResult(affectedRows: 1);
     }
 
     if (normalized.startsWith('DELETE FROM')) {
       final version = statement.positionalParameters.single! as String;
       pool._applied.removeWhere((migration) => migration.version == version);
+      pool._appliedOrders.remove(version);
       return SqlResult(affectedRows: 1);
     }
 

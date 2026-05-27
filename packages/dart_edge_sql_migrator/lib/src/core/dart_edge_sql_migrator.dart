@@ -279,7 +279,7 @@ final class DartEdgeSqlMigrator {
       var appliedCount = 0;
       for (var index = currentIndex + 1; index <= targetIndex; index += 1) {
         final migration = migrations[index];
-        await _applyMigration(transaction, migration);
+        await _applyMigration(transaction, migration, index + 1);
         appliedCount += 1;
       }
       return appliedCount;
@@ -317,7 +317,11 @@ final class DartEdgeSqlMigrator {
 
     var recordedCount = 0;
     for (var index = currentIndex + 1; index <= targetIndex; index += 1) {
-      await _recordAppliedMigration(transaction, migrations[index]);
+      await _recordAppliedMigration(
+        transaction,
+        migrations[index],
+        appliedOrder: index + 1,
+      );
       recordedCount += 1;
     }
     return recordedCount;
@@ -333,6 +337,13 @@ final class DartEdgeSqlMigrator {
         _addMetadataChecksumColumnStatement(executor.dialect),
       );
     }
+    if (!await _metadataAppliedOrderColumnExists(executor)) {
+      await executor.execute(
+        _addMetadataAppliedOrderColumnStatement(executor.dialect),
+      );
+    }
+    await _backfillAppliedOrder(executor);
+    await executor.execute(_createAppliedOrderIndexStatement(executor.dialect));
   }
 
   Future<List<AppliedSqlMigration>> _loadAppliedMigrations(
@@ -353,6 +364,7 @@ final class DartEdgeSqlMigrator {
   Future<void> _applyMigration(
     SqlTransaction transaction,
     SqlMigration migration,
+    int appliedOrder,
   ) async {
     final statements = migration.up.forDialect(transaction.dialect);
     if (statements.isEmpty) {
@@ -366,17 +378,23 @@ final class DartEdgeSqlMigrator {
       await transaction.execute(statement);
     }
 
-    await _recordAppliedMigration(transaction, migration);
+    await _recordAppliedMigration(
+      transaction,
+      migration,
+      appliedOrder: appliedOrder,
+    );
   }
 
   Future<void> _recordAppliedMigration(
     SqlTransaction transaction,
-    SqlMigration migration,
-  ) async {
+    SqlMigration migration, {
+    required int appliedOrder,
+  }) async {
     await transaction.execute(
       _insertAppliedMigrationStatement(
         transaction.dialect,
         migration,
+        appliedOrder: appliedOrder,
         checksum: _migrationChecksum(migration, transaction.dialect),
       ),
     );
@@ -454,6 +472,7 @@ final class DartEdgeSqlMigrator {
         CREATE TABLE IF NOT EXISTS $metadataTable (
           version TEXT PRIMARY KEY,
           name TEXT NOT NULL,
+          applied_order INTEGER NOT NULL,
           checksum TEXT NOT NULL,
           applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         )
@@ -462,6 +481,7 @@ final class DartEdgeSqlMigrator {
         CREATE TABLE IF NOT EXISTS $metadataTable (
           version TEXT PRIMARY KEY,
           name TEXT NOT NULL,
+          applied_order INTEGER NOT NULL,
           checksum TEXT NOT NULL,
           applied_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
         )
@@ -495,6 +515,32 @@ final class DartEdgeSqlMigrator {
     };
   }
 
+  Future<bool> _metadataAppliedOrderColumnExists(SqlExecutor executor) async {
+    final result = await executor.execute(
+      _metadataAppliedOrderColumnExistsStatement(executor.dialect),
+    );
+    return result.rows.any((row) {
+      final name = row['name'] ?? row['column_name'];
+      return name == 'applied_order';
+    });
+  }
+
+  SqlStatement _metadataAppliedOrderColumnExistsStatement(SqlDialect dialect) {
+    return switch (dialect) {
+      SqlDialect.sqlite => sql('PRAGMA table_info($tableName)'),
+      SqlDialect.postgres => SqlStatement.positional(
+        '''
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_schema = \$1
+          AND table_name = \$2
+          AND column_name = 'applied_order'
+        ''',
+        [tableSchema, tableName],
+      ),
+    };
+  }
+
   SqlStatement _addMetadataChecksumColumnStatement(SqlDialect dialect) {
     final metadataTable = _metadataTableSql(dialect);
     return switch (dialect) {
@@ -507,29 +553,133 @@ final class DartEdgeSqlMigrator {
     };
   }
 
+  SqlStatement _addMetadataAppliedOrderColumnStatement(SqlDialect dialect) {
+    final metadataTable = _metadataTableSql(dialect);
+    return switch (dialect) {
+      SqlDialect.sqlite => sql(
+        'ALTER TABLE $metadataTable ADD COLUMN applied_order INTEGER',
+      ),
+      SqlDialect.postgres => sql(
+        'ALTER TABLE $metadataTable ADD COLUMN IF NOT EXISTS applied_order INTEGER',
+      ),
+    };
+  }
+
+  Future<void> _backfillAppliedOrder(SqlExecutor executor) async {
+    final rows = await executor.execute(_selectAppliedOrderBackfillStatement());
+    if (rows.rows.isEmpty ||
+        rows.rows.every(
+          (row) => row.readNullable<int>('applied_order') != null,
+        )) {
+      return;
+    }
+
+    final appliedVersions = [
+      for (final row in rows.rows) row.read<String>('version'),
+    ];
+    final orderedVersions = _orderedAppliedPrefix(appliedVersions);
+    for (var index = 0; index < orderedVersions.length; index += 1) {
+      await executor.execute(
+        _updateAppliedOrderStatement(
+          executor.dialect,
+          version: orderedVersions[index],
+          appliedOrder: index + 1,
+        ),
+      );
+    }
+  }
+
+  List<String> _orderedAppliedPrefix(List<String> appliedVersions) {
+    final appliedVersionSet = <String>{};
+    for (final version in appliedVersions) {
+      if (!appliedVersionSet.add(version)) {
+        throw StateError(
+          'Database migration metadata contains duplicate version "$version".',
+        );
+      }
+    }
+
+    final orderedVersions = <String>[];
+    for (final migration in migrations) {
+      if (!appliedVersionSet.contains(migration.version)) {
+        break;
+      }
+      orderedVersions.add(migration.version);
+    }
+
+    if (orderedVersions.length != appliedVersionSet.length) {
+      throw StateError(
+        'Database migration metadata cannot be assigned an applied order '
+        'because it does not match the configured migration prefix.',
+      );
+    }
+
+    return orderedVersions;
+  }
+
+  SqlStatement _selectAppliedOrderBackfillStatement() {
+    final metadataTable = _metadataTableSql(pool.dialect);
+    return sql('''
+      SELECT version, applied_order
+      FROM $metadataTable
+      ''');
+  }
+
+  SqlStatement _updateAppliedOrderStatement(
+    SqlDialect dialect, {
+    required String version,
+    required int appliedOrder,
+  }) {
+    final metadataTable = _metadataTableSql(dialect);
+    return switch (dialect) {
+      SqlDialect.sqlite => SqlStatement.positional(
+        'UPDATE $metadataTable SET applied_order = ? WHERE version = ?',
+        [appliedOrder, version],
+      ),
+      SqlDialect.postgres => SqlStatement.positional(
+        'UPDATE $metadataTable SET applied_order = \$1 WHERE version = \$2',
+        [appliedOrder, version],
+      ),
+    };
+  }
+
+  SqlStatement _createAppliedOrderIndexStatement(SqlDialect dialect) {
+    final metadataTable = _metadataTableSql(dialect);
+    final indexName = '${tableName}_applied_order_idx';
+    return switch (dialect) {
+      SqlDialect.sqlite => sql(
+        'CREATE UNIQUE INDEX IF NOT EXISTS $indexName ON $metadataTable (applied_order)',
+      ),
+      SqlDialect.postgres => sql(
+        'CREATE UNIQUE INDEX IF NOT EXISTS $indexName ON $metadataTable (applied_order)',
+      ),
+    };
+  }
+
   SqlStatement _selectAppliedMigrationsStatement() {
     final metadataTable = _metadataTableSql(pool.dialect);
     return sql('''
       SELECT version, name, applied_at, checksum
       FROM $metadataTable
-      ORDER BY applied_at ASC, version ASC
+      ORDER BY applied_order ASC
       ''');
   }
 
   SqlStatement _insertAppliedMigrationStatement(
     SqlDialect dialect,
     SqlMigration migration, {
+    required int appliedOrder,
     required String checksum,
   }) {
     final metadataTable = _metadataTableSql(dialect);
     return switch (dialect) {
       SqlDialect.sqlite => SqlStatement.positional(
-        'INSERT INTO $metadataTable (version, name, checksum) VALUES (?, ?, ?)',
-        [migration.version, migration.name, checksum],
+        'INSERT INTO $metadataTable (version, name, applied_order, checksum) VALUES (?, ?, ?, ?)',
+        [migration.version, migration.name, appliedOrder, checksum],
       ),
       SqlDialect.postgres => SqlStatement.positional(
-        'INSERT INTO $metadataTable (version, name, checksum) VALUES (\$1, \$2, \$3)',
-        [migration.version, migration.name, checksum],
+        'INSERT INTO $metadataTable (version, name, applied_order, checksum) VALUES (\$1, \$2, \$3, \$4)',
+        [migration.version, migration.name, appliedOrder, checksum],
       ),
     };
   }

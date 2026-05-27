@@ -259,4 +259,81 @@ void main() {
     expect(status.applied.map((migration) => migration.version), ['0001']);
     expect(status.pending.map((migration) => migration.version), ['0002']);
   });
+
+  test('backfills sqlite applied order for legacy metadata table', () async {
+    final pool = SqliteDatabase.inMemory();
+    addTearDown(pool.close);
+
+    await pool.execute(
+      sql('''
+      CREATE TABLE migrations (
+        version TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        checksum TEXT,
+        applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
+      '''),
+    );
+    const appliedAt = '2026-05-27T07:12:49.088292Z';
+    for (final (version, name) in [
+      ('0', 'bootstrap'),
+      ('1', 'setup'),
+      ('10', 'ten'),
+      ('2', 'two'),
+    ]) {
+      await pool.execute(
+        SqlStatement.positional(
+          'INSERT INTO migrations (version, name, applied_at) VALUES (?, ?, ?)',
+          [version, name, appliedAt],
+        ),
+      );
+    }
+
+    final migrator = DartEdgeSqlMigrator(
+      pool: pool,
+      migrations: [
+        SqlMigration(
+          version: '0',
+          name: 'bootstrap',
+          up: SqlMigrationPlan.sql(['SELECT 0']),
+        ),
+        SqlMigration(
+          version: '1',
+          name: 'setup',
+          up: SqlMigrationPlan.sql(['SELECT 1']),
+        ),
+        SqlMigration(
+          version: '2',
+          name: 'two',
+          up: SqlMigrationPlan.sql(['SELECT 2']),
+        ),
+        SqlMigration(
+          version: '10',
+          name: 'ten',
+          up: SqlMigrationPlan.sql(['SELECT 10']),
+        ),
+      ],
+    );
+
+    final status = await migrator.status();
+    final metadata = await pool.execute(
+      sql(
+        'SELECT version, applied_order FROM migrations ORDER BY applied_order',
+      ),
+    );
+
+    expect(status.applied.map((migration) => migration.version), [
+      '0',
+      '1',
+      '2',
+      '10',
+    ]);
+    expect(
+      [
+        for (final row in metadata.rows)
+          (row.read<String>('version'), row.read<int>('applied_order')),
+      ],
+      [('0', 1), ('1', 2), ('2', 3), ('10', 4)],
+    );
+  });
 }
