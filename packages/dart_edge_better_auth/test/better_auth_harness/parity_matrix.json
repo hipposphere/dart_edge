@@ -1,0 +1,86 @@
+{
+  "upstream": {
+    "package": "better-auth",
+    "version": "1.6.11",
+    "suite": "Better Auth upstream compatibility"
+  },
+  "enabled": [
+    {
+      "id": "crypto.password.verify",
+      "source": "packages/better-auth/src/crypto/password.test.ts",
+      "status": "passing",
+      "coverage": "Dart verifies Better Auth TypeScript scrypt password hashes."
+    },
+    {
+      "id": "email-password.ts-to-dart",
+      "source": "packages/better-auth/src/api/routes/sign-in.test.ts",
+      "status": "passing",
+      "coverage": "TypeScript Better Auth creates a PGlite credential account; Dart signs in with it."
+    },
+    {
+      "id": "email-password.dart-to-ts",
+      "source": "packages/better-auth/src/api/routes/sign-in.test.ts",
+      "status": "passing",
+      "coverage": "Dart trusted API creates a PGlite credential account; TypeScript Better Auth signs in with it."
+    },
+    {
+      "id": "migrations.core",
+      "source": "packages/better-auth/src/db/get-migration.ts",
+      "status": "passing",
+      "coverage": "Core user/account/session/verification/passkey tables are created for PGlite/Postgres and SQLite."
+    },
+    {
+      "id": "admin.core",
+      "source": "packages/better-auth/src/plugins/admin/admin.test.ts",
+      "status": "partial",
+      "coverage": "Admin create, update, remove, ban, unban, role, password, list, and session revocation APIs are guarded by admin bearer/session role and share trusted implementation."
+    }
+  ],
+  "pending": [
+    {
+      "id": "call",
+      "source": "packages/better-auth/src/call.test.ts",
+      "reason": "Requires Better Auth endpoint middleware/hook API parity."
+    },
+    {
+      "id": "cookies",
+      "source": "packages/better-auth/src/cookies/cookies.test.ts",
+      "reason": "Requires full Better Auth cookie signing/options/cache behavior."
+    },
+    {
+      "id": "admin",
+      "source": "packages/better-auth/src/plugins/admin/admin.test.ts",
+      "reason": "Core admin APIs exist; remaining impersonation behavior, full access-control statements, exact response shape parity, and admin client shape are pending."
+    },
+    {
+      "id": "oauth-social",
+      "source": "packages/better-auth/src/social.test.ts",
+      "reason": "Social provider OAuth flows are pending."
+    },
+    {
+      "id": "generic-oauth",
+      "source": "packages/better-auth/src/plugins/generic-oauth/generic-oauth.test.ts",
+      "reason": "Generic OAuth plugin is pending."
+    },
+    {
+      "id": "oauth-provider-oidc",
+      "source": "packages/better-auth/src/plugins/oidc-provider/oidc.test.ts",
+      "reason": "OAuth/OIDC provider plugin is pending."
+    },
+    {
+      "id": "passkey",
+      "source": "packages/passkey/src/passkey.test.ts",
+      "reason": "Passkey schema exists; WebAuthn ceremony and verification are pending."
+    },
+    {
+      "id": "phone-number",
+      "source": "packages/better-auth/src/plugins/phone-number/phone-number.test.ts",
+      "reason": "Phone number plugin is pending."
+    },
+    {
+      "id": "remaining-first-party-plugins",
+      "source": "packages/better-auth/src/plugins/**/*.test.ts",
+      "reason": "Literal plugin parity is tracked but not yet implemented."
+    }
+  ]
+}
