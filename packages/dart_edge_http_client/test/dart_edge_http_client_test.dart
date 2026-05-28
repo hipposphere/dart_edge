@@ -66,6 +66,49 @@ void main() {
 
       expect(response.status, 204);
     });
+
+    test('uses abortable requests when no abort trigger is supplied', () async {
+      final transport = DartEdgeHttpClientTransport(
+        client: MockClient.streaming((request, _) async {
+          expect(request, isA<http.AbortableRequest>());
+          expect((request as http.AbortableRequest).abortTrigger, isNull);
+          return http.StreamedResponse(const Stream<List<int>>.empty(), 204);
+        }),
+      );
+
+      final response = await transport.send(
+        DartEdgeClientRequest(
+          method: HttpMethod.get,
+          uri: Uri.parse('https://api.example.test/jobs'),
+        ),
+      );
+
+      expect(response.status, 204);
+    });
+
+    test('passes abort triggers through to package:http', () async {
+      final abortCompleter = Completer<void>();
+      final transport = DartEdgeHttpClientTransport(
+        client: MockClient.streaming((request, _) async {
+          expect(request, isA<http.AbortableRequest>());
+          expect(
+            (request as http.AbortableRequest).abortTrigger,
+            same(abortCompleter.future),
+          );
+          return http.StreamedResponse(const Stream<List<int>>.empty(), 204);
+        }),
+      );
+
+      final response = await transport.send(
+        DartEdgeClientRequest(
+          method: HttpMethod.delete,
+          uri: Uri.parse('https://api.example.test/jobs/1'),
+          abortTrigger: abortCompleter.future,
+        ),
+      );
+
+      expect(response.status, 204);
+    });
   });
 
   group('DartEdgeWebSocketClientTransport', () {

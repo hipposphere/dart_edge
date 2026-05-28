@@ -40,6 +40,7 @@ abstract base class DartEdgeHttpClientBase {
       ),
       body: encodedBody?.body,
       bodyBytes: encodedBody?.bodyBytes,
+      abortTrigger: invocation.abortTrigger,
     );
 
     final response = await transport.send(request);
@@ -490,6 +491,7 @@ final class DartEdgeClientInvocation<
     this.query,
     this.headers,
     this.body,
+    this.abortTrigger,
   });
 
   /// HTTP method to send.
@@ -515,6 +517,9 @@ final class DartEdgeClientInvocation<
 
   /// Optional request body payload.
   final DartEdgeClientRequestBody<TBody>? body;
+
+  /// Optional trigger that aborts the underlying HTTP request when completed.
+  final Future<void>? abortTrigger;
 }
 
 /// Fully described generated-client WebSocket invocation.

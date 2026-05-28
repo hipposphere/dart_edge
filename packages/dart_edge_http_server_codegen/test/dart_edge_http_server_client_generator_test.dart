@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -39,6 +40,8 @@ void main() {
         source,
         contains('Future<DartEdgeClientResponseObject<UserDto>> getUser({'),
       );
+      expect(source, contains('Future<void>? abortTrigger'));
+      expect(source, contains('abortTrigger: abortTrigger'));
       expect(source, contains("pathTemplate: '/users/<id>'"));
       expect(
         source,
@@ -125,7 +128,7 @@ void main() {
       expect(source, contains("import 'dart:typed_data';"));
       expect(
         source,
-        contains('Future<DartEdgeClientResponseObject<Uint8List>> getTone()'),
+        contains('Future<DartEdgeClientResponseObject<Uint8List>> getTone({'),
       );
       expect(source, contains('DartEdgeClientResponseSpec<Uint8List>'));
       expect(source, isNot(contains('Uint8List.decode')));
@@ -376,7 +379,7 @@ void main() {
 
       expect(
         source,
-        contains('Future<DartEdgeClientResponseObject<String>> getHello()'),
+        contains('Future<DartEdgeClientResponseObject<String>> getHello({'),
       );
       expect(
         source,
@@ -711,16 +714,16 @@ void main() {
 
       expect(
         source,
-        contains('Future<DartEdgeClientResponseObject<String>> getPublic()'),
+        contains('Future<DartEdgeClientResponseObject<String>> getPublic({'),
       );
       expect(
         source,
-        contains('Future<DartEdgeClientResponseObject<String>> getSame()'),
+        contains('Future<DartEdgeClientResponseObject<String>> getSame({'),
       );
       expect(
         source,
         contains(
-          'Future<DartEdgeClientResponseObject<String>> getIgnoredOther()',
+          'Future<DartEdgeClientResponseObject<String>> getIgnoredOther({',
         ),
       );
       expect(source, isNot(contains('getOpenApiOnly')));
@@ -771,6 +774,7 @@ void main() {
     test(
       'builds requests and decodes responses via generated serializers',
       () async {
+        final abortTrigger = Completer<void>().future;
         final transport = _FakeTransport(
           onSend: (request) async {
             expect(request.method, HttpMethod.post);
@@ -789,6 +793,7 @@ void main() {
               'content-type': 'application/json; charset=utf-8',
             });
             expect(jsonDecode(request.body!), {'name': 'Ada'});
+            expect(request.abortTrigger, same(abortTrigger));
 
             return DartEdgeClientResponse(
               status: 201,
@@ -812,7 +817,7 @@ void main() {
               RequestHeaders,
               CreateUserBody
             >(
-              const DartEdgeClientInvocation<
+              DartEdgeClientInvocation<
                 UserDto,
                 UserPath,
                 UserQuery,
@@ -851,6 +856,7 @@ void main() {
                   value: CreateUserBody(name: 'Ada'),
                   encoder: CreateUserBody.toJson,
                 ),
+                abortTrigger: abortTrigger,
               ),
             );
 

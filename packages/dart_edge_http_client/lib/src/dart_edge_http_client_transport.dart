@@ -38,8 +38,11 @@ final class DartEdgeHttpClientTransport implements DartEdgeClientTransport {
   Future<DartEdgeClientResponse> _sendWithoutInterceptors(
     DartEdgeClientRequest request,
   ) async {
-    final httpRequest = http.Request(request.method.wireName, request.uri)
-      ..headers.addAll(request.headers);
+    final httpRequest = http.AbortableRequest(
+      request.method.wireName,
+      request.uri,
+      abortTrigger: request.abortTrigger,
+    )..headers.addAll(request.headers);
 
     if (request.bodyBytes case final bodyBytes?) {
       httpRequest.bodyBytes = bodyBytes;

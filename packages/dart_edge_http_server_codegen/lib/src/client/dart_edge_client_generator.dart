@@ -756,6 +756,7 @@ $files
         _namedParameter('headers', type: refer('$type?')),
       if (operation.bodyType case final type?)
         _namedParameter('body', type: refer(type), required: true),
+      _namedParameter('abortTrigger', type: refer('Future<void>?')),
     ];
   }
 
@@ -944,6 +945,7 @@ $files
     final arguments = <String, Expression>{
       'method': refer('HttpMethod').property(operation.method.name),
       'pathTemplate': literalString(operation.path),
+      'abortTrigger': refer('abortTrigger'),
       'success': refer('DartEdgeClientResponseSpec').newInstance(
         const <Expression>[],
         <String, Expression>{

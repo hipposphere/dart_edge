@@ -12,6 +12,7 @@ final class DartEdgeClientRequest {
     this.headers = const <String, String>{},
     this.body,
     this.bodyBytes,
+    this.abortTrigger,
   });
 
   final HttpMethod method;
@@ -19,6 +20,7 @@ final class DartEdgeClientRequest {
   final Map<String, String> headers;
   final String? body;
   final List<int>? bodyBytes;
+  final Future<void>? abortTrigger;
 
   DartEdgeClientRequest copyWith({
     HttpMethod? method,
@@ -26,6 +28,7 @@ final class DartEdgeClientRequest {
     Map<String, String>? headers,
     String? body,
     List<int>? bodyBytes,
+    Future<void>? abortTrigger,
   }) {
     return DartEdgeClientRequest(
       method: method ?? this.method,
@@ -33,6 +36,7 @@ final class DartEdgeClientRequest {
       headers: headers ?? this.headers,
       body: body ?? this.body,
       bodyBytes: bodyBytes ?? this.bodyBytes,
+      abortTrigger: abortTrigger ?? this.abortTrigger,
     );
   }
 }
