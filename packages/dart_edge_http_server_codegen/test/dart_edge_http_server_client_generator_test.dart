@@ -275,6 +275,55 @@ void main() {
       expect(models, contains('for (final file in attachments)'));
     });
 
+    test('emits inline multipart client body schemas as upload DTOs', () {
+      const bodySchema = JsonSchema.object(
+        id: 'CreateWorkspaceRecordingSegmentBody',
+        properties: {
+          'workspace_id': JsonSchema.string(),
+          'recording_id': JsonSchema.string(),
+          'segment_index': JsonSchema.integer(),
+          'file': JsonSchema.string(format: 'binary'),
+        },
+        required: ['workspace_id', 'recording_id', 'segment_index', 'file'],
+        additionalProperties: false,
+      );
+      final spec = DartEdgeClientLibrarySpec(
+        className: 'WorkspaceClient',
+        schemas: const [bodySchema],
+        operations: [
+          DartEdgeClientOperation(
+            method: HttpMethod.post,
+            path: '/workspace/recording-segments',
+            options: const RouteOptions(
+              operationId: 'createWorkspaceRecordingSegment',
+              body: RequestBody.multipartFormData(schema: bodySchema),
+              success: ResponseSpec.json(),
+            ),
+            successType: 'Object?',
+            bodyType: 'CreateWorkspaceRecordingSegmentBody',
+          ),
+        ],
+      );
+
+      final generator = const DartEdgeClientGenerator();
+      final bindings = generator.generateBindingsPart(spec);
+      final models = generator.generateModelsPart(spec);
+
+      expect(
+        bindings,
+        contains('encoder: (value) => value.toMultipartFormData()'),
+      );
+      expect(
+        models,
+        contains('final class CreateWorkspaceRecordingSegmentBody'),
+      );
+      expect(models, isNot(contains('implements JsonEncodable')));
+      expect(models, contains('final MultipartUploadFile file;'));
+      expect(models, contains('MultipartFormData toMultipartFormData()'));
+      expect(models, contains('file.asFile("file")'));
+      expect(models, isNot(contains('final String file;')));
+    });
+
     test(
       'emits split client files into an existing or new directory',
       () async {

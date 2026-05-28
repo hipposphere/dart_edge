@@ -1052,7 +1052,7 @@ Set<String> _multipartBodySchemaIds(DartEdgeClientLibrarySpec spec) {
     for (final operation in spec.operations)
       if (operation.options.body case final body?
           when _isMultipartFormDataContentType(body.contentType))
-        ?jsonSchemaRouteId(body.schema),
+        ?_clientSchemaTypeId(body.schema),
   };
 }
 
