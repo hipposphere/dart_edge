@@ -1,3 +1,9 @@
+## 0.1.5
+
+- Send streamed generated-client request bodies through `package:http`.
+- Preserve abort triggers for streamed requests.
+- Require `dart_edge_core` 0.3.22.
+
 ## 0.1.3
 
 - Send generated client request body bytes through `package:http`.

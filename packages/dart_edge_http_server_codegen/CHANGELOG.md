@@ -1,3 +1,10 @@
+## 0.3.27
+
+- Generate optional multipart upload progress callbacks for multipart client
+  routes.
+- Generate optional request timeout parameters for HTTP client routes.
+- Require `dart_edge_core` 0.3.22.
+
 ## 0.3.24
 
 - Generate typed multipart form-data body models from `@FromMultipartSchema`.

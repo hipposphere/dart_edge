@@ -757,6 +757,14 @@ $files
       if (operation.bodyType case final type?)
         _namedParameter('body', type: refer(type), required: true),
       _namedParameter('abortTrigger', type: refer('Future<void>?')),
+      _namedParameter('timeout', type: refer('Duration?')),
+      if (_isMultipartOperation(operation))
+        _namedParameter(
+          'onUploadProgress',
+          type: refer(
+            'void Function(DartEdgeMultipartUploadProgress progress)?',
+          ),
+        ),
     ];
   }
 
@@ -946,6 +954,9 @@ $files
       'method': refer('HttpMethod').property(operation.method.name),
       'pathTemplate': literalString(operation.path),
       'abortTrigger': refer('abortTrigger'),
+      'timeout': refer('timeout'),
+      if (_isMultipartOperation(operation))
+        'onMultipartUploadProgress': refer('onUploadProgress'),
       'success': refer('DartEdgeClientResponseSpec').newInstance(
         const <Expression>[],
         <String, Expression>{
@@ -1043,6 +1054,11 @@ Set<String> _multipartBodySchemaIds(DartEdgeClientLibrarySpec spec) {
           when _isMultipartFormDataContentType(body.contentType))
         ?jsonSchemaRouteId(body.schema),
   };
+}
+
+bool _isMultipartOperation(DartEdgeClientOperation operation) {
+  final body = operation.options.body;
+  return body != null && _isMultipartFormDataContentType(body.contentType);
 }
 
 bool _isMultipartFormDataContentType(String contentType) {

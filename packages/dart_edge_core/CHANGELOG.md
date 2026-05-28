@@ -1,3 +1,14 @@
+## 0.3.22
+
+- Add streamed generated-client request body contracts.
+- Add generated-client request timeout contracts that compose with abort
+  triggers.
+- Stream generated-client multipart form-data uploads without buffering file
+  contents into memory.
+- Add generated-client multipart upload progress contracts.
+- Preserve multipart request content length when every upload file length is
+  known.
+
 ## 0.3.19
 
 - Add a reusable long-lived isolate request worker for native-backed services.

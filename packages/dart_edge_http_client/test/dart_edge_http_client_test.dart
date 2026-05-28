@@ -67,6 +67,53 @@ void main() {
       expect(response.status, 204);
     });
 
+    test('sends request body streams through package:http', () async {
+      final transport = DartEdgeHttpClientTransport(
+        client: MockClient.streaming((request, bodyStream) async {
+          expect(request.method, 'POST');
+          expect(request.headers['content-type'], 'multipart/form-data');
+          expect(request.contentLength, isNull);
+          expect(await bodyStream.toBytes(), [1, 2, 3]);
+          return http.StreamedResponse(const Stream<List<int>>.empty(), 204);
+        }),
+      );
+
+      final response = await transport.send(
+        DartEdgeClientRequest(
+          method: HttpMethod.post,
+          uri: Uri.parse('https://api.example.test/uploads'),
+          headers: const {'content-type': 'multipart/form-data'},
+          bodyStream: Stream.fromIterable(const [
+            [1],
+            [2, 3],
+          ]),
+        ),
+      );
+
+      expect(response.status, 204);
+    });
+
+    test('sets streamed request content length when known', () async {
+      final transport = DartEdgeHttpClientTransport(
+        client: MockClient.streaming((request, bodyStream) async {
+          expect(request.contentLength, 3);
+          expect(await bodyStream.toBytes(), [1, 2, 3]);
+          return http.StreamedResponse(const Stream<List<int>>.empty(), 204);
+        }),
+      );
+
+      final response = await transport.send(
+        DartEdgeClientRequest(
+          method: HttpMethod.post,
+          uri: Uri.parse('https://api.example.test/uploads'),
+          bodyStream: Stream.value(const [1, 2, 3]),
+          bodyStreamLength: 3,
+        ),
+      );
+
+      expect(response.status, 204);
+    });
+
     test('uses abortable requests when no abort trigger is supplied', () async {
       final transport = DartEdgeHttpClientTransport(
         client: MockClient.streaming((request, _) async {

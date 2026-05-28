@@ -25,7 +25,14 @@ abstract base class DartEdgeHttpClientBase {
     DartEdgeClientInvocation<TResponse, TParams, TQuery, THeaders, TBody>
     invocation,
   ) async {
-    final encodedBody = await _encodeRequestBody(body: invocation.body);
+    final abortTrigger = _combinedAbortTrigger(
+      abortTrigger: invocation.abortTrigger,
+      timeout: invocation.timeout,
+    );
+    final encodedBody = await _encodeRequestBody(
+      body: invocation.body,
+      onMultipartUploadProgress: invocation.onMultipartUploadProgress,
+    );
     final request = DartEdgeClientRequest(
       method: invocation.method,
       uri: _buildUri(
@@ -39,8 +46,9 @@ abstract base class DartEdgeHttpClientBase {
         encodedBody: encodedBody,
       ),
       body: encodedBody?.body,
-      bodyBytes: encodedBody?.bodyBytes,
-      abortTrigger: invocation.abortTrigger,
+      bodyStream: encodedBody?.bodyStream,
+      bodyStreamLength: encodedBody?.bodyStreamLength,
+      abortTrigger: abortTrigger,
     );
 
     final response = await transport.send(request);
@@ -176,6 +184,8 @@ abstract base class DartEdgeHttpClientBase {
 
   Future<_EncodedClientRequestBody?> _encodeRequestBody<TBody>({
     required DartEdgeClientRequestBody<TBody>? body,
+    required void Function(DartEdgeMultipartUploadProgress progress)?
+    onMultipartUploadProgress,
   }) async {
     if (body == null || body.value == null) {
       return null;
@@ -204,10 +214,15 @@ abstract base class DartEdgeHttpClientBase {
           : throw StateError(
               'Expected MultipartFormData for multipart request body.',
             );
-      final encoded = await _encodeMultipartFormData(form);
+      final encoded = _encodeMultipartFormData(form);
       return _EncodedClientRequestBody(
         contentType: 'multipart/form-data; boundary=${encoded.boundary}',
-        bodyBytes: encoded.bodyBytes,
+        bodyStream: _trackMultipartUploadProgress(
+          encoded.bodyStream,
+          totalBytes: encoded.bodyStreamLength,
+          onProgress: onMultipartUploadProgress,
+        ),
+        bodyStreamLength: encoded.bodyStreamLength,
       );
     }
 
@@ -416,58 +431,151 @@ final class _EncodedClientRequestBody {
   const _EncodedClientRequestBody({
     required this.contentType,
     this.body,
-    this.bodyBytes,
+    this.bodyStream,
+    this.bodyStreamLength,
   });
 
   final String contentType;
   final String? body;
-  final List<int>? bodyBytes;
+  final Stream<List<int>>? bodyStream;
+  final int? bodyStreamLength;
 }
 
-typedef _EncodedMultipartFormData = ({String boundary, Uint8List bodyBytes});
+typedef _EncodedMultipartFormData = ({
+  String boundary,
+  Stream<List<int>> bodyStream,
+  int? bodyStreamLength,
+});
 
-Future<_EncodedMultipartFormData> _encodeMultipartFormData(
-  MultipartFormData form,
-) async {
+_EncodedMultipartFormData _encodeMultipartFormData(MultipartFormData form) {
   final boundary =
       'dart-edge-boundary-${DateTime.now().microsecondsSinceEpoch}';
-  final bytes = BytesBuilder(copy: false);
+  return (
+    boundary: boundary,
+    bodyStream: _streamMultipartFormData(form, boundary),
+    bodyStreamLength: _multipartFormDataContentLength(form, boundary),
+  );
+}
+
+Stream<List<int>> _streamMultipartFormData(
+  MultipartFormData form,
+  String boundary,
+) async* {
   final newline = utf8.encode('\r\n');
-
-  void writeAscii(String value) {
-    bytes.add(ascii.encode(value));
-  }
-
   for (final field in form.fields) {
-    writeAscii('--$boundary\r\n');
-    writeAscii(
+    yield ascii.encode('--$boundary\r\n');
+    yield ascii.encode(
       'Content-Disposition: form-data; '
       'name="${_escapeMultipartHeaderValue(field.name)}"\r\n\r\n',
     );
-    bytes.add(utf8.encode(field.value));
-    bytes.add(newline);
+    yield utf8.encode(field.value);
+    yield newline;
   }
 
   for (final file in form.files) {
-    writeAscii('--$boundary\r\n');
-    writeAscii(
+    yield ascii.encode('--$boundary\r\n');
+    yield ascii.encode(
       'Content-Disposition: form-data; '
       'name="${_escapeMultipartHeaderValue(file.fieldName)}"',
     );
     if (file.filename case final filename?) {
-      writeAscii('; filename="${_escapeMultipartHeaderValue(filename)}"');
+      yield ascii.encode(
+        '; filename="${_escapeMultipartHeaderValue(filename)}"',
+      );
     }
-    writeAscii('\r\n');
+    yield newline;
     if (file.contentType case final contentType?) {
-      writeAscii('Content-Type: $contentType\r\n');
+      yield ascii.encode('Content-Type: $contentType\r\n');
     }
-    writeAscii('\r\n');
-    bytes.add(await file.bytes);
-    bytes.add(newline);
+    yield newline;
+    yield* file.openRead();
+    yield newline;
   }
 
-  writeAscii('--$boundary--\r\n');
-  return (boundary: boundary, bodyBytes: bytes.takeBytes());
+  yield ascii.encode('--$boundary--\r\n');
+}
+
+int? _multipartFormDataContentLength(MultipartFormData form, String boundary) {
+  var length = 0;
+
+  int byteLength(List<int> bytes) => bytes.length;
+  int asciiLength(String value) => byteLength(ascii.encode(value));
+  int utf8Length(String value) => byteLength(utf8.encode(value));
+
+  for (final field in form.fields) {
+    length += asciiLength('--$boundary\r\n');
+    length += asciiLength(
+      'Content-Disposition: form-data; '
+      'name="${_escapeMultipartHeaderValue(field.name)}"\r\n\r\n',
+    );
+    length += utf8Length(field.value);
+    length += asciiLength('\r\n');
+  }
+
+  for (final file in form.files) {
+    final fileLength = knownMultipartFileLength(file);
+    if (fileLength == null) {
+      return null;
+    }
+
+    length += asciiLength('--$boundary\r\n');
+    length += asciiLength(
+      'Content-Disposition: form-data; '
+      'name="${_escapeMultipartHeaderValue(file.fieldName)}"',
+    );
+    if (file.filename case final filename?) {
+      length += asciiLength(
+        '; filename="${_escapeMultipartHeaderValue(filename)}"',
+      );
+    }
+    length += asciiLength('\r\n');
+    if (file.contentType case final contentType?) {
+      length += asciiLength('Content-Type: $contentType\r\n');
+    }
+    length += asciiLength('\r\n');
+    length += fileLength;
+    length += asciiLength('\r\n');
+  }
+
+  length += asciiLength('--$boundary--\r\n');
+  return length;
+}
+
+Stream<List<int>> _trackMultipartUploadProgress(
+  Stream<List<int>> stream, {
+  required int? totalBytes,
+  required void Function(DartEdgeMultipartUploadProgress progress)? onProgress,
+}) async* {
+  if (onProgress == null) {
+    yield* stream;
+    return;
+  }
+
+  var bytesSent = 0;
+  await for (final chunk in stream) {
+    bytesSent += chunk.length;
+    onProgress(
+      DartEdgeMultipartUploadProgress(
+        bytesSent: bytesSent,
+        totalBytes: totalBytes,
+      ),
+    );
+    yield chunk;
+  }
+}
+
+Future<void>? _combinedAbortTrigger({
+  required Future<void>? abortTrigger,
+  required Duration? timeout,
+}) {
+  final timeoutTrigger = timeout == null ? null : Future<void>.delayed(timeout);
+  if (abortTrigger == null) {
+    return timeoutTrigger;
+  }
+  if (timeoutTrigger == null) {
+    return abortTrigger;
+  }
+  return Future.any([abortTrigger, timeoutTrigger]);
 }
 
 String _escapeMultipartHeaderValue(String value) {
@@ -492,6 +600,8 @@ final class DartEdgeClientInvocation<
     this.headers,
     this.body,
     this.abortTrigger,
+    this.timeout,
+    this.onMultipartUploadProgress,
   });
 
   /// HTTP method to send.
@@ -520,6 +630,13 @@ final class DartEdgeClientInvocation<
 
   /// Optional trigger that aborts the underlying HTTP request when completed.
   final Future<void>? abortTrigger;
+
+  /// Optional timeout that aborts the underlying HTTP request when elapsed.
+  final Duration? timeout;
+
+  /// Optional progress callback for generated multipart form-data uploads.
+  final void Function(DartEdgeMultipartUploadProgress progress)?
+  onMultipartUploadProgress;
 }
 
 /// Fully described generated-client WebSocket invocation.

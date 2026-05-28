@@ -80,6 +80,38 @@ final class MultipartUploadFile {
   }
 }
 
+/// Upload progress for a generated multipart form-data request body.
+final class DartEdgeMultipartUploadProgress {
+  const DartEdgeMultipartUploadProgress({
+    required this.bytesSent,
+    required this.totalBytes,
+  });
+
+  /// Multipart request body bytes emitted to the client transport.
+  final int bytesSent;
+
+  /// Total multipart request body bytes, when known before sending.
+  final int? totalBytes;
+
+  /// Completed upload fraction, or `null` when [totalBytes] is unknown.
+  double? get fraction {
+    final totalBytes = this.totalBytes;
+    if (totalBytes == null || totalBytes == 0) {
+      return null;
+    }
+    return bytesSent / totalBytes;
+  }
+}
+
+/// Returns the known byte length for a multipart file, or `null` when the
+/// client-side upload source cannot report one without reading the stream.
+int? knownMultipartFileLength(MultipartFile file) {
+  if (file is _MultipartUploadFormFile) {
+    return file.file.length;
+  }
+  return file.length;
+}
+
 /// Parsed multipart form-data payload.
 final class MultipartFormData {
   MultipartFormData({

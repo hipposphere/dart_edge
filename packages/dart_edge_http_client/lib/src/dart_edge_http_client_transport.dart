@@ -38,16 +38,28 @@ final class DartEdgeHttpClientTransport implements DartEdgeClientTransport {
   Future<DartEdgeClientResponse> _sendWithoutInterceptors(
     DartEdgeClientRequest request,
   ) async {
-    final httpRequest = http.AbortableRequest(
-      request.method.wireName,
-      request.uri,
-      abortTrigger: request.abortTrigger,
-    )..headers.addAll(request.headers);
+    final http.BaseRequest httpRequest;
+    if (request.bodyStream case final bodyStream?) {
+      httpRequest = _DartEdgeHttpStreamedRequest(
+        request.method.wireName,
+        request.uri,
+        bodyStream: bodyStream,
+        contentLength: request.bodyStreamLength,
+        abortTrigger: request.abortTrigger,
+      )..headers.addAll(request.headers);
+    } else {
+      final bufferedRequest = http.AbortableRequest(
+        request.method.wireName,
+        request.uri,
+        abortTrigger: request.abortTrigger,
+      )..headers.addAll(request.headers);
 
-    if (request.bodyBytes case final bodyBytes?) {
-      httpRequest.bodyBytes = bodyBytes;
-    } else if (request.body case final body?) {
-      httpRequest.body = body;
+      if (request.bodyBytes case final bodyBytes?) {
+        bufferedRequest.bodyBytes = bodyBytes;
+      } else if (request.body case final body?) {
+        bufferedRequest.body = body;
+      }
+      httpRequest = bufferedRequest;
     }
 
     final streamed = await _client.send(httpRequest);
@@ -64,6 +76,30 @@ final class DartEdgeHttpClientTransport implements DartEdgeClientTransport {
     if (_ownsClient) {
       _client.close();
     }
+  }
+}
+
+final class _DartEdgeHttpStreamedRequest extends http.BaseRequest
+    with http.Abortable {
+  _DartEdgeHttpStreamedRequest(
+    super.method,
+    super.url, {
+    required this._bodyStream,
+    int? contentLength,
+    this.abortTrigger,
+  }) {
+    this.contentLength = contentLength;
+  }
+
+  final Stream<List<int>> _bodyStream;
+
+  @override
+  final Future<void>? abortTrigger;
+
+  @override
+  http.ByteStream finalize() {
+    super.finalize();
+    return http.ByteStream(_bodyStream);
   }
 }
 

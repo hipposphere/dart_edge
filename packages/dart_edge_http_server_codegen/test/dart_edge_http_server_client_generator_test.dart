@@ -41,7 +41,9 @@ void main() {
         contains('Future<DartEdgeClientResponseObject<UserDto>> getUser({'),
       );
       expect(source, contains('Future<void>? abortTrigger'));
+      expect(source, contains('Duration? timeout'));
       expect(source, contains('abortTrigger: abortTrigger'));
+      expect(source, contains('timeout: timeout'));
       expect(source, contains("pathTemplate: '/users/<id>'"));
       expect(
         source,
@@ -132,6 +134,7 @@ void main() {
       );
       expect(source, contains('DartEdgeClientResponseSpec<Uint8List>'));
       expect(source, isNot(contains('Uint8List.decode')));
+      expect(source, contains('Duration? timeout'));
     });
 
     test(
@@ -254,6 +257,14 @@ void main() {
         bindings,
         contains('encoder: (value) => value.toMultipartFormData()'),
       );
+      expect(
+        bindings,
+        contains(
+          'void Function(DartEdgeMultipartUploadProgress progress)? '
+          'onUploadProgress',
+        ),
+      );
+      expect(bindings, contains('onMultipartUploadProgress: onUploadProgress'));
       expect(models, contains('final class UploadBody'));
       expect(models, isNot(contains('implements JsonEncodable')));
       expect(models, contains('final MultipartUploadFile file;'));
@@ -871,7 +882,74 @@ void main() {
       },
     );
 
+    test('combines abort triggers with timeout triggers', () async {
+      final abortCompleter = Completer<void>();
+      final transport = _FakeTransport(
+        onSend: (request) async {
+          expect(request.abortTrigger, isNotNull);
+          abortCompleter.complete();
+          await request.abortTrigger;
+          return const DartEdgeClientResponse(
+            status: 204,
+            contentType: 'text/plain; charset=utf-8',
+          );
+        },
+      );
+      final client = _TestClient(
+        baseUri: Uri.parse('https://api.example.test/v1'),
+        transport: transport,
+      );
+
+      final response = await client.invoke<Object?, Never, Never, Never, Never>(
+        DartEdgeClientInvocation<Object?, Never, Never, Never, Never>(
+          method: HttpMethod.delete,
+          pathTemplate: '/jobs/1',
+          success: const DartEdgeClientResponseSpec<Object?>(
+            status: 204,
+            contentType: 'text/plain; charset=utf-8',
+          ),
+          abortTrigger: abortCompleter.future,
+          timeout: const Duration(minutes: 1),
+        ),
+      );
+
+      expect(response.status, 204);
+    });
+
+    test('uses timeout triggers when no abort trigger is supplied', () async {
+      final transport = _FakeTransport(
+        onSend: (request) async {
+          expect(request.abortTrigger, isNotNull);
+          await request.abortTrigger;
+          return const DartEdgeClientResponse(
+            status: 204,
+            contentType: 'text/plain; charset=utf-8',
+          );
+        },
+      );
+      final client = _TestClient(
+        baseUri: Uri.parse('https://api.example.test/v1'),
+        transport: transport,
+      );
+
+      final response = await client.invoke<Object?, Never, Never, Never, Never>(
+        DartEdgeClientInvocation<Object?, Never, Never, Never, Never>(
+          method: HttpMethod.get,
+          pathTemplate: '/jobs/1',
+          success: const DartEdgeClientResponseSpec<Object?>(
+            status: 204,
+            contentType: 'text/plain; charset=utf-8',
+          ),
+          timeout: Duration.zero,
+        ),
+      );
+
+      expect(response.status, 204);
+    });
+
     test('builds multipart form-data requests', () async {
+      var openedFileStream = false;
+      final progressEvents = <DartEdgeMultipartUploadProgress>[];
       final transport = _FakeTransport(
         onSend: (request) async {
           expect(request.method, HttpMethod.post);
@@ -881,7 +959,18 @@ void main() {
             startsWith('multipart/form-data; boundary='),
           );
           expect(request.body, isNull);
-          final text = utf8.decode(request.bodyBytes!);
+          expect(request.bodyBytes, isNull);
+          expect(request.bodyStream, isNotNull);
+          expect(openedFileStream, isFalse);
+          final text = utf8.decode(
+            await _collectStreamBytes(request.bodyStream!),
+          );
+          expect(openedFileStream, isTrue);
+          expect(request.bodyStreamLength, utf8.encode(text).length);
+          expect(progressEvents, isNotEmpty);
+          expect(progressEvents.last.bytesSent, request.bodyStreamLength);
+          expect(progressEvents.last.totalBytes, request.bodyStreamLength);
+          expect(progressEvents.last.fraction, 1);
           expect(text, contains('name="workspace_id"'));
           expect(text, contains('workspace_1'));
           expect(text, contains('name="persist"'));
@@ -920,14 +1009,19 @@ void main() {
             value: UploadClientBody(
               workspaceId: 'workspace_1',
               persist: true,
-              file: MultipartUploadFile.bytes(
+              file: MultipartUploadFile.stream(
                 filename: 'voice.wav',
                 contentType: 'audio/wav',
-                bytes: utf8.encode('abc'),
+                openRead: () {
+                  openedFileStream = true;
+                  return Stream.value(utf8.encode('abc'));
+                },
+                length: 3,
               ),
             ),
             encoder: (value) => value.toMultipartFormData(),
           ),
+          onMultipartUploadProgress: progressEvents.add,
         ),
       );
     });
@@ -1147,6 +1241,14 @@ final class _FakeTransport implements DartEdgeClientTransport {
   Future<DartEdgeClientResponse> send(DartEdgeClientRequest request) {
     return onSend(request);
   }
+}
+
+Future<List<int>> _collectStreamBytes(Stream<List<int>> stream) async {
+  final bytes = BytesBuilder(copy: false);
+  await for (final chunk in stream) {
+    bytes.add(chunk);
+  }
+  return bytes.takeBytes();
 }
 
 final class _FakeWebSocketTransport

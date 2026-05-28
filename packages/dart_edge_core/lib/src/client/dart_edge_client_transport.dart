@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -12,14 +13,21 @@ final class DartEdgeClientRequest {
     this.headers = const <String, String>{},
     this.body,
     this.bodyBytes,
+    this.bodyStream,
+    this.bodyStreamLength,
     this.abortTrigger,
-  });
+  }) : assert(
+         bodyStream == null || (body == null && bodyBytes == null),
+         'bodyStream cannot be combined with body or bodyBytes.',
+       );
 
   final HttpMethod method;
   final Uri uri;
   final Map<String, String> headers;
   final String? body;
   final List<int>? bodyBytes;
+  final Stream<List<int>>? bodyStream;
+  final int? bodyStreamLength;
   final Future<void>? abortTrigger;
 
   DartEdgeClientRequest copyWith({
@@ -28,6 +36,8 @@ final class DartEdgeClientRequest {
     Map<String, String>? headers,
     String? body,
     List<int>? bodyBytes,
+    Stream<List<int>>? bodyStream,
+    int? bodyStreamLength,
     Future<void>? abortTrigger,
   }) {
     return DartEdgeClientRequest(
@@ -36,6 +46,8 @@ final class DartEdgeClientRequest {
       headers: headers ?? this.headers,
       body: body ?? this.body,
       bodyBytes: bodyBytes ?? this.bodyBytes,
+      bodyStream: bodyStream ?? this.bodyStream,
+      bodyStreamLength: bodyStreamLength ?? this.bodyStreamLength,
       abortTrigger: abortTrigger ?? this.abortTrigger,
     );
   }
