@@ -3,16 +3,19 @@ part of '../database.dart';
 extension BetterAuthStoreSessionPersistence on BetterAuthStore {
   Future<BetterAuthSession> _createSession(
     SqlExecutor executor,
-    String userId,
-  ) async {
+    String userId, {
+    String? impersonatedBy,
+    Duration? expiresIn,
+  }) async {
     final now = DateTime.now().toUtc();
     final session = BetterAuthSession(
       id: _generateId(),
-      expiresAt: now.add(options.session.expiresIn),
+      expiresAt: now.add(expiresIn ?? options.session.expiresIn),
       token: _generateToken(options.secret),
       createdAt: now,
       updatedAt: now,
       userId: userId,
+      impersonatedBy: impersonatedBy,
     );
     await executor.execute(
       _insertStatement(
@@ -26,7 +29,7 @@ extension BetterAuthStoreSessionPersistence on BetterAuthStore {
           ipAddress: null,
           userAgent: null,
           userId: session.userId,
-          impersonatedBy: null,
+          impersonatedBy: session.impersonatedBy,
         ).toColumns(),
       ),
     );

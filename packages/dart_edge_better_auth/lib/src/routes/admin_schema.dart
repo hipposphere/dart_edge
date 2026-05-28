@@ -61,3 +61,9 @@ const _adminRevokeUserSessionBodySchema = JsonSchema.object(
   required: ['sessionToken'],
   properties: <String, JsonSchema>{'sessionToken': JsonSchema.string()},
 );
+
+const _adminImpersonateUserBodySchema = JsonSchema.object(
+  id: 'BetterAuthAdminImpersonateUserBody',
+  required: ['userId'],
+  properties: <String, JsonSchema>{'userId': JsonSchema.string()},
+);

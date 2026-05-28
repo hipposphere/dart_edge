@@ -130,6 +130,16 @@ final class BetterAuthAdminApi {
     );
   }
 
+  Future<BetterAuthSessionResult> impersonateUser({
+    required String userId,
+    String? token,
+  }) {
+    return _store.gateways.admin.impersonateUser(
+      token: _requiredToken(token),
+      userId: userId,
+    );
+  }
+
   String _requiredToken(String? explicitToken) {
     final token = explicitToken ?? bearerToken;
     if (token == null) {

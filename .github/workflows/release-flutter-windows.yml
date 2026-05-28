@@ -1,0 +1,155 @@
+name: Release Flutter Windows
+
+on:
+  workflow_call:
+    inputs:
+      targets:
+        description: JSON array of repo release targets to build and optionally upload.
+        required: false
+        type: string
+        default: '["windows-msix","windows-inno"]'
+      config:
+        description: Path to the Flutter release config used by the repo release tool.
+        required: false
+        type: string
+        default: flutter_release.yaml
+      flutter_version:
+        description: Flutter SDK version.
+        required: false
+        type: string
+        default: "3.44.0"
+      publish:
+        description: Upload the built artifacts through the repo release tool.
+        required: false
+        type: boolean
+        default: true
+      artifact_name:
+        description: Uploaded workflow artifact name.
+        required: false
+        type: string
+        default: flutter-windows
+      artifact_path:
+        description: Artifact paths to upload.
+        required: false
+        type: string
+        default: |
+          releases/*.msix
+          releases/*.msix.metadata.json
+          releases/*.exe
+          releases/*.exe.metadata.json
+      runner:
+        description: Windows runner label.
+        required: false
+        type: string
+        default: windows-2025
+      environment:
+        description: GitHub environment that provides release secrets.
+        required: false
+        type: string
+        default: release
+      dart_edge_ci_version:
+        description: dart_edge_ci release version passed to setup_ci.
+        required: false
+        type: string
+        default: "0.1.7"
+    secrets:
+      WINDOWS_CODE_SIGNING_CERTIFICATE_BASE64:
+        required: false
+      WINDOWS_CODE_SIGNING_CERTIFICATE_PASSWORD:
+        required: false
+      APP_RELEASE_MANAGER_API_KEY:
+        required: false
+      API_KEY:
+        required: false
+      APP_RELEASE_MANAGER_BASE_URL:
+        required: false
+      BASE_URL:
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  release-windows:
+    name: Build and Publish Windows
+    runs-on: ${{ inputs.runner }}
+    environment: ${{ inputs.environment }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: hipposphere/dart_edge/actions/setup_ci@main
+        with:
+          version: ${{ inputs.dart_edge_ci_version }}
+          setup-flutter: "true"
+          flutter-version: ${{ inputs.flutter_version }}
+          pub-get: "true"
+
+      - name: Install Windows release tooling
+        shell: pwsh
+        run: |
+          choco install innosetup -y --no-progress
+          $windowsKits = "${env:ProgramFiles(x86)}\Windows Kits\10\bin"
+          $signtool = Get-ChildItem $windowsKits -Recurse -Filter signtool.exe |
+            Where-Object { $_.FullName -match '\\x64\\signtool\.exe$' } |
+            Sort-Object FullName -Descending |
+            Select-Object -First 1
+          if ($null -eq $signtool) {
+            throw "Could not find signtool.exe under $windowsKits"
+          }
+          $signtoolDir = Split-Path -Parent $signtool.FullName
+          Add-Content $env:GITHUB_PATH $signtoolDir
+
+      - name: Import Windows signing certificate
+        shell: pwsh
+        env:
+          WINDOWS_CODE_SIGNING_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CODE_SIGNING_CERTIFICATE_BASE64 }}
+          WINDOWS_CODE_SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CODE_SIGNING_CERTIFICATE_PASSWORD }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_CODE_SIGNING_CERTIFICATE_BASE64)) {
+            Write-Host "WINDOWS_CODE_SIGNING_CERTIFICATE_BASE64 is not set; skipping certificate import."
+            exit 0
+          }
+
+          $certPath = Join-Path $env:RUNNER_TEMP "windows-codesigning.pfx"
+          [IO.File]::WriteAllBytes(
+            $certPath,
+            [Convert]::FromBase64String($env:WINDOWS_CODE_SIGNING_CERTIFICATE_BASE64)
+          )
+          $password = ConvertTo-SecureString `
+            -String $env:WINDOWS_CODE_SIGNING_CERTIFICATE_PASSWORD `
+            -AsPlainText `
+            -Force
+          Import-PfxCertificate `
+            -FilePath $certPath `
+            -CertStoreLocation Cert:\CurrentUser\My `
+            -Password $password | Out-Null
+
+      - name: Build Windows release
+        shell: pwsh
+        env:
+          FLUTTER_RELEASE_CONFIG: ${{ inputs.config }}
+        run: |
+          $targets = '${{ inputs.targets }}' | ConvertFrom-Json
+          foreach ($target in $targets) {
+            dart tool/release/release.dart build $target
+          }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.artifact_name }}
+          path: ${{ inputs.artifact_path }}
+          if-no-files-found: error
+
+      - name: Upload Windows release
+        if: ${{ inputs.publish }}
+        shell: pwsh
+        env:
+          APP_RELEASE_MANAGER_API_KEY: ${{ secrets.APP_RELEASE_MANAGER_API_KEY }}
+          API_KEY: ${{ secrets.API_KEY }}
+          APP_RELEASE_MANAGER_BASE_URL: ${{ secrets.APP_RELEASE_MANAGER_BASE_URL }}
+          BASE_URL: ${{ secrets.BASE_URL }}
+        run: |
+          $targets = '${{ inputs.targets }}' | ConvertFrom-Json
+          foreach ($target in $targets) {
+            dart tool/release/release.dart upload $target
+          }

@@ -28,6 +28,21 @@ dart run dart_edge_ci flutter publish ios-app-store --target ios_app_store
 dart run dart_edge_ci flutter artifact-paths android_play_store
 ```
 
+Flutter release config files support root-level variables that can be referenced
+in target `dart_defines` with `${VARIABLE_NAME}`:
+
+```yaml
+variables:
+  SENTRY_DSN: https://example.ingest.sentry.io/project
+
+targets:
+  macos_dmg_release:
+    platform: macos
+    dart_defines:
+      SENTRY_DSN: ${SENTRY_DSN}
+      PACKAGE_TYPE: dmg
+```
+
 `build` prints the generated Dockerfile path and the exact
 `docker buildx build` command. If Docker fails, both are printed again with the
 failure.
@@ -225,10 +240,12 @@ dart run dart_edge_ci package-version --json packages/server
 ## Flutter Release Builds
 
 `dart_edge_ci flutter` provides reusable Flutter release build orchestration for
-Hipposphere product workspaces. Projects define named build targets in
-`flutter_release.yaml`; each target declares its platform so a product can have
-multiple release targets for the same platform with different flavors, define
-files, or publishing settings.
+Hipposphere product workspaces. Projects define named build targets in a release
+config file. The default is `flutter_release.yaml`, and commands accept
+`--config` when a repo has multiple configs such as `flutter_release.app.yaml`
+and `flutter_release.management_app.yaml`. Each target declares its platform so
+a product can have multiple release targets for the same platform with
+different flavors, define files, or publishing settings.
 
 ```yaml
 package: app

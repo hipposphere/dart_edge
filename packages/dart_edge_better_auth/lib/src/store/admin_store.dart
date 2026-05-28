@@ -104,6 +104,43 @@ extension BetterAuthStoreAdmin on BetterAuthStore {
     return const BetterAuthSuccessResult(success: true);
   }
 
+  Future<BetterAuthSessionResult> adminImpersonateUser({
+    required String token,
+    required String userId,
+  }) async {
+    final adminSession = await _requireAdminSession(token);
+    return pool.withTransaction((transaction) async {
+      final user = await _findUserById(transaction, userId);
+      if (user == null) {
+        throw const BetterAuthApiException(
+          status: 404,
+          code: 'USER_NOT_FOUND',
+          message: 'User not found',
+        );
+      }
+      final targetRoles = user.role
+          ?.split(',')
+          .map((role) => role.trim())
+          .where((role) => role.isNotEmpty);
+      final targetIsAdmin =
+          targetRoles?.contains(options.admin.defaultAdminRole) ?? false;
+      if (targetIsAdmin && !options.admin.allowImpersonatingAdmins) {
+        throw const BetterAuthApiException(
+          status: 403,
+          code: 'YOU_CANNOT_IMPERSONATE_ADMINS',
+          message: 'You cannot impersonate admins',
+        );
+      }
+      final session = await _createSession(
+        transaction,
+        user.id,
+        impersonatedBy: adminSession.user.id,
+        expiresIn: options.admin.impersonationSessionDuration,
+      );
+      return BetterAuthSessionResult(session: session, user: user);
+    });
+  }
+
   Future<BetterAuthSessionResult> _requireAdminSession(String token) async {
     final session = await getSession(token);
     if (session == null) {

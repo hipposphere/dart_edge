@@ -109,4 +109,11 @@ final class BetterAuthAdminGateway {
   }) {
     return _store.adminRevokeUserSessions(token: token, userId: userId);
   }
+
+  Future<BetterAuthSessionResult> impersonateUser({
+    required String token,
+    required String userId,
+  }) {
+    return _store.adminImpersonateUser(token: token, userId: userId);
+  }
 }

@@ -25,6 +25,7 @@ const betterAuthSchemaRegistry = JsonSchemaRegistry(
     _adminBanUserBodySchema,
     _adminSetUserPasswordBodySchema,
     _adminRevokeUserSessionBodySchema,
+    _adminImpersonateUserBodySchema,
     _userSchema,
     _sessionSchema,
     _authResultSchema,
@@ -71,5 +72,9 @@ void mountBetterAuthRoutes<TServices>(
   scoped.routePost(
     '/admin/revoke-user-sessions',
     _AdminRevokeUserSessionsRoute<TServices>(auth),
+  );
+  scoped.routePost(
+    '/admin/impersonate-user',
+    _AdminImpersonateUserRoute<TServices>(auth),
   );
 }

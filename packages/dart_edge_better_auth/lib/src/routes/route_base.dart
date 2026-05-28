@@ -46,16 +46,30 @@ void _setSessionCookie<TServices>(RequestContext<TServices> ctx, String token) {
   );
 }
 
+void _setAdminSessionCookie<TServices>(
+  RequestContext<TServices> ctx,
+  String token,
+) {
+  ctx.res.header(
+    'set-cookie',
+    'better-auth.admin_session=$token; Path=/; HttpOnly; SameSite=Lax',
+  );
+}
+
 String? _sessionCookie<TServices>(RequestContext<TServices> ctx) {
+  return _cookie(ctx, 'better-auth.session-token');
+}
+
+String? _cookie<TServices>(RequestContext<TServices> ctx, String name) {
   final cookie = ctx.req.header('cookie');
   if (cookie == null) {
     return null;
   }
   for (final part in cookie.split(';')) {
     final trimmed = part.trim();
-    const name = 'better-auth.session-token=';
-    if (trimmed.startsWith(name)) {
-      return trimmed.substring(name.length);
+    final prefix = '$name=';
+    if (trimmed.startsWith(prefix)) {
+      return trimmed.substring(prefix.length);
     }
   }
   return null;

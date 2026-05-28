@@ -51,3 +51,32 @@ final class _AdminRevokeUserSessionsRoute<TServices>
     }
   }
 }
+
+final class _AdminImpersonateUserRoute<TServices>
+    extends _BetterAuthRoute<TServices> {
+  _AdminImpersonateUserRoute(super.auth);
+
+  @override
+  RouteOptions get options => _adminImpersonateUserOptions;
+
+  @override
+  Future<Object?> handle(RequestContext<TServices> ctx) async {
+    try {
+      final adminToken = requireToken(ctx);
+      final body = ctx.req.body<Map<String, Object?>>();
+      final result = await auth
+          .storeFor(ctx.services)
+          .gateways
+          .admin
+          .impersonateUser(
+            token: adminToken,
+            userId: body['userId']! as String,
+          );
+      _setAdminSessionCookie(ctx, adminToken);
+      _setSessionCookie(ctx, result.session.token);
+      return result.toJson();
+    } catch (error) {
+      return errorResponse(ctx, error);
+    }
+  }
+}

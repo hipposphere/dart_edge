@@ -10,11 +10,13 @@ void main() {
     final config = FlutterReleaseConfig.parse('''
 package: app
 dart_define_from_file: ../.local.env.json
+variables:
+  PUBLIC_API_URL: https://api.example.com
 targets:
   macos_release:
     platform: macos
     dart_defines:
-      API_URL: https://api.example.com
+      API_URL: \${PUBLIC_API_URL}
     dart_define_from_file:
       - ../macos.env.json
     build_args:

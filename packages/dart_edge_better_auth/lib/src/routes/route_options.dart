@@ -139,3 +139,13 @@ const _adminRevokeUserSessionsOptions = RouteOptions(
   ),
   success: ResponseSpec.json(schema: JsonSchema.ref('BetterAuthSuccessResult')),
 );
+
+const _adminImpersonateUserOptions = RouteOptions(
+  operationId: 'impersonateUser',
+  summary: 'Impersonate a user.',
+  body: RequestBody.json(
+    schema: JsonSchema.ref('BetterAuthAdminImpersonateUserBody'),
+    decoder: _decodeJsonObject,
+  ),
+  success: ResponseSpec.json(schema: JsonSchema.ref('BetterAuthSessionResult')),
+);

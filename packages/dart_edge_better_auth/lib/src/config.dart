@@ -46,11 +46,15 @@ final class BetterAuthAdminOptions {
     this.enabled = true,
     this.defaultRole = 'user',
     this.defaultAdminRole = 'admin',
+    this.allowImpersonatingAdmins = false,
+    this.impersonationSessionDuration = const Duration(hours: 1),
   });
 
   final bool enabled;
   final String defaultRole;
   final String defaultAdminRole;
+  final bool allowImpersonatingAdmins;
+  final Duration impersonationSessionDuration;
 }
 
 final class BetterAuthDatabaseOptions {

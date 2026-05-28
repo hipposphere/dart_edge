@@ -8,6 +8,8 @@ package: app
 flutter: fvm flutter
 build_mode: release
 pub_get: false
+variables:
+  PUBLIC_API_URL: https://api.example.com
 dart_define_from_file: .local.env.json
 targets:
   macos_release:
@@ -17,7 +19,7 @@ targets:
       required_env:
         - MACOS_CERTIFICATE
     dart_defines:
-      API_URL: https://api.example.com
+      API_URL: \${PUBLIC_API_URL}
     dart_define_from_file:
       - macos.env.json
     build_args:
@@ -52,6 +54,7 @@ targets:
     expect(config.packagePath, 'app');
     expect(config.flutterExecutable, 'fvm flutter');
     expect(config.pubGet, isFalse);
+    expect(config.variables, {'PUBLIC_API_URL': 'https://api.example.com'});
     expect(config.dartDefineFromFiles, ['.local.env.json']);
 
     final macos = config.target('macos_release');
@@ -80,6 +83,28 @@ targets:
     expect(publish.apiKey.keyIdEnv, 'ASC_KEY_ID');
     expect(publish.apiKey.issuerIdEnv, 'ASC_ISSUER_ID');
     expect(publish.apiKey.privateKeyEnv, 'ASC_PRIVATE_KEY');
+  });
+
+  test('reports undefined Flutter release variables', () {
+    expect(
+      () => FlutterReleaseConfig.parse('''
+package: app
+targets:
+  macos_release:
+    platform: macos
+    dart_defines:
+      API_URL: \${PUBLIC_API_URL}
+'''),
+      throwsA(
+        isA<FlutterReleaseException>().having(
+          (error) => error.message,
+          'message',
+          contains(
+            'targets.macos_release.dart_defines.API_URL references undefined variable "PUBLIC_API_URL"',
+          ),
+        ),
+      ),
+    );
   });
 
   test('reports invalid platform names', () {

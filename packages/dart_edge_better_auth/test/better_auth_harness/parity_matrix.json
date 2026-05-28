@@ -33,7 +33,7 @@
       "id": "admin.core",
       "source": "packages/better-auth/src/plugins/admin/admin.test.ts",
       "status": "partial",
-      "coverage": "Admin create, update, remove, ban, unban, role, password, list, and session revocation APIs are guarded by admin bearer/session role and share trusted implementation."
+      "coverage": "Admin create, update, remove, ban, unban, role, password, list, impersonation, and session revocation APIs are guarded by admin bearer/session role and share trusted implementation."
     }
   ],
   "pending": [
@@ -50,7 +50,7 @@
     {
       "id": "admin",
       "source": "packages/better-auth/src/plugins/admin/admin.test.ts",
-      "reason": "Core admin APIs exist; remaining impersonation behavior, full access-control statements, exact response shape parity, and admin client shape are pending."
+      "reason": "Core admin APIs exist; full access-control statements, exact response shape parity, stop-impersonating cookie restoration, and admin client shape are pending."
     },
     {
       "id": "oauth-social",

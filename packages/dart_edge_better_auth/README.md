@@ -68,13 +68,15 @@ Implemented:
   revocation
 - admin create, update, remove, ban, unban, role, password, list, and session
   revocation APIs guarded by an admin session
+- admin impersonation sessions with Better Auth-compatible `impersonatedBy`
+  persistence and admin-target protection
 - operation gateways for credentials, sessions, users, and admin workflows
 - TypeScript Better Auth database interop tests for TS-created and Dart-created
   accounts
 
 Not implemented yet:
 
-- admin impersonation and full access-control statement parity
+- full admin access-control statement parity
 - OAuth social providers
 - generic OAuth
 - OAuth/OIDC provider

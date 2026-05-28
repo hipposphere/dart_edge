@@ -16,6 +16,7 @@ final class FlutterReleaseConfig {
   const FlutterReleaseConfig({
     required this.packagePath,
     required this.targets,
+    this.variables = const {},
     this.flutterExecutable = 'flutter',
     this.buildMode = FlutterBuildMode.release,
     this.pubGet = true,
@@ -26,6 +27,7 @@ final class FlutterReleaseConfig {
   final String flutterExecutable;
   final FlutterBuildMode buildMode;
   final bool pubGet;
+  final Map<String, String> variables;
   final List<String> dartDefineFromFiles;
   final Map<String, FlutterTargetConfig> targets;
 
@@ -40,12 +42,17 @@ final class FlutterReleaseConfig {
   static FlutterReleaseConfig parse(String source) {
     final document = loadYaml(source);
     final root = _map(document, 'flutter_release.yaml');
+    final variables = _stringMap(root['variables'], 'variables');
     final targetsYaml = _map(root['targets'], 'targets');
     final targets = <String, FlutterTargetConfig>{};
     for (final entry in targetsYaml.entries) {
       final name = _key(entry.key, 'targets');
       final value = _map(entry.value, 'targets.$name');
-      targets[name] = FlutterTargetConfig.parse(name, value);
+      targets[name] = FlutterTargetConfig.parse(
+        name,
+        value,
+        variables: variables,
+      );
     }
     if (targets.isEmpty) {
       throw const FlutterReleaseException(
@@ -60,6 +67,7 @@ final class FlutterReleaseConfig {
         'build_mode',
       ),
       pubGet: _bool(root['pub_get'], 'pub_get') ?? true,
+      variables: variables,
       dartDefineFromFiles: _stringOrStringList(
         root['dart_define_from_file'],
         'dart_define_from_file',
@@ -83,6 +91,7 @@ final class FlutterReleaseConfig {
       'flutter': flutterExecutable,
       'build_mode': buildMode.name,
       'pub_get': pubGet,
+      if (variables.isNotEmpty) 'variables': variables,
       if (dartDefineFromFiles.isNotEmpty) 'dart_define_from_file': dartDefineFromFiles,
       'targets': {for (final entry in targets.entries) entry.key: entry.value.toJson()},
     })}\n';
@@ -120,7 +129,11 @@ final class FlutterTargetConfig {
   final List<String> buildArgs;
   final FlutterPublishConfig publish;
 
-  static FlutterTargetConfig parse(String name, YamlMap map) {
+  static FlutterTargetConfig parse(
+    String name,
+    YamlMap map, {
+    Map<String, String> variables = const {},
+  }) {
     final platform = FlutterReleasePlatform.byName(
       _requiredString(map['platform'], 'targets.$name.platform'),
       'targets.$name.platform',
@@ -137,10 +150,17 @@ final class FlutterTargetConfig {
         map['build_number'],
         'targets.$name.build_number',
       ),
-      dartDefines: _stringMap(
-        map['dart_defines'],
-        'targets.$name.dart_defines',
-      ),
+      dartDefines: _stringMap(map['dart_defines'], 'targets.$name.dart_defines')
+          .map(
+            (key, value) => MapEntry(
+              key,
+              _resolveVariables(
+                value,
+                variables,
+                'targets.$name.dart_defines.$key',
+              ),
+            ),
+          ),
       dartDefineFromFiles: _stringOrStringList(
         map['dart_define_from_file'],
         'targets.$name.dart_define_from_file',
@@ -441,4 +461,23 @@ Map<String, String> _stringMap(Object? value, String path) {
     for (final entry in map.entries)
       _key(entry.key, path): _requiredString(entry.value, '$path.${entry.key}'),
   };
+}
+
+String _resolveVariables(
+  String value,
+  Map<String, String> variables,
+  String path,
+) {
+  return value.replaceAllMapped(RegExp(r'\$\{([A-Za-z_][A-Za-z0-9_]*)\}'), (
+    match,
+  ) {
+    final name = match.group(1)!;
+    final variable = variables[name];
+    if (variable == null) {
+      throw FlutterReleaseException(
+        '$path references undefined variable "$name".',
+      );
+    }
+    return variable;
+  });
 }

@@ -143,6 +143,38 @@ void main() {
     expect(users.users.map((user) => user.id), contains(admin.user.id));
     expect(users.users.map((user) => user.email), contains(created.user.email));
 
+    final impersonated = await auth.api.admin.impersonateUser(
+      token: adminSignIn.token,
+      userId: created.user.id,
+    );
+    expect(impersonated.user.id, created.user.id);
+    expect(impersonated.session.userId, created.user.id);
+    expect(impersonated.session.impersonatedBy, admin.user.id);
+    expect(
+      impersonated.session.expiresAt.difference(DateTime.now().toUtc()),
+      lessThanOrEqualTo(const Duration(hours: 1)),
+    );
+    final impersonatedSession = await auth.api.getSession(
+      token: impersonated.session.token,
+    );
+    expect(impersonatedSession.session.impersonatedBy, admin.user.id);
+
+    await expectLater(
+      auth.api.admin.impersonateUser(
+        token: adminSignIn.token,
+        userId: admin.user.id,
+      ),
+      throwsA(
+        isA<BetterAuthApiException>()
+            .having((error) => error.status, 'status', 403)
+            .having(
+              (error) => error.code,
+              'code',
+              'YOU_CANNOT_IMPERSONATE_ADMINS',
+            ),
+      ),
+    );
+
     final updated = await auth.api.admin.updateUser(
       token: adminSignIn.token,
       userId: created.user.id,

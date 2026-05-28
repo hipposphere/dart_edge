@@ -1,0 +1,169 @@
+name: Release Flutter macOS
+
+on:
+  workflow_call:
+    inputs:
+      target:
+        description: Repo release target to build and optionally upload.
+        required: false
+        type: string
+        default: macos-dmg
+      config:
+        description: Path to the Flutter release config used by the repo release tool.
+        required: false
+        type: string
+        default: flutter_release.yaml
+      flutter_version:
+        description: Flutter SDK version.
+        required: false
+        type: string
+        default: "3.44.0"
+      publish:
+        description: Upload the built artifact through the repo release tool.
+        required: false
+        type: boolean
+        default: true
+      artifact_name:
+        description: Uploaded workflow artifact name.
+        required: false
+        type: string
+        default: flutter-macos
+      artifact_path:
+        description: Artifact paths to upload.
+        required: false
+        type: string
+        default: |
+          releases/*.dmg
+          releases/*.dmg.metadata.json
+      runner:
+        description: macOS runner label.
+        required: false
+        type: string
+        default: macos-26
+      environment:
+        description: GitHub environment that provides release secrets.
+        required: false
+        type: string
+        default: release
+      dart_edge_ci_version:
+        description: dart_edge_ci release version passed to setup_ci.
+        required: false
+        type: string
+        default: "0.1.7"
+    secrets:
+      MACOS_CERTIFICATE_NAME:
+        required: true
+      MACOS_CERTIFICATE:
+        required: true
+      MACOS_CERTIFICATE_PWD:
+        required: true
+      KEYCHAIN_PASSWORD:
+        required: false
+      APPLE_ID:
+        required: true
+      APPLE_TEAM_ID:
+        required: true
+      APPLE_APP_SPECIFIC_PASSWORD:
+        required: true
+      APP_RELEASE_MANAGER_API_KEY:
+        required: false
+      API_KEY:
+        required: false
+      APP_RELEASE_MANAGER_BASE_URL:
+        required: false
+      BASE_URL:
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  release-macos:
+    name: Build and Publish macOS
+    runs-on: ${{ inputs.runner }}
+    environment: ${{ inputs.environment }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: hipposphere/dart_edge/actions/setup_ci@main
+        with:
+          version: ${{ inputs.dart_edge_ci_version }}
+          setup-flutter: "true"
+          flutter-version: ${{ inputs.flutter_version }}
+          pub-get: "true"
+
+      - name: Install macOS release tooling
+        run: brew install create-dmg
+
+      - name: Import macOS signing certificate
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PWD: ${{ secrets.MACOS_CERTIFICATE_PWD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${MACOS_CERTIFICATE:-}" ]; then
+            echo "MACOS_CERTIFICATE is not set; skipping certificate import."
+            exit 0
+          fi
+
+          keychain_password="${KEYCHAIN_PASSWORD:-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}}"
+          certificate_path="$RUNNER_TEMP/macos_codesigning.p12"
+
+          printf '%s' "$MACOS_CERTIFICATE" | base64 --decode > "$certificate_path"
+          security create-keychain -p "$keychain_password" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "$keychain_password" build.keychain
+          security set-keychain-settings -lut 21600 build.keychain
+          security import "$certificate_path" \
+            -k build.keychain \
+            -P "${MACOS_CERTIFICATE_PWD:-}" \
+            -T /usr/bin/codesign \
+            -T /usr/bin/security
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s \
+            -k "$keychain_password" \
+            build.keychain
+
+      - name: Store notarytool credentials
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          if [ -n "${APPLE_ID:-}" ] && \
+             [ -n "${APPLE_APP_SPECIFIC_PASSWORD:-}" ] && \
+             [ -n "${APPLE_TEAM_ID:-}" ]; then
+            xcrun notarytool store-credentials "HippoNotaryCredentials" \
+              --apple-id "$APPLE_ID" \
+              --team-id "$APPLE_TEAM_ID" \
+              --password "$APPLE_APP_SPECIFIC_PASSWORD"
+          fi
+
+      - name: Build macOS release
+        env:
+          FLUTTER_RELEASE_CONFIG: ${{ inputs.config }}
+          MACOS_CERTIFICATE_NAME: ${{ secrets.MACOS_CERTIFICATE_NAME }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+        run: dart tool/release/release.dart build "${{ inputs.target }}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.artifact_name }}
+          path: ${{ inputs.artifact_path }}
+          if-no-files-found: error
+
+      - name: Upload macOS release
+        if: ${{ inputs.publish }}
+        env:
+          APP_RELEASE_MANAGER_API_KEY: ${{ secrets.APP_RELEASE_MANAGER_API_KEY }}
+          API_KEY: ${{ secrets.API_KEY }}
+          APP_RELEASE_MANAGER_BASE_URL: ${{ secrets.APP_RELEASE_MANAGER_BASE_URL }}
+          BASE_URL: ${{ secrets.BASE_URL }}
+        run: dart tool/release/release.dart upload "${{ inputs.target }}"
