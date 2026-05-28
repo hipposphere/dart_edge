@@ -54,6 +54,34 @@ BetterAuthUser _userFromPrefixedRow(SqlRow row) {
   );
 }
 
+BetterAuthSession _sessionFromRow(SqlRow row) {
+  return BetterAuthSession(
+    id: row.read<String>('id'),
+    expiresAt: _readDate(row['expiresAt']),
+    token: row.read<String>('token'),
+    createdAt: _readDate(row['createdAt']),
+    updatedAt: _readDate(row['updatedAt']),
+    ipAddress: row.readNullable<String>('ipAddress'),
+    userAgent: row.readNullable<String>('userAgent'),
+    userId: row.read<String>('userId'),
+    impersonatedBy: row.readNullable<String>('impersonatedBy'),
+  );
+}
+
+BetterAuthSession _sessionFromGeneratedRow(BetterAuthSessionRow row) {
+  return BetterAuthSession(
+    id: row.id,
+    expiresAt: row.expiresAt,
+    token: row.token,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    ipAddress: row.ipAddress,
+    userAgent: row.userAgent,
+    userId: row.userId,
+    impersonatedBy: row.impersonatedBy,
+  );
+}
+
 String _normalizeEmail(String email) => email.trim().toLowerCase();
 
 DateTime _readDate(Object? value) => switch (value) {

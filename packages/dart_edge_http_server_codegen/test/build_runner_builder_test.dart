@@ -598,6 +598,183 @@ typedef PublishStatus = _$PublishStatus;
       );
     });
 
+    test('uses custom Dart type decoders for anyOf schema fields', () async {
+      final builder = dartEdgeHttpServerBuilder(BuilderOptions.empty);
+
+      await testBuilder(
+        builder,
+        const <String, String>{
+          'test_app|lib/models.dart': r'''
+// ignore_for_file: undefined_class
+
+part 'models.g.dart';
+
+sealed class JsonSchema {
+  const JsonSchema._({this.id, this.nullable = false});
+
+  const factory JsonSchema.object({
+    String? id,
+    bool nullable,
+    Map<String, JsonSchema> properties,
+    List<String> required,
+  }) = JsonObjectSchema;
+
+  const factory JsonSchema.string({
+    String? id,
+    bool nullable,
+  }) = JsonStringSchema;
+
+  const factory JsonSchema.array({
+    String? id,
+    bool nullable,
+    JsonSchema? items,
+  }) = JsonArraySchema;
+
+  const factory JsonSchema.anyOf(
+    List<JsonSchema> schemas, {
+    String? id,
+    bool nullable,
+    DartSchemaType? dartType,
+  }) = JsonAnyOfSchema;
+
+  final String? id;
+  final bool nullable;
+}
+
+final class JsonObjectSchema extends JsonSchema {
+  const JsonObjectSchema({
+    super.id,
+    super.nullable,
+    this.properties = const <String, JsonSchema>{},
+    this.required = const <String>[],
+  }) : super._();
+
+  final Map<String, JsonSchema> properties;
+  final List<String> required;
+}
+
+final class JsonStringSchema extends JsonSchema {
+  const JsonStringSchema({super.id, super.nullable}) : super._();
+}
+
+final class JsonArraySchema extends JsonSchema {
+  const JsonArraySchema({super.id, super.nullable, this.items}) : super._();
+
+  final JsonSchema? items;
+}
+
+final class JsonAnyOfSchema extends JsonSchema {
+  const JsonAnyOfSchema(
+    this.schemas, {
+    super.id,
+    super.nullable,
+    this.dartType,
+  }) : super._();
+
+  final List<JsonSchema> schemas;
+  final DartSchemaType? dartType;
+}
+
+sealed class DartSchemaType {
+  const DartSchemaType();
+
+  const factory DartSchemaType.named(String name) = DartNamedSchemaType;
+}
+
+final class DartNamedSchemaType extends DartSchemaType {
+  const DartNamedSchemaType(this.name);
+
+  final String name;
+}
+
+final class FromSchema {
+  const FromSchema(
+    this.schema, {
+    this.registry,
+    this.refs = const [],
+    this.responseStatus = 200,
+  });
+
+  final JsonSchema schema;
+  final JsonSchemaRegistry? registry;
+  final List<SchemaRefModel> refs;
+  final int responseStatus;
+}
+
+final class JsonSchemaRegistry {
+  const JsonSchemaRegistry({required this.schemas});
+
+  final List<JsonSchema> schemas;
+}
+
+final class SchemaRefModel {
+  const SchemaRefModel(this.type, {this.schemaId});
+
+  final Type type;
+  final String? schemaId;
+}
+
+abstract interface class JsonEncodable {
+  Object? toJson();
+}
+
+final class RequestBody {
+  const RequestBody.json({JsonSchema? schema, Object? decoder});
+}
+
+final class ResponseSpec {
+  const ResponseSpec.json({int status = 200, JsonSchema? schema});
+}
+
+Map<String, Object?> readJsonObject(Object? value) => value as Map<String, Object?>;
+
+final class RoleInput {
+  const RoleInput(this.roles);
+
+  static RoleInput decode(Object? value) => RoleInput(const []);
+
+  final List<String> roles;
+
+  Object toJson() => roles;
+}
+
+const roleInputSchema = JsonSchema.anyOf(
+  <JsonSchema>[
+    JsonSchema.string(),
+    JsonSchema.array(items: JsonSchema.string()),
+  ],
+  dartType: DartSchemaType.named('RoleInput'),
+);
+
+const setRoleBodySchema = JsonSchema.object(
+  id: 'SetRoleBody',
+  properties: <String, JsonSchema>{
+    'userId': JsonSchema.string(),
+    'role': roleInputSchema,
+  },
+  required: <String>['userId', 'role'],
+);
+
+@FromSchema(setRoleBodySchema)
+typedef SetRoleBody = _$SetRoleBody;
+''',
+        },
+        generateFor: const {'test_app|lib/models.dart'},
+        outputs: {
+          'test_app|lib/models.dart_edge_http_server.g.part': decodedMatches(
+            allOf([
+              contains('final RoleInput role;'),
+              contains('role: RoleInput.decode(json["role"])'),
+              contains('"role": role.toJson()'),
+              contains('static const JsonSchema schema = JsonSchema.object('),
+              contains('JsonSchema.anyOf'),
+              contains("dartType: DartSchemaType.named('RoleInput')"),
+            ]),
+          ),
+        },
+      );
+    });
+
     test('emits multipart body models from FromMultipartSchema', () async {
       final builder = dartEdgeHttpServerBuilder(BuilderOptions.empty);
 

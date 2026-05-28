@@ -2,6 +2,7 @@ import 'package:dart_edge_core/dart_edge_core.dart';
 
 import 'dart_edge_better_auth.dart';
 import 'error.dart';
+import 'models.dart';
 
 part 'routes/admin_moderation_routes.dart';
 part 'routes/admin_schema.dart';
@@ -20,17 +21,21 @@ const betterAuthSchemaRegistry = JsonSchemaRegistry(
     _signInEmailBodySchema,
     _adminCreateUserBodySchema,
     _adminSetRoleBodySchema,
+    _roleInputSchema,
     _adminUpdateUserBodySchema,
     _adminUserIdBodySchema,
     _adminBanUserBodySchema,
     _adminSetUserPasswordBodySchema,
     _adminRevokeUserSessionBodySchema,
     _adminImpersonateUserBodySchema,
+    _adminHasPermissionBodySchema,
     _userSchema,
     _sessionSchema,
     _authResultSchema,
     _adminUserResultSchema,
     _listUsersResultSchema,
+    _listUserSessionsResultSchema,
+    _permissionResultSchema,
     _sessionResultSchema,
     _successResultSchema,
   ],
@@ -50,7 +55,16 @@ void mountBetterAuthRoutes<TServices>(
     _AdminCreateUserRoute<TServices>(auth),
   );
   scoped.routePost('/admin/set-role', _AdminSetRoleRoute<TServices>(auth));
+  scoped.routeGet('/admin/get-user', _AdminGetUserRoute<TServices>(auth));
   scoped.routeGet('/admin/list-users', _AdminListUsersRoute<TServices>(auth));
+  scoped.routePost(
+    '/admin/list-user-sessions',
+    _AdminListUserSessionsRoute<TServices>(auth),
+  );
+  scoped.routePost(
+    '/admin/has-permission',
+    _AdminHasPermissionRoute<TServices>(auth),
+  );
   scoped.routePost(
     '/admin/update-user',
     _AdminUpdateUserRoute<TServices>(auth),
@@ -76,5 +90,9 @@ void mountBetterAuthRoutes<TServices>(
   scoped.routePost(
     '/admin/impersonate-user',
     _AdminImpersonateUserRoute<TServices>(auth),
+  );
+  scoped.routePost(
+    '/admin/stop-impersonating',
+    _AdminStopImpersonatingRoute<TServices>(auth),
   );
 }

@@ -1,6 +1,36 @@
 part of '../database.dart';
 
 extension BetterAuthStoreSessions on BetterAuthStore {
+  Future<BetterAuthListUserSessionsResult> listUserSessions(
+    String userId,
+  ) async {
+    if (pool.dialect == SqlDialect.postgres) {
+      final sessions = await pool.typed
+          .from(_schema.session)
+          .selectAll()
+          .where(_schema.session.userId.equals(userId))
+          .orderBy(_schema.session.createdAt)
+          .execute();
+      return BetterAuthListUserSessionsResult(
+        sessions: sessions.map(_sessionFromGeneratedRow).toList(),
+      );
+    }
+    final result = await pool.execute(
+      _statement(
+        '''
+        SELECT *
+        FROM ${_table('session')}
+        WHERE "userId" = ${_placeholder('userId')}
+        ORDER BY "createdAt" ASC
+        ''',
+        {'userId': userId},
+      ),
+    );
+    return BetterAuthListUserSessionsResult(
+      sessions: result.rows.map(_sessionFromRow).toList(),
+    );
+  }
+
   Future<BetterAuthSessionResult?> getSession(String token) async {
     return pool.withTransaction((transaction) async {
       final result = await transaction.execute(

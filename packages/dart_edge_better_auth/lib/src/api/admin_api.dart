@@ -38,6 +38,16 @@ final class BetterAuthAdminApi {
     );
   }
 
+  Future<BetterAuthAdminUserResult> getUser({
+    required String userId,
+    String? token,
+  }) {
+    return _store.gateways.admin.getUser(
+      token: _requiredToken(token),
+      userId: userId,
+    );
+  }
+
   Future<BetterAuthListUsersResult> listUsers({
     int limit = 100,
     String? token,
@@ -45,6 +55,30 @@ final class BetterAuthAdminApi {
     return _store.gateways.admin.listUsers(
       token: _requiredToken(token),
       limit: limit,
+    );
+  }
+
+  Future<BetterAuthListUserSessionsResult> listUserSessions({
+    required String userId,
+    String? token,
+  }) {
+    return _store.gateways.admin.listUserSessions(
+      token: _requiredToken(token),
+      userId: userId,
+    );
+  }
+
+  Future<BetterAuthPermissionResult> hasPermission({
+    String? userId,
+    String? role,
+    required Map<String, List<String>> permissions,
+    String? token,
+  }) {
+    return _store.gateways.admin.hasPermission(
+      token: token ?? bearerToken,
+      userId: userId,
+      role: role,
+      permissions: permissions,
     );
   }
 
@@ -137,6 +171,16 @@ final class BetterAuthAdminApi {
     return _store.gateways.admin.impersonateUser(
       token: _requiredToken(token),
       userId: userId,
+    );
+  }
+
+  Future<BetterAuthSessionResult> stopImpersonating({
+    required String adminSessionToken,
+    String? token,
+  }) {
+    return _store.gateways.admin.stopImpersonating(
+      token: _requiredToken(token),
+      adminSessionToken: adminSessionToken,
     );
   }
 

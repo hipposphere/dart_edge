@@ -8,7 +8,7 @@ import 'config.dart';
 import 'error.dart';
 import 'gateway/better_auth_gateways.dart';
 import 'models.dart';
-import 'password.dart';
+import 'utils/password.dart';
 
 part 'store/admin_store.dart';
 part 'store/credentials_store.dart';

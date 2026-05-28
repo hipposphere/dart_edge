@@ -134,6 +134,33 @@ JsonSchema jsonSchemaFromDartObject(
         _ => null,
       },
     ),
+    'JsonAnyOfSchema' => JsonSchema.anyOf(
+      _schemaListField(object, 'schemas', element: element),
+      id: _stringField(object, 'id'),
+      title: _stringField(object, 'title'),
+      description: _stringField(object, 'description'),
+      enumValues: _objectListField(object, 'enumValues', element: element),
+      nullable: _boolField(object, 'nullable') ?? false,
+      dartType: _dartSchemaTypeField(object, 'dartType', element: element),
+    ),
+    'JsonOneOfSchema' => JsonSchema.oneOf(
+      _schemaListField(object, 'schemas', element: element),
+      id: _stringField(object, 'id'),
+      title: _stringField(object, 'title'),
+      description: _stringField(object, 'description'),
+      enumValues: _objectListField(object, 'enumValues', element: element),
+      nullable: _boolField(object, 'nullable') ?? false,
+      dartType: _dartSchemaTypeField(object, 'dartType', element: element),
+    ),
+    'JsonAllOfSchema' => JsonSchema.allOf(
+      _schemaListField(object, 'schemas', element: element),
+      id: _stringField(object, 'id'),
+      title: _stringField(object, 'title'),
+      description: _stringField(object, 'description'),
+      enumValues: _objectListField(object, 'enumValues', element: element),
+      nullable: _boolField(object, 'nullable') ?? false,
+      dartType: _dartSchemaTypeField(object, 'dartType', element: element),
+    ),
     'JsonStringSchema' => JsonSchema.string(
       id: _stringField(object, 'id'),
       title: _stringField(object, 'title'),
@@ -522,6 +549,36 @@ Expression _schemaExpression(JsonSchema schema, {Expression? idExpression}) {
         if (nullable) 'nullable': literalBool(nullable),
         if (items != null) 'items': _schemaExpression(items),
       }),
+    JsonAnyOfSchema(:final schemas, :final nullable, :final dartType) =>
+      refer('JsonSchema').constInstanceNamed(
+        'anyOf',
+        [_schemaListExpression(schemas)],
+        {
+          ...baseArguments,
+          if (nullable) 'nullable': literalBool(nullable),
+          if (dartType != null) 'dartType': _dartSchemaTypeExpression(dartType),
+        },
+      ),
+    JsonOneOfSchema(:final schemas, :final nullable, :final dartType) =>
+      refer('JsonSchema').constInstanceNamed(
+        'oneOf',
+        [_schemaListExpression(schemas)],
+        {
+          ...baseArguments,
+          if (nullable) 'nullable': literalBool(nullable),
+          if (dartType != null) 'dartType': _dartSchemaTypeExpression(dartType),
+        },
+      ),
+    JsonAllOfSchema(:final schemas, :final nullable, :final dartType) =>
+      refer('JsonSchema').constInstanceNamed(
+        'allOf',
+        [_schemaListExpression(schemas)],
+        {
+          ...baseArguments,
+          if (nullable) 'nullable': literalBool(nullable),
+          if (dartType != null) 'dartType': _dartSchemaTypeExpression(dartType),
+        },
+      ),
     JsonStringSchema(:final nullable, :final format, :final dartType) =>
       refer('JsonSchema').constInstanceNamed('string', const [], {
         ...baseArguments,
@@ -557,6 +614,14 @@ Expression _schemaExpression(JsonSchema schema, {Expression? idExpression}) {
       ),
     _ => throw StateError('Unsupported request body schema $schema.'),
   };
+}
+
+Expression _schemaListExpression(List<JsonSchema> schemas) {
+  final emitter = DartEmitter();
+  final values = schemas
+      .map((schema) => _schemaExpression(schema).accept(emitter))
+      .join(', ');
+  return CodeExpression(Code('const <JsonSchema>[$values]'));
 }
 
 Expression _dartSchemaTypeExpression(DartSchemaType dartType) {
@@ -775,6 +840,8 @@ String _schemaDartType(
     JsonBooleanSchema() => 'bool',
     JsonArraySchema(:final items) =>
       'List<${items == null ? 'Object?' : _schemaDartType(items, nullable: items.nullable, refModels: refModels, typeParameters: typeParameters, source: source)}>',
+    JsonCompositeSchema(:final dartType) =>
+      _dartTypeName(dartType, typeParameters: typeParameters) ?? 'Object?',
     JsonReferenceSchema(:final ref) =>
       _refModelForReference(ref, refModels)?.typeName ??
           _typeNameForSchemaRef(ref) ??
@@ -925,6 +992,12 @@ String _decodeValue(
       refModels: refModels,
       typeParameters: typeParameters,
       path: path,
+    ),
+    JsonCompositeSchema(:final dartType) => _decodeCompositeValue(
+      dartType,
+      source,
+      nullable: nullable,
+      typeParameters: typeParameters,
     ),
     JsonReferenceSchema(:final ref) => _decodeReferenceValue(
       ref,
@@ -1083,6 +1156,21 @@ String _decodeStringValue(
   return stringValue;
 }
 
+String _decodeCompositeValue(
+  DartSchemaType? dartType,
+  String source, {
+  required bool nullable,
+  required List<TypeParameterSpec> typeParameters,
+}) {
+  final typeName = _dartTypeName(dartType, typeParameters: typeParameters);
+  if (typeName == null) {
+    return source;
+  }
+  return nullable
+      ? '$source == null ? null : $typeName.decode($source)'
+      : '$typeName.decode($source)';
+}
+
 String _encodeValue(
   JsonSchema schema,
   String source, {
@@ -1099,6 +1187,11 @@ String _encodeValue(
       nullable: nullable,
       refModels: refModels,
     ),
+    JsonCompositeSchema(:final dartType) => _encodeCustomValue(
+      dartType,
+      source,
+      nullable: nullable,
+    ),
     JsonReferenceSchema(:final ref) => _encodeReferenceValue(
       ref,
       source,
@@ -1107,6 +1200,17 @@ String _encodeValue(
     ),
     _ => source,
   };
+}
+
+String _encodeCustomValue(
+  DartSchemaType? dartType,
+  String source, {
+  required bool nullable,
+}) {
+  if (dartType == null) {
+    return source;
+  }
+  return nullable ? '$source?.toJson()' : '$source.toJson()';
 }
 
 String _stringSchemaDartType(
@@ -1330,12 +1434,31 @@ Iterable<String> _schemaRefs(JsonSchema schema) sync* {
       if (items != null) {
         yield* _schemaRefs(items);
       }
+    case JsonCompositeSchema(:final schemas):
+      for (final schema in schemas) {
+        yield* _schemaRefs(schema);
+      }
     case JsonReferenceSchema(:final ref):
       yield ref;
     case JsonRawSchema() || JsonAnySchema() || JsonStringSchema():
     case JsonIntegerSchema() || JsonNumberSchema() || JsonBooleanSchema():
     case _:
   }
+}
+
+List<JsonSchema> _schemaListField(
+  DartObject object,
+  String name, {
+  required Element element,
+}) {
+  final values = _field(object, name)?.toListValue();
+  if (values == null) {
+    return const <JsonSchema>[];
+  }
+  return [
+    for (final value in values)
+      jsonSchemaFromDartObject(value, element: element),
+  ];
 }
 
 Map<String, JsonSchema> _schemaMapField(

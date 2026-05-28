@@ -1109,6 +1109,8 @@ String _clientModelType(
     JsonBooleanSchema _ => 'bool',
     JsonArraySchema _ =>
       'List<${_clientModelType(schema.items ?? const JsonSchema.any(), nullable: false, schemaTypes: schemaTypes, source: source)}>',
+    JsonCompositeSchema(:final dartType) =>
+      _clientDartTypeName(dartType) ?? 'Object?',
     JsonObjectSchema(:final id?) => _schemaTypeFromId(id, schemaTypes)!,
     JsonObjectSchema _ => 'Map<String, Object?>',
     JsonAnySchema _ => 'Object?',
@@ -1143,6 +1145,12 @@ String _decodeSchemaValue(
     JsonBooleanSchema _ => '$value as bool',
     JsonArraySchema _ =>
       '($value as List).map((item) => ${_decodeSchemaValue(schema.items ?? const JsonSchema.any(), 'item', schemaTypes)}).toList(growable: false)',
+    JsonCompositeSchema(:final dartType) => switch (_clientDartTypeName(
+      dartType,
+    )) {
+      final typeName? => '$typeName.decode($value)',
+      null => value,
+    },
     JsonObjectSchema(:final id?) => _decodeClientModelValue(
       _schemaTypeFromId(id, schemaTypes),
       value,
@@ -1187,6 +1195,8 @@ String _encodeSchemaValue(
       nullable: nullable,
       schemaTypes: schemaTypes,
     ),
+    JsonCompositeSchema(:final dartType) when dartType != null =>
+      nullable ? '$value?.toJson()' : '$value.toJson()',
     _ => value,
   };
 }
@@ -1331,6 +1341,10 @@ final class _ClientSchemaCollector {
         }
       case JsonArraySchema(:final items?):
         add(items);
+      case JsonCompositeSchema(:final schemas):
+        for (final schema in schemas) {
+          add(schema);
+        }
       case _:
         break;
     }
@@ -1498,6 +1512,11 @@ String? _schemaType(JsonSchema? schema, Map<String, String> schemaTypes) {
         nullable: false,
         schemaTypes: schemaTypes,
       ),
+      JsonCompositeSchema _ => _clientModelType(
+        schema,
+        nullable: false,
+        schemaTypes: schemaTypes,
+      ),
       JsonObjectSchema _ => 'Map<String, Object?>',
       JsonAnySchema _ => 'Object?',
       JsonRawSchema _ => 'Object?',
@@ -1548,6 +1567,7 @@ String? _clientSchemaTypeId(JsonSchema? schema) {
     JsonNumberSchema(:final id?) => id,
     JsonBooleanSchema(:final id?) => id,
     JsonAnySchema(:final id?) => id,
+    JsonCompositeSchema(:final id?) => id,
     JsonRawSchema(:final id?) => id,
     _ => null,
   };

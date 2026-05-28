@@ -11,6 +11,7 @@ final class _AdminBanUserRoute<TServices> extends _BetterAuthRoute<TServices> {
     try {
       final body = ctx.req.body<Map<String, Object?>>();
       final banExpires = body['banExpires'] as String?;
+      final banExpiresIn = body['banExpiresIn'] as int?;
       final result = await auth
           .storeFor(ctx.services)
           .gateways
@@ -19,7 +20,13 @@ final class _AdminBanUserRoute<TServices> extends _BetterAuthRoute<TServices> {
             token: requireToken(ctx),
             userId: body['userId']! as String,
             banReason: body['banReason'] as String?,
-            banExpires: banExpires == null ? null : DateTime.parse(banExpires),
+            banExpires: switch ((banExpires, banExpiresIn)) {
+              (final value?, _) => DateTime.parse(value),
+              (_, final seconds?) => DateTime.now().toUtc().add(
+                Duration(seconds: seconds),
+              ),
+              _ => null,
+            },
           );
       return result.toJson();
     } catch (error) {
@@ -91,6 +98,7 @@ final class _AdminSetUserPasswordRoute<TServices>
   Future<Object?> handle(RequestContext<TServices> ctx) async {
     try {
       final body = ctx.req.body<Map<String, Object?>>();
+      final password = body['password'] ?? body['newPassword'];
       return (await auth
               .storeFor(ctx.services)
               .gateways
@@ -98,7 +106,7 @@ final class _AdminSetUserPasswordRoute<TServices>
               .setUserPassword(
                 token: requireToken(ctx),
                 userId: body['userId']! as String,
-                password: body['password']! as String,
+                password: password! as String,
               ))
           .toJson();
     } catch (error) {

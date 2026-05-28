@@ -152,6 +152,9 @@ images:
           - API_URL
         optional:
           BASE_HREF: /
+      headers:
+        Cross-Origin-Embedder-Policy: credentialless
+        Cross-Origin-Opener-Policy: same-origin
     title: My Product App
     description: Flutter web frontend
 ```
@@ -161,6 +164,10 @@ The Flutter template builds web release output, serves it with
 vars, writes `/usr/share/nginx/html/.env`, writes
 `/usr/share/nginx/html/env-url.js`, patches `<base href>`, and creates the
 Nginx config at container startup.
+
+Use `nginx.headers` to add static response headers to the generated Nginx
+server. Headers are emitted with `always` and included in every generated
+location so they are not lost when a location also sets `Cache-Control`.
 
 Flutter bootstrapping assets, manifest icons, and font assets are cache-busted
 using the image revision when available, or a content hash fallback.

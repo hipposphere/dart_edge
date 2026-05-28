@@ -80,3 +80,38 @@ final class _AdminImpersonateUserRoute<TServices>
     }
   }
 }
+
+final class _AdminStopImpersonatingRoute<TServices>
+    extends _BetterAuthRoute<TServices> {
+  _AdminStopImpersonatingRoute(super.auth);
+
+  @override
+  RouteOptions get options => _adminStopImpersonatingOptions;
+
+  @override
+  Future<Object?> handle(RequestContext<TServices> ctx) async {
+    try {
+      final adminToken = _adminSessionCookie(ctx);
+      if (adminToken == null) {
+        throw const BetterAuthApiException(
+          status: 500,
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'Failed to find admin session',
+        );
+      }
+      final result = await auth
+          .storeFor(ctx.services)
+          .gateways
+          .admin
+          .stopImpersonating(
+            token: requireToken(ctx),
+            adminSessionToken: adminToken,
+          );
+      _setSessionCookie(ctx, result.session.token);
+      _clearAdminSessionCookie(ctx);
+      return result.toJson();
+    } catch (error) {
+      return errorResponse(ctx, error);
+    }
+  }
+}

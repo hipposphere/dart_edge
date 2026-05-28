@@ -83,6 +83,36 @@ sealed class JsonSchema {
     JsonSchema? items,
   }) = JsonArraySchema;
 
+  const factory JsonSchema.anyOf(
+    List<JsonSchema> schemas, {
+    String? id,
+    String? title,
+    String? description,
+    List<Object?> enumValues,
+    bool nullable,
+    DartSchemaType? dartType,
+  }) = JsonAnyOfSchema;
+
+  const factory JsonSchema.oneOf(
+    List<JsonSchema> schemas, {
+    String? id,
+    String? title,
+    String? description,
+    List<Object?> enumValues,
+    bool nullable,
+    DartSchemaType? dartType,
+  }) = JsonOneOfSchema;
+
+  const factory JsonSchema.allOf(
+    List<JsonSchema> schemas, {
+    String? id,
+    String? title,
+    String? description,
+    List<Object?> enumValues,
+    bool nullable,
+    DartSchemaType? dartType,
+  }) = JsonAllOfSchema;
+
   const factory JsonSchema.string({
     String? id,
     String? title,
@@ -250,6 +280,67 @@ final class JsonArraySchema extends _JsonTypedSchema {
       if (items case final items?) 'items': items.toJson(),
     };
   }
+}
+
+sealed class JsonCompositeSchema extends JsonSchema {
+  const JsonCompositeSchema(
+    this.schemas, {
+    required this.keyword,
+    super.id,
+    super.title,
+    super.description,
+    super.enumValues,
+    super.nullable = false,
+    this.dartType,
+  }) : super._();
+
+  final List<JsonSchema> schemas;
+  final String keyword;
+  final DartSchemaType? dartType;
+
+  @override
+  Map<String, Object?> toJsonKeywords() {
+    return <String, Object?>{
+      keyword: schemas.map((schema) => schema.toJson()).toList(),
+      if (nullable) 'nullable': true,
+    };
+  }
+}
+
+final class JsonAnyOfSchema extends JsonCompositeSchema {
+  const JsonAnyOfSchema(
+    super.schemas, {
+    super.id,
+    super.title,
+    super.description,
+    super.enumValues,
+    super.nullable,
+    super.dartType,
+  }) : super(keyword: 'anyOf');
+}
+
+final class JsonOneOfSchema extends JsonCompositeSchema {
+  const JsonOneOfSchema(
+    super.schemas, {
+    super.id,
+    super.title,
+    super.description,
+    super.enumValues,
+    super.nullable,
+    super.dartType,
+  }) : super(keyword: 'oneOf');
+}
+
+final class JsonAllOfSchema extends JsonCompositeSchema {
+  const JsonAllOfSchema(
+    super.schemas, {
+    super.id,
+    super.title,
+    super.description,
+    super.enumValues,
+    super.nullable,
+    super.dartType,
+  }) : super(keyword: 'allOf');
 }
 
 final class JsonStringSchema extends _JsonTypedSchema {

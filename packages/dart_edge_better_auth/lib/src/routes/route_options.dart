@@ -64,6 +64,38 @@ const _adminListUsersOptions = RouteOptions(
   ),
 );
 
+const _adminGetUserOptions = RouteOptions(
+  operationId: 'getUser',
+  summary: 'Get a user as an admin.',
+  success: ResponseSpec.json(
+    schema: JsonSchema.ref('BetterAuthAdminUserResult'),
+  ),
+);
+
+const _adminListUserSessionsOptions = RouteOptions(
+  operationId: 'adminListUserSessions',
+  summary: 'List sessions for a user as an admin.',
+  body: RequestBody.json(
+    schema: JsonSchema.ref('BetterAuthAdminUserIdBody'),
+    decoder: _decodeJsonObject,
+  ),
+  success: ResponseSpec.json(
+    schema: JsonSchema.ref('BetterAuthListUserSessionsResult'),
+  ),
+);
+
+const _adminHasPermissionOptions = RouteOptions(
+  operationId: 'userHasPermission',
+  summary: 'Check whether a user has permissions.',
+  body: RequestBody.json(
+    schema: JsonSchema.ref('BetterAuthAdminHasPermissionBody'),
+    decoder: _decodeJsonObject,
+  ),
+  success: ResponseSpec.json(
+    schema: JsonSchema.ref('BetterAuthPermissionResult'),
+  ),
+);
+
 const _adminUpdateUserOptions = RouteOptions(
   operationId: 'betterAuthAdminUpdateUser',
   summary: 'Update a user as an admin.',
@@ -147,5 +179,11 @@ const _adminImpersonateUserOptions = RouteOptions(
     schema: JsonSchema.ref('BetterAuthAdminImpersonateUserBody'),
     decoder: _decodeJsonObject,
   ),
+  success: ResponseSpec.json(schema: JsonSchema.ref('BetterAuthSessionResult')),
+);
+
+const _adminStopImpersonatingOptions = RouteOptions(
+  operationId: 'stopImpersonating',
+  summary: 'Stop impersonating a user.',
   success: ResponseSpec.json(schema: JsonSchema.ref('BetterAuthSessionResult')),
 );

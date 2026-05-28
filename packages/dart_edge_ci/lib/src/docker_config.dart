@@ -423,10 +423,15 @@ final class FlutterWebConfig {
 }
 
 final class NginxConfig {
-  const NginxConfig({this.requiredEnv = const [], this.optionalEnv = const {}});
+  const NginxConfig({
+    this.requiredEnv = const [],
+    this.optionalEnv = const {},
+    this.headers = const {},
+  });
 
   final List<String> requiredEnv;
   final Map<String, String> optionalEnv;
+  final Map<String, String> headers;
 
   static NginxConfig parse(Object? value, String path) {
     if (value == null) {
@@ -441,11 +446,13 @@ final class NginxConfig {
       optionalEnv: env == null
           ? const {}
           : _stringMap(env['optional'], '$path.env.optional'),
+      headers: _httpHeaderMap(map['headers'], '$path.headers'),
     );
   }
 
   Map<String, Object?> toJson() => {
     'env': {'required': requiredEnv, 'optional': optionalEnv},
+    if (headers.isNotEmpty) 'headers': headers,
   };
 }
 
@@ -548,4 +555,21 @@ Map<String, String> _stringMap(Object? value, String path) {
     for (final entry in map.entries)
       _key(entry.key, path): _requiredString(entry.value, '$path.${entry.key}'),
   };
+}
+
+Map<String, String> _httpHeaderMap(Object? value, String path) {
+  final headers = _stringMap(value, path);
+  for (final entry in headers.entries) {
+    if (!RegExp(r"^[!#$%&'*+.^_`|~0-9A-Za-z-]+$").hasMatch(entry.key)) {
+      throw DockerConfigException(
+        '$path.${entry.key} must be an HTTP header name.',
+      );
+    }
+    if (entry.value.contains('\n') || entry.value.contains('\r')) {
+      throw DockerConfigException(
+        '$path.${entry.key} must not contain newlines.',
+      );
+    }
+  }
+  return headers;
 }

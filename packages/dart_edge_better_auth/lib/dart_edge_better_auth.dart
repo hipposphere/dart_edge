@@ -9,6 +9,6 @@ export 'src/error.dart';
 export 'src/gateway/better_auth_gateways.dart';
 export 'src/migrator.dart';
 export 'src/models.dart';
-export 'src/password.dart';
 export 'src/routes.dart';
 export 'src/trusted_api.dart';
+export 'src/utils/password.dart';

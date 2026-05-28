@@ -440,6 +440,7 @@ RUN set -eu; \
 String _nginxEntrypoint(FlutterAppImageConfig image) {
   final required = image.nginx.requiredEnv;
   final optional = image.nginx.optionalEnv;
+  final responseHeaders = _nginxResponseHeaders(image.nginx.headers);
   final baseHrefEnv = image.web.baseHrefEnv ?? 'BASE_HREF';
   final envEntries = {...required, ...optional.keys}
     ..remove(baseHrefEnv)
@@ -463,6 +464,7 @@ env_file="$web_root/.env"
 env_url_file="$web_root/env-url.js"
 index_html="$web_root/index.html"
 nginx_conf=/etc/nginx/conf.d/default.conf
+response_headers_conf=/etc/nginx/conf.d/dart-edge-response-headers.conf
 
 case "$BASE_HREF" in
   /*) ;;
@@ -492,6 +494,11 @@ fi
 
 env_hash="$(sha256sum "$env_file" | cut -d ' ' -f 1)"
 printf 'window.DART_EDGE_ENV_URL = "%s.env?v=%s";\n' "$BASE_HREF" "$env_hash" > "$env_url_file"
+''',
+    'cat > "\$response_headers_conf" <<\'EOF\'',
+    responseHeaders,
+    'EOF',
+    r'''
 
 if [ -f "$index_html" ]; then
   if grep -q '<base[[:space:]][^>]*href=' "$index_html"; then
@@ -527,6 +534,7 @@ server {
     application/javascript mjs;
     application/wasm wasm;
   }
+  include /etc/nginx/conf.d/dart-edge-response-headers.conf;
 
   location = $BASE_REDIRECT_PATH {
     return 308 $BASE_HREF;
@@ -536,12 +544,14 @@ server {
     rewrite ^${BASE_HREF}(.*)\$ /\$1 break;
     try_files /index.html =404;
     add_header Cache-Control "no-cache";
+    include /etc/nginx/conf.d/dart-edge-response-headers.conf;
   }
 
   location = ${BASE_HREF}index.html {
     rewrite ^${BASE_HREF}(.*)\$ /\$1 break;
     try_files /index.html =404;
     add_header Cache-Control "no-cache";
+    include /etc/nginx/conf.d/dart-edge-response-headers.conf;
   }
 
   location = ${BASE_HREF}env-url.js {
@@ -549,6 +559,7 @@ server {
     try_files /env-url.js =404;
     default_type application/javascript;
     add_header Cache-Control "no-cache";
+    include /etc/nginx/conf.d/dart-edge-response-headers.conf;
   }
 
   location = ${BASE_HREF}.env {
@@ -556,42 +567,57 @@ server {
     try_files /.env =404;
     default_type text/plain;
     add_header Cache-Control "public, max-age=31536000, immutable";
+    include /etc/nginx/conf.d/dart-edge-response-headers.conf;
   }
 
   location ~* ^${BASE_HREF}assets/(?:FontManifest\.json|AssetManifest\.bin(?:\.json)?)\$ {
     rewrite ^${BASE_HREF}(.*)\$ /\$1 break;
     try_files \$uri =404;
     add_header Cache-Control "no-store";
+    include /etc/nginx/conf.d/dart-edge-response-headers.conf;
   }
 
   location ~* ^${BASE_HREF}assets/.+\.v-[A-Za-z0-9._-]+\.(?:ttf|otf|woff|woff2)\$ {
     rewrite ^${BASE_HREF}(.*)\$ /\$1 break;
     try_files \$uri =404;
     add_header Cache-Control "public, max-age=31536000, immutable";
+    include /etc/nginx/conf.d/dart-edge-response-headers.conf;
   }
 
   location ~* ^${BASE_HREF}assets/.+\.(?:ttf|otf|woff|woff2)\$ {
     rewrite ^${BASE_HREF}(.*)\$ /\$1 break;
     try_files \$uri =404;
     add_header Cache-Control "no-store";
+    include /etc/nginx/conf.d/dart-edge-response-headers.conf;
   }
 
   location ~* ^${BASE_HREF}.+\.(?:css|js|mjs|json|wasm|png|jpg|jpeg|gif|ico|svg|webp|ttf|otf|woff|woff2)\$ {
     rewrite ^${BASE_HREF}(.*)\$ /\$1 break;
     try_files \$uri =404;
     add_header Cache-Control \$dart_edge_static_cache_control;
+    include /etc/nginx/conf.d/dart-edge-response-headers.conf;
   }
 
   location ${BASE_HREF} {
     rewrite ^${BASE_HREF}(.*)\$ /\$1 break;
     try_files \$uri \$uri/ /index.html;
     add_header Cache-Control "no-cache";
+    include /etc/nginx/conf.d/dart-edge-response-headers.conf;
   }
 }
 EOF
 ''',
     '',
   ].join('\n');
+}
+
+String _nginxResponseHeaders(Map<String, String> headers) {
+  return headers.entries
+      .map(
+        (entry) =>
+            'add_header ${entry.key} "${_nginxQuoted(entry.value)}" always;',
+      )
+      .join('\n');
 }
 
 String _bakeFile(
@@ -649,5 +675,9 @@ String _dockerLabel(String value) {
 }
 
 String _hcl(String value) {
+  return value.replaceAll(r'\', r'\\').replaceAll('"', r'\"');
+}
+
+String _nginxQuoted(String value) {
   return value.replaceAll(r'\', r'\\').replaceAll('"', r'\"');
 }

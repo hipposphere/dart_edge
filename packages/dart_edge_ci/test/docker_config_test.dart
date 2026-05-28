@@ -40,6 +40,9 @@ images:
           - API_URL
         optional:
           BASE_HREF: /
+      headers:
+        Cross-Origin-Embedder-Policy: credentialless
+        Cross-Origin-Opener-Policy: same-origin
 ''');
 
     final server = config.images['server'] as DartServerImageConfig;
@@ -60,6 +63,10 @@ images:
     expect(app.web.baseHrefEnv, 'BASE_HREF');
     expect(app.nginx.requiredEnv, ['API_URL']);
     expect(app.nginx.optionalEnv, {'BASE_HREF': '/'});
+    expect(app.nginx.headers, {
+      'Cross-Origin-Embedder-Policy': 'credentialless',
+      'Cross-Origin-Opener-Policy': 'same-origin',
+    });
   });
 
   test('reports clear validation errors', () {
@@ -75,6 +82,27 @@ images:
           (error) => error.message,
           'message',
           contains('images.api.type must be one of'),
+        ),
+      ),
+    );
+  });
+
+  test('reports invalid nginx header names', () {
+    expect(
+      () => DockerProjectConfig.parse('''
+images:
+  app:
+    type: flutter_app
+    package: app
+    nginx:
+      headers:
+        "Bad Header": value
+'''),
+      throwsA(
+        isA<DockerConfigException>().having(
+          (error) => error.message,
+          'message',
+          contains('images.app.nginx.headers.Bad Header'),
         ),
       ),
     );

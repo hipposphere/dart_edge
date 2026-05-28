@@ -56,8 +56,49 @@ void _setAdminSessionCookie<TServices>(
   );
 }
 
+void _clearAdminSessionCookie<TServices>(RequestContext<TServices> ctx) {
+  ctx.res.header(
+    'set-cookie',
+    'better-auth.admin_session=; Path=/; HttpOnly; SameSite=Lax; '
+        'Expires=Thu, 01 Jan 1970 00:00:00 GMT',
+  );
+}
+
 String? _sessionCookie<TServices>(RequestContext<TServices> ctx) {
   return _cookie(ctx, 'better-auth.session-token');
+}
+
+String? _adminSessionCookie<TServices>(RequestContext<TServices> ctx) {
+  return _cookie(ctx, 'better-auth.admin_session');
+}
+
+String? _roleValue(Object? value) {
+  if (value == null) {
+    return null;
+  }
+  try {
+    return BetterAuthRoleInput.decode(value).commaSeparated;
+  } on FormatException {
+    throw const BetterAuthApiException(
+      status: 400,
+      code: 'INVALID_ROLE_TYPE',
+      message: 'Invalid role type',
+    );
+  }
+}
+
+Map<String, List<String>> _permissionsMap(Object? value) {
+  final map = value! as Map<String, Object?>;
+  return map.map(
+    (key, value) => MapEntry(key, switch (value) {
+      final List<Object?> values => values.cast<String>(),
+      _ => throw const BetterAuthApiException(
+        status: 400,
+        code: 'BAD_REQUEST',
+        message: 'Invalid permission check.',
+      ),
+    }),
+  );
 }
 
 String? _cookie<TServices>(RequestContext<TServices> ctx, String name) {

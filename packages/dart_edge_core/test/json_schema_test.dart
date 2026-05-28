@@ -64,6 +64,28 @@ void main() {
     expect(schema.toJson(), {'type': 'string', 'format': 'uuid'});
   });
 
+  test(
+    'serializes anyOf schemas and keeps Dart type metadata out of output',
+    () {
+      const schema = JsonSchema.anyOf([
+        JsonSchema.string(),
+        JsonSchema.array(items: JsonSchema.string()),
+      ], dartType: DartSchemaType.named('RoleInput'));
+
+      expect(schema, isA<JsonAnyOfSchema>());
+      expect((schema as JsonAnyOfSchema).dartType, isA<DartNamedSchemaType>());
+      expect(schema.toJson(), {
+        'anyOf': [
+          {'type': 'string'},
+          {
+            'type': 'array',
+            'items': {'type': 'string'},
+          },
+        ],
+      });
+    },
+  );
+
   test('reads id from raw schemas', () {
     const schema = JsonSchema.raw({r'$id': 'RawUser', 'type': 'object'});
 

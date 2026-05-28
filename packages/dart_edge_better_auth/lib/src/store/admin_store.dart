@@ -26,12 +26,61 @@ extension BetterAuthStoreAdmin on BetterAuthStore {
     return setRole(userId: userId, role: role);
   }
 
+  Future<BetterAuthAdminUserResult> adminGetUser({
+    required String token,
+    required String userId,
+  }) async {
+    await _requireAdminSession(token);
+    return getUser(userId: userId);
+  }
+
   Future<BetterAuthListUsersResult> adminListUsers({
     required String token,
     int limit = 100,
   }) async {
     await _requireAdminSession(token);
     return listUsers(limit: limit);
+  }
+
+  Future<BetterAuthListUserSessionsResult> adminListUserSessions({
+    required String token,
+    required String userId,
+  }) async {
+    await _requireAdminSession(token);
+    return listUserSessions(userId);
+  }
+
+  Future<BetterAuthPermissionResult> adminHasPermission({
+    String? token,
+    String? userId,
+    String? role,
+    required Map<String, List<String>> permissions,
+  }) async {
+    final candidate = switch ((role, userId, token)) {
+      (final value?, _, _) => (id: userId ?? '', role: value),
+      (_, final value?, _) => await pool.withTransaction((transaction) async {
+        final user = await _findUserById(transaction, value);
+        return user == null ? null : (id: user.id, role: user.role);
+      }),
+      (_, _, final value?) => switch (await getSession(value)) {
+        final session? => (id: session.user.id, role: session.user.role),
+        null => null,
+      },
+      _ => null,
+    };
+    if (candidate == null) {
+      return const BetterAuthPermissionResult(
+        success: false,
+        error: 'user not found',
+      );
+    }
+    return BetterAuthPermissionResult(
+      success: _hasPermission(
+        userId: candidate.id,
+        role: candidate.role,
+        permissions: permissions,
+      ),
+    );
   }
 
   Future<BetterAuthAdminUserResult> adminUpdateUser({
@@ -141,6 +190,38 @@ extension BetterAuthStoreAdmin on BetterAuthStore {
     });
   }
 
+  Future<BetterAuthSessionResult> adminStopImpersonating({
+    required String token,
+    required String adminSessionToken,
+  }) async {
+    final impersonatedSession = await getSession(token);
+    if (impersonatedSession == null) {
+      throw const BetterAuthApiException(
+        status: 401,
+        code: 'UNAUTHORIZED',
+        message: 'Unauthorized',
+      );
+    }
+    final adminUserId = impersonatedSession.session.impersonatedBy;
+    if (adminUserId == null) {
+      throw const BetterAuthApiException(
+        status: 400,
+        code: 'BAD_REQUEST',
+        message: 'You are not impersonating anyone',
+      );
+    }
+    final adminSession = await getSession(adminSessionToken);
+    if (adminSession == null || adminSession.session.userId != adminUserId) {
+      throw const BetterAuthApiException(
+        status: 500,
+        code: 'INTERNAL_SERVER_ERROR',
+        message: 'Failed to find admin session',
+      );
+    }
+    await revokeSession(token);
+    return adminSession;
+  }
+
   Future<BetterAuthSessionResult> _requireAdminSession(String token) async {
     final session = await getSession(token);
     if (session == null) {
@@ -159,5 +240,41 @@ extension BetterAuthStoreAdmin on BetterAuthStore {
       );
     }
     return session;
+  }
+
+  bool _hasPermission({
+    required String userId,
+    required String? role,
+    required Map<String, List<String>> permissions,
+  }) {
+    final roles = (role ?? options.admin.defaultRole)
+        .split(',')
+        .map((role) => role.trim())
+        .where((role) => role.isNotEmpty);
+    if (!roles.contains(options.admin.defaultAdminRole)) {
+      return false;
+    }
+    for (final MapEntry(:key, :value) in permissions.entries) {
+      final allowed = switch (key) {
+        'user' => <String>{
+          'create',
+          'list',
+          'set-role',
+          'ban',
+          'impersonate',
+          if (options.admin.allowImpersonatingAdmins) 'impersonate-admins',
+          'delete',
+          'set-password',
+          'get',
+          'update',
+        },
+        'session' => <String>{'list', 'revoke', 'delete'},
+        _ => const <String>{},
+      };
+      if (value.any((permission) => !allowed.contains(permission))) {
+        return false;
+      }
+    }
+    return true;
   }
 }

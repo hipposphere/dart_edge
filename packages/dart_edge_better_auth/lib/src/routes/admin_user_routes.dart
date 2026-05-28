@@ -19,6 +19,7 @@ final class _AdminCreateUserRoute<TServices>
         );
       }
       final body = ctx.req.body<Map<String, Object?>>();
+      final role = body['role'];
       final result = await auth
           .storeFor(ctx.services)
           .gateways
@@ -28,7 +29,7 @@ final class _AdminCreateUserRoute<TServices>
             email: body['email']! as String,
             password: body['password']! as String,
             name: body['name']! as String,
-            role: body['role'] as String?,
+            role: _roleValue(role),
           );
       return result.toJson();
     } catch (error) {
@@ -48,6 +49,7 @@ final class _AdminUpdateUserRoute<TServices>
   Future<Object?> handle(RequestContext<TServices> ctx) async {
     try {
       final body = ctx.req.body<Map<String, Object?>>();
+      final data = (body['data'] as Map<String, Object?>?) ?? body;
       final result = await auth
           .storeFor(ctx.services)
           .gateways
@@ -55,9 +57,9 @@ final class _AdminUpdateUserRoute<TServices>
           .updateUser(
             token: requireToken(ctx),
             userId: body['userId']! as String,
-            name: body['name'] as String?,
-            email: body['email'] as String?,
-            role: body['role'] as String?,
+            name: data['name'] as String?,
+            email: data['email'] as String?,
+            role: _roleValue(data['role']),
           );
       return result.toJson();
     } catch (error) {
@@ -84,6 +86,7 @@ final class _AdminSetRoleRoute<TServices> extends _BetterAuthRoute<TServices> {
         );
       }
       final body = ctx.req.body<Map<String, Object?>>();
+      final role = body['role'];
       final result = await auth
           .storeFor(ctx.services)
           .gateways
@@ -91,7 +94,7 @@ final class _AdminSetRoleRoute<TServices> extends _BetterAuthRoute<TServices> {
           .setRole(
             token: token,
             userId: body['userId']! as String,
-            role: body['role']! as String,
+            role: _roleValue(role)!,
           );
       return result.toJson();
     } catch (error) {
@@ -124,6 +127,89 @@ final class _AdminListUsersRoute<TServices>
           .gateways
           .admin
           .listUsers(token: token, limit: limit);
+      return result.toJson();
+    } catch (error) {
+      return errorResponse(ctx, error);
+    }
+  }
+}
+
+final class _AdminGetUserRoute<TServices> extends _BetterAuthRoute<TServices> {
+  _AdminGetUserRoute(super.auth);
+
+  @override
+  RouteOptions get options => _adminGetUserOptions;
+
+  @override
+  Future<Object?> handle(RequestContext<TServices> ctx) async {
+    try {
+      final result = await auth
+          .storeFor(ctx.services)
+          .gateways
+          .admin
+          .getUser(token: requireToken(ctx), userId: ctx.req.queryParam('id')!);
+      return result.toJson();
+    } catch (error) {
+      return errorResponse(ctx, error);
+    }
+  }
+}
+
+final class _AdminListUserSessionsRoute<TServices>
+    extends _BetterAuthRoute<TServices> {
+  _AdminListUserSessionsRoute(super.auth);
+
+  @override
+  RouteOptions get options => _adminListUserSessionsOptions;
+
+  @override
+  Future<Object?> handle(RequestContext<TServices> ctx) async {
+    try {
+      final body = ctx.req.body<Map<String, Object?>>();
+      final result = await auth
+          .storeFor(ctx.services)
+          .gateways
+          .admin
+          .listUserSessions(
+            token: requireToken(ctx),
+            userId: body['userId']! as String,
+          );
+      return result.toJson();
+    } catch (error) {
+      return errorResponse(ctx, error);
+    }
+  }
+}
+
+final class _AdminHasPermissionRoute<TServices>
+    extends _BetterAuthRoute<TServices> {
+  _AdminHasPermissionRoute(super.auth);
+
+  @override
+  RouteOptions get options => _adminHasPermissionOptions;
+
+  @override
+  Future<Object?> handle(RequestContext<TServices> ctx) async {
+    try {
+      final body = ctx.req.body<Map<String, Object?>>();
+      final rawPermissions = body['permissions'] ?? body['permission'];
+      if (rawPermissions == null) {
+        throw const BetterAuthApiException(
+          status: 400,
+          code: 'BAD_REQUEST',
+          message: 'invalid permission check. no permission(s) were passed.',
+        );
+      }
+      final result = await auth
+          .storeFor(ctx.services)
+          .gateways
+          .admin
+          .hasPermission(
+            token: bearerToken(ctx) ?? _sessionCookie(ctx),
+            userId: body['userId'] as String?,
+            role: body['role'] as String?,
+            permissions: _permissionsMap(rawPermissions),
+          );
       return result.toJson();
     } catch (error) {
       return errorResponse(ctx, error);

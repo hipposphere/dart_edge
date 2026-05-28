@@ -25,6 +25,23 @@ const _listUsersResultSchema = JsonSchema.object(
   },
 );
 
+const _listUserSessionsResultSchema = JsonSchema.object(
+  id: 'BetterAuthListUserSessionsResult',
+  required: ['sessions'],
+  properties: <String, JsonSchema>{
+    'sessions': JsonSchema.array(items: JsonSchema.ref('BetterAuthSession')),
+  },
+);
+
+const _permissionResultSchema = JsonSchema.object(
+  id: 'BetterAuthPermissionResult',
+  required: ['success'],
+  properties: <String, JsonSchema>{
+    'error': JsonSchema.string(),
+    'success': JsonSchema.boolean(),
+  },
+);
+
 const _sessionResultSchema = JsonSchema.object(
   id: 'BetterAuthSessionResult',
   required: ['user', 'session'],

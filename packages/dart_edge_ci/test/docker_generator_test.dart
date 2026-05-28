@@ -82,6 +82,20 @@ void main() {
     );
     expect(entrypoint, contains(r'location = ${BASE_HREF}.env'));
     expect(entrypoint, contains(r'API_URL "${API_URL}"'));
+    expect(
+      entrypoint,
+      contains(
+        'add_header Cross-Origin-Embedder-Policy "credentialless" always;',
+      ),
+    );
+    expect(
+      entrypoint,
+      contains('add_header Cross-Origin-Opener-Policy "same-origin" always;'),
+    );
+    expect(
+      entrypoint,
+      contains('include /etc/nginx/conf.d/dart-edge-response-headers.conf;'),
+    );
 
     final bake = await result.bakeFile.readAsString();
     expect(bake, contains('target "server"'));
@@ -221,6 +235,9 @@ images:
           - API_URL
         optional:
           BASE_HREF: /
+      headers:
+        Cross-Origin-Embedder-Policy: credentialless
+        Cross-Origin-Opener-Policy: same-origin
     title: Callo App
     description: Callo Flutter web app
 ''';

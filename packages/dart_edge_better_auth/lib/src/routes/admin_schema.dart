@@ -1,5 +1,11 @@
 part of '../routes.dart';
 
+const _roleInputSchema = JsonSchema.anyOf(
+  [JsonSchema.string(), JsonSchema.array(items: JsonSchema.string())],
+  id: 'BetterAuthRoleInput',
+  dartType: DartSchemaType.named('BetterAuthRoleInput'),
+);
+
 const _adminCreateUserBodySchema = JsonSchema.object(
   id: 'BetterAuthAdminCreateUserBody',
   required: ['email', 'password', 'name'],
@@ -7,7 +13,7 @@ const _adminCreateUserBodySchema = JsonSchema.object(
     'email': JsonSchema.string(format: 'email'),
     'password': JsonSchema.string(),
     'name': JsonSchema.string(),
-    'role': JsonSchema.string(),
+    'role': _roleInputSchema,
   },
 );
 
@@ -16,7 +22,7 @@ const _adminSetRoleBodySchema = JsonSchema.object(
   required: ['userId', 'role'],
   properties: <String, JsonSchema>{
     'userId': JsonSchema.string(),
-    'role': JsonSchema.string(),
+    'role': _roleInputSchema,
   },
 );
 
@@ -27,7 +33,8 @@ const _adminUpdateUserBodySchema = JsonSchema.object(
     'userId': JsonSchema.string(),
     'name': JsonSchema.string(),
     'email': JsonSchema.string(format: 'email'),
-    'role': JsonSchema.string(),
+    'role': _roleInputSchema,
+    'data': JsonSchema.object(additionalProperties: true),
   },
 );
 
@@ -44,15 +51,17 @@ const _adminBanUserBodySchema = JsonSchema.object(
     'userId': JsonSchema.string(),
     'banReason': JsonSchema.string(),
     'banExpires': JsonSchema.string(format: 'date-time'),
+    'banExpiresIn': JsonSchema.integer(),
   },
 );
 
 const _adminSetUserPasswordBodySchema = JsonSchema.object(
   id: 'BetterAuthAdminSetUserPasswordBody',
-  required: ['userId', 'password'],
+  required: ['userId'],
   properties: <String, JsonSchema>{
     'userId': JsonSchema.string(),
     'password': JsonSchema.string(),
+    'newPassword': JsonSchema.string(),
   },
 );
 
@@ -66,4 +75,15 @@ const _adminImpersonateUserBodySchema = JsonSchema.object(
   id: 'BetterAuthAdminImpersonateUserBody',
   required: ['userId'],
   properties: <String, JsonSchema>{'userId': JsonSchema.string()},
+);
+
+const _adminHasPermissionBodySchema = JsonSchema.object(
+  id: 'BetterAuthAdminHasPermissionBody',
+  required: ['permissions'],
+  properties: <String, JsonSchema>{
+    'userId': JsonSchema.string(),
+    'role': JsonSchema.string(),
+    'permission': JsonSchema.any(),
+    'permissions': JsonSchema.any(),
+  },
 );

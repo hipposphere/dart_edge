@@ -143,6 +143,37 @@ void main() {
     expect(users.users.map((user) => user.id), contains(admin.user.id));
     expect(users.users.map((user) => user.email), contains(created.user.email));
 
+    final fetchedMember = await auth.api.admin.getUser(
+      token: adminSignIn.token,
+      userId: member.user.id,
+    );
+    expect(fetchedMember.user.email, member.user.email);
+
+    final memberSessions = await auth.api.admin.listUserSessions(
+      token: adminSignIn.token,
+      userId: member.user.id,
+    );
+    expect(memberSessions.sessions.map((session) => session.token), [
+      memberSignIn.token,
+    ]);
+
+    final adminPermissions = await auth.api.admin.hasPermission(
+      token: adminSignIn.token,
+      permissions: const {
+        'user': ['create', 'list', 'get', 'update'],
+        'session': ['list', 'revoke'],
+      },
+    );
+    expect(adminPermissions.success, isTrue);
+
+    final memberPermissions = await auth.api.admin.hasPermission(
+      userId: created.user.id,
+      permissions: const {
+        'user': ['create'],
+      },
+    );
+    expect(memberPermissions.success, isFalse);
+
     final impersonated = await auth.api.admin.impersonateUser(
       token: adminSignIn.token,
       userId: created.user.id,
@@ -158,6 +189,18 @@ void main() {
       token: impersonated.session.token,
     );
     expect(impersonatedSession.session.impersonatedBy, admin.user.id);
+
+    final restoredAdmin = await auth.api.admin.stopImpersonating(
+      token: impersonated.session.token,
+      adminSessionToken: adminSignIn.token,
+    );
+    expect(restoredAdmin.user.id, admin.user.id);
+    expect(restoredAdmin.session.token, adminSignIn.token);
+    expect(restoredAdmin.session.impersonatedBy, isNull);
+    expect(
+      await auth.api.tryGetSession(token: impersonated.session.token),
+      isNull,
+    );
 
     await expectLater(
       auth.api.admin.impersonateUser(

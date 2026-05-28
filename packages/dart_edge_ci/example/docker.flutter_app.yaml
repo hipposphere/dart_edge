@@ -12,5 +12,8 @@ images:
           - API_URL
         optional:
           BASE_HREF: /
+      headers:
+        Cross-Origin-Embedder-Policy: credentialless
+        Cross-Origin-Opener-Policy: same-origin
     title: Example App
     description: Example Flutter web app

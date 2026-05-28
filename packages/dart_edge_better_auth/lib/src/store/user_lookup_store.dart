@@ -1,6 +1,20 @@
 part of '../database.dart';
 
 extension BetterAuthStoreUserLookup on BetterAuthStore {
+  Future<BetterAuthAdminUserResult> getUser({required String userId}) async {
+    return pool.withTransaction((transaction) async {
+      final user = await _findUserById(transaction, userId);
+      if (user == null) {
+        throw const BetterAuthApiException(
+          status: 404,
+          code: 'USER_NOT_FOUND',
+          message: 'User not found',
+        );
+      }
+      return BetterAuthAdminUserResult(user: user);
+    });
+  }
+
   Future<BetterAuthUser?> _findUserByEmail(
     SqlExecutor executor,
     String email,
