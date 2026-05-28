@@ -303,6 +303,7 @@ Class _objectModel(FromSchemaModelSpec model) {
       ])
       ..methods.addAll([
         if (!isMultipart) _objectToJsonMethod(fields, model.refModels),
+        if (isMultipart) _objectToMultipartFormDataMethod(fields),
         if (model.typeParameters.isEmpty)
           if (isMultipart)
             _objectFromMultipartMethod(model, fields)
@@ -721,6 +722,32 @@ ${fields.map((field) => '${field.name}: ${_decodeMultipartValue(field)},').join(
   });
 }
 
+Method _objectToMultipartFormDataMethod(List<_SchemaFieldSpec> fields) {
+  final textFields = fields
+      .where((field) => !_isMultipartBinaryField(field.schema))
+      .map(_multipartTextFieldExpression)
+      .join('\n');
+  final files = fields
+      .where((field) => _isMultipartBinaryField(field.schema))
+      .map(_multipartFileExpression)
+      .join('\n');
+  return Method((builder) {
+    builder
+      ..returns = refer('MultipartFormData')
+      ..name = 'toMultipartFormData'
+      ..body = Code('''
+return MultipartFormData(
+  fields: <MultipartFormField>[
+$textFields
+  ],
+  files: <MultipartFile>[
+$files
+  ],
+);
+''');
+  });
+}
+
 Constructor _objectDecodeFactory(String publicType) {
   return Constructor((builder) {
     builder
@@ -899,22 +926,33 @@ String _decodeMultipartValue(_SchemaFieldSpec field) {
 
 String _decodeMultipartFile(String fieldName, {required bool nullable}) {
   if (nullable) {
-    return 'form.file($fieldName)';
+    return '(() { final file = form.file($fieldName); '
+        'return file == null ? null : ${_multipartUploadFileFromFile('file')}; })()';
   }
-  return 'form.file($fieldName) ?? (throw ArgumentError.value(null, $fieldName, '
-      "'Expected multipart file.'))";
+  return '(() { final file = form.file($fieldName); '
+      "if (file == null) { throw ArgumentError.value(null, $fieldName, "
+      "'Expected multipart file.'); } "
+      'return ${_multipartUploadFileFromFile('file')}; })()';
 }
 
 String _decodeMultipartFileList(String fieldName, {required bool nullable}) {
   final expression =
-      '(() { final values = form.filesNamed($fieldName).toList(); '
+      '(() { final values = form.filesNamed($fieldName)'
+      '.map((file) => ${_multipartUploadFileFromFile('file')}).toList(); '
       "if (values.isEmpty) return null; return values; })()";
   if (nullable) {
     return expression;
   }
-  return '(() { final values = form.filesNamed($fieldName).toList(); '
+  return '(() { final values = form.filesNamed($fieldName)'
+      '.map((file) => ${_multipartUploadFileFromFile('file')}).toList(); '
       "if (values.isEmpty) { throw ArgumentError.value(null, $fieldName, "
       "'Expected at least one multipart file.'); } return values; })()";
+}
+
+String _multipartUploadFileFromFile(String file) {
+  return 'MultipartUploadFile.stream(openRead: $file.openRead, '
+      'filename: $file.filename, contentType: $file.contentType, '
+      'length: $file.length)';
 }
 
 String _decodeMultipartText(
@@ -1220,13 +1258,54 @@ String _stringSchemaDartType(
   required FromSchemaModelSource source,
 }) {
   if (source == FromSchemaModelSource.multipart && format == 'binary') {
-    return 'MultipartFile';
+    return 'MultipartUploadFile';
   }
   return _dartTypeName(dartType, typeParameters: typeParameters) ??
       switch (format) {
         'date-time' => 'DateTime',
         _ => 'String',
       };
+}
+
+bool _isMultipartBinaryField(JsonSchema schema) {
+  return (schema is JsonStringSchema && schema.format == 'binary') ||
+      (schema is JsonArraySchema &&
+          schema.items is JsonStringSchema &&
+          (schema.items! as JsonStringSchema).format == 'binary');
+}
+
+String _multipartTextFieldExpression(_SchemaFieldSpec field) {
+  final name = field.name;
+  final wireName = _dartString(field.wireName);
+  if (field.schema case JsonArraySchema()) {
+    if (!field.nullable) {
+      return '    for (final value in $name) '
+          'MultipartFormField(name: $wireName, value: value.toString()),';
+    }
+    return '    if ($name != null) for (final value in $name!) '
+        'MultipartFormField(name: $wireName, value: value.toString()),';
+  }
+  if (!field.nullable) {
+    return '    MultipartFormField(name: $wireName, value: $name.toString()),';
+  }
+  return '    if ($name != null) '
+      'MultipartFormField(name: $wireName, value: $name.toString()),';
+}
+
+String _multipartFileExpression(_SchemaFieldSpec field) {
+  final name = field.name;
+  final wireName = _dartString(field.wireName);
+  if (field.schema case JsonArraySchema()) {
+    if (!field.nullable) {
+      return '    for (final file in $name) file.asFile($wireName),';
+    }
+    return '    if ($name != null) for (final file in $name!) '
+        'file.asFile($wireName),';
+  }
+  if (!field.nullable) {
+    return '    $name.asFile($wireName),';
+  }
+  return '    if ($name != null) $name!.asFile($wireName),';
 }
 
 String _encodeArrayValue(

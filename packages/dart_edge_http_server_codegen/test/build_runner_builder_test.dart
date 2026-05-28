@@ -858,15 +858,16 @@ final class SchemaRefModel {
   final String? schemaId;
 }
 
-const uploadSchema = JsonSchema.object(
-  id: 'UploadBody',
-  properties: <String, JsonSchema>{
-    'workspace_id': JsonSchema.string(),
-    'persist': JsonSchema.boolean(),
-    'file': JsonSchema.string(format: 'binary'),
-  },
-  required: <String>['workspace_id', 'persist', 'file'],
-);
+  const uploadSchema = JsonSchema.object(
+    id: 'UploadBody',
+    properties: <String, JsonSchema>{
+      'workspace_id': JsonSchema.string(),
+      'folder_id': JsonSchema.string(nullable: true),
+      'persist': JsonSchema.boolean(),
+      'file': JsonSchema.string(format: 'binary'),
+    },
+    required: <String>['workspace_id', 'persist', 'file'],
+  );
 
 @FromMultipartSchema(uploadSchema)
 typedef UploadBody = _$UploadBody;
@@ -887,12 +888,19 @@ typedef UploadBody = _$UploadBody;
               ),
               contains('decoder: decodeMultipart,'),
               contains('final String workspaceId;'),
+              contains('final String? folderId;'),
               contains('final bool persist;'),
-              contains('final MultipartFile file;'),
+              contains('final MultipartUploadFile file;'),
+              contains('MultipartFormData toMultipartFormData()'),
+              contains('MultipartFormField(name: "workspace_id"'),
+              contains('if (folderId != null)'),
+              contains('file.asFile("file")'),
               contains('static UploadBody decodeMultipart('),
               contains('form.fieldValue("workspace_id")'),
+              contains('form.fieldValue("folder_id")'),
               contains('bool.parse(value)'),
               contains('form.file("file")'),
+              contains('MultipartUploadFile.stream('),
             ]),
           ),
         },
