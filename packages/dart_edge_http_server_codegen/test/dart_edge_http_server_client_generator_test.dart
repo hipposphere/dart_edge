@@ -214,6 +214,49 @@ void main() {
       );
     });
 
+    test('encodes required nullable date-time fields as nullable', () {
+      final spec = DartEdgeClientLibrarySpec(
+        className: 'UsersClient',
+        schemas: const [
+          JsonSchema.object(
+            id: 'UserDto',
+            properties: {
+              'id': JsonSchema.string(),
+              'ban_expires': JsonSchema.string(
+                nullable: true,
+                format: 'date-time',
+              ),
+            },
+            required: ['id', 'ban_expires'],
+            additionalProperties: false,
+          ),
+        ],
+        operations: [
+          DartEdgeClientOperation(
+            method: HttpMethod.get,
+            path: '/users/<id>',
+            options: const RouteOptions(
+              operationId: 'getUser',
+              success: ResponseSpec.json(schema: JsonSchema.ref('UserDto')),
+            ),
+            successType: 'UserDto',
+          ),
+        ],
+      );
+
+      final models = const DartEdgeClientGenerator().generateModelsPart(spec);
+
+      expect(models, contains('final DateTime? banExpires;'));
+      expect(models, contains("banExpires: json['ban_expires'] == null"));
+      expect(
+        models,
+        contains(
+          "? null\n          : DateTime.parse(json['ban_expires'] as String)",
+        ),
+      );
+      expect(models, contains("'ban_expires': banExpires?.toIso8601String()"));
+    });
+
     test('emits multipart client body models and encoders', () {
       final spec = DartEdgeClientLibrarySpec(
         className: 'UploadsClient',

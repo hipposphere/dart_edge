@@ -72,6 +72,10 @@ void main() {
             contains('final class UsersTable extends SqlTable<'),
             contains('final class PublicSchemaRoutines'),
             contains('Future<SqlResult> findUser('),
+            contains("import 'package:dart_edge_core/dart_edge_core.dart';"),
+            isNot(
+              contains("import 'package:dart_edge_sql/dart_edge_sql.dart';"),
+            ),
             contains("static const schemaId = 'UsersRow';"),
             contains(
               'static const schemaRef = JsonSchema.componentRef(schemaId);',

@@ -130,7 +130,7 @@ String _emitRoutineLibrary(_SchemaGroup group) {
   final library = Library((builder) {
     builder
       ..directives.add(
-        Directive.import('package:dart_edge_sql/dart_edge_sql.dart'),
+        Directive.import('package:dart_edge_core/dart_edge_core.dart'),
       )
       ..body.add(_routinesClass(group));
   });

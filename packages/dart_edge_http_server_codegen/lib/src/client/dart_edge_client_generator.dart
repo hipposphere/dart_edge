@@ -681,11 +681,12 @@ $files
   }
 
   String _decodeField(_ClientModelFieldSpec field) {
-    final access = field.required
-        ? "json['${field.wireName}']!"
-        : "json['${field.wireName}']";
+    final nullable = !field.required || field.schema.nullable;
+    final access = nullable
+        ? "json['${field.wireName}']"
+        : "json['${field.wireName}']!";
     final decoded = _decodeSchemaValue(field.schema, access, field.schemaTypes);
-    if (field.required) {
+    if (!nullable) {
       return decoded;
     }
     return "$access == null ? null : $decoded";
@@ -695,7 +696,7 @@ $files
     return _encodeSchemaValue(
       field.schema,
       field.name,
-      nullable: !field.required,
+      nullable: !field.required || field.schema.nullable,
       schemaTypes: field.schemaTypes,
     );
   }

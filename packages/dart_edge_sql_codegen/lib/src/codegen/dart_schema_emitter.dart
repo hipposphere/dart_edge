@@ -1,7 +1,7 @@
 import 'dart:io';
 
 import 'package:code_builder/code_builder.dart';
-import 'package:dart_edge_sql/dart_edge_sql.dart' show PostgresTypeMapping;
+import 'package:dart_edge_core/dart_edge_core.dart' show PostgresTypeMapping;
 import 'package:dart_style/dart_style.dart';
 
 import '../introspection/introspected_database.dart';

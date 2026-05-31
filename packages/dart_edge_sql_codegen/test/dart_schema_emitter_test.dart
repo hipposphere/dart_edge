@@ -1343,6 +1343,14 @@ void main() {
       contains('static const routines = PublicSchemaRoutines.routines;'),
     );
     expect(routines, contains('final class PublicSchemaRoutines {'));
+    expect(
+      routines,
+      contains("import 'package:dart_edge_core/dart_edge_core.dart';"),
+    );
+    expect(
+      routines,
+      isNot(contains("import 'package:dart_edge_sql/dart_edge_sql.dart';")),
+    );
     expect(routines, contains('const PublicSchemaRoutines._();'));
     expect(
       routines,
