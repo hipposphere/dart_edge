@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -87,6 +88,52 @@ abstract base class DartEdgeHttpClientBase {
     );
   }
 
+  Future<DartEdgeClientStreamedResponseObject>
+  invokeStream<TParams, TQuery, THeaders, TBody>(
+    DartEdgeClientInvocation<Object?, TParams, TQuery, THeaders, TBody>
+    invocation,
+  ) async {
+    final request = await _buildClientRequest(invocation);
+    final response = await transport.sendStream(request);
+    if (response.status == invocation.success.status) {
+      return DartEdgeClientStreamedResponseObject(
+        status: response.status,
+        contentType: response.contentType,
+        headers: response.headers,
+        bodyStream: response.bodyStream,
+      );
+    }
+
+    final bodyBytes = await _collectStreamBytes(response.bodyStream);
+    final bufferedResponse = DartEdgeClientResponse(
+      status: response.status,
+      contentType: response.contentType,
+      headers: response.headers,
+      bodyBytes: bodyBytes,
+    );
+    final documentedError = invocation.errors
+        .where((error) => error.status == response.status)
+        .firstOrNull;
+    return DartEdgeClientStreamedResponseObject(
+      status: response.status,
+      contentType: response.contentType,
+      headers: response.headers,
+      bodyStream: const Stream<List<int>>.empty(),
+      error: DartEdgeClientError(
+        status: response.status,
+        code: documentedError?.code,
+        kind: documentedError == null
+            ? DartEdgeClientErrorKind.unknownStatus
+            : DartEdgeClientErrorKind.documented,
+        contentType: response.contentType,
+        headers: response.headers,
+        rawBody: bufferedResponse.body,
+        rawBodyBytes: bufferedResponse.bodyBytes,
+        body: _decodeErrorBody(bufferedResponse),
+      ),
+    );
+  }
+
   Future<DartEdgeClientWebSocket> connectWebSocket<TParams, TQuery, THeaders>(
     DartEdgeClientWebSocketInvocation<TParams, TQuery, THeaders> invocation,
   ) {
@@ -140,6 +187,38 @@ abstract base class DartEdgeHttpClientBase {
           encodedBody: null,
         ),
       ),
+    );
+  }
+
+  Future<DartEdgeClientRequest>
+  _buildClientRequest<TResponse, TParams, TQuery, THeaders, TBody>(
+    DartEdgeClientInvocation<TResponse, TParams, TQuery, THeaders, TBody>
+    invocation,
+  ) async {
+    final abortTrigger = _combinedAbortTrigger(
+      abortTrigger: invocation.abortTrigger,
+      timeout: invocation.timeout,
+    );
+    final encodedBody = await _encodeRequestBody(
+      body: invocation.body,
+      onMultipartUploadProgress: invocation.onMultipartUploadProgress,
+    );
+    return DartEdgeClientRequest(
+      method: invocation.method,
+      uri: _buildUri(
+        invocation.pathTemplate,
+        params: invocation.params,
+        query: invocation.query,
+      ),
+      headers: _buildHeaders(
+        headers: invocation.headers,
+        body: invocation.body,
+        encodedBody: encodedBody,
+      ),
+      body: encodedBody?.body,
+      bodyStream: encodedBody?.bodyStream,
+      bodyStreamLength: encodedBody?.bodyStreamLength,
+      abortTrigger: abortTrigger,
     );
   }
 
@@ -823,6 +902,46 @@ final class DartEdgeClientResponseObject<T> {
   }
 }
 
+/// Typed response object returned by generated streaming HTTP clients.
+final class DartEdgeClientStreamedResponseObject {
+  const DartEdgeClientStreamedResponseObject({
+    required this.status,
+    required this.contentType,
+    this.headers = const <String, String>{},
+    required this.bodyStream,
+    this.error,
+  });
+
+  /// Actual HTTP response status.
+  final int status;
+
+  /// Actual HTTP response content type.
+  final String contentType;
+
+  /// Actual HTTP response headers.
+  final Map<String, String> headers;
+
+  /// Raw transport response stream when [isSuccess] is true.
+  final Stream<List<int>> bodyStream;
+
+  /// Generic decoded error metadata when [isSuccess] is false.
+  final DartEdgeClientError? error;
+
+  /// Whether this response matched the generated success status.
+  bool get isSuccess => error == null;
+
+  /// Returns [bodyStream] or throws when the response is an error.
+  Stream<List<int>> get requireBodyStream {
+    if (error case final error?) {
+      throw StateError(
+        'Expected a successful Dart Edge streaming client response, got '
+        '${error.status} ${error.kind.name}.',
+      );
+    }
+    return bodyStream;
+  }
+}
+
 /// Generic non-success response metadata returned by generated HTTP clients.
 final class DartEdgeClientError {
   const DartEdgeClientError({
@@ -866,6 +985,14 @@ final class DartEdgeClientError {
 
   /// Generic decoded error body.
   final Object? body;
+}
+
+Future<Uint8List> _collectStreamBytes(Stream<List<int>> stream) async {
+  final builder = BytesBuilder(copy: false);
+  await for (final chunk in stream) {
+    builder.add(chunk);
+  }
+  return builder.takeBytes();
 }
 
 /// Error classification for generated HTTP client responses.

@@ -738,12 +738,21 @@ $files
   Method _operationMethod(DartEdgeClientOperation operation) {
     return Method((builder) {
       builder
-        ..returns = _type('Future', [
-          _type('DartEdgeClientResponseObject', [refer(operation.successType)]),
-        ])
+        ..returns = _isSseOperation(operation)
+            ? _type('Future', [refer('DartEdgeClientStreamedResponseObject')])
+            : _type('Future', [
+                _type('DartEdgeClientResponseObject', [
+                  refer(operation.successType),
+                ]),
+              ])
         ..name = operation.resolvedMethodName
         ..optionalParameters.addAll(_operationParameters(operation))
-        ..body = _invokeExpression(operation).returned.statement;
+        ..body =
+            (_isSseOperation(operation)
+                    ? _invokeStreamExpression(operation)
+                    : _invokeExpression(operation))
+                .returned
+                .statement;
     });
   }
 
@@ -781,6 +790,24 @@ $files
       <Expression>[invocation],
       const <String, Expression>{},
       invocationTypes,
+    );
+  }
+
+  Expression _invokeStreamExpression(DartEdgeClientOperation operation) {
+    final invocationTypes = <Reference>[
+      refer('Object?'),
+      ..._invocationTypes(operation).skip(1),
+    ];
+    final invocation = refer('DartEdgeClientInvocation').newInstance(
+      const <Expression>[],
+      _invocationArguments(operation),
+      invocationTypes,
+    );
+
+    return refer('invokeStream').call(
+      <Expression>[invocation],
+      const <String, Expression>{},
+      invocationTypes.skip(1).toList(),
     );
   }
 
@@ -1619,6 +1646,15 @@ bool _isBinaryContentType(String contentType) {
       mimeType.startsWith('audio/') ||
       mimeType.startsWith('image/') ||
       mimeType.startsWith('video/');
+}
+
+bool _isSseOperation(DartEdgeClientOperation operation) {
+  return _isSseContentType(operation.options.responses.success.contentType);
+}
+
+bool _isSseContentType(String contentType) {
+  return contentType.split(';').first.trim().toLowerCase() ==
+      'text/event-stream';
 }
 
 bool _needsTypedDataImport(DartEdgeClientLibrarySpec spec) {

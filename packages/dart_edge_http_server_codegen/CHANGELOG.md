@@ -1,3 +1,8 @@
+## 0.3.30
+
+- Generate streamed client methods for `ResponseSpec.sse()` routes.
+- Require `dart_edge_core` 0.3.23.
+
 ## 0.3.27
 
 - Generate optional multipart upload progress callbacks for multipart client

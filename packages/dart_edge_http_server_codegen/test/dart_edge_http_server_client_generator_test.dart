@@ -137,6 +137,39 @@ void main() {
       expect(source, contains('Duration? timeout'));
     });
 
+    test('emits streamed bindings for SSE response contracts', () {
+      final source = const DartEdgeClientGenerator().generate(
+        const DartEdgeClientLibrarySpec(
+          className: 'EventsClient',
+          operations: [
+            DartEdgeClientOperation(
+              method: HttpMethod.get,
+              path: '/events',
+              options: RouteOptions(
+                operationId: 'subscribeEvents',
+                success: ResponseSpec.sse(),
+              ),
+              successType: 'Object?',
+            ),
+          ],
+        ),
+      );
+
+      expect(
+        source,
+        contains(
+          'Future<DartEdgeClientStreamedResponseObject> subscribeEvents({',
+        ),
+      );
+      expect(source, contains('invokeStream<Never, Never, Never, Never>'));
+      expect(
+        source,
+        contains("contentType: 'text/event-stream; charset=utf-8'"),
+      );
+      expect(source, contains('Duration? timeout'));
+      expect(source, contains('abortTrigger: abortTrigger'));
+    });
+
     test(
       'infers Uint8List for generated clients from binary response specs',
       () {
@@ -1240,6 +1273,84 @@ void main() {
       expect(response.requireData, bytes);
     });
 
+    test('returns streamed success responses without buffering', () async {
+      var listened = false;
+      final client = _TestClient(
+        baseUri: Uri.parse('https://api.example.test'),
+        transport: _FakeTransport(
+          onSend: (_) async => throw StateError('send should not be used'),
+          onSendStream: (request) async {
+            expect(request.method, HttpMethod.get);
+            expect(request.uri, Uri.parse('https://api.example.test/events'));
+            return DartEdgeClientStreamedResponse(
+              status: 200,
+              contentType: 'text/event-stream; charset=utf-8',
+              headers: const {'cache-control': 'no-cache'},
+              bodyStream:
+                  Stream<List<int>>.fromIterable([
+                    utf8.encode('data: alpha\n\n'),
+                  ]).map((chunk) {
+                    listened = true;
+                    return chunk;
+                  }),
+            );
+          },
+        ),
+      );
+
+      final response = await client.invokeStream<Never, Never, Never, Never>(
+        const DartEdgeClientInvocation<Object?, Never, Never, Never, Never>(
+          method: HttpMethod.get,
+          pathTemplate: '/events',
+          success: DartEdgeClientResponseSpec<Object?>(
+            status: 200,
+            contentType: 'text/event-stream; charset=utf-8',
+          ),
+        ),
+      );
+
+      expect(response.isSuccess, isTrue);
+      expect(response.headers, {'cache-control': 'no-cache'});
+      expect(listened, isFalse);
+      expect(
+        utf8.decode(await _collectStreamBytes(response.requireBodyStream)),
+        'data: alpha\n\n',
+      );
+      expect(listened, isTrue);
+    });
+
+    test('buffers streamed non-success responses as client errors', () async {
+      final client = _TestClient(
+        baseUri: Uri.parse('https://api.example.test'),
+        transport: _FakeTransport(
+          onSend: (_) async => throw StateError('send should not be used'),
+          onSendStream: (_) async => DartEdgeClientStreamedResponse(
+            status: 401,
+            contentType: 'application/json; charset=utf-8',
+            bodyStream: Stream.value(utf8.encode('{"error":"unauthorized"}')),
+          ),
+        ),
+      );
+
+      final response = await client.invokeStream<Never, Never, Never, Never>(
+        const DartEdgeClientInvocation<Object?, Never, Never, Never, Never>(
+          method: HttpMethod.get,
+          pathTemplate: '/events',
+          success: DartEdgeClientResponseSpec<Object?>(
+            status: 200,
+            contentType: 'text/event-stream; charset=utf-8',
+          ),
+          errors: [DartEdgeClientErrorSpec(status: 401, code: 'unauthorized')],
+        ),
+      );
+
+      expect(response.isSuccess, isFalse);
+      expect(response.error?.kind, DartEdgeClientErrorKind.documented);
+      expect(response.error?.code, 'unauthorized');
+      expect(response.error?.body, {'error': 'unauthorized'});
+      expect(() => response.requireBodyStream, throwsStateError);
+    });
+
     test('builds websocket connection requests', () async {
       final transport = _FakeWebSocketTransport(
         onConnect: (request) async {
@@ -1324,14 +1435,29 @@ final class _TestClient extends DartEdgeHttpClientBase {
 }
 
 final class _FakeTransport implements DartEdgeClientTransport {
-  const _FakeTransport({required this.onSend});
+  const _FakeTransport({required this.onSend, this.onSendStream});
 
   final Future<DartEdgeClientResponse> Function(DartEdgeClientRequest request)
   onSend;
+  final Future<DartEdgeClientStreamedResponse> Function(
+    DartEdgeClientRequest request,
+  )?
+  onSendStream;
 
   @override
   Future<DartEdgeClientResponse> send(DartEdgeClientRequest request) {
     return onSend(request);
+  }
+
+  @override
+  Future<DartEdgeClientStreamedResponse> sendStream(
+    DartEdgeClientRequest request,
+  ) {
+    final onSendStream = this.onSendStream;
+    if (onSendStream == null) {
+      throw UnsupportedError('No streaming response configured.');
+    }
+    return onSendStream(request);
   }
 }
 

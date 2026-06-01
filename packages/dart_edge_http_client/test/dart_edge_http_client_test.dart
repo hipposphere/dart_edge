@@ -156,6 +156,63 @@ void main() {
 
       expect(response.status, 204);
     });
+
+    test('returns streamed responses without buffering the body', () async {
+      var listened = false;
+      final transport = DartEdgeHttpClientTransport(
+        client: MockClient.streaming((request, _) async {
+          expect(request.method, 'GET');
+          return http.StreamedResponse(
+            Stream<List<int>>.fromIterable([
+              utf8.encode('data: alpha\n\n'),
+            ]).map((chunk) {
+              listened = true;
+              return chunk;
+            }),
+            200,
+            headers: {'content-type': 'text/event-stream; charset=utf-8'},
+          );
+        }),
+      );
+
+      final response = await transport.sendStream(
+        DartEdgeClientRequest(
+          method: HttpMethod.get,
+          uri: Uri.parse('https://api.example.test/events'),
+        ),
+      );
+
+      expect(response.status, 200);
+      expect(response.contentType, 'text/event-stream; charset=utf-8');
+      expect(listened, isFalse);
+      expect(
+        utf8.decode(
+          await response.bodyStream.expand((chunk) => chunk).toList(),
+        ),
+        'data: alpha\n\n',
+      );
+      expect(listened, isTrue);
+    });
+
+    test('applies streamed interceptors to streamed responses', () async {
+      final bearer = DartEdgeBearerTokenInterceptor(() async => 'test-token');
+      final transport = DartEdgeHttpClientTransport(
+        client: MockClient.streaming((request, _) async {
+          expect(request.headers['authorization'], 'Bearer test-token');
+          return http.StreamedResponse(const Stream<List<int>>.empty(), 204);
+        }),
+        streamedInterceptors: [bearer.stream],
+      );
+
+      final response = await transport.sendStream(
+        DartEdgeClientRequest(
+          method: HttpMethod.get,
+          uri: Uri.parse('https://api.example.test/events'),
+        ),
+      );
+
+      expect(response.status, 204);
+    });
   });
 
   group('DartEdgeWebSocketClientTransport', () {

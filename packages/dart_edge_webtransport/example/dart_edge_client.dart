@@ -43,4 +43,11 @@ final class _UnusedHttpTransport implements DartEdgeClientTransport {
   Future<DartEdgeClientResponse> send(DartEdgeClientRequest request) {
     throw UnsupportedError('This example only opens a WebTransport session.');
   }
+
+  @override
+  Future<DartEdgeClientStreamedResponse> sendStream(
+    DartEdgeClientRequest request,
+  ) {
+    throw UnsupportedError('This example only opens a WebTransport session.');
+  }
 }

@@ -1,3 +1,8 @@
+## 0.3.23
+
+- Add generated-client streamed response contracts for SSE and other long-lived
+  HTTP response streams.
+
 ## 0.3.22
 
 - Add streamed generated-client request body contracts.

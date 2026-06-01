@@ -88,9 +88,28 @@ final class DartEdgeClientResponse {
   }
 }
 
+/// One inbound streaming response returned to a generated client.
+final class DartEdgeClientStreamedResponse {
+  const DartEdgeClientStreamedResponse({
+    required this.status,
+    required this.contentType,
+    this.headers = const <String, String>{},
+    required this.bodyStream,
+  });
+
+  final int status;
+  final String contentType;
+  final Map<String, String> headers;
+  final Stream<List<int>> bodyStream;
+}
+
 /// Transport abstraction used by generated clients.
 abstract interface class DartEdgeClientTransport {
   Future<DartEdgeClientResponse> send(DartEdgeClientRequest request);
+
+  Future<DartEdgeClientStreamedResponse> sendStream(
+    DartEdgeClientRequest request,
+  );
 }
 
 /// One outbound WebSocket connection request emitted by a generated client.

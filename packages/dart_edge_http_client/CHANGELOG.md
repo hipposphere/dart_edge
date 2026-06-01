@@ -1,3 +1,9 @@
+## 0.1.6
+
+- Add non-buffering streamed response transport support for generated clients.
+- Add bearer-token streamed interceptor support.
+- Require `dart_edge_core` 0.3.23.
+
 ## 0.1.5
 
 - Send streamed generated-client request bodies through `package:http`.
