@@ -1,4 +1,4 @@
-## 0.3.23
+## 0.3.24
 
 - Add generated-client streamed response contracts for SSE and other long-lived
   HTTP response streams.
