@@ -68,6 +68,42 @@ void main() {
   });
 
   test(
+    'OAuth route uses plugin handler when no providers are configured',
+    () async {
+      final auth = DartEdgeAuth(
+        const DartEdgeAuthConfig(
+          workerPoolSize: 4,
+          secret: 'test-secret-key-that-is-at-least-32-characters-long',
+          baseUrl: 'http://localhost:3000',
+        ),
+      );
+      addTearDown(auth.dispose);
+
+      try {
+        final response = await auth.api.callKnownOperation(
+          operation: DartEdgeAuthOperation.socialSignIn,
+          body: {
+            'provider': 'uka',
+            'callbackURL': 'http://localhost:3000/auth/callback/uka',
+          },
+        );
+        expect(response.status, isNot(HttpStatus.notFound));
+        expect(response.body, isNot(contains('No handler found')));
+        expect(
+          response.body.toLowerCase(),
+          anyOf(contains('oauth'), contains('provider'), contains('config')),
+        );
+      } on StateError catch (error) {
+        expect('$error', isNot(contains('No handler found for this request')));
+        expect(
+          '$error'.toLowerCase(),
+          anyOf(contains('oauth'), contains('provider'), contains('config')),
+        );
+      }
+    },
+  );
+
+  test(
     'mounts better-auth routes and proxies status, body, and headers',
     () async {
       final app = DartEdge<TestServices>(services: TestServices.new);

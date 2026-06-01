@@ -1303,11 +1303,9 @@ fn configure_builder<DB: DatabaseAdapter>(
     if config.enable_email_verification {
         builder = builder.plugin(EmailVerificationPlugin::new());
     }
-    if !config.oauth_providers.is_empty() {
-        builder = builder.plugin(OAuthPlugin::with_config(oauth_config(
-            &config.oauth_providers,
-        )));
-    }
+    builder = builder.plugin(OAuthPlugin::with_config(oauth_config(
+        &config.oauth_providers,
+    )));
     if let Some(admin) = &config.admin {
         builder = builder.plugin(
             AdminPlugin::new()
