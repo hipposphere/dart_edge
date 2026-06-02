@@ -444,6 +444,42 @@ void main() {
   });
 
   test(
+    'includes rejected callback origin in trusted-origin failures',
+    () async {
+      final auth = DartEdgeAuth(
+        const DartEdgeAuthConfig(
+          workerPoolSize: 4,
+          secret: 'test-secret-key-that-is-at-least-32-characters-long',
+          baseUrl: 'http://localhost:3000',
+        ),
+      );
+      addTearDown(auth.dispose);
+
+      await expectLater(
+        auth.api.signInOAuth(
+          provider: 'uka',
+          callbackUrl: 'http://evil.example.com/auth/callback/uka',
+        ),
+        throwsA(
+          isA<DartEdgeAuthApiException>()
+              .having((error) => error.status, 'status', HttpStatus.badRequest)
+              .having(
+                (error) => error.message,
+                'message',
+                allOf(
+                  contains(
+                    'callbackURL must be an absolute http(s) URL on a '
+                    'trusted origin',
+                  ),
+                  contains('rejected origin: http://evil.example.com'),
+                ),
+              ),
+        ),
+      );
+    },
+  );
+
+  test(
     'explains when an admin operation is called without admin enabled',
     () async {
       final auth = DartEdgeAuth(

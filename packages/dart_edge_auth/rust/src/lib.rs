@@ -11,7 +11,7 @@ use better_auth::plugins::{
     AccountManagementPlugin, AdminPlugin, EmailPasswordPlugin, EmailVerificationPlugin,
     PasswordHasher, PasswordManagementConfig, PasswordManagementPlugin, SessionManagementPlugin,
 };
-use better_auth::types_mod::{ListUsersParams, PASSWORD_HASH_KEY, UpdateAccount};
+use better_auth::types_mod::{ListUsersParams, PASSWORD_HASH_KEY, UpdateAccount, extract_origin};
 use better_auth::{AuthAccount, AuthSession, AuthUser};
 use better_auth::{
     AuthBuilder, AuthConfig, AuthError, AuthRequest, AuthResponse, AuthResult, BetterAuth,
@@ -41,6 +41,8 @@ mod shared_sql_adapter;
 use routes::{join_path, normalize_base_path};
 
 const DART_EDGE_AUTH_NATIVE_ABI_VERSION: i32 = 2;
+const TRUSTED_CALLBACK_URL_ERROR_MESSAGE: &str =
+    "callbackURL must be an absolute http(s) URL on a trusted origin";
 
 static NEXT_INSTANCE_ID: AtomicI64 = AtomicI64::new(1);
 static INSTANCES: Lazy<Mutex<HashMap<i64, AuthInstance>>> =
@@ -471,6 +473,7 @@ pub extern "C" fn dart_edge_auth_handle_request(
     let query = unsafe { read_pairs_map(request.query, request.query_count) };
     let headers = unsafe { read_pairs_map(request.headers, request.header_count) };
     let body = unsafe { read_native_bytes(request.body) }.map(|body| body.to_vec());
+    let callback_detail = trusted_callback_url_rejection_detail(body.as_deref());
 
     let mut instances = INSTANCES.lock().unwrap();
     let Some(instance) = instances.get_mut(&handle) else {
@@ -496,7 +499,8 @@ pub extern "C" fn dart_edge_auth_handle_request(
     };
 
     match response {
-        Ok(response) => {
+        Ok(mut response) => {
+            annotate_trusted_callback_url_error(&mut response, callback_detail.as_deref());
             clear_last_error();
             Box::into_raw(Box::new(NativeAuthResponseHandle::from_response(response)))
                 .cast::<NativeHttpResponse>()
@@ -1404,6 +1408,49 @@ fn normalize_database_schema(value: &Option<String>) -> Result<Option<String>, S
     }
 
     Ok(Some(trimmed.to_string()))
+}
+
+fn trusted_callback_url_rejection_detail(body: Option<&[u8]>) -> Option<String> {
+    let value = serde_json::from_slice::<serde_json::Value>(body?).ok()?;
+    let callback_url = value.get("callbackURL")?.as_str()?.trim();
+    if callback_url.is_empty() {
+        return Some("callbackURL is empty".to_string());
+    }
+    extract_origin(callback_url)
+        .map(|origin| format!("rejected origin: {origin}"))
+        .or_else(|| Some("callbackURL did not contain an absolute http(s) origin".to_string()))
+}
+
+fn annotate_trusted_callback_url_error(
+    response: &mut better_auth::AuthResponse,
+    detail: Option<&str>,
+) {
+    let Some(detail) = detail else {
+        return;
+    };
+    if response.status != 400 {
+        return;
+    }
+
+    let Ok(mut value) = serde_json::from_slice::<serde_json::Value>(&response.body) else {
+        return;
+    };
+    let Some(object) = value.as_object_mut() else {
+        return;
+    };
+    if object.get("message").and_then(serde_json::Value::as_str)
+        != Some(TRUSTED_CALLBACK_URL_ERROR_MESSAGE)
+    {
+        return;
+    }
+
+    object.insert(
+        "message".to_string(),
+        serde_json::Value::String(format!("{TRUSTED_CALLBACK_URL_ERROR_MESSAGE} ({detail}).")),
+    );
+    if let Ok(body) = serde_json::to_vec(&value) {
+        response.body = body;
+    }
 }
 
 impl NativeAuthResponseHandle {
