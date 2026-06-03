@@ -32,6 +32,10 @@ use serde::Deserialize;
 use serde_json::json;
 use shared_sql_adapter::{SharedSqlCallbacks, SharedSqlDatabaseAdapter, SharedSqlDialect};
 use tokio::runtime::Runtime;
+use tracing::field::{Field, Visit};
+use tracing::{Event, Subscriber};
+use tracing_subscriber::layer::{Context, SubscriberExt};
+use tracing_subscriber::{Layer, Registry};
 use unicode_normalization::UnicodeNormalization;
 use uuid::Uuid;
 
@@ -474,6 +478,7 @@ pub extern "C" fn dart_edge_auth_handle_request(
     let headers = unsafe { read_pairs_map(request.headers, request.header_count) };
     let body = unsafe { read_native_bytes(request.body) }.map(|body| body.to_vec());
     let callback_detail = trusted_callback_url_rejection_detail(&query, body.as_deref());
+    let internal_auth_error = Arc::new(Mutex::new(None));
 
     let mut instances = INSTANCES.lock().unwrap();
     let Some(instance) = instances.get_mut(&handle) else {
@@ -493,14 +498,24 @@ pub extern "C" fn dart_edge_auth_handle_request(
         .map_err(|error| error.to_string())
     } else {
         let request = AuthRequest::from_parts(method, path, headers, body, query);
-        instance
-            .runtime
-            .block_on(instance.auth.handle_request(request))
+        let subscriber = Registry::default().with(BetterAuthInternalErrorLayer {
+            error: Arc::clone(&internal_auth_error),
+        });
+        tracing::subscriber::with_default(subscriber, || {
+            instance
+                .runtime
+                .block_on(instance.auth.handle_request(request))
+        })
     };
 
     match response {
         Ok(mut response) => {
             annotate_trusted_callback_url_error(&mut response, callback_detail.as_deref());
+            if response.status >= 500 {
+                if let Some(error) = internal_auth_error.lock().unwrap().clone() {
+                    annotate_internal_auth_error(&mut response, &error);
+                }
+            }
             clear_last_error();
             Box::into_raw(Box::new(NativeAuthResponseHandle::from_response(response)))
                 .cast::<NativeHttpResponse>()
@@ -508,6 +523,59 @@ pub extern "C" fn dart_edge_auth_handle_request(
         Err(error) => {
             set_last_error(error);
             std::ptr::null_mut()
+        }
+    }
+}
+
+struct BetterAuthInternalErrorLayer {
+    error: Arc<Mutex<Option<String>>>,
+}
+
+impl<S> Layer<S> for BetterAuthInternalErrorLayer
+where
+    S: Subscriber,
+{
+    fn on_event(&self, event: &Event<'_>, _ctx: Context<'_, S>) {
+        let mut visitor = InternalErrorVisitor::default();
+        event.record(&mut visitor);
+
+        let message_is_internal = visitor
+            .message
+            .as_deref()
+            .is_some_and(|message| message == "Internal server error");
+        if !message_is_internal {
+            return;
+        }
+
+        let Some(error) = visitor.error.or(visitor.message) else {
+            return;
+        };
+        *self.error.lock().unwrap() = Some(error);
+    }
+}
+
+#[derive(Default)]
+struct InternalErrorVisitor {
+    error: Option<String>,
+    message: Option<String>,
+}
+
+impl Visit for InternalErrorVisitor {
+    fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
+        self.record_value(field, format!("{value:?}"));
+    }
+
+    fn record_str(&mut self, field: &Field, value: &str) {
+        self.record_value(field, value.to_string());
+    }
+}
+
+impl InternalErrorVisitor {
+    fn record_value(&mut self, field: &Field, value: String) {
+        match field.name() {
+            "error" => self.error = Some(value),
+            "message" => self.message = Some(value),
+            _ => {}
         }
     }
 }
@@ -1345,10 +1413,20 @@ fn oauth_config(providers: &[NativeOAuthProviderConfig]) -> OAuthConfig {
 fn map_generic_oauth_user_info(value: serde_json::Value) -> Result<OAuthUserInfo, String> {
     Ok(OAuthUserInfo {
         id: json_string_field(&value, "sub")
+            .or_else(|| json_string_field(&value, "oid"))
             .or_else(|| json_string_field(&value, "id"))
-            .ok_or_else(|| "missing sub or id".to_string())?,
-        email: json_string_field(&value, "email").ok_or_else(|| "missing email".to_string())?,
-        name: json_string_field(&value, "name"),
+            .ok_or_else(|| "missing sub, oid, or id".to_string())?,
+        email: json_string_field(&value, "email")
+            .or_else(|| json_string_field(&value, "mail"))
+            .or_else(|| json_string_field(&value, "userPrincipalName"))
+            .or_else(|| json_string_field(&value, "preferred_username"))
+            .or_else(|| json_string_field(&value, "upn"))
+            .ok_or_else(|| {
+                "missing email, mail, userPrincipalName, preferred_username, or upn".to_string()
+            })?,
+        name: json_string_field(&value, "name")
+            .or_else(|| json_string_field(&value, "displayName"))
+            .or_else(|| json_string_field(&value, "given_name")),
         image: json_string_field(&value, "picture")
             .or_else(|| json_string_field(&value, "avatar_url")),
         email_verified: json_bool_field(&value, "email_verified")
@@ -1527,6 +1605,23 @@ fn annotate_trusted_callback_url_error(
     }
 }
 
+fn annotate_internal_auth_error(response: &mut better_auth::AuthResponse, error: &str) {
+    let Ok(mut value) = serde_json::from_slice::<serde_json::Value>(&response.body) else {
+        return;
+    };
+    let Some(object) = value.as_object_mut() else {
+        return;
+    };
+
+    object.insert(
+        "internal_error".to_string(),
+        serde_json::Value::String(error.to_string()),
+    );
+    if let Ok(body) = serde_json::to_vec(&value) {
+        response.body = body;
+    }
+}
+
 impl NativeAuthResponseHandle {
     fn from_response(response: better_auth::AuthResponse) -> Self {
         let content_type = response_content_type(&response.headers);
@@ -1596,4 +1691,38 @@ unsafe fn read_c_string(value: *const c_char) -> Option<String> {
         .to_str()
         .ok()
         .map(ToOwned::to_owned)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn maps_microsoft_graph_user_info() {
+        let user = map_generic_oauth_user_info(json!({
+            "id": "graph-user-id",
+            "userPrincipalName": "ada@example.com",
+            "displayName": "Ada Lovelace"
+        }))
+        .expect("Microsoft Graph user info should map");
+
+        assert_eq!(user.id, "graph-user-id");
+        assert_eq!(user.email, "ada@example.com");
+        assert_eq!(user.name.as_deref(), Some("Ada Lovelace"));
+    }
+
+    #[test]
+    fn maps_microsoft_oidc_user_info() {
+        let user = map_generic_oauth_user_info(json!({
+            "oid": "entra-object-id",
+            "preferred_username": "grace@example.com",
+            "name": "Grace Hopper"
+        }))
+        .expect("Microsoft OIDC user info should map");
+
+        assert_eq!(user.id, "entra-object-id");
+        assert_eq!(user.email, "grace@example.com");
+        assert_eq!(user.name.as_deref(), Some("Grace Hopper"));
+    }
 }
