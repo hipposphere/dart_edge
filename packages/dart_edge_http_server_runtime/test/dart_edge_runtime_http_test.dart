@@ -30,6 +30,42 @@ void main() {
     },
   );
 
+  test('decodes percent-encoded query parameters', () async {
+    final app = DartEdge<void>(services: () {});
+    app.get(
+      '/oauth/start',
+      handler: (ctx) => {
+        'callbackURL': ctx.req.queryParam('callbackURL'),
+        'name': ctx.req.queryParam('name'),
+      },
+    );
+
+    final server = await app.listen(port: 0);
+    final client = HttpClient();
+
+    addTearDown(() async {
+      client.close(force: true);
+      await server.close();
+    });
+
+    final response = await (await client.getUrl(
+      Uri.parse(
+        'http://127.0.0.1:${server.port}/oauth/start?'
+        'callbackURL=http%3A%2F%2F127.0.0.1%3A51663%2Fcallback&'
+        'name=Ada+Lovelace',
+      ),
+    )).close();
+
+    expect(response.statusCode, HttpStatus.ok);
+    final body =
+        jsonDecode(await utf8.decoder.bind(response).join())
+            as Map<String, Object?>;
+    expect(body, {
+      'callbackURL': 'http://127.0.0.1:51663/callback',
+      'name': 'Ada Lovelace',
+    });
+  });
+
   test('runs request observers around Dart HTTP routes', () async {
     final observations = <HttpRequestObservation>[];
     final results = <HttpRequestObservationResult>[];

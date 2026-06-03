@@ -3047,10 +3047,49 @@ fn parse_query(query: Option<&str>) -> HashMap<String, String> {
                 continue;
             }
             let (key, value) = pair.split_once('=').unwrap_or((pair, ""));
-            result.insert(key.to_string(), value.to_string());
+            result.insert(decode_query_component(key), decode_query_component(value));
         }
     }
     result
+}
+
+fn decode_query_component(value: &str) -> String {
+    let mut decoded = Vec::with_capacity(value.len());
+    let bytes = value.as_bytes();
+    let mut index = 0;
+    while index < bytes.len() {
+        match bytes[index] {
+            b'+' => {
+                decoded.push(b' ');
+                index += 1;
+            }
+            b'%' if index + 2 < bytes.len() => {
+                if let (Some(high), Some(low)) =
+                    (hex_value(bytes[index + 1]), hex_value(bytes[index + 2]))
+                {
+                    decoded.push((high << 4) | low);
+                    index += 3;
+                } else {
+                    decoded.push(bytes[index]);
+                    index += 1;
+                }
+            }
+            byte => {
+                decoded.push(byte);
+                index += 1;
+            }
+        }
+    }
+    String::from_utf8_lossy(&decoded).into_owned()
+}
+
+fn hex_value(byte: u8) -> Option<u8> {
+    match byte {
+        b'0'..=b'9' => Some(byte - b'0'),
+        b'a'..=b'f' => Some(byte - b'a' + 10),
+        b'A'..=b'F' => Some(byte - b'A' + 10),
+        _ => None,
+    }
 }
 
 fn collect_headers(headers: &HeaderMap) -> HashMap<String, String> {
@@ -3309,5 +3348,25 @@ mod tests {
 
         assert!(validator.is_valid(&json!([{ "field": "createdAt" }])));
         assert!(!validator.is_valid(&json!([{ "field": 42 }])));
+    }
+
+    #[test]
+    fn parse_query_decodes_percent_encoded_components() {
+        let query = parse_query(Some(
+            "callbackURL=http%3A%2F%2F127.0.0.1%3A51663%2Fcallback&name=Ada+Lovelace",
+        ));
+
+        assert_eq!(
+            query.get("callbackURL").map(String::as_str),
+            Some("http://127.0.0.1:51663/callback"),
+        );
+        assert_eq!(query.get("name").map(String::as_str), Some("Ada Lovelace"));
+    }
+
+    #[test]
+    fn parse_query_preserves_invalid_percent_escapes() {
+        let query = parse_query(Some("value=bad%zz%2"));
+
+        assert_eq!(query.get("value").map(String::as_str), Some("bad%zz%2"));
     }
 }
