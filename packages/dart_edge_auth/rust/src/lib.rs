@@ -473,7 +473,7 @@ pub extern "C" fn dart_edge_auth_handle_request(
     let query = unsafe { read_pairs_map(request.query, request.query_count) };
     let headers = unsafe { read_pairs_map(request.headers, request.header_count) };
     let body = unsafe { read_native_bytes(request.body) }.map(|body| body.to_vec());
-    let callback_detail = trusted_callback_url_rejection_detail(body.as_deref());
+    let callback_detail = trusted_callback_url_rejection_detail(&query, body.as_deref());
 
     let mut instances = INSTANCES.lock().unwrap();
     let Some(instance) = instances.get_mut(&handle) else {
@@ -1410,15 +1410,89 @@ fn normalize_database_schema(value: &Option<String>) -> Result<Option<String>, S
     Ok(Some(trimmed.to_string()))
 }
 
-fn trusted_callback_url_rejection_detail(body: Option<&[u8]>) -> Option<String> {
-    let value = serde_json::from_slice::<serde_json::Value>(body?).ok()?;
-    let callback_url = value.get("callbackURL")?.as_str()?.trim();
+fn trusted_callback_url_rejection_detail(
+    query: &HashMap<String, String>,
+    body: Option<&[u8]>,
+) -> Option<String> {
+    let callback_url =
+        trusted_callback_url_from_body(body).or_else(|| query.get("callbackURL").cloned())?;
+    let callback_url = callback_url.trim();
     if callback_url.is_empty() {
         return Some("callbackURL is empty".to_string());
     }
-    extract_origin(callback_url)
-        .map(|origin| format!("rejected origin: {origin}"))
-        .or_else(|| Some("callbackURL did not contain an absolute http(s) origin".to_string()))
+    if let Some(origin) = extract_origin(callback_url) {
+        return Some(format!("rejected origin: {origin}"));
+    }
+
+    if let Some(decoded_callback_url) = percent_decode(callback_url)
+        && let Some(origin) = extract_origin(&decoded_callback_url)
+    {
+        return Some(format!(
+            "callbackURL appears to be URL-encoded; decoded origin would be {origin}; received callbackURL: {}",
+            debug_callback_url(callback_url),
+        ));
+    }
+
+    Some(format!(
+        "callbackURL did not contain an absolute http(s) origin; received callbackURL: {}",
+        debug_callback_url(callback_url),
+    ))
+}
+
+fn trusted_callback_url_from_body(body: Option<&[u8]>) -> Option<String> {
+    let value = serde_json::from_slice::<serde_json::Value>(body?).ok()?;
+    value.get("callbackURL")?.as_str().map(str::to_string)
+}
+
+fn percent_decode(value: &str) -> Option<String> {
+    if !value.contains('%') {
+        return None;
+    }
+
+    let mut decoded = Vec::with_capacity(value.len());
+    let bytes = value.as_bytes();
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] == b'%'
+            && index + 2 < bytes.len()
+            && let (Some(high), Some(low)) =
+                (hex_value(bytes[index + 1]), hex_value(bytes[index + 2]))
+        {
+            decoded.push((high << 4) | low);
+            index += 3;
+            continue;
+        }
+        decoded.push(bytes[index]);
+        index += 1;
+    }
+
+    Some(String::from_utf8_lossy(&decoded).into_owned())
+}
+
+fn hex_value(byte: u8) -> Option<u8> {
+    match byte {
+        b'0'..=b'9' => Some(byte - b'0'),
+        b'a'..=b'f' => Some(byte - b'a' + 10),
+        b'A'..=b'F' => Some(byte - b'A' + 10),
+        _ => None,
+    }
+}
+
+fn debug_callback_url(value: &str) -> String {
+    const MAX_DEBUG_CALLBACK_URL_LEN: usize = 160;
+    let sanitized = value
+        .chars()
+        .map(|char| if char.is_control() { ' ' } else { char })
+        .collect::<String>();
+    if sanitized.chars().count() <= MAX_DEBUG_CALLBACK_URL_LEN {
+        return format!("\"{sanitized}\"");
+    }
+
+    let truncated = sanitized
+        .chars()
+        .take(MAX_DEBUG_CALLBACK_URL_LEN)
+        .collect::<String>();
+    format!("\"{truncated}...\"")
 }
 
 fn annotate_trusted_callback_url_error(

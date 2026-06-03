@@ -479,6 +479,40 @@ void main() {
     },
   );
 
+  test('explains when callbackURL was passed URL-encoded', () async {
+    final auth = DartEdgeAuth(
+      const DartEdgeAuthConfig(
+        workerPoolSize: 4,
+        secret: 'test-secret-key-that-is-at-least-32-characters-long',
+        baseUrl: 'https://dicto.ukaachen.de',
+      ),
+    );
+    addTearDown(auth.dispose);
+
+    await expectLater(
+      auth.api.signInOAuth(
+        provider: 'uka',
+        callbackUrl: 'http%3A%2F%2F127.0.0.1%3A55357%2Fcallback',
+      ),
+      throwsA(
+        isA<DartEdgeAuthApiException>()
+            .having((error) => error.status, 'status', HttpStatus.badRequest)
+            .having(
+              (error) => error.message,
+              'message',
+              allOf(
+                contains('callbackURL appears to be URL-encoded'),
+                contains('decoded origin would be http://127.0.0.1:55357'),
+                contains(
+                  'received callbackURL: '
+                  '"http%3A%2F%2F127.0.0.1%3A55357%2Fcallback"',
+                ),
+              ),
+            ),
+      ),
+    );
+  });
+
   test(
     'explains when an admin operation is called without admin enabled',
     () async {
