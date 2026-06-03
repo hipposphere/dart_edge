@@ -101,28 +101,28 @@ final class DartEdgeAuthOAuthProviderConfig {
   const DartEdgeAuthOAuthProviderConfig({
     required this.providerId,
     required this.clientId,
-    required this.clientSecret,
     required this.authorizationUrl,
     required this.tokenUrl,
-    required this.userInfoUrl,
+    this.clientSecret,
+    this.userInfoUrl,
     this.scopes = const <String>['openid', 'email', 'profile'],
   });
 
   final String providerId;
   final String clientId;
-  final String clientSecret;
+  final String? clientSecret;
   final String authorizationUrl;
   final String tokenUrl;
-  final String userInfoUrl;
+  final String? userInfoUrl;
   final List<String> scopes;
 
   Map<String, Object?> toJson() => {
     'providerId': providerId,
     'clientId': clientId,
-    'clientSecret': clientSecret,
+    'clientSecret': ?clientSecret,
     'authorizationUrl': authorizationUrl,
     'tokenUrl': tokenUrl,
-    'userInfoUrl': userInfoUrl,
+    'userInfoUrl': ?userInfoUrl,
     'scopes': scopes,
   };
 }

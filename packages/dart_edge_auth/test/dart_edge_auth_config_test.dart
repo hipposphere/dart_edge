@@ -119,6 +119,60 @@ void main() {
     ]);
   });
 
+  test('serializes OAuth provider config without a client secret', () {
+    const config = DartEdgeAuthConfig(
+      workerPoolSize: 4,
+      secret: 'test-secret-key-that-is-at-least-32-characters-long',
+      baseUrl: 'http://localhost:3000',
+      oauthProviders: [
+        DartEdgeAuthOAuthProviderConfig(
+          providerId: 'uka',
+          clientId: 'client-id',
+          authorizationUrl: 'https://idp.example.test/oauth/authorize',
+          tokenUrl: 'https://idp.example.test/oauth/token',
+          userInfoUrl: 'https://idp.example.test/oauth/userinfo',
+        ),
+      ],
+    );
+
+    expect(config.toJson()['oauthProviders'], [
+      {
+        'providerId': 'uka',
+        'clientId': 'client-id',
+        'authorizationUrl': 'https://idp.example.test/oauth/authorize',
+        'tokenUrl': 'https://idp.example.test/oauth/token',
+        'userInfoUrl': 'https://idp.example.test/oauth/userinfo',
+        'scopes': ['openid', 'email', 'profile'],
+      },
+    ]);
+  });
+
+  test('serializes OAuth provider config without a user info endpoint', () {
+    const config = DartEdgeAuthConfig(
+      workerPoolSize: 4,
+      secret: 'test-secret-key-that-is-at-least-32-characters-long',
+      baseUrl: 'http://localhost:3000',
+      oauthProviders: [
+        DartEdgeAuthOAuthProviderConfig(
+          providerId: 'uka',
+          clientId: 'client-id',
+          authorizationUrl: 'https://idp.example.test/oauth/authorize',
+          tokenUrl: 'https://idp.example.test/oauth/token',
+        ),
+      ],
+    );
+
+    expect(config.toJson()['oauthProviders'], [
+      {
+        'providerId': 'uka',
+        'clientId': 'client-id',
+        'authorizationUrl': 'https://idp.example.test/oauth/authorize',
+        'tokenUrl': 'https://idp.example.test/oauth/token',
+        'scopes': ['openid', 'email', 'profile'],
+      },
+    ]);
+  });
+
   test('derives native sqlite auth database config from a sqlite database', () {
     final database = SqliteDatabase.inMemory();
     addTearDown(database.close);

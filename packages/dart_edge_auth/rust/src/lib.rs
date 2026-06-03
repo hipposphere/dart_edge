@@ -187,9 +187,11 @@ struct NativeAuthConfig {
 struct NativeOAuthProviderConfig {
     provider_id: String,
     client_id: String,
+    #[serde(default)]
     client_secret: String,
     authorization_url: String,
     token_url: String,
+    #[serde(default)]
     user_info_url: String,
     #[serde(default = "default_oauth_scopes")]
     scopes: Vec<String>,

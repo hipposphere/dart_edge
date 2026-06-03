@@ -3,6 +3,13 @@
 - Use Better Auth's singular default table names and camelCase default columns
   for generated auth schemas, migrations, and native shared database queries.
 - Bump the native artifact version to 0.1.9.
+- Allow generic OAuth providers to omit `clientSecret`; native token exchange
+  omits `client_secret` for public-client PKCE flows when no secret is set.
+- Allow generic OIDC providers to omit `userInfoUrl`; native callback handling
+  maps the user profile from `id_token` claims when no endpoint is configured.
+- Improve generic OAuth user-info mapping for Microsoft Entra and Graph fields.
+- Expose internal Better Auth OAuth errors on native 500 responses for
+  debugging.
 
 ## 0.3.12
 
