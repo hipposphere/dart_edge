@@ -152,7 +152,7 @@ void main() {
       expect(signupResponse.statusCode, HttpStatus.ok);
       expect(
         signupResponse.headers.value(HttpHeaders.setCookieHeader),
-        contains('better-auth.session-token='),
+        contains('better-auth.session_token='),
       );
 
       final signupJson =
@@ -235,7 +235,7 @@ void main() {
     expect(signupResponse.statusCode, HttpStatus.ok);
     expect(
       signupResponse.headers.value(HttpHeaders.setCookieHeader),
-      contains('better-auth.session-token='),
+      contains('better-auth.session_token='),
     );
   });
 

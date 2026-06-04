@@ -4,6 +4,8 @@ use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
+use base64::Engine as _;
+use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use better_auth::adapters::{DatabaseAdapter, MemoryDatabaseAdapter, SqlxAdapter};
 use better_auth::plugins::OAuthPlugin;
 use better_auth::plugins::oauth::{OAuthConfig, OAuthProvider, OAuthUserInfo};
@@ -26,10 +28,12 @@ use dart_edge_core::{
 use dart_edge_http_server_core::{
     NativeHttpMethod, NativeHttpRequest, NativeHttpResponse, native_http_routes_to_json,
 };
+use hmac::{Hmac, Mac};
 use once_cell::sync::Lazy;
 use scrypt::{Params as ScryptParams, scrypt};
 use serde::Deserialize;
 use serde_json::json;
+use sha2::Sha256;
 use shared_sql_adapter::{SharedSqlCallbacks, SharedSqlDatabaseAdapter, SharedSqlDialect};
 use tokio::runtime::Runtime;
 use tracing::field::{Field, Visit};
@@ -47,6 +51,13 @@ use routes::{join_path, normalize_base_path};
 const DART_EDGE_AUTH_NATIVE_ABI_VERSION: i32 = 2;
 const TRUSTED_CALLBACK_URL_ERROR_MESSAGE: &str =
     "callbackURL must be an absolute http(s) URL on a trusted origin";
+const NODE_SESSION_COOKIE_NAME: &str = "better-auth.session_token";
+const NODE_DASH_SESSION_COOKIE_NAME: &str = "better-auth-session_token";
+const RUST_SESSION_COOKIE_NAME: &str = "better-auth.session-token";
+const SECURE_COOKIE_PREFIX: &str = "__Secure-";
+const HOST_COOKIE_PREFIX: &str = "__Host-";
+
+type HmacSha256 = Hmac<Sha256>;
 
 static NEXT_INSTANCE_ID: AtomicI64 = AtomicI64::new(1);
 static INSTANCES: Lazy<Mutex<HashMap<i64, AuthInstance>>> =
@@ -57,6 +68,8 @@ static PASSWORD_HASHER: Lazy<Arc<dyn PasswordHasher>> =
 
 struct AuthInstance {
     base_path: String,
+    secret: String,
+    session_cookie_name: String,
     admin_config: NativeAdminConfig,
     runtime: Runtime,
     auth: NativeAuthBackend,
@@ -395,6 +408,7 @@ fn create_instance(
     };
 
     let base_path = normalize_base_path(&config.base_path);
+    let session_cookie_name = node_session_cookie_name(&config.base_url);
     let auth = match runtime.block_on(build_auth(&config, &base_path, shared_database)) {
         Ok(auth) => auth,
         Err(error) => {
@@ -408,6 +422,8 @@ fn create_instance(
         handle,
         AuthInstance {
             base_path,
+            secret: config.secret.clone(),
+            session_cookie_name,
             admin_config: config.admin.clone().unwrap_or_default(),
             runtime,
             auth,
@@ -477,7 +493,7 @@ pub extern "C" fn dart_edge_auth_handle_request(
     let method = decode_method(native_method);
 
     let query = unsafe { read_pairs_map(request.query, request.query_count) };
-    let headers = unsafe { read_pairs_map(request.headers, request.header_count) };
+    let mut headers = unsafe { read_pairs_map(request.headers, request.header_count) };
     let body = unsafe { read_native_bytes(request.body) }.map(|body| body.to_vec());
     let callback_detail = trusted_callback_url_rejection_detail(&query, body.as_deref());
     let internal_auth_error = Arc::new(Mutex::new(None));
@@ -487,6 +503,11 @@ pub extern "C" fn dart_edge_auth_handle_request(
         set_last_error("Unknown dart_edge_auth handle.");
         return std::ptr::null_mut();
     };
+    normalize_session_auth_headers(
+        &mut headers,
+        &instance.session_cookie_name,
+        &instance.secret,
+    );
 
     let response = if method == HttpMethod::Get && path == join_path(&instance.base_path, "/health")
     {
@@ -518,6 +539,11 @@ pub extern "C" fn dart_edge_auth_handle_request(
                     annotate_internal_auth_error(&mut response, &error);
                 }
             }
+            sign_session_cookie_response(
+                &mut response,
+                &instance.session_cookie_name,
+                &instance.secret,
+            );
             clear_last_error();
             Box::into_raw(Box::new(NativeAuthResponseHandle::from_response(response)))
                 .cast::<NativeHttpResponse>()
@@ -671,6 +697,8 @@ async fn build_auth(
         .base_url(config.base_url.clone())
         .base_path(base_path.to_string())
         .password_min_length(config.password_min_length);
+    auth_config.session.cookie_name = node_session_cookie_name(&config.base_url);
+    auth_config.session.cookie_secure = node_session_cookie_secure(&config.base_url);
 
     if !config.trusted_origins.is_empty() {
         auth_config = auth_config.trusted_origins(config.trusted_origins.clone());
@@ -1488,6 +1516,245 @@ fn normalize_database_schema(value: &Option<String>) -> Result<Option<String>, S
     }
 
     Ok(Some(trimmed.to_string()))
+}
+
+fn node_session_cookie_secure(base_url: &str) -> bool {
+    base_url.trim_start().starts_with("https://")
+}
+
+fn node_session_cookie_name(base_url: &str) -> String {
+    if node_session_cookie_secure(base_url) {
+        format!("{SECURE_COOKIE_PREFIX}{NODE_SESSION_COOKIE_NAME}")
+    } else {
+        NODE_SESSION_COOKIE_NAME.to_string()
+    }
+}
+
+fn normalize_session_cookie_header(
+    headers: &mut HashMap<String, String>,
+    session_cookie_name: &str,
+    secret: &str,
+) {
+    let Some(cookie_header) = header_value(headers, "cookie").map(str::to_string) else {
+        return;
+    };
+    let Some(value) = session_cookie_aliases(session_cookie_name)
+        .into_iter()
+        .find_map(|name| cookie_value(&cookie_header, &name))
+    else {
+        return;
+    };
+
+    let token = normalize_node_session_cookie_value(&value, secret);
+    let token = encode_cookie_value(&token);
+    headers.insert(
+        "cookie".to_string(),
+        format!("{session_cookie_name}={token}; {cookie_header}"),
+    );
+}
+
+fn normalize_session_auth_headers(
+    headers: &mut HashMap<String, String>,
+    session_cookie_name: &str,
+    secret: &str,
+) {
+    normalize_session_authorization_header(headers, secret);
+    normalize_session_cookie_header(headers, session_cookie_name, secret);
+}
+
+fn normalize_session_authorization_header(headers: &mut HashMap<String, String>, secret: &str) {
+    let Some(header_name) = headers
+        .keys()
+        .find(|name| name.eq_ignore_ascii_case("authorization"))
+        .cloned()
+    else {
+        return;
+    };
+    let Some(value) = headers.get(&header_name).cloned() else {
+        return;
+    };
+    let trimmed = value.trim();
+    let Some(token) = trimmed
+        .strip_prefix("Bearer ")
+        .or_else(|| trimmed.strip_prefix("bearer "))
+    else {
+        return;
+    };
+
+    let normalized = normalize_node_session_cookie_value(token.trim(), secret);
+    headers.insert(header_name, format!("Bearer {normalized}"));
+}
+
+fn sign_session_cookie_response(
+    response: &mut better_auth::AuthResponse,
+    session_cookie_name: &str,
+    secret: &str,
+) {
+    let Some(header_name) = response
+        .headers
+        .keys()
+        .find(|name| name.eq_ignore_ascii_case("set-cookie"))
+        .cloned()
+    else {
+        return;
+    };
+
+    let Some(header) = response.headers.get(&header_name).cloned() else {
+        return;
+    };
+    let Some((name_value, attributes)) = header.split_once(';') else {
+        rewrite_session_cookie_response_header(
+            response,
+            header_name,
+            &header,
+            "",
+            session_cookie_name,
+            secret,
+        );
+        return;
+    };
+
+    rewrite_session_cookie_response_header(
+        response,
+        header_name,
+        name_value,
+        attributes,
+        session_cookie_name,
+        secret,
+    );
+}
+
+fn rewrite_session_cookie_response_header(
+    response: &mut better_auth::AuthResponse,
+    header_name: String,
+    name_value: &str,
+    attributes: &str,
+    session_cookie_name: &str,
+    secret: &str,
+) {
+    let Some((name, value)) = name_value.split_once('=') else {
+        return;
+    };
+    let name = name.trim();
+    if !is_session_cookie_name(name, session_cookie_name) {
+        return;
+    }
+
+    let value = value.trim();
+    let encoded_value = if value.is_empty() {
+        String::new()
+    } else {
+        let token = normalize_node_session_cookie_value(value, secret);
+        let signed = sign_node_session_cookie_value(&token, secret);
+        encode_cookie_value(&signed)
+    };
+
+    let rewritten = if attributes.is_empty() {
+        format!("{session_cookie_name}={encoded_value}")
+    } else {
+        format!("{session_cookie_name}={encoded_value};{attributes}")
+    };
+    response.headers.insert(header_name, rewritten);
+}
+
+fn header_value<'a>(headers: &'a HashMap<String, String>, name: &str) -> Option<&'a str> {
+    headers
+        .iter()
+        .find(|(key, _)| key.eq_ignore_ascii_case(name))
+        .map(|(_, value)| value.as_str())
+}
+
+fn cookie_value(cookie_header: &str, name: &str) -> Option<String> {
+    for part in cookie_header.split(';') {
+        let trimmed = part.trim();
+        let Some((cookie_name, value)) = trimmed.split_once('=') else {
+            continue;
+        };
+        if cookie_name.trim() == name && !value.trim().is_empty() {
+            return Some(value.trim().to_string());
+        }
+    }
+
+    None
+}
+
+fn normalize_node_session_cookie_value(value: &str, secret: &str) -> String {
+    let decoded = percent_decode(value).unwrap_or_else(|| value.to_string());
+    verify_node_signed_cookie_value(&decoded, secret).unwrap_or(decoded)
+}
+
+fn sign_node_session_cookie_value(value: &str, secret: &str) -> String {
+    let mut mac =
+        HmacSha256::new_from_slice(secret.as_bytes()).expect("HMAC accepts keys of any size");
+    mac.update(value.as_bytes());
+    let signature = BASE64_STANDARD.encode(mac.finalize().into_bytes());
+    format!("{value}.{signature}")
+}
+
+fn verify_node_signed_cookie_value(value: &str, secret: &str) -> Option<String> {
+    let signature_start = value.rfind('.')?;
+    if signature_start < 1 {
+        return None;
+    }
+
+    let signed_value = &value[..signature_start];
+    let signature = &value[signature_start + 1..];
+    if signature.len() != 44 || !signature.ends_with('=') {
+        return None;
+    }
+
+    let signature = BASE64_STANDARD.decode(signature).ok()?;
+    let mut mac = HmacSha256::new_from_slice(secret.as_bytes()).ok()?;
+    mac.update(signed_value.as_bytes());
+    mac.verify_slice(&signature).ok()?;
+    Some(signed_value.to_string())
+}
+
+fn session_cookie_aliases(session_cookie_name: &str) -> Vec<String> {
+    let mut names = Vec::new();
+    push_unique(&mut names, session_cookie_name);
+    for name in [
+        NODE_SESSION_COOKIE_NAME,
+        NODE_DASH_SESSION_COOKIE_NAME,
+        RUST_SESSION_COOKIE_NAME,
+    ] {
+        push_unique(&mut names, name);
+        push_unique(&mut names, &format!("{SECURE_COOKIE_PREFIX}{name}"));
+        push_unique(&mut names, &format!("{HOST_COOKIE_PREFIX}{name}"));
+    }
+    names
+}
+
+fn is_session_cookie_name(name: &str, session_cookie_name: &str) -> bool {
+    session_cookie_aliases(session_cookie_name)
+        .into_iter()
+        .any(|candidate| candidate == name)
+}
+
+fn push_unique(values: &mut Vec<String>, value: &str) {
+    if !values.iter().any(|candidate| candidate == value) {
+        values.push(value.to_string());
+    }
+}
+
+fn encode_cookie_value(value: &str) -> String {
+    let mut encoded = String::with_capacity(value.len());
+    for byte in value.bytes() {
+        if is_encode_uri_component_unescaped(byte) {
+            encoded.push(byte as char);
+        } else {
+            encoded.push_str(&format!("%{byte:02X}"));
+        }
+    }
+    encoded
+}
+
+fn is_encode_uri_component_unescaped(byte: u8) -> bool {
+    byte.is_ascii_alphanumeric()
+        || matches!(
+            byte,
+            b'-' | b'_' | b'.' | b'!' | b'~' | b'*' | b'\'' | b'(' | b')'
+        )
 }
 
 fn trusted_callback_url_rejection_detail(

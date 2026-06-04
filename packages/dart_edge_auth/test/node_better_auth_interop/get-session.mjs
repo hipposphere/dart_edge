@@ -7,7 +7,7 @@ const { Pool } = pg;
 
 const configJson = process.argv[2];
 if (!configJson) {
-  console.error('Missing seed config JSON argument.');
+  console.error('Missing get-session config JSON argument.');
   process.exit(64);
 }
 
@@ -34,39 +34,27 @@ try {
     plugins: [bearer()],
   });
 
-  const context = await auth.$context;
-  await context.runMigrations();
-
   const response = await auth.handler(
-    new Request(`${config.baseUrl}/auth/sign-up/email`, {
-      method: 'POST',
+    new Request(`${config.baseUrl}/auth/get-session`, {
+      method: 'GET',
       headers: {
-        'content-type': 'application/json',
+        cookie: config.sessionCookie,
         origin: config.baseUrl,
       },
-      body: JSON.stringify({
-        email: config.email,
-        password: config.password,
-        name: config.name,
-      }),
     }),
   );
   const body = await response.text();
   if (response.status < 200 || response.status >= 300) {
-    throw new Error(`sign-up returned ${response.status}: ${body}`);
+    throw new Error(`get-session returned ${response.status}: ${body}`);
   }
 
   const decoded = JSON.parse(body);
-  const sessionCookie = response.headers
-    .get('set-cookie')
-    ?.split(';', 1)[0];
   console.log(
     JSON.stringify({
       status: response.status,
       userId: decoded.user?.id,
       email: decoded.user?.email,
-      hasToken: typeof decoded.token === 'string' && decoded.token.length > 0,
-      sessionCookie,
+      sessionToken: decoded.session?.token,
     }),
   );
 } finally {

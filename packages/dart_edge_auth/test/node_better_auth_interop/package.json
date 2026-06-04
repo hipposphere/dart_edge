@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "seed": "node seed-user.mjs",
+    "get-session": "node get-session.mjs",
     "sign-in": "node sign-in-user.mjs"
   },
   "dependencies": {

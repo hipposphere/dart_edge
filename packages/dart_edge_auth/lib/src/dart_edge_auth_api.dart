@@ -32,7 +32,7 @@ final class DartEdgeAuthApi {
   }
 
   DartEdgeAuthApi withSessionToken(String token) {
-    return withHeader('cookie', 'better-auth.session-token=$token');
+    return withHeader('cookie', 'better-auth.session_token=$token');
   }
 
   DartEdgeAuthApi withOrigin(String origin) {

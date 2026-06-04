@@ -27,7 +27,7 @@ void main() {
     expect(signup.user.email, 'ada@example.com');
     expect(
       signup.response.header('set-cookie'),
-      contains('better-auth.session-token='),
+      contains('better-auth.session_token='),
     );
 
     final session = await auth.api.getSession(
@@ -201,6 +201,12 @@ void main() {
       final seedJson = jsonDecode(seedLines.last) as Map<String, Object?>;
       expect(seedJson['email'], email);
       expect(seedJson['hasToken'], isTrue);
+      final nodeSessionCookie = seedJson['sessionCookie'] as String?;
+      expect(nodeSessionCookie, startsWith('better-auth.session_token='));
+      expect(
+        Uri.decodeComponent(nodeSessionCookie!.split('=').last),
+        contains('.'),
+      );
 
       final database = PostgresPool.withUrl(
         endpoint.connectionString,
@@ -247,6 +253,18 @@ void main() {
         auth.dispose();
         await database.close();
       });
+
+      final nodeSession = await auth.api.getSession(
+        headers: {HttpHeaders.cookieHeader: nodeSessionCookie},
+      );
+      expect(nodeSession.user.email, email);
+      expect(nodeSession.user.name, name);
+      final nodeSignedToken = nodeSessionCookie.split('=').last;
+      final nodeBearerSession = await auth.api.getSession(
+        headers: {HttpHeaders.authorizationHeader: 'Bearer $nodeSignedToken'},
+      );
+      expect(nodeBearerSession.user.email, email);
+      expect(nodeBearerSession.user.name, name);
 
       final signIn = await auth.api.signInEmail(
         email: email,
@@ -324,6 +342,21 @@ void main() {
         ),
       );
       expect(signup.user.email, email);
+      final dartSessionCookie = signup.response
+          .header('set-cookie')!
+          .split(';')
+          .first;
+      expect(dartSessionCookie, startsWith('better-auth.session_token='));
+      expect(
+        Uri.decodeComponent(dartSessionCookie.split('=').last),
+        contains('.'),
+      );
+      final dartSignedToken = dartSessionCookie.split('=').last;
+      final dartBearerSession = await auth.api.getSession(
+        headers: {HttpHeaders.authorizationHeader: 'Bearer $dartSignedToken'},
+      );
+      expect(dartBearerSession.user.email, email);
+      expect(dartBearerSession.user.id, signup.user.id);
 
       final accounts = await database.execute(
         sql(
@@ -340,6 +373,32 @@ void main() {
 
       auth.dispose();
       await database.close();
+
+      final getSession = await Process.run('node', [
+        'get-session.mjs',
+        jsonEncode({
+          'connectionString': endpoint.connectionString,
+          'secret': secret,
+          'baseUrl': baseUrl,
+          'sessionCookie': dartSessionCookie,
+        }),
+      ], workingDirectory: fixture.path);
+      if (getSession.exitCode != 0) {
+        fail(
+          'TypeScript Better Auth get-session failed with exit code '
+          '${getSession.exitCode}.\nSTDOUT:\n${getSession.stdout}\n'
+          'STDERR:\n${getSession.stderr}',
+        );
+      }
+
+      final getSessionLines = LineSplitter.split(
+        (getSession.stdout as String).trim(),
+      ).where((line) => line.trim().isNotEmpty).toList();
+      expect(getSessionLines, isNotEmpty);
+      final getSessionJson =
+          jsonDecode(getSessionLines.last) as Map<String, Object?>;
+      expect(getSessionJson['email'], email);
+      expect(getSessionJson['userId'], signup.user.id);
 
       final signIn = await Process.run('node', [
         'sign-in-user.mjs',
