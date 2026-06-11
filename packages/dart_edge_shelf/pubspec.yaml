@@ -1,6 +1,6 @@
 name: dart_edge_shelf
 description: Shelf handler integration for Dart Edge HTTP servers.
-version: 0.1.1
+version: 0.1.2
 publish_to: "https://registry.hippolabs.org/pub/internal-pub/"
 repository: https://github.com/hipposphere/dart_edge/tree/main/packages/dart_edge_shelf
 

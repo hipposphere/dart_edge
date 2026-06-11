@@ -1,6 +1,6 @@
 name: dart_edge_observability
 description: Reusable observability primitives for Dart Edge services.
-version: 0.1.0
+version: 0.1.1
 publish_to: "https://registry.hippolabs.org/pub/internal-pub/"
 repository: https://github.com/hipposphere/dart_edge/tree/main/packages/dart_edge_observability
 
