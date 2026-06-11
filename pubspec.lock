@@ -146,13 +146,13 @@ packages:
     source: hosted
     version: "0.3.3+1"
   cli_util:
-    dependency: transitive
+    dependency: "direct overridden"
     description:
       name: cli_util
-      sha256: ff6785f7e9e3c38ac98b2fb035701789de90154024a75b6cb926445e83197d1c
+      sha256: "5909d2c6b66817222779e1eedc19e0e28b76d1df7bd9856a4792ccb9881df358"
       url: "https://pub.dev"
     source: hosted
-    version: "0.4.2"
+    version: "0.5.1"
   clock:
     dependency: transitive
     description:
@@ -317,10 +317,10 @@ packages:
     dependency: transitive
     description:
       name: hippo_auth_backend
-      sha256: "102fcfb51ba47af8938150581c75b4a1233c13fb7d2d857921b723d1f684a229"
+      sha256: ecd20804d7144a96b15c75ea46c0a91379a93491bd3589589e609cd422c6b678
       url: "https://registry.hippolabs.org/pub/internal-pub/"
     source: hosted
-    version: "0.1.14"
+    version: "0.1.19"
   hooks:
     dependency: transitive
     description:
@@ -477,10 +477,10 @@ packages:
     dependency: "direct dev"
     description:
       name: melos
-      sha256: "9dcac9ca25da86540d1e843f85fffb29967cc5c79d76ca1aacddb57590cee84e"
+      sha256: "5fc1a858e3d90fdc42f2f423b95f901214bbc3d9e80c99125d9352f12453721d"
       url: "https://pub.dev"
     source: hosted
-    version: "7.8.0"
+    version: "7.8.2"
   meta:
     dependency: transitive
     description:

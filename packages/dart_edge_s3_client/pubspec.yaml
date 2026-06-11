@@ -14,7 +14,7 @@ executables:
 
 dependencies:
   args: ^2.7.0
-  cli_util: ^0.4.2
+  cli_util: ^0.5.1
   code_assets: ^1.0.0
   dart_edge_core:
     hosted: "https://registry.hippolabs.org/pub/internal-pub/"

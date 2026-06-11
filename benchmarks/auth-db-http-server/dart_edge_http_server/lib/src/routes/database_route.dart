@@ -3,7 +3,6 @@ import 'dart:io';
 
 import 'package:dart_edge_auth/dart_edge_auth.dart';
 import 'package:dart_edge_http_server/dart_edge_http_server.dart';
-import 'package:dart_edge_sql/dart_edge_sql.dart';
 
 import '../benchmark_config.dart';
 import '../services.dart';

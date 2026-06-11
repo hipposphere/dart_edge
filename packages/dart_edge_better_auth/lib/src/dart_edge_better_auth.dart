@@ -1,5 +1,4 @@
 import 'package:dart_edge_core/dart_edge_core.dart';
-import 'package:dart_edge_sql/dart_edge_sql.dart';
 
 import 'api.dart';
 import 'config.dart';
