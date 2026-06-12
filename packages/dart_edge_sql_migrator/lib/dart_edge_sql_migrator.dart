@@ -13,3 +13,6 @@ export 'src/core/sql_migration_file_sorting.dart';
 export 'src/core/sql_migration_manifest.dart';
 export 'src/core/sql_migration_plan.dart';
 export 'src/core/sql_migration_status.dart';
+export 'src/core/sql_schema_introspector.dart';
+export 'src/core/sql_schema_migration.dart';
+export 'src/core/sql_schema_migration_file_writer.dart';

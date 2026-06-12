@@ -103,6 +103,73 @@ exists in the physical schema, or `baselineAppliedVersions([...])` when importin
 an external successful-version list that matches the configured migration
 prefix.
 
+## Schema-Based Migration Planning
+
+You can also describe the desired schema, introspect the current database, and
+write the safe diff as new migration files:
+
+```dart
+final pool = SqliteDatabase.inMemory();
+final current = await const SqliteSchemaIntrospector().introspect(pool);
+
+final desired = const SqlDatabaseSchema(
+  tables: [
+    SqlTableSchema(
+      name: 'users',
+      columns: [
+        SqlColumnSchema(
+          name: 'id',
+          type: 'BIGINT',
+          nullable: false,
+          primaryKey: true,
+        ),
+        SqlColumnSchema(name: 'email', type: 'TEXT', nullable: false),
+      ],
+      indexes: [
+        SqlIndexSchema(
+          name: 'users_email_key',
+          columns: ['email'],
+          unique: true,
+        ),
+      ],
+    ),
+  ],
+);
+
+final diff = SqlSchemaDiff.between(current: current, desired: desired);
+final plan = diff.toMigrationPlan();
+
+await const SqlSchemaMigrationFileWriter(
+  folder: 'db/migrations',
+  dialects: [SqlDialect.sqlite],
+).writeFlywayMigration(
+  version: '3',
+  name: 'add users',
+  diff: diff,
+);
+```
+
+`toMigrationPlan()` includes safe operations by default, such as creating tables,
+adding nullable/defaulted columns, and creating indexes. Operations that need a
+backfill or cast are marked `requiresReview`, and drops are marked
+`destructive`; opt into those only after reviewing the generated operations.
+Use `diff.reviewReportForDialect(SqlDialect.postgres).format()` or
+`diff.reviewReport.format()` to show actionable manual migration notes before
+deciding whether to edit a generated migration:
+
+```text
+Manual migration required:
+- users.email: change column definition
+  - type: TEXT -> VARCHAR(320)
+  - nullable: true -> false
+  Suggested action: Write a reviewed migration with any needed casts, backfills,
+  constraint validation, or data cleanup before applying this shape.
+```
+
+`SqlSchemaMigrationFileWriter` writes one shared `.sql` file when every selected
+dialect renders the same SQL, and dialect-specific files such as
+`V3__add_users.sqlite.sql` / `V3__add_users.postgres.sql` when they differ.
+
 ## Data Asset Migrations
 
 Build hooks can turn the same folder layout into one Dart data asset containing
