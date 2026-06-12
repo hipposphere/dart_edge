@@ -62,6 +62,7 @@ better_auth_core::impl_auth_plugin! {
     routes {
         post "/admin/set-role" => handle_set_role, "admin_set_role";
         post "/admin/create-user" => handle_create_user, "admin_create_user";
+        get  "/admin/get-user" => handle_get_user, "admin_get_user";
         get  "/admin/list-users" => handle_list_users, "admin_list_users";
         post "/admin/list-user-sessions" => handle_list_user_sessions, "admin_list_user_sessions";
         post "/admin/ban-user" => handle_ban_user, "admin_ban_user";
@@ -146,6 +147,20 @@ impl AdminPlugin {
             filter_operator: req.query.get("filterOperator").cloned(),
         };
         let response = list_users_core(&query, &self.config, ctx).await?;
+        AuthResponse::json(200, &response).map_err(AuthError::from)
+    }
+
+    async fn handle_get_user<DB: DatabaseAdapter>(
+        &self,
+        req: &AuthRequest,
+        ctx: &AuthContext<DB>,
+    ) -> AuthResult<AuthResponse> {
+        let (_admin_user, _admin_session) = self.require_admin(req, ctx).await?;
+        let user_id = req
+            .query
+            .get("id")
+            .ok_or_else(|| AuthError::bad_request("id is required"))?;
+        let response = get_user_core(user_id, ctx).await?;
         AuthResponse::json(200, &response).map_err(AuthError::from)
     }
 
@@ -362,6 +377,16 @@ mod axum_impl {
         Ok(Json(response))
     }
 
+    async fn handle_get_user<DB: DatabaseAdapter>(
+        State(state): State<AuthState<DB>>,
+        AdminSession { .. }: AdminSession<DB>,
+        Query(query): Query<GetUserQueryParams>,
+    ) -> Result<Json<UserResponse<DB::User>>, AuthError> {
+        let ctx = state.to_context();
+        let response = get_user_core(&query.id, &ctx).await?;
+        Ok(Json(response))
+    }
+
     async fn handle_list_user_sessions<DB: DatabaseAdapter>(
         State(state): State<AuthState<DB>>,
         AdminSession { .. }: AdminSession<DB>,
@@ -492,6 +517,7 @@ mod axum_impl {
             axum::Router::new()
                 .route("/admin/set-role", post(handle_set_role::<DB>))
                 .route("/admin/create-user", post(handle_create_user::<DB>))
+                .route("/admin/get-user", get(handle_get_user::<DB>))
                 .route("/admin/list-users", get(handle_list_users::<DB>))
                 .route(
                     "/admin/list-user-sessions",

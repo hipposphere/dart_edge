@@ -33,6 +33,11 @@ pub(crate) struct UserIdRequest {
     pub user_id: String,
 }
 
+#[derive(Debug, Deserialize)]
+pub(crate) struct GetUserQueryParams {
+    pub id: String,
+}
+
 #[derive(Debug, Deserialize, Validate)]
 pub(crate) struct BanUserRequest {
     #[serde(rename = "userId")]

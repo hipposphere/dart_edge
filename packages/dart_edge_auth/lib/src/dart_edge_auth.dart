@@ -73,6 +73,10 @@ final class DartEdgeAuthOperation {
     'admin_create_user',
     pluginName: 'admin',
   );
+  static const adminGetUser = DartEdgeAuthOperation._(
+    'admin_get_user',
+    pluginName: 'admin',
+  );
   static const adminListUsers = DartEdgeAuthOperation._(
     'admin_list_users',
     pluginName: 'admin',
@@ -330,6 +334,7 @@ JsonSchema? _successSchemaFor(String operationId) {
     'social_sign_in' => DartEdgeAuthOAuthSignInResult.jsonSchema,
     'update_user' || 'change_email' => DartEdgeAuthStatusResult.jsonSchema,
     'admin_set_role' ||
+    'admin_get_user' ||
     'admin_create_user' ||
     'admin_ban_user' ||
     'admin_unban_user' => DartEdgeAuthUserResult.jsonSchema,

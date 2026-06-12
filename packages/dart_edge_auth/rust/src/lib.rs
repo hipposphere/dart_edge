@@ -903,6 +903,11 @@ async fn trusted_admin_call<DB: DatabaseAdapter>(
             let user = trusted_create_user(auth, config, &body).await?;
             AuthResponse::json(200, &json!({ "user": user })).map_err(AuthError::from)
         }
+        "getUser" => {
+            let body: TrustedUserIdRequest = decode_trusted_body(body)?;
+            let user = trusted_get_user(auth, &body.user_id).await?;
+            AuthResponse::json(200, &json!({ "user": user })).map_err(AuthError::from)
+        }
         "listUsers" => {
             let response = trusted_list_users(auth, config, query).await?;
             AuthResponse::json(200, &response).map_err(AuthError::from)
@@ -1097,6 +1102,16 @@ async fn trusted_list_users<DB: DatabaseAdapter>(
         "limit": limit,
         "offset": offset,
     }))
+}
+
+async fn trusted_get_user<DB: DatabaseAdapter>(
+    auth: &BetterAuth<DB>,
+    user_id: &str,
+) -> AuthResult<DB::User> {
+    auth.database()
+        .get_user_by_id(user_id)
+        .await?
+        .ok_or_else(|| AuthError::not_found("User not found"))
 }
 
 async fn trusted_list_user_sessions<DB: DatabaseAdapter>(

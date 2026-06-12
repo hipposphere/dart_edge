@@ -132,6 +132,22 @@ pub(crate) async fn list_users_core<DB: DatabaseAdapter>(
     })
 }
 
+pub(crate) async fn get_user_core<DB: DatabaseAdapter>(
+    user_id: &str,
+    ctx: &AuthContext<DB>,
+) -> AuthResult<UserResponse<DB::User>> {
+    if user_id.is_empty() {
+        return Err(AuthError::bad_request("id is required"));
+    }
+
+    let user = ctx
+        .database
+        .get_user_by_id(user_id)
+        .await?
+        .ok_or_else(|| AuthError::not_found("User not found"))?;
+    Ok(UserResponse { user })
+}
+
 pub(crate) async fn list_user_sessions_core<DB: DatabaseAdapter>(
     body: &UserIdRequest,
     ctx: &AuthContext<DB>,

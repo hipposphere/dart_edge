@@ -147,6 +147,9 @@ void main() {
     );
     expect(accounts.rows.single['password'], _betterAuthTsPasswordHashPattern);
 
+    final fetched = await auth.trustedAdmin.getUser(userId: created.user.id);
+    expect(fetched.user.email, 'pglite-trusted@example.com');
+
     final listed = await auth.trustedAdmin.listUsers(limit: 10);
     expect(listed.total, 1);
     expect(listed.users.single.email, 'pglite-trusted@example.com');
@@ -650,6 +653,13 @@ void main() {
 
     expect(
       auth.routes<void>().any(
+        (route) => route.toString().contains('admin_get_user'),
+      ),
+      isTrue,
+    );
+
+    expect(
+      auth.routes<void>().any(
         (route) => route.toString().contains('admin_create_user'),
       ),
       isTrue,
@@ -676,6 +686,9 @@ void main() {
     );
     expect(created.user.email, 'grace@example.com');
     expect(created.user.role, 'member');
+
+    final fetched = await admin.getUser(userId: created.user.id);
+    expect(fetched.user.email, 'grace@example.com');
 
     final listed = await admin.listUsers(limit: 10);
     final emails = listed.users.map((user) => user.email);

@@ -69,6 +69,15 @@ final class DartEdgeAuthAdminApi {
     );
   }
 
+  Future<DartEdgeAuthUserResult> getUser({required String userId}) async {
+    return DartEdgeAuthUserResult.fromResponse(
+      await _api.callKnownOperation(
+        operation: DartEdgeAuthOperation.adminGetUser,
+        query: {'id': userId},
+      ),
+    );
+  }
+
   Future<DartEdgeAuthListUsersResult> listUsers({
     int? limit,
     int? offset,
