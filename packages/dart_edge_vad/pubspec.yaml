@@ -13,7 +13,7 @@ dependencies:
   code_assets: ^1.2.1
   dart_edge_native_assets:
     hosted: "https://registry.hippolabs.org/pub/internal-pub/"
-    version: ^0.1.2
+    version: ^0.1.3
   dart_edge_native_bridge:
     hosted: "https://registry.hippolabs.org/pub/internal-pub/"
     version: ^0.1.3
