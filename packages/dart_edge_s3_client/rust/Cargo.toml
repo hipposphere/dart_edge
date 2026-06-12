@@ -1,6 +1,6 @@
 [package]
 name = "dart_edge_s3_client"
-version = "0.1.4"
+version = "0.1.5"
 edition = "2024"
 publish = false
 
@@ -14,6 +14,10 @@ aws-sdk-s3 = "1"
 aws-types = "1"
 dart_edge_core = "0.2.0"
 once_cell = "1.21"
+# aws-smithy-types 1.5.0 fails to compile with time 0.3.48 due to an
+# upstream trait coherence conflict. Keep AWS SDK transitive time resolution
+# below it until aws-smithy-types/time publish a compatible release.
+time = ">=0.3.21, <0.3.48"
 tokio = { version = "1.52", features = ["rt-multi-thread", "sync"] }
 
 [profile.dev]
