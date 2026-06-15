@@ -338,4 +338,121 @@ void main() {
           '"number" TEXT NOT NULL, PRIMARY KEY ("tenant_id", "number"))',
     ]);
   });
+
+  test('plans PostgreSQL RPC function creation', () {
+    const routine = SqlRoutineSchema(
+      schema: 'public',
+      name: 'search_users',
+      identityArguments: 'query text',
+      definition: '''
+CREATE OR REPLACE FUNCTION public.search_users(query text)
+RETURNS TABLE(id uuid, email text)
+LANGUAGE sql
+AS \$\$
+  SELECT id, email FROM users WHERE email ILIKE '%' || query || '%'
+\$\$
+''',
+    );
+    final diff = SqlSchemaDiff.between(
+      current: const SqlDatabaseSchema(tables: []),
+      desired: const SqlDatabaseSchema(tables: [], routines: [routine]),
+    );
+
+    expect(diff.operations.single, isA<CreateSqlRoutine>());
+    expect(diff.toMigrationPlan().forDialect(SqlDialect.sqlite), isEmpty);
+
+    final statements = diff
+        .toMigrationPlan()
+        .forDialect(SqlDialect.postgres)
+        .map((statement) => statement.sql)
+        .toList();
+
+    expect(statements, [routine.definition.trim()]);
+  });
+
+  test('diffs overloaded PostgreSQL RPC functions by identity arguments', () {
+    const current = SqlDatabaseSchema(
+      tables: [],
+      routines: [
+        SqlRoutineSchema(
+          schema: 'public',
+          name: 'search_users',
+          identityArguments: 'query text',
+          definition: '''
+CREATE OR REPLACE FUNCTION public.search_users(query text)
+RETURNS SETOF users
+LANGUAGE sql
+AS \$\$ SELECT * FROM users \$\$
+''',
+        ),
+        SqlRoutineSchema(
+          schema: 'public',
+          name: 'lookup_user',
+          identityArguments: 'id uuid',
+          definition: '''
+CREATE OR REPLACE FUNCTION public.lookup_user(id uuid)
+RETURNS users
+LANGUAGE sql
+AS \$\$ SELECT * FROM users WHERE users.id = id \$\$
+''',
+        ),
+      ],
+    );
+    const desired = SqlDatabaseSchema(
+      tables: [],
+      routines: [
+        SqlRoutineSchema(
+          schema: 'public',
+          name: 'search_users',
+          identityArguments: 'query text',
+          definition: '''
+CREATE OR REPLACE FUNCTION public.search_users(query text)
+RETURNS SETOF users
+LANGUAGE sql
+AS \$\$ SELECT * FROM users WHERE email ILIKE '%' || query || '%' \$\$
+''',
+        ),
+        SqlRoutineSchema(
+          schema: 'public',
+          name: 'search_users',
+          identityArguments: 'tenant_id uuid, query text',
+          definition: '''
+CREATE OR REPLACE FUNCTION public.search_users(tenant_id uuid, query text)
+RETURNS SETOF users
+LANGUAGE sql
+AS \$\$ SELECT * FROM users WHERE users.tenant_id = tenant_id \$\$
+''',
+        ),
+      ],
+    );
+
+    final diff = SqlSchemaDiff.between(current: current, desired: desired);
+
+    expect(diff.operations, [
+      isA<ReplaceSqlRoutine>(),
+      isA<CreateSqlRoutine>(),
+      isA<DropSqlRoutine>(),
+    ]);
+
+    final defaultStatements = diff
+        .toMigrationPlan()
+        .forDialect(SqlDialect.postgres)
+        .map((statement) => statement.sql)
+        .toList();
+    expect(defaultStatements, [
+      desired.routines[0].definition.trim(),
+      desired.routines[1].definition.trim(),
+    ]);
+
+    final destructiveStatements = diff
+        .toMigrationPlan(includeDestructiveOperations: true)
+        .forDialect(SqlDialect.postgres)
+        .map((statement) => statement.sql)
+        .toList();
+    expect(destructiveStatements, [
+      desired.routines[0].definition.trim(),
+      desired.routines[1].definition.trim(),
+      'DROP FUNCTION "public"."lookup_user"(id uuid)',
+    ]);
+  });
 }

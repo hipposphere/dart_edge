@@ -56,6 +56,24 @@ void main() {
       throwsArgumentError,
     );
   });
+
+  test('introspects postgres RPC functions', () async {
+    final executor = _RecordingExecutor(SqlDialect.postgres);
+
+    final schema = await const PostgresSchemaIntrospector(
+      schemas: ['public'],
+    ).introspect(executor);
+
+    expect(schema.tables, isEmpty);
+    expect(schema.routines, hasLength(1));
+    expect(schema.routines.single.schema, 'public');
+    expect(schema.routines.single.name, 'search_users');
+    expect(schema.routines.single.identityArguments, 'query text');
+    expect(
+      schema.routines.single.definition,
+      contains('CREATE OR REPLACE FUNCTION public.search_users(query text)'),
+    );
+  });
 }
 
 final class _RecordingExecutor implements SqlExecutor {
@@ -65,7 +83,33 @@ final class _RecordingExecutor implements SqlExecutor {
   final SqlDialect dialect;
 
   @override
-  Future<SqlResult> execute(SqlStatement statement) {
+  Future<SqlResult> execute(SqlStatement statement) async {
+    if (dialect == SqlDialect.postgres &&
+        statement.sql.contains('FROM information_schema.tables')) {
+      return SqlResult();
+    }
+
+    if (dialect == SqlDialect.postgres &&
+        statement.sql.contains('FROM pg_proc AS p')) {
+      return SqlResult(
+        rows: [
+          SqlRow({
+            'routine_schema': 'public',
+            'routine_name': 'search_users',
+            'identity_arguments': 'query text',
+            'definition': '''
+CREATE OR REPLACE FUNCTION public.search_users(query text)
+ RETURNS SETOF users
+ LANGUAGE sql
+AS \$function\$
+  SELECT * FROM users WHERE email ILIKE '%' || query || '%'
+\$function\$
+''',
+          }),
+        ],
+      );
+    }
+
     throw UnsupportedError('No SQL execution expected.');
   }
 }

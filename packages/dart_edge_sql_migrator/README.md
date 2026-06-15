@@ -134,6 +134,21 @@ final desired = const SqlDatabaseSchema(
       ],
     ),
   ],
+  routines: [
+    SqlRoutineSchema(
+      schema: 'public',
+      name: 'search_users',
+      identityArguments: 'query text',
+      definition: '''
+CREATE OR REPLACE FUNCTION public.search_users(query text)
+RETURNS SETOF users
+LANGUAGE sql
+AS \$\$
+  SELECT * FROM users WHERE email ILIKE '%' || query || '%'
+\$\$
+''',
+    ),
+  ],
 );
 
 final diff = SqlSchemaDiff.between(current: current, desired: desired);
@@ -150,8 +165,9 @@ await const SqlSchemaMigrationFileWriter(
 ```
 
 `toMigrationPlan()` includes safe operations by default, such as creating tables,
-adding nullable/defaulted columns, and creating indexes. Operations that need a
-backfill or cast are marked `requiresReview`, and drops are marked
+adding nullable/defaulted columns, creating indexes, and creating or replacing
+PostgreSQL RPC functions. Operations that need a backfill or cast are marked
+`requiresReview`, and drops are marked
 `destructive`; opt into those only after reviewing the generated operations.
 Use `diff.reviewReportForDialect(SqlDialect.postgres).format()` or
 `diff.reviewReport.format()` to show actionable manual migration notes before

@@ -4,14 +4,31 @@ import 'sql_migration_plan.dart';
 
 /// Desired SQL database schema used to plan migrations.
 final class SqlDatabaseSchema {
-  const SqlDatabaseSchema({required this.tables});
+  const SqlDatabaseSchema({
+    required this.tables,
+    this.routines = const <SqlRoutineSchema>[],
+  });
 
   /// Tables that should exist in the database.
   final List<SqlTableSchema> tables;
 
+  /// Callable routines that should exist in the database.
+  final List<SqlRoutineSchema> routines;
+
   Map<_TableKey, SqlTableSchema> get _tableByKey {
     return <_TableKey, SqlTableSchema>{
       for (final table in tables) _TableKey(table.schema, table.name): table,
+    };
+  }
+
+  Map<_RoutineKey, SqlRoutineSchema> get _routineByKey {
+    return <_RoutineKey, SqlRoutineSchema>{
+      for (final routine in routines)
+        _RoutineKey(
+          routine.schema,
+          routine.name,
+          _normalizeRoutineIdentityArguments(routine.identityArguments),
+        ): routine,
     };
   }
 }
@@ -100,6 +117,33 @@ final class SqlIndexSchema {
   final bool unique;
 }
 
+/// Desired shape for one callable SQL routine.
+///
+/// PostgreSQL RPC functions should use a complete `CREATE OR REPLACE FUNCTION`
+/// statement in [definition]. [identityArguments] is the PostgreSQL identity
+/// argument list, such as `tenant_id uuid, email text`, used to distinguish
+/// overloaded functions and render `DROP FUNCTION` safely.
+final class SqlRoutineSchema {
+  const SqlRoutineSchema({
+    required this.name,
+    required this.definition,
+    this.schema,
+    this.identityArguments = '',
+  });
+
+  /// Routine name without schema qualification.
+  final String name;
+
+  /// Optional schema name.
+  final String? schema;
+
+  /// PostgreSQL identity arguments for the routine signature.
+  final String identityArguments;
+
+  /// Full SQL definition used to create or replace the routine.
+  final String definition;
+}
+
 /// How much review a schema migration operation needs.
 enum SqlSchemaMigrationSafety {
   /// The operation can be generated and applied without data loss.
@@ -145,6 +189,8 @@ final class SqlSchemaDiff {
   }) {
     final currentTables = current._tableByKey;
     final desiredTables = desired._tableByKey;
+    final currentRoutines = current._routineByKey;
+    final desiredRoutines = desired._routineByKey;
     final operations = <SqlSchemaMigrationOp>[];
 
     for (final entry in desiredTables.entries) {
@@ -164,6 +210,24 @@ final class SqlSchemaDiff {
     for (final entry in currentTables.entries) {
       if (!desiredTables.containsKey(entry.key)) {
         operations.add(DropSqlTable(entry.value));
+      }
+    }
+
+    for (final entry in desiredRoutines.entries) {
+      final desiredRoutine = entry.value;
+      final currentRoutine = currentRoutines[entry.key];
+      if (currentRoutine == null) {
+        operations.add(CreateSqlRoutine(desiredRoutine));
+      } else if (!_sameRoutine(currentRoutine, desiredRoutine)) {
+        operations.add(
+          ReplaceSqlRoutine(current: currentRoutine, desired: desiredRoutine),
+        );
+      }
+    }
+
+    for (final entry in currentRoutines.entries) {
+      if (!desiredRoutines.containsKey(entry.key)) {
+        operations.add(DropSqlRoutine(entry.value));
       }
     }
 
@@ -234,6 +298,11 @@ final class SqlSchemaDiff {
   static bool _sameIndex(SqlIndexSchema left, SqlIndexSchema right) {
     return left.unique == right.unique &&
         _sameStrings(left.columns, right.columns);
+  }
+
+  static bool _sameRoutine(SqlRoutineSchema left, SqlRoutineSchema right) {
+    return _normalizeRoutineDefinition(left.definition) ==
+        _normalizeRoutineDefinition(right.definition);
   }
 
   static bool _sameStrings(List<String> left, List<String> right) {
@@ -606,6 +675,66 @@ final class DropSqlTable extends SqlSchemaMigrationOp {
   }
 }
 
+/// Creates one callable routine.
+final class CreateSqlRoutine extends SqlSchemaMigrationOp {
+  const CreateSqlRoutine(this.routine);
+
+  final SqlRoutineSchema routine;
+
+  @override
+  SqlSchemaMigrationSafety get safety => SqlSchemaMigrationSafety.safe;
+
+  @override
+  List<SqlStatement> toStatements(SqlDialect dialect) {
+    return switch (dialect) {
+      SqlDialect.postgres => [sql(_trimSql(routine.definition))],
+      SqlDialect.sqlite => const <SqlStatement>[],
+    };
+  }
+}
+
+/// Replaces one callable routine whose definition changed.
+final class ReplaceSqlRoutine extends SqlSchemaMigrationOp {
+  const ReplaceSqlRoutine({required this.current, required this.desired});
+
+  final SqlRoutineSchema current;
+  final SqlRoutineSchema desired;
+
+  @override
+  SqlSchemaMigrationSafety get safety => SqlSchemaMigrationSafety.safe;
+
+  @override
+  List<SqlStatement> toStatements(SqlDialect dialect) {
+    return switch (dialect) {
+      SqlDialect.postgres => [sql(_trimSql(desired.definition))],
+      SqlDialect.sqlite => const <SqlStatement>[],
+    };
+  }
+}
+
+/// Drops one callable routine.
+final class DropSqlRoutine extends SqlSchemaMigrationOp {
+  const DropSqlRoutine(this.routine);
+
+  final SqlRoutineSchema routine;
+
+  @override
+  SqlSchemaMigrationSafety get safety => SqlSchemaMigrationSafety.destructive;
+
+  @override
+  List<SqlStatement> toStatements(SqlDialect dialect) {
+    return switch (dialect) {
+      SqlDialect.postgres => [
+        sql(
+          'DROP FUNCTION ${_schemaQualifiedName(routine.schema, routine.name)}'
+          '(${routine.identityArguments})',
+        ),
+      ],
+      SqlDialect.sqlite => const <SqlStatement>[],
+    };
+  }
+}
+
 final class _TableKey {
   const _TableKey(this.schema, this.name);
 
@@ -619,6 +748,25 @@ final class _TableKey {
 
   @override
   int get hashCode => Object.hash(schema, name);
+}
+
+final class _RoutineKey {
+  const _RoutineKey(this.schema, this.name, this.identityArguments);
+
+  final String? schema;
+  final String name;
+  final String identityArguments;
+
+  @override
+  bool operator ==(Object other) {
+    return other is _RoutineKey &&
+        other.schema == schema &&
+        other.name == name &&
+        other.identityArguments == identityArguments;
+  }
+
+  @override
+  int get hashCode => Object.hash(schema, name, identityArguments);
 }
 
 String _columnDefinition(
@@ -751,4 +899,16 @@ String _schemaQualifiedName(String? schema, String name) {
 String _quoteIdentifier(String identifier) {
   final escaped = identifier.replaceAll('"', '""');
   return '"$escaped"';
+}
+
+String _trimSql(String sql) => sql.trim();
+
+String _normalizeRoutineDefinition(String definition) {
+  return _trimSql(
+    definition.replaceAll(RegExp(r'\s+'), ' '),
+  ).replaceFirst(RegExp(r';$'), '');
+}
+
+String _normalizeRoutineIdentityArguments(String identityArguments) {
+  return identityArguments.trim().replaceAll(RegExp(r'\s+'), ' ');
 }

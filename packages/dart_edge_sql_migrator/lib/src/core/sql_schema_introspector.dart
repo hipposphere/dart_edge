@@ -171,7 +171,42 @@ final class PostgresSchemaIntrospector implements SqlSchemaIntrospector {
       tables.add(await _introspectTable(executor, schema, tableName));
     }
 
-    return SqlDatabaseSchema(tables: List.unmodifiable(tables));
+    final routines = await _routines(executor, placeholders);
+
+    return SqlDatabaseSchema(
+      tables: List.unmodifiable(tables),
+      routines: routines,
+    );
+  }
+
+  Future<List<SqlRoutineSchema>> _routines(
+    SqlExecutor executor,
+    String schemaPlaceholders,
+  ) async {
+    final result = await executor.execute(
+      SqlStatement.positional('''
+        SELECT
+          n.nspname AS routine_schema,
+          p.proname AS routine_name,
+          pg_get_function_identity_arguments(p.oid) AS identity_arguments,
+          pg_get_functiondef(p.oid) AS definition
+        FROM pg_proc AS p
+        JOIN pg_namespace AS n ON n.oid = p.pronamespace
+        WHERE n.nspname IN ($schemaPlaceholders)
+          AND p.prokind = 'f'
+        ORDER BY n.nspname, p.proname, identity_arguments
+        ''', schemas),
+    );
+
+    return List.unmodifiable([
+      for (final row in result.rows)
+        SqlRoutineSchema(
+          schema: row.read<String>('routine_schema'),
+          name: row.read<String>('routine_name'),
+          identityArguments: row.read<String>('identity_arguments'),
+          definition: row.read<String>('definition'),
+        ),
+    ]);
   }
 
   Future<SqlTableSchema> _introspectTable(
