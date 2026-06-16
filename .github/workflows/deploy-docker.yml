@@ -7,6 +7,11 @@ on:
         description: Folder in the repository to copy to the server.
         required: true
         type: string
+      strip_components:
+        description: Number of leading path components to strip while copying files.
+        required: false
+        type: number
+        default: 1
       target:
         description: Absolute folder path on the remote server.
         required: true
@@ -152,7 +157,7 @@ jobs:
           key: ${{ secrets.SSH_KEY }}
           password: ${{ secrets.SSH_PASSWORD }}
           source: ${{ inputs.source }}
-          strip_components: 1
+          strip_components: ${{ inputs.strip_components }}
           target: ${{ inputs.target }}
 
       - name: Copy image artifact to remote server
