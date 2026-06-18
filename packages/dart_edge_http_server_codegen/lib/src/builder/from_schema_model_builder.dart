@@ -34,6 +34,21 @@ final class FromSchemaModelSpec {
 
 enum FromSchemaModelSource { json, multipart }
 
+final class FromSchemaFormatterOptions {
+  const FromSchemaFormatterOptions({this.pageWidth, this.trailingCommas});
+
+  final int? pageWidth;
+  final TrailingCommas? trailingCommas;
+
+  DartFormatter createFormatter() {
+    return DartFormatter(
+      languageVersion: DartFormatter.latestLanguageVersion,
+      pageWidth: pageWidth,
+      trailingCommas: trailingCommas,
+    );
+  }
+}
+
 FromSchemaModelSpec buildFromSchemaModel(
   Element element,
   ConstantReader reader, {
@@ -225,12 +240,16 @@ Map<String, JsonSchema> _schemasById(JsonSchemaRegistry? registry) {
   return schemas;
 }
 
-String generateFromSchemaModels(List<FromSchemaModelSpec> models) {
+String generateFromSchemaModels(
+  List<FromSchemaModelSpec> models, {
+  FromSchemaFormatterOptions formatterOptions =
+      const FromSchemaFormatterOptions(),
+}) {
   final library = Library(
     (builder) => builder.body.addAll(models.map(_modelSpec)),
   );
   const ignoreForFile = '// ignore_for_file: unused_element, unused_field\n';
-  return _dartFormatter.format(
+  return formatterOptions.createFormatter().format(
     '$ignoreForFile${library.accept(DartEmitter())}',
   );
 }
@@ -1937,7 +1956,3 @@ const _dartKeywords = <String>{
   'with',
   'yield',
 };
-
-final _dartFormatter = DartFormatter(
-  languageVersion: DartFormatter.latestLanguageVersion,
-);

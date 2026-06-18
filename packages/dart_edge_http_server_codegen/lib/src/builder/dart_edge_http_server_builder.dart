@@ -1,4 +1,5 @@
 import 'package:build/build.dart';
+import 'package:dart_style/dart_style.dart';
 import 'package:source_gen/source_gen.dart';
 
 import 'from_schema_model_builder.dart';
@@ -10,7 +11,23 @@ const _fromMultipartSchemaChecker = TypeChecker.typeNamedLiterally(
 
 /// Turns `@FromSchema` type aliases into Dart model classes.
 final class DartEdgeHttpServerBuilderGenerator extends Generator {
-  const DartEdgeHttpServerBuilderGenerator();
+  const DartEdgeHttpServerBuilderGenerator({
+    this._formatterOptions = const FromSchemaFormatterOptions(),
+  });
+
+  factory DartEdgeHttpServerBuilderGenerator.fromOptions(
+    BuilderOptions options,
+  ) {
+    final config = options.config;
+    return DartEdgeHttpServerBuilderGenerator(
+      formatterOptions: FromSchemaFormatterOptions(
+        pageWidth: _optionalPositiveInt(config, 'page_width'),
+        trailingCommas: _optionalTrailingCommas(config, 'trailing_commas'),
+      ),
+    );
+  }
+
+  final FromSchemaFormatterOptions _formatterOptions;
 
   @override
   String? generate(LibraryReader library, BuildStep buildStep) {
@@ -37,6 +54,37 @@ final class DartEdgeHttpServerBuilderGenerator extends Generator {
         ),
     ];
 
-    return generateFromSchemaModels(models);
+    return generateFromSchemaModels(
+      models,
+      formatterOptions: _formatterOptions,
+    );
   }
+}
+
+int? _optionalPositiveInt(Map<String, dynamic> config, String key) {
+  final value = config[key];
+  if (value == null) {
+    return null;
+  }
+  if (value is int && value > 0) {
+    return value;
+  }
+  throw ArgumentError.value(value, key, 'must be a positive integer');
+}
+
+TrailingCommas? _optionalTrailingCommas(
+  Map<String, dynamic> config,
+  String key,
+) {
+  final value = config[key];
+  return switch (value) {
+    null => null,
+    'automate' => TrailingCommas.automate,
+    'preserve' => TrailingCommas.preserve,
+    _ => throw ArgumentError.value(
+      value,
+      key,
+      'must be "automate" or "preserve"',
+    ),
+  };
 }
