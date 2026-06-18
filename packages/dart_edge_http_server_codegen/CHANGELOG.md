@@ -1,3 +1,8 @@
+## 0.3.31
+
+- Apply configured builder formatter options to the final generated shared part
+  output.
+
 ## 0.3.30
 
 - Generate streamed client methods for `ResponseSpec.sse()` routes.

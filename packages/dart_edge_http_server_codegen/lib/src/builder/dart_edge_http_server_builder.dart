@@ -29,6 +29,10 @@ final class DartEdgeHttpServerBuilderGenerator extends Generator {
 
   final FromSchemaFormatterOptions _formatterOptions;
 
+  String formatOutput(String code) {
+    return _formatterOptions.createFormatter().format(code);
+  }
+
   @override
   String? generate(LibraryReader library, BuildStep buildStep) {
     final jsonModels = library.annotatedWith(

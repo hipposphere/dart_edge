@@ -5,7 +5,10 @@ import 'src/builder/dart_edge_http_server_builder.dart';
 
 /// Builder entrypoint used by `build_runner`.
 Builder dartEdgeHttpServerBuilder(BuilderOptions options) {
-  return SharedPartBuilder([
-    DartEdgeHttpServerBuilderGenerator.fromOptions(options),
-  ], 'dart_edge_http_server');
+  final generator = DartEdgeHttpServerBuilderGenerator.fromOptions(options);
+  return SharedPartBuilder(
+    [generator],
+    'dart_edge_http_server',
+    formatOutput: (code, _) => generator.formatOutput(code),
+  );
 }
