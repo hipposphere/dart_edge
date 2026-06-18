@@ -770,7 +770,3 @@ const _reservedTableMemberNames = <String>{
   'schema',
   'table',
 };
-
-final _dartFormatter = DartFormatter(
-  languageVersion: DartFormatter.latestLanguageVersion,
-);

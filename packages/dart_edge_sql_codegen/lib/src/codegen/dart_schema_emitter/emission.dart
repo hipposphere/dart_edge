@@ -54,6 +54,21 @@ final class DartSchemaEmission {
   }
 }
 
+final class DartSchemaFormatterOptions {
+  const DartSchemaFormatterOptions({this.pageWidth, this.trailingCommas});
+
+  final int? pageWidth;
+  final TrailingCommas? trailingCommas;
+
+  DartFormatter createFormatter() {
+    return DartFormatter(
+      languageVersion: DartFormatter.latestLanguageVersion,
+      pageWidth: pageWidth,
+      trailingCommas: trailingCommas,
+    );
+  }
+}
+
 /// Emits a structured Dart source tree for the introspected [database].
 ///
 /// The generated output includes:
@@ -69,6 +84,8 @@ DartSchemaEmission emitDartSchema(
   SqlInt8JsonEncoding int8JsonEncoding = SqlInt8JsonEncoding.number,
   Map<String, ExternalPrimaryKeySpec> externalPrimaryKeys =
       const <String, ExternalPrimaryKeySpec>{},
+  DartSchemaFormatterOptions formatterOptions =
+      const DartSchemaFormatterOptions(),
 }) {
   final effectiveNaming = naming ?? DartSchemaNaming.defaults;
   final effectiveInt8JsonEncoding = _effectiveInt8JsonEncoding(
@@ -98,6 +115,7 @@ DartSchemaEmission emitDartSchema(
         databaseClassName: databaseClassName,
         schemaGroups: schemaGroups,
         hasExternalPrimaryKeys: externalPrimaryKeyTypes.isNotEmpty,
+        formatterOptions: formatterOptions,
       ),
     ),
   ];
@@ -107,7 +125,10 @@ DartSchemaEmission emitDartSchema(
     files.add(
       DartSchemaEmissionFile(
         relativePath: 'external_keys.g.dart',
-        contents: _emitExternalPrimaryKeysLibrary(externalPrimaryKeyTypes),
+        contents: _emitExternalPrimaryKeysLibrary(
+          externalPrimaryKeyTypes,
+          formatterOptions: formatterOptions,
+        ),
       ),
     );
   }
@@ -125,7 +146,11 @@ DartSchemaEmission emitDartSchema(
     files.add(
       DartSchemaEmissionFile(
         relativePath: '$schemaFolder/schema.g.dart',
-        contents: _emitSchemaLibrary(group, effectiveNaming),
+        contents: _emitSchemaLibrary(
+          group,
+          effectiveNaming,
+          formatterOptions: formatterOptions,
+        ),
       ),
     );
 
@@ -142,6 +167,7 @@ DartSchemaEmission emitDartSchema(
               for (final type in externalPrimaryKeyTypes) type.typeName,
             },
             int8JsonEncoding: effectiveInt8JsonEncoding,
+            formatterOptions: formatterOptions,
           ),
         ),
       );
@@ -151,7 +177,7 @@ DartSchemaEmission emitDartSchema(
       files.add(
         DartSchemaEmissionFile(
           relativePath: '$schemaFolder/enums/${_enumFileName(value)}',
-          contents: _emitEnumLibrary(value),
+          contents: _emitEnumLibrary(value, formatterOptions: formatterOptions),
         ),
       );
     }
@@ -160,7 +186,10 @@ DartSchemaEmission emitDartSchema(
       files.add(
         DartSchemaEmissionFile(
           relativePath: '$schemaFolder/routines/${_routineFileName()}',
-          contents: _emitRoutineLibrary(group),
+          contents: _emitRoutineLibrary(
+            group,
+            formatterOptions: formatterOptions,
+          ),
         ),
       );
     }
@@ -182,6 +211,8 @@ String emitDartSchemaLibrary(
   SqlInt8JsonEncoding int8JsonEncoding = SqlInt8JsonEncoding.number,
   Map<String, ExternalPrimaryKeySpec> externalPrimaryKeys =
       const <String, ExternalPrimaryKeySpec>{},
+  DartSchemaFormatterOptions formatterOptions =
+      const DartSchemaFormatterOptions(),
 }) {
   final effectiveNaming = naming ?? DartSchemaNaming.defaults;
   final effectiveInt8JsonEncoding = _effectiveInt8JsonEncoding(
@@ -256,7 +287,7 @@ String emitDartSchemaLibrary(
       }
     }
   });
-  return _format(library);
+  return _format(library, formatterOptions: formatterOptions);
 }
 
 /// Emits only SQL table descriptors for existing row/insert/update models.
@@ -269,6 +300,8 @@ String emitDartTableDescriptorLibrary(
   DartSchemaNaming? naming,
   String? schemaClassName,
   String schemaFieldName = 'databaseSchema',
+  DartSchemaFormatterOptions formatterOptions =
+      const DartSchemaFormatterOptions(),
 }) {
   final effectiveNaming = naming ?? DartSchemaNaming.defaults;
   final schemaGroups = _groupBySchema(database);
@@ -300,7 +333,7 @@ String emitDartTableDescriptorLibrary(
       );
     }
   });
-  return _format(library);
+  return _format(library, formatterOptions: formatterOptions);
 }
 
 /// Emits SQL row, insert, update, and table models without database wrappers.
@@ -314,6 +347,8 @@ String emitDartTableModelLibrary(
   String? schemaClassName,
   String schemaFieldName = 'databaseSchema',
   SqlInt8JsonEncoding int8JsonEncoding = SqlInt8JsonEncoding.number,
+  DartSchemaFormatterOptions formatterOptions =
+      const DartSchemaFormatterOptions(),
 }) {
   final effectiveNaming = naming ?? DartSchemaNaming.defaults;
   final effectiveInt8JsonEncoding = _effectiveInt8JsonEncoding(
@@ -353,7 +388,7 @@ String emitDartTableModelLibrary(
       );
     }
   });
-  return _format(library);
+  return _format(library, formatterOptions: formatterOptions);
 }
 
 SqlInt8JsonEncoding _effectiveInt8JsonEncoding(

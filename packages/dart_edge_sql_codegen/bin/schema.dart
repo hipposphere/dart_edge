@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:dart_edge_sql_codegen/dart_edge_sql_codegen.dart';
+import 'package:dart_style/dart_style.dart';
 
 Future<void> main(List<String> args) async {
   final options = _Options.parse(args);
@@ -49,6 +50,7 @@ Future<void> main(List<String> args) async {
     primaryKeyExtensionTypes: !options.flag('no-primary-key-extension-types'),
     int8JsonEncoding: _int8JsonEncoding(options.value('int8-json-encoding')),
     externalPrimaryKeys: externalPrimaryKeys,
+    formatterOptions: _formatterOptions(options),
   );
   final outputDirectory = options.value('out') ?? 'lib/generated';
   emission.writeToDirectory(outputDirectory);
@@ -128,6 +130,37 @@ SqlInt8JsonEncoding _int8JsonEncoding(String? value) {
     'string' => SqlInt8JsonEncoding.string,
     _ => throw FormatException(
       'Unsupported --int8-json-encoding "$value". Expected number or string.',
+    ),
+  };
+}
+
+DartSchemaFormatterOptions _formatterOptions(_Options options) {
+  return DartSchemaFormatterOptions(
+    pageWidth: _pageWidth(options.value('page-width')),
+    trailingCommas: _trailingCommas(options.value('trailing-commas')),
+  );
+}
+
+int? _pageWidth(String? value) {
+  if (value == null) {
+    return null;
+  }
+  final parsed = int.tryParse(value);
+  if (parsed == null || parsed <= 0) {
+    throw FormatException(
+      'Unsupported --page-width "$value". Expected a positive integer.',
+    );
+  }
+  return parsed;
+}
+
+TrailingCommas? _trailingCommas(String? value) {
+  return switch (value) {
+    null => null,
+    'automate' => TrailingCommas.automate,
+    'preserve' => TrailingCommas.preserve,
+    _ => throw FormatException(
+      'Unsupported --trailing-commas "$value". Expected automate or preserve.',
     ),
   };
 }
@@ -243,6 +276,10 @@ Options:
   --exclude <csv>   Comma-separated table block-list.
   --external-primary-keys <csv>
                    Comma-separated schema.table.column=TypeName:BaseType mappings.
+  --page-width <int>
+                   Formatter page width.
+  --trailing-commas <mode>
+                   Formatter trailing comma mode: automate or preserve.
   --no-primary-key-extension-types
                    Keep primary and foreign key fields on primitive Dart types.
 

@@ -137,6 +137,11 @@ String _code(Spec spec) => '${spec.accept(DartEmitter())}';
 
 String _typeCode(Reference reference) => '${reference.accept(DartEmitter())}';
 
-String _format(Library library) {
-  return _dartFormatter.format('${library.accept(DartEmitter())}');
+String _format(
+  Library library, {
+  required DartSchemaFormatterOptions formatterOptions,
+}) {
+  return formatterOptions.createFormatter().format(
+    '${library.accept(DartEmitter())}',
+  );
 }

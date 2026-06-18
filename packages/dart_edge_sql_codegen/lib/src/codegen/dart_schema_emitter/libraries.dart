@@ -4,6 +4,7 @@ String _emitEntrypoint({
   required String databaseClassName,
   required List<_SchemaGroup> schemaGroups,
   required bool hasExternalPrimaryKeys,
+  required DartSchemaFormatterOptions formatterOptions,
 }) {
   final library = Library((builder) {
     builder
@@ -24,12 +25,13 @@ String _emitEntrypoint({
       );
     }
   });
-  return _format(library);
+  return _format(library, formatterOptions: formatterOptions);
 }
 
 String _emitExternalPrimaryKeysLibrary(
-  List<ExternalPrimaryKeySpec> externalPrimaryKeyTypes,
-) {
+  List<ExternalPrimaryKeySpec> externalPrimaryKeyTypes, {
+  required DartSchemaFormatterOptions formatterOptions,
+}) {
   final library = Library((builder) {
     builder.body.addAll(
       externalPrimaryKeyTypes.map(
@@ -44,10 +46,14 @@ String _emitExternalPrimaryKeysLibrary(
       ),
     );
   });
-  return _format(library);
+  return _format(library, formatterOptions: formatterOptions);
 }
 
-String _emitSchemaLibrary(_SchemaGroup group, DartSchemaNaming naming) {
+String _emitSchemaLibrary(
+  _SchemaGroup group,
+  DartSchemaNaming naming, {
+  required DartSchemaFormatterOptions formatterOptions,
+}) {
   final library = Library((builder) {
     builder.directives.add(
       Directive.import('package:dart_edge_core/dart_edge_core.dart'),
@@ -84,7 +90,7 @@ String _emitSchemaLibrary(_SchemaGroup group, DartSchemaNaming naming) {
       );
     }
   });
-  return _format(library);
+  return _format(library, formatterOptions: formatterOptions);
 }
 
 String _emitTableLibrary(
@@ -94,6 +100,7 @@ String _emitTableLibrary(
   DartSchemaNaming naming, {
   required Set<String> externalPrimaryKeyTypeNames,
   required SqlInt8JsonEncoding int8JsonEncoding,
+  required DartSchemaFormatterOptions formatterOptions,
 }) {
   final library = Library((builder) {
     builder.directives.add(
@@ -116,17 +123,23 @@ String _emitTableLibrary(
       _tableSpecs(table, naming, int8JsonEncoding: int8JsonEncoding),
     );
   });
-  return _format(library);
+  return _format(library, formatterOptions: formatterOptions);
 }
 
-String _emitEnumLibrary(IntrospectedEnum value) {
+String _emitEnumLibrary(
+  IntrospectedEnum value, {
+  required DartSchemaFormatterOptions formatterOptions,
+}) {
   final library = Library((builder) {
     builder.body.add(_enumSpec(value));
   });
-  return _format(library);
+  return _format(library, formatterOptions: formatterOptions);
 }
 
-String _emitRoutineLibrary(_SchemaGroup group) {
+String _emitRoutineLibrary(
+  _SchemaGroup group, {
+  required DartSchemaFormatterOptions formatterOptions,
+}) {
   final library = Library((builder) {
     builder
       ..directives.add(
@@ -134,7 +147,7 @@ String _emitRoutineLibrary(_SchemaGroup group) {
       )
       ..body.add(_routinesClass(group));
   });
-  return _format(library);
+  return _format(library, formatterOptions: formatterOptions);
 }
 
 Class _databaseClass(

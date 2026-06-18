@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:build/build.dart';
+import 'package:dart_style/dart_style.dart';
 
 import '../codegen/dart_schema_emitter.dart';
 import '../codegen/sql_codegen_config.dart';
@@ -50,9 +51,45 @@ final class DartEdgeSqlBuilder implements Builder {
         primaryKeyExtensionTypes: _primaryKeyExtensionTypes(options.config),
         int8JsonEncoding: _int8JsonEncoding(options.config),
         externalPrimaryKeys: _externalPrimaryKeys(options.config),
+        formatterOptions: _formatterOptions(options.config),
       ),
     );
   }
+}
+
+DartSchemaFormatterOptions _formatterOptions(Map<String, dynamic> config) {
+  return DartSchemaFormatterOptions(
+    pageWidth: _optionalPositiveInt(config, 'page_width'),
+    trailingCommas: _optionalTrailingCommas(config, 'trailing_commas'),
+  );
+}
+
+int? _optionalPositiveInt(Map<String, dynamic> config, String key) {
+  final value = config[key];
+  if (value == null) {
+    return null;
+  }
+  if (value is int && value > 0) {
+    return value;
+  }
+  throw ArgumentError.value(value, key, 'must be a positive integer');
+}
+
+TrailingCommas? _optionalTrailingCommas(
+  Map<String, dynamic> config,
+  String key,
+) {
+  final value = config[key];
+  return switch (value) {
+    null => null,
+    'automate' => TrailingCommas.automate,
+    'preserve' => TrailingCommas.preserve,
+    _ => throw ArgumentError.value(
+      value,
+      key,
+      'must be "automate" or "preserve"',
+    ),
+  };
 }
 
 bool _primaryKeyExtensionTypes(Map<String, dynamic> config) {
