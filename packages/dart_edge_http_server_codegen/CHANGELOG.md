@@ -1,7 +1,9 @@
-## 0.3.31
+## 0.3.33
 
 - Apply configured builder formatter options to the final generated shared part
   output.
+- Support formatter options for generated client libraries, bindings, models,
+  and file emission.
 
 ## 0.3.30
 

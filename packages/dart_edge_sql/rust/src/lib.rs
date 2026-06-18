@@ -11,8 +11,8 @@ use serde::Serialize;
 use sqlx::pool::PoolConnection;
 use sqlx::postgres::{PgPool, PgPoolOptions, PgRow};
 use sqlx::sqlite::{SqlitePool, SqlitePoolOptions, SqliteRow};
-use sqlx::types::Uuid;
 use sqlx::types::chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
+use sqlx::types::{Decimal, Uuid};
 use sqlx::{Column, Postgres, Row, Sqlite, TypeInfo};
 use tokio::runtime::{Builder, Runtime};
 
@@ -686,6 +686,16 @@ fn decode_postgres_value(
             Ok(None) => SqlValue::Null,
             Err(error) => return Err(format!("Failed to decode PostgreSQL float8: {error}")),
         },
+        "NUMERIC" => match row.try_get::<Option<Decimal>, usize>(index) {
+            Ok(Some(value)) => SqlValue::Double(postgres_decimal_to_f64(value, "numeric")?),
+            Ok(None) => SqlValue::Null,
+            Err(error) => return Err(format!("Failed to decode PostgreSQL numeric: {error}")),
+        },
+        "MONEY" => match row.try_get::<Option<sqlx::postgres::types::PgMoney>, usize>(index) {
+            Ok(Some(value)) => SqlValue::Double(postgres_money_to_f64(value)?),
+            Ok(None) => SqlValue::Null,
+            Err(error) => return Err(format!("Failed to decode PostgreSQL money: {error}")),
+        },
         "JSON" | "JSONB" => {
             match row.try_get::<Option<sqlx::types::Json<serde_json::Value>>, usize>(index) {
                 Ok(Some(value)) => SqlValue::Json(value.0),
@@ -748,6 +758,8 @@ fn decode_postgres_value(
             Err(error) => return Err(format!("Failed to decode PostgreSQL float4 array: {error}")),
         },
         "FLOAT8[]" => decode_postgres_array::<f64>(row, index, "float8 array")?,
+        "NUMERIC[]" => decode_postgres_numeric_array(row, index)?,
+        "MONEY[]" => decode_postgres_money_array(row, index)?,
         "TEXT[]" | "VARCHAR[]" | "CHAR[]" | "NAME[]" => {
             decode_postgres_array::<String>(row, index, "text array")?
         }
@@ -784,6 +796,40 @@ fn decode_postgres_value(
     Ok(value)
 }
 
+fn decode_postgres_numeric_array(row: &PgRow, index: usize) -> Result<SqlValue, String> {
+    match row.try_get::<Option<Vec<Option<Decimal>>>, usize>(index) {
+        Ok(Some(value)) => Ok(SqlValue::Json(
+            value
+                .into_iter()
+                .map(|value| {
+                    value
+                        .map(|value| postgres_decimal_to_f64(value, "numeric array"))
+                        .transpose()
+                })
+                .collect::<Result<Vec<_>, _>>()?
+                .into(),
+        )),
+        Ok(None) => Ok(SqlValue::Null),
+        Err(error) => Err(format!(
+            "Failed to decode PostgreSQL numeric array: {error}"
+        )),
+    }
+}
+
+fn decode_postgres_money_array(row: &PgRow, index: usize) -> Result<SqlValue, String> {
+    match row.try_get::<Option<Vec<Option<sqlx::postgres::types::PgMoney>>>, usize>(index) {
+        Ok(Some(value)) => Ok(SqlValue::Json(
+            value
+                .into_iter()
+                .map(|value| value.map(postgres_money_to_f64).transpose())
+                .collect::<Result<Vec<_>, _>>()?
+                .into(),
+        )),
+        Ok(None) => Ok(SqlValue::Null),
+        Err(error) => Err(format!("Failed to decode PostgreSQL money array: {error}")),
+    }
+}
+
 fn decode_postgres_uuid_array(row: &PgRow, index: usize) -> Result<SqlValue, String> {
     match row.try_get::<Option<Vec<Option<Uuid>>>, usize>(index) {
         Ok(Some(value)) => Ok(SqlValue::Json(
@@ -818,6 +864,23 @@ fn postgres_char_to_string(value: i8) -> String {
     } else {
         char::from(value as u8).to_string()
     }
+}
+
+fn postgres_decimal_to_f64(value: Decimal, label: &str) -> Result<f64, String> {
+    let value = value
+        .to_string()
+        .parse::<f64>()
+        .map_err(|error| format!("Failed to convert PostgreSQL {label} to double: {error}"))?;
+    if !value.is_finite() {
+        return Err(format!(
+            "Failed to convert PostgreSQL {label} to double: value is not finite."
+        ));
+    }
+    Ok(value)
+}
+
+fn postgres_money_to_f64(value: sqlx::postgres::types::PgMoney) -> Result<f64, String> {
+    postgres_decimal_to_f64(value.to_decimal(2), "money")
 }
 
 fn fallback_postgres_value(
@@ -1007,5 +1070,15 @@ mod tests {
         );
 
         validate_postgres_statement(&statement).expect("bytes are not text");
+    }
+
+    #[test]
+    fn converts_postgres_decimal_values_to_finite_doubles() {
+        let value = "12345.6789".parse::<Decimal>().expect("valid decimal");
+
+        assert_eq!(
+            postgres_decimal_to_f64(value, "numeric").expect("finite double"),
+            12345.6789
+        );
     }
 }

@@ -182,6 +182,39 @@ void main() {
     expect(_avoidableDoubleQuotedStrings(usersTable), isEmpty);
   });
 
+  test('uses configured formatter page width', () {
+    const database = IntrospectedDatabase(
+      dialect: SqlCodegenDialect.sqlite,
+      tables: [
+        IntrospectedTable(
+          name: 'users',
+          columns: [
+            IntrospectedColumn(
+              name: 'id',
+              databaseType: 'INTEGER',
+              dartType: 'int',
+              primaryKey: true,
+            ),
+          ],
+        ),
+      ],
+    );
+
+    final emission = emitDartSchema(
+      database,
+      databaseClassName: 'AppSchema',
+      formatterOptions: const DartSchemaFormatterOptions(pageWidth: 100),
+    );
+
+    expect(
+      emission.fileAt('app_schema.g.dart').contents,
+      contains(
+        'static const JsonSchemaRegistry jsonSchemas = '
+        'JsonSchemaRegistry(schemas: schemas);',
+      ),
+    );
+  });
+
   test('emits single-library table models without dart_edge_sql imports', () {
     const database = IntrospectedDatabase(
       dialect: SqlCodegenDialect.sqlite,

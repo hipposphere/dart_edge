@@ -222,9 +222,11 @@ final class DartEdgeClientGenerationOptions {
 final class DartEdgeClientFileEmitter {
   const DartEdgeClientFileEmitter({
     this.generator = const DartEdgeClientGenerator(),
+    this.formatterOptions = const DartEdgeClientFormatterOptions(),
   });
 
   final DartEdgeClientGenerator generator;
+  final DartEdgeClientFormatterOptions formatterOptions;
 
   Future<void> emit(
     DartEdgeClientLibrarySpec spec, {
@@ -239,13 +241,37 @@ final class DartEdgeClientFileEmitter {
         spec,
         bindingsPart: bindingsFile,
         modelsPart: modelsFile,
+        formatterOptions: formatterOptions,
       ),
     );
     await File('${output.path}/$bindingsFile').writeAsString(
-      generator.generateBindingsPart(spec, libraryFile: libraryFile),
+      generator.generateBindingsPart(
+        spec,
+        libraryFile: libraryFile,
+        formatterOptions: formatterOptions,
+      ),
     );
     await File('${output.path}/$modelsFile').writeAsString(
-      generator.generateModelsPart(spec, libraryFile: libraryFile),
+      generator.generateModelsPart(
+        spec,
+        libraryFile: libraryFile,
+        formatterOptions: formatterOptions,
+      ),
+    );
+  }
+}
+
+final class DartEdgeClientFormatterOptions {
+  const DartEdgeClientFormatterOptions({this.pageWidth, this.trailingCommas});
+
+  final int? pageWidth;
+  final TrailingCommas? trailingCommas;
+
+  DartFormatter createFormatter() {
+    return DartFormatter(
+      languageVersion: DartFormatter.latestLanguageVersion,
+      pageWidth: pageWidth,
+      trailingCommas: trailingCommas,
     );
   }
 }
@@ -328,7 +354,11 @@ final class DartEdgeClientWebTransportOperation {
 final class DartEdgeClientGenerator {
   const DartEdgeClientGenerator();
 
-  String generate(DartEdgeClientLibrarySpec spec) {
+  String generate(
+    DartEdgeClientLibrarySpec spec, {
+    DartEdgeClientFormatterOptions formatterOptions =
+        const DartEdgeClientFormatterOptions(),
+  }) {
     final library = Library((builder) {
       builder
         ..comments.add('GENERATED CODE - DO NOT MODIFY BY HAND.')
@@ -345,13 +375,15 @@ final class DartEdgeClientGenerator {
       }
     });
 
-    return _dartFormatter.format('${library.accept(DartEmitter())}');
+    return _format(library, formatterOptions: formatterOptions);
   }
 
   String generateLibrary(
     DartEdgeClientLibrarySpec spec, {
     String bindingsPart = 'client.bindings.g.dart',
     String modelsPart = 'client.models.g.dart',
+    DartEdgeClientFormatterOptions formatterOptions =
+        const DartEdgeClientFormatterOptions(),
   }) {
     final library = Library((builder) {
       builder
@@ -372,12 +404,14 @@ final class DartEdgeClientGenerator {
         ..add(Directive.part(bindingsPart));
     });
 
-    return _dartFormatter.format('${library.accept(DartEmitter())}');
+    return _format(library, formatterOptions: formatterOptions);
   }
 
   String generateBindingsPart(
     DartEdgeClientLibrarySpec spec, {
     String libraryFile = 'client.g.dart',
+    DartEdgeClientFormatterOptions formatterOptions =
+        const DartEdgeClientFormatterOptions(),
   }) {
     final library = Library((builder) {
       builder
@@ -386,12 +420,14 @@ final class DartEdgeClientGenerator {
         ..body.addAll(buildSpecs(spec));
     });
 
-    return _dartFormatter.format('${library.accept(DartEmitter())}');
+    return _format(library, formatterOptions: formatterOptions);
   }
 
   String generateModelsPart(
     DartEdgeClientLibrarySpec spec, {
     String libraryFile = 'client.g.dart',
+    DartEdgeClientFormatterOptions formatterOptions =
+        const DartEdgeClientFormatterOptions(),
   }) {
     final library = Library((builder) {
       builder
@@ -400,7 +436,7 @@ final class DartEdgeClientGenerator {
         ..body.addAll(_modelSpecs(spec));
     });
 
-    return _dartFormatter.format('${library.accept(DartEmitter())}');
+    return _format(library, formatterOptions: formatterOptions);
   }
 
   List<Spec> buildSpecs(DartEdgeClientLibrarySpec spec) {
@@ -1778,9 +1814,14 @@ TypeReference _type(String symbol, [Iterable<Reference> types = const []]) {
   });
 }
 
-final _dartFormatter = DartFormatter(
-  languageVersion: DartFormatter.latestLanguageVersion,
-);
+String _format(
+  Library library, {
+  required DartEdgeClientFormatterOptions formatterOptions,
+}) {
+  return formatterOptions.createFormatter().format(
+    '${library.accept(DartEmitter())}',
+  );
+}
 
 String _lowerCamel(String value) {
   if (value.isEmpty) {

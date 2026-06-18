@@ -89,6 +89,47 @@ void main() {
     );
   });
 
+  test('uses formatter options from builder config', () async {
+    final builder = dartEdgeSqlBuilder(
+      BuilderOptions(const <String, Object?>{
+        'database_class_name': 'AppSchema',
+        'page_width': 100,
+      }),
+    );
+    const database = IntrospectedDatabase(
+      dialect: SqlCodegenDialect.sqlite,
+      tables: [
+        IntrospectedTable(
+          name: 'users',
+          columns: [
+            IntrospectedColumn(
+              name: 'id',
+              databaseType: 'INTEGER',
+              dartType: 'int',
+              primaryKey: true,
+            ),
+          ],
+        ),
+      ],
+    );
+
+    await testBuilder(
+      builder,
+      <String, String>{
+        'test_app|lib/app_schema.schema.json': jsonEncode(database.toJson()),
+      },
+      generateFor: const {'test_app|lib/app_schema.schema.json'},
+      outputs: {
+        'test_app|lib/app_schema.g.dart': decodedMatches(
+          contains(
+            'static const JsonSchemaRegistry jsonSchemas = '
+            'JsonSchemaRegistry(schemas: schemas);',
+          ),
+        ),
+      },
+    );
+  });
+
   test('honors schema-prefixed model naming from builder options', () async {
     final builder = dartEdgeSqlBuilder(
       BuilderOptions(const <String, Object?>{

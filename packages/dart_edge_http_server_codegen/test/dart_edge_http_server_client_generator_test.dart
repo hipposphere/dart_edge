@@ -400,6 +400,45 @@ void main() {
       expect(models, isNot(contains('final String file;')));
     });
 
+    test('uses configured formatter page width for model parts', () {
+      final models = const DartEdgeClientGenerator().generateModelsPart(
+        const DartEdgeClientLibrarySpec(
+          className: 'UsersClient',
+          operations: [
+            DartEdgeClientOperation(
+              method: HttpMethod.get,
+              path: '/users/<id>',
+              options: RouteOptions(
+                operationId: 'getUser',
+                success: ResponseSpec.json(schema: JsonSchema.ref('UserDto')),
+              ),
+              successType: 'UserDto',
+            ),
+          ],
+          schemas: [
+            JsonSchema.object(
+              id: 'UserDto',
+              properties: {
+                'id': JsonSchema.string(),
+                'display_username': JsonSchema.string(nullable: true),
+              },
+              required: ['id'],
+              additionalProperties: false,
+            ),
+          ],
+        ),
+        formatterOptions: const DartEdgeClientFormatterOptions(pageWidth: 100),
+      );
+
+      expect(
+        models,
+        contains(
+          "displayUsername: json['display_username'] == null ? null : "
+          "json['display_username'] as String,",
+        ),
+      );
+    });
+
     test(
       'emits split client files into an existing or new directory',
       () async {
@@ -450,6 +489,52 @@ void main() {
         );
       },
     );
+
+    test('file emitter uses configured formatter page width', () async {
+      final output = await Directory.systemTemp.createTemp('dart_edge_client_');
+      addTearDown(() => output.delete(recursive: true));
+
+      await const DartEdgeClientFileEmitter(
+        formatterOptions: DartEdgeClientFormatterOptions(pageWidth: 100),
+      ).emit(
+        const DartEdgeClientLibrarySpec(
+          className: 'UsersClient',
+          operations: [
+            DartEdgeClientOperation(
+              method: HttpMethod.get,
+              path: '/users/<id>',
+              options: RouteOptions(
+                operationId: 'getUser',
+                success: ResponseSpec.json(schema: JsonSchema.ref('UserDto')),
+              ),
+              successType: 'UserDto',
+            ),
+          ],
+          schemas: [
+            JsonSchema.object(
+              id: 'UserDto',
+              properties: {
+                'id': JsonSchema.string(),
+                'display_username': JsonSchema.string(nullable: true),
+              },
+              required: ['id'],
+              additionalProperties: false,
+            ),
+          ],
+        ),
+        output: Directory('${output.path}/generated'),
+      );
+
+      expect(
+        await File(
+          '${output.path}/generated/client.models.g.dart',
+        ).readAsString(),
+        contains(
+          "displayUsername: json['display_username'] == null ? null : "
+          "json['display_username'] as String,",
+        ),
+      );
+    });
 
     test('discovers operations from a router registry', () {
       final router = Router<TestServices>();

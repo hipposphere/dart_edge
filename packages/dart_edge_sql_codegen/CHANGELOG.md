@@ -1,3 +1,8 @@
+## 0.3.28
+
+- Support formatter options for emitted Dart schema libraries and schema
+  builder outputs.
+
 ## 0.3.16
 
 - Reuse `dart_edge_sql` PostgreSQL type-name normalization when mapping
