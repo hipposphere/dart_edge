@@ -220,9 +220,18 @@ final class PostgresSchemaIntrospector implements SqlSchemaIntrospector {
       tableName,
     );
     final indexes = await _indexes(executor, schema, tableName);
+    final checks = await _checkConstraints(executor, schema, tableName);
+    final uniqueConstraints = await _uniqueConstraints(
+      executor,
+      schema,
+      tableName,
+    );
+    final foreignKeys = await _foreignKeys(executor, schema, tableName);
     final uniqueSingleColumnNames = {
       for (final index in indexes)
         if (index.unique && index.columns.length == 1) index.columns.single,
+      for (final constraint in uniqueConstraints)
+        if (constraint.columns.length == 1) constraint.columns.single,
     };
 
     final columnRows = await executor.execute(
@@ -251,6 +260,12 @@ final class PostgresSchemaIntrospector implements SqlSchemaIntrospector {
       schema: schema,
       name: tableName,
       columns: List.unmodifiable(columns),
+      checks: checks,
+      uniqueConstraints: List.unmodifiable([
+        for (final constraint in uniqueConstraints)
+          if (constraint.columns.length > 1) constraint,
+      ]),
+      foreignKeys: foreignKeys,
       indexes: List.unmodifiable(indexes),
     );
   }
@@ -292,11 +307,18 @@ final class PostgresSchemaIntrospector implements SqlSchemaIntrospector {
           i.relname AS index_name,
           ix.indisunique AS is_unique,
           ix.indisprimary AS is_primary,
-          string_agg(a.attname, ',' ORDER BY keys.ordinality) AS column_names
+          pg_get_expr(ix.indpred, ix.indrelid) AS predicate,
+          string_agg(a.attname, ',' ORDER BY keys.ordinality) AS column_names,
+          string_agg(
+            pg_get_indexdef(i.oid, keys.ordinality::integer, true),
+            chr(31)
+            ORDER BY keys.ordinality
+          ) AS column_definitions
         FROM pg_class AS t
         JOIN pg_namespace AS n ON n.oid = t.relnamespace
         JOIN pg_index AS ix ON ix.indrelid = t.oid
         JOIN pg_class AS i ON i.oid = ix.indexrelid
+        LEFT JOIN pg_constraint AS con ON con.conindid = i.oid
         JOIN unnest(ix.indkey) WITH ORDINALITY AS keys(attnum, ordinality)
           ON true
         JOIN pg_attribute AS a
@@ -304,7 +326,14 @@ final class PostgresSchemaIntrospector implements SqlSchemaIntrospector {
          AND a.attnum = keys.attnum
         WHERE n.nspname = \$1
           AND t.relname = \$2
-        GROUP BY i.relname, ix.indisunique, ix.indisprimary
+          AND con.oid IS NULL
+        GROUP BY
+          i.oid,
+          i.relname,
+          ix.indisunique,
+          ix.indisprimary,
+          ix.indpred,
+          ix.indrelid
         ORDER BY i.relname
         ''',
         [schema, tableName],
@@ -313,17 +342,247 @@ final class PostgresSchemaIntrospector implements SqlSchemaIntrospector {
 
     return List.unmodifiable([
       for (final row in result.rows)
-        if (!_readBool(row['is_primary']))
-          SqlIndexSchema(
-            name: row.read<String>('index_name'),
-            columns: row
-                .read<String>('column_names')
-                .split(',')
-                .where((column) => column.isNotEmpty)
-                .toList(growable: false),
-            unique: _readBool(row['is_unique']),
-          ),
+        if (!_readBool(row['is_primary'])) _postgresIndex(row),
     ]);
+  }
+
+  SqlIndexSchema _postgresIndex(SqlRow row) {
+    final columns = row
+        .read<String>('column_names')
+        .split(',')
+        .where((column) => column.isNotEmpty)
+        .toList(growable: false);
+    final definitions = row
+        .read<String>('column_definitions')
+        .split(String.fromCharCode(31));
+    final columnOrders = <String, SqlSortOrder>{};
+    final columnNullsOrders = <String, SqlNullsOrder>{};
+
+    for (var index = 0; index < columns.length; index += 1) {
+      final column = columns[index];
+      final definition = index < definitions.length ? definitions[index] : '';
+      final order = _postgresIndexColumnOrder(definition);
+      if (order != null) {
+        columnOrders[column] = order;
+      }
+      final nullsOrder = _postgresIndexColumnNullsOrder(definition);
+      if (nullsOrder != null) {
+        columnNullsOrders[column] = nullsOrder;
+      }
+    }
+
+    return SqlIndexSchema(
+      name: row.read<String>('index_name'),
+      columns: columns,
+      unique: _readBool(row['is_unique']),
+      columnOrders: Map.unmodifiable(columnOrders),
+      columnNullsOrders: Map.unmodifiable(columnNullsOrders),
+      whereExpression: row.readNullable<String>('predicate'),
+    );
+  }
+
+  SqlSortOrder? _postgresIndexColumnOrder(String definition) {
+    if (RegExp(r'\bDESC\b', caseSensitive: false).hasMatch(definition)) {
+      return SqlSortOrder.descending;
+    }
+    if (RegExp(r'\bASC\b', caseSensitive: false).hasMatch(definition)) {
+      return SqlSortOrder.ascending;
+    }
+    return null;
+  }
+
+  SqlNullsOrder? _postgresIndexColumnNullsOrder(String definition) {
+    if (RegExp(
+      r'\bNULLS\s+FIRST\b',
+      caseSensitive: false,
+    ).hasMatch(definition)) {
+      return SqlNullsOrder.first;
+    }
+    if (RegExp(
+      r'\bNULLS\s+LAST\b',
+      caseSensitive: false,
+    ).hasMatch(definition)) {
+      return SqlNullsOrder.last;
+    }
+    return null;
+  }
+
+  Future<List<SqlCheckConstraintSchema>> _checkConstraints(
+    SqlExecutor executor,
+    String schema,
+    String tableName,
+  ) async {
+    final result = await executor.execute(
+      SqlStatement.positional(
+        '''
+        SELECT
+          con.conname AS constraint_name,
+          pg_get_constraintdef(con.oid, true) AS constraint_definition
+        FROM pg_constraint AS con
+        JOIN pg_class AS rel ON rel.oid = con.conrelid
+        JOIN pg_namespace AS nsp ON nsp.oid = rel.relnamespace
+        WHERE con.contype = 'c'
+          AND nsp.nspname = \$1
+          AND rel.relname = \$2
+        ORDER BY con.conname
+        ''',
+        [schema, tableName],
+      ),
+    );
+
+    return List.unmodifiable([
+      for (final row in result.rows)
+        SqlCheckConstraintSchema(
+          name: row.read<String>('constraint_name'),
+          expression: _postgresCheckExpression(
+            row.read<String>('constraint_definition'),
+          ),
+        ),
+    ]);
+  }
+
+  Future<List<SqlUniqueConstraintSchema>> _uniqueConstraints(
+    SqlExecutor executor,
+    String schema,
+    String tableName,
+  ) async {
+    final result = await executor.execute(
+      SqlStatement.positional(
+        '''
+        SELECT
+          con.conname AS constraint_name,
+          string_agg(att.attname, ',' ORDER BY keys.ordinality) AS column_names
+        FROM pg_constraint AS con
+        JOIN pg_class AS rel ON rel.oid = con.conrelid
+        JOIN pg_namespace AS nsp ON nsp.oid = rel.relnamespace
+        JOIN unnest(con.conkey) WITH ORDINALITY AS keys(attnum, ordinality)
+          ON true
+        JOIN pg_attribute AS att
+          ON att.attrelid = rel.oid
+         AND att.attnum = keys.attnum
+        WHERE con.contype = 'u'
+          AND nsp.nspname = \$1
+          AND rel.relname = \$2
+        GROUP BY con.conname
+        ORDER BY con.conname
+        ''',
+        [schema, tableName],
+      ),
+    );
+
+    return List.unmodifiable([
+      for (final row in result.rows)
+        SqlUniqueConstraintSchema(
+          name: row.read<String>('constraint_name'),
+          columns: row
+              .read<String>('column_names')
+              .split(',')
+              .where((column) => column.isNotEmpty)
+              .toList(growable: false),
+        ),
+    ]);
+  }
+
+  Future<List<SqlForeignKeyConstraintSchema>> _foreignKeys(
+    SqlExecutor executor,
+    String schema,
+    String tableName,
+  ) async {
+    final result = await executor.execute(
+      SqlStatement.positional(
+        '''
+        SELECT
+          con.conname AS constraint_name,
+          referenced_schema.nspname AS referenced_schema,
+          referenced_table.relname AS referenced_table,
+          con.confdeltype AS on_delete,
+          con.confupdtype AS on_update,
+          string_agg(local_att.attname, ',' ORDER BY local_keys.ordinality)
+            AS column_names,
+          string_agg(referenced_att.attname, ',' ORDER BY local_keys.ordinality)
+            AS referenced_column_names
+        FROM pg_constraint AS con
+        JOIN pg_class AS rel ON rel.oid = con.conrelid
+        JOIN pg_namespace AS nsp ON nsp.oid = rel.relnamespace
+        JOIN pg_class AS referenced_table ON referenced_table.oid = con.confrelid
+        JOIN pg_namespace AS referenced_schema
+          ON referenced_schema.oid = referenced_table.relnamespace
+        JOIN unnest(con.conkey) WITH ORDINALITY AS local_keys(attnum, ordinality)
+          ON true
+        JOIN unnest(con.confkey) WITH ORDINALITY AS referenced_keys(attnum, ordinality)
+          ON referenced_keys.ordinality = local_keys.ordinality
+        JOIN pg_attribute AS local_att
+          ON local_att.attrelid = rel.oid
+         AND local_att.attnum = local_keys.attnum
+        JOIN pg_attribute AS referenced_att
+          ON referenced_att.attrelid = referenced_table.oid
+         AND referenced_att.attnum = referenced_keys.attnum
+        WHERE con.contype = 'f'
+          AND nsp.nspname = \$1
+          AND rel.relname = \$2
+        GROUP BY
+          con.conname,
+          referenced_schema.nspname,
+          referenced_table.relname,
+          con.confdeltype,
+          con.confupdtype
+        ORDER BY con.conname
+        ''',
+        [schema, tableName],
+      ),
+    );
+
+    return List.unmodifiable([
+      for (final row in result.rows)
+        SqlForeignKeyConstraintSchema(
+          name: row.read<String>('constraint_name'),
+          columns: row
+              .read<String>('column_names')
+              .split(',')
+              .where((column) => column.isNotEmpty)
+              .toList(growable: false),
+          referencesSchema: row.read<String>('referenced_schema'),
+          referencesTable: row.read<String>('referenced_table'),
+          referencesColumns: row
+              .read<String>('referenced_column_names')
+              .split(',')
+              .where((column) => column.isNotEmpty)
+              .toList(growable: false),
+          onDelete: _postgresForeignKeyAction(
+            row.readNullable<String>('on_delete'),
+          ),
+          onUpdate: _postgresForeignKeyAction(
+            row.readNullable<String>('on_update'),
+          ),
+        ),
+    ]);
+  }
+
+  SqlForeignKeyAction? _postgresForeignKeyAction(String? value) {
+    return switch (value) {
+      'a' || null => null,
+      'r' => SqlForeignKeyAction.restrict,
+      'c' => SqlForeignKeyAction.cascade,
+      'n' => SqlForeignKeyAction.setNull,
+      'd' => SqlForeignKeyAction.setDefault,
+      _ => null,
+    };
+  }
+
+  String _postgresCheckExpression(String definition) {
+    final trimmed = definition.trim();
+    if (!trimmed.startsWith(RegExp('CHECK\\s*\\(', caseSensitive: false))) {
+      return trimmed;
+    }
+
+    final openIndex = trimmed.indexOf('(');
+    final content = trimmed.substring(openIndex + 1);
+    if (!content.endsWith(')')) {
+      return content;
+    }
+    return _stripOuterParentheses(
+      content.substring(0, content.length - 1),
+    ).trim();
   }
 
   SqlColumnSchema _postgresColumn(
@@ -390,4 +649,34 @@ bool _readBool(Object? value) {
 String _quoteIdentifier(String identifier) {
   final escaped = identifier.replaceAll('"', '""');
   return '"$escaped"';
+}
+
+String _stripOuterParentheses(String expression) {
+  var current = expression.trim();
+  while (current.length >= 2 &&
+      current.startsWith('(') &&
+      current.endsWith(')') &&
+      _outerParenthesesWrapWholeExpression(current)) {
+    current = current.substring(1, current.length - 1).trim();
+  }
+  return current;
+}
+
+bool _outerParenthesesWrapWholeExpression(String expression) {
+  var depth = 0;
+  for (var index = 0; index < expression.length; index += 1) {
+    final character = expression[index];
+    if (character == '(') {
+      depth += 1;
+    } else if (character == ')') {
+      depth -= 1;
+      if (depth == 0 && index != expression.length - 1) {
+        return false;
+      }
+      if (depth < 0) {
+        return false;
+      }
+    }
+  }
+  return depth == 0;
 }

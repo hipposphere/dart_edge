@@ -111,6 +111,332 @@ void main() {
     ]);
   });
 
+  test('renders check constraints inline for new tables', () {
+    final statements = CreateSqlTable(
+      const SqlTableSchema(
+        schema: 'workspace',
+        name: 'file_revisions',
+        columns: [
+          SqlColumnSchema(name: 'id', type: 'UUID', nullable: false),
+          SqlColumnSchema(
+            name: 'indexation_status',
+            type: 'TEXT',
+            nullable: false,
+            defaultExpression: "'not_indexed'::text",
+          ),
+        ],
+        checks: [
+          SqlCheckConstraintSchema(
+            name: 'file_revisions_indexation_status_check',
+            expression:
+                "indexation_status IN ('not_indexed', 'pending', 'indexed')",
+          ),
+        ],
+      ),
+    ).toStatements(SqlDialect.postgres).map((statement) => statement.sql);
+
+    expect(statements, [
+      'CREATE TABLE "workspace"."file_revisions" ("id" UUID NOT NULL, '
+          '"indexation_status" TEXT NOT NULL DEFAULT \'not_indexed\'::text, '
+          'CONSTRAINT "file_revisions_indexation_status_check" '
+          "CHECK (indexation_status IN ('not_indexed', 'pending', 'indexed')))",
+    ]);
+  });
+
+  test('renders table constraints and rich partial indexes', () {
+    const table = SqlTableSchema(
+      schema: 'workspace',
+      name: 'file_revisions',
+      columns: [
+        SqlColumnSchema(
+          name: 'id',
+          type: 'UUID',
+          nullable: false,
+          primaryKey: true,
+        ),
+        SqlColumnSchema(name: 'file_id', type: 'UUID', nullable: false),
+        SqlColumnSchema(name: 'workspace_id', type: 'UUID', nullable: false),
+        SqlColumnSchema(
+          name: 'indexation_status',
+          type: 'TEXT',
+          nullable: false,
+          defaultExpression: "'not_indexed'::text",
+        ),
+      ],
+      checks: [
+        SqlTextEnumCheckConstraintSchema(
+          name: 'file_revisions_indexation_status_check',
+          column: 'indexation_status',
+          values: ['not_indexed', 'pending', 'indexed', 'failed'],
+        ),
+      ],
+      uniqueConstraints: [
+        SqlUniqueConstraintSchema(
+          name: 'file_revisions_workspace_file_id_key',
+          columns: ['workspace_id', 'file_id', 'id'],
+        ),
+      ],
+      foreignKeys: [
+        SqlForeignKeyConstraintSchema(
+          name: 'file_revisions_file_id_fkey',
+          columns: ['file_id'],
+          referencesSchema: 'workspace',
+          referencesTable: 'files',
+          referencesColumns: ['id'],
+          onDelete: SqlForeignKeyAction.cascade,
+        ),
+      ],
+      indexes: [
+        SqlIndexSchema(
+          name: 'idx_file_revisions_active_created',
+          columns: ['workspace_id', 'created_at'],
+          columnOrders: {'created_at': SqlSortOrder.descending},
+          columnNullsOrders: {'created_at': SqlNullsOrder.last},
+          whereExpression: 'deleted_at is null',
+        ),
+      ],
+    );
+
+    final createTableStatements = CreateSqlTable(
+      table,
+    ).toStatements(SqlDialect.postgres).map((statement) => statement.sql);
+    final createIndexStatements = CreateSqlIndex(
+      table: table,
+      index: table.indexes.single,
+    ).toStatements(SqlDialect.postgres).map((statement) => statement.sql);
+
+    expect(createTableStatements, [
+      'CREATE TABLE "workspace"."file_revisions" '
+          '("id" UUID NOT NULL PRIMARY KEY, '
+          '"file_id" UUID NOT NULL, '
+          '"workspace_id" UUID NOT NULL, '
+          '"indexation_status" TEXT NOT NULL DEFAULT \'not_indexed\'::text, '
+          'CONSTRAINT "file_revisions_indexation_status_check" '
+          'CHECK ("indexation_status" in '
+          "('not_indexed', 'pending', 'indexed', 'failed')), "
+          'CONSTRAINT "file_revisions_workspace_file_id_key" '
+          'UNIQUE ("workspace_id", "file_id", "id"), '
+          'CONSTRAINT "file_revisions_file_id_fkey" '
+          'FOREIGN KEY ("file_id") REFERENCES "workspace"."files" ("id") '
+          'ON DELETE CASCADE)',
+    ]);
+    expect(createIndexStatements, [
+      'CREATE INDEX "idx_file_revisions_active_created" '
+          'ON "workspace"."file_revisions" '
+          '("workspace_id", "created_at" DESC NULLS LAST) '
+          'WHERE deleted_at is null',
+    ]);
+  });
+
+  test('requires review when adding check constraints to existing tables', () {
+    final diff = SqlSchemaDiff.between(
+      current: const SqlDatabaseSchema(
+        tables: [
+          SqlTableSchema(
+            schema: 'workspace',
+            name: 'file_revisions',
+            columns: [
+              SqlColumnSchema(
+                name: 'indexation_status',
+                type: 'TEXT',
+                nullable: false,
+              ),
+            ],
+          ),
+        ],
+      ),
+      desired: const SqlDatabaseSchema(
+        tables: [
+          SqlTableSchema(
+            schema: 'workspace',
+            name: 'file_revisions',
+            columns: [
+              SqlColumnSchema(
+                name: 'indexation_status',
+                type: 'TEXT',
+                nullable: false,
+              ),
+            ],
+            checks: [
+              SqlCheckConstraintSchema(
+                name: 'file_revisions_indexation_status_check',
+                expression:
+                    "indexation_status IN ('not_indexed', 'pending', "
+                    "'indexed')",
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+
+    expect(diff.operations.single, isA<AddSqlCheckConstraint>());
+    expect(
+      diff.operations.single.safety,
+      SqlSchemaMigrationSafety.requiresReview,
+    );
+    expect(diff.toMigrationPlan().forDialect(SqlDialect.postgres), isEmpty);
+    expect(diff.toMigrationPlan().forDialect(SqlDialect.sqlite), isEmpty);
+    expect(
+      diff.reviewReport.items.single.target,
+      'workspace.file_revisions.file_revisions_indexation_status_check',
+    );
+
+    final reviewedPostgresStatements = diff
+        .toMigrationPlan(includeReviewedOperations: true)
+        .forDialect(SqlDialect.postgres)
+        .map((statement) => statement.sql)
+        .toList();
+    final reviewedSqliteStatements = diff
+        .toMigrationPlan(includeReviewedOperations: true)
+        .forDialect(SqlDialect.sqlite);
+
+    expect(reviewedPostgresStatements, [
+      'ALTER TABLE "workspace"."file_revisions" ADD '
+          'CONSTRAINT "file_revisions_indexation_status_check" '
+          "CHECK (indexation_status IN ('not_indexed', 'pending', 'indexed'))",
+    ]);
+    expect(reviewedSqliteStatements, isEmpty);
+    expect(
+      diff.reviewReportForDialect(SqlDialect.sqlite).items.single.details,
+      contains('SQLite requires a table rebuild to add table constraints.'),
+    );
+  });
+
+  test('requires review when adding unique and foreign key constraints', () {
+    final diff = SqlSchemaDiff.between(
+      current: const SqlDatabaseSchema(
+        tables: [SqlTableSchema(schema: 'workspace', name: 'file_revisions')],
+      ),
+      desired: const SqlDatabaseSchema(
+        tables: [
+          SqlTableSchema(
+            schema: 'workspace',
+            name: 'file_revisions',
+            uniqueConstraints: [
+              SqlUniqueConstraintSchema(
+                name: 'file_revisions_workspace_file_id_key',
+                columns: ['workspace_id', 'file_id', 'id'],
+              ),
+            ],
+            foreignKeys: [
+              SqlForeignKeyConstraintSchema(
+                name: 'file_revisions_file_id_fkey',
+                columns: ['file_id'],
+                referencesSchema: 'workspace',
+                referencesTable: 'files',
+                referencesColumns: ['id'],
+                onDelete: SqlForeignKeyAction.cascade,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+
+    expect(diff.operations, [
+      isA<AddSqlUniqueConstraint>(),
+      isA<AddSqlForeignKeyConstraint>(),
+    ]);
+    expect(
+      diff.operations.map((operation) => operation.safety),
+      everyElement(SqlSchemaMigrationSafety.requiresReview),
+    );
+    expect(diff.toMigrationPlan().forDialect(SqlDialect.postgres), isEmpty);
+
+    final reviewedStatements = diff
+        .toMigrationPlan(includeReviewedOperations: true)
+        .forDialect(SqlDialect.postgres)
+        .map((statement) => statement.sql)
+        .toList();
+
+    expect(reviewedStatements, [
+      'ALTER TABLE "workspace"."file_revisions" ADD '
+          'CONSTRAINT "file_revisions_workspace_file_id_key" '
+          'UNIQUE ("workspace_id", "file_id", "id")',
+      'ALTER TABLE "workspace"."file_revisions" ADD '
+          'CONSTRAINT "file_revisions_file_id_fkey" '
+          'FOREIGN KEY ("file_id") REFERENCES "workspace"."files" ("id") '
+          'ON DELETE CASCADE',
+    ]);
+  });
+
+  test('drops changed or removed check constraints only when destructive', () {
+    final diff = SqlSchemaDiff.between(
+      current: const SqlDatabaseSchema(
+        tables: [
+          SqlTableSchema(
+            schema: 'workspace',
+            name: 'file_revisions',
+            checks: [
+              SqlCheckConstraintSchema(
+                name: 'file_revisions_indexation_status_check',
+                expression: "indexation_status IN ('pending', 'indexed')",
+              ),
+            ],
+          ),
+        ],
+      ),
+      desired: const SqlDatabaseSchema(
+        tables: [SqlTableSchema(schema: 'workspace', name: 'file_revisions')],
+      ),
+    );
+
+    expect(diff.operations.single, isA<DropSqlCheckConstraint>());
+    expect(diff.toMigrationPlan().forDialect(SqlDialect.postgres), isEmpty);
+
+    final destructiveStatements = diff
+        .toMigrationPlan(includeDestructiveOperations: true)
+        .forDialect(SqlDialect.postgres)
+        .map((statement) => statement.sql)
+        .toList();
+
+    expect(destructiveStatements, [
+      'ALTER TABLE "workspace"."file_revisions" '
+          'DROP CONSTRAINT "file_revisions_indexation_status_check"',
+    ]);
+  });
+
+  test(
+    'treats simple IN checks and postgres ANY ARRAY checks as equivalent',
+    () {
+      final diff = SqlSchemaDiff.between(
+        current: const SqlDatabaseSchema(
+          tables: [
+            SqlTableSchema(
+              name: 'file_revisions',
+              checks: [
+                SqlCheckConstraintSchema(
+                  name: 'file_revisions_indexation_status_check',
+                  expression:
+                      "indexation_status = ANY (ARRAY['not_indexed'::text, "
+                      "'pending'::text, 'indexed'::text])",
+                ),
+              ],
+            ),
+          ],
+        ),
+        desired: const SqlDatabaseSchema(
+          tables: [
+            SqlTableSchema(
+              name: 'file_revisions',
+              checks: [
+                SqlCheckConstraintSchema(
+                  name: 'file_revisions_indexation_status_check',
+                  expression:
+                      "indexation_status in ('not_indexed', 'pending', "
+                      "'indexed')",
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+
+      expect(diff.operations, isEmpty);
+    },
+  );
+
   test('keeps review and destructive operations out of default plans', () {
     final diff = SqlSchemaDiff.between(
       current: const SqlDatabaseSchema(

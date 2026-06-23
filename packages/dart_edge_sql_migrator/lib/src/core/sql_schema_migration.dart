@@ -39,6 +39,9 @@ final class SqlTableSchema {
     required this.name,
     this.schema,
     this.columns = const <SqlColumnSchema>[],
+    this.checks = const <SqlCheckConstraintSchema>[],
+    this.uniqueConstraints = const <SqlUniqueConstraintSchema>[],
+    this.foreignKeys = const <SqlForeignKeyConstraintSchema>[],
     this.indexes = const <SqlIndexSchema>[],
   });
 
@@ -50,6 +53,15 @@ final class SqlTableSchema {
 
   /// Columns that should exist on this table.
   final List<SqlColumnSchema> columns;
+
+  /// Named table-level CHECK constraints that should exist on this table.
+  final List<SqlCheckConstraintSchema> checks;
+
+  /// Named table-level UNIQUE constraints that should exist on this table.
+  final List<SqlUniqueConstraintSchema> uniqueConstraints;
+
+  /// Named table-level foreign key constraints that should exist on this table.
+  final List<SqlForeignKeyConstraintSchema> foreignKeys;
 
   /// Secondary indexes that should exist on this table.
   final List<SqlIndexSchema> indexes;
@@ -63,6 +75,24 @@ final class SqlTableSchema {
   Map<String, SqlIndexSchema> get _indexByName {
     return <String, SqlIndexSchema>{
       for (final index in indexes) index.name: index,
+    };
+  }
+
+  Map<String, SqlCheckConstraintSchema> get _checkByName {
+    return <String, SqlCheckConstraintSchema>{
+      for (final check in checks) check.name: check,
+    };
+  }
+
+  Map<String, SqlUniqueConstraintSchema> get _uniqueConstraintByName {
+    return <String, SqlUniqueConstraintSchema>{
+      for (final constraint in uniqueConstraints) constraint.name: constraint,
+    };
+  }
+
+  Map<String, SqlForeignKeyConstraintSchema> get _foreignKeyByName {
+    return <String, SqlForeignKeyConstraintSchema>{
+      for (final foreignKey in foreignKeys) foreignKey.name: foreignKey,
     };
   }
 }
@@ -105,6 +135,9 @@ final class SqlIndexSchema {
     required this.name,
     required this.columns,
     this.unique = false,
+    this.columnOrders = const <String, SqlSortOrder>{},
+    this.columnNullsOrders = const <String, SqlNullsOrder>{},
+    this.whereExpression,
   });
 
   /// Index name without schema qualification.
@@ -115,6 +148,134 @@ final class SqlIndexSchema {
 
   /// Whether this index enforces uniqueness.
   final bool unique;
+
+  /// Optional per-column sort order metadata.
+  final Map<String, SqlSortOrder> columnOrders;
+
+  /// Optional per-column null positioning metadata.
+  final Map<String, SqlNullsOrder> columnNullsOrders;
+
+  /// Optional raw SQL predicate after `WHERE` for a partial index.
+  final String? whereExpression;
+}
+
+/// Desired shape for one table-level CHECK constraint.
+class SqlCheckConstraintSchema {
+  // Keep the public parameter named `expression` while storing it behind a
+  // getter so typed helper subclasses can build expressions lazily.
+  // ignore: prefer_initializing_formals
+  const SqlCheckConstraintSchema({
+    required this.name,
+    required String expression,
+    // ignore: prefer_initializing_formals
+  }) : _expression = expression;
+
+  /// Constraint name without schema qualification.
+  final String name;
+
+  final String _expression;
+
+  /// Raw SQL expression inside `CHECK (...)`.
+  String get expression => _expression;
+}
+
+/// Convenience CHECK constraint for string status/enum columns.
+final class SqlTextEnumCheckConstraintSchema extends SqlCheckConstraintSchema {
+  const SqlTextEnumCheckConstraintSchema({
+    required super.name,
+    required this.column,
+    required this.values,
+  }) : super(expression: '');
+
+  /// Column constrained to one of [values].
+  final String column;
+
+  /// Allowed database text values.
+  final List<String> values;
+
+  @override
+  String get expression {
+    final allowedValues = values.map(_quoteStringLiteral).join(', ');
+    return '${_quoteIdentifier(column)} in ($allowedValues)';
+  }
+}
+
+/// Desired shape for one table-level UNIQUE constraint.
+final class SqlUniqueConstraintSchema {
+  const SqlUniqueConstraintSchema({required this.name, required this.columns});
+
+  /// Constraint name without schema qualification.
+  final String name;
+
+  /// Ordered table column names that make up the unique constraint.
+  final List<String> columns;
+}
+
+/// Desired shape for one table-level foreign key constraint.
+final class SqlForeignKeyConstraintSchema {
+  const SqlForeignKeyConstraintSchema({
+    required this.name,
+    required this.columns,
+    required this.referencesTable,
+    required this.referencesColumns,
+    this.referencesSchema,
+    this.onDelete,
+    this.onUpdate,
+  });
+
+  /// Constraint name without schema qualification.
+  final String name;
+
+  /// Ordered local table column names.
+  final List<String> columns;
+
+  /// Optional referenced schema name.
+  final String? referencesSchema;
+
+  /// Referenced table name without schema qualification.
+  final String referencesTable;
+
+  /// Ordered referenced table column names.
+  final List<String> referencesColumns;
+
+  /// Optional action for referenced row deletion.
+  final SqlForeignKeyAction? onDelete;
+
+  /// Optional action for referenced row key updates.
+  final SqlForeignKeyAction? onUpdate;
+}
+
+/// Sort direction for an indexed column.
+enum SqlSortOrder {
+  ascending('ASC'),
+  descending('DESC');
+
+  const SqlSortOrder(this.sql);
+
+  final String sql;
+}
+
+/// Null positioning for an indexed column.
+enum SqlNullsOrder {
+  first('NULLS FIRST'),
+  last('NULLS LAST');
+
+  const SqlNullsOrder(this.sql);
+
+  final String sql;
+}
+
+/// Action applied by a foreign key when a referenced row changes.
+enum SqlForeignKeyAction {
+  noAction('NO ACTION'),
+  restrict('RESTRICT'),
+  cascade('CASCADE'),
+  setNull('SET NULL'),
+  setDefault('SET DEFAULT');
+
+  const SqlForeignKeyAction(this.sql);
+
+  final String sql;
 }
 
 /// Desired shape for one callable SQL routine.
@@ -264,6 +425,101 @@ final class SqlSchemaDiff {
       }
     }
 
+    final currentChecks = current._checkByName;
+    final desiredChecks = desired._checkByName;
+    for (final entry in desiredChecks.entries) {
+      final currentCheck = currentChecks[entry.key];
+      final desiredCheck = entry.value;
+      if (currentCheck == null) {
+        operations.add(
+          AddSqlCheckConstraint(table: desired, check: desiredCheck),
+        );
+      } else if (!_sameCheck(currentCheck, desiredCheck)) {
+        operations
+          ..add(DropSqlCheckConstraint(table: current, check: currentCheck))
+          ..add(AddSqlCheckConstraint(table: desired, check: desiredCheck));
+      }
+    }
+
+    for (final entry in currentChecks.entries) {
+      if (!desiredChecks.containsKey(entry.key)) {
+        operations.add(
+          DropSqlCheckConstraint(table: current, check: entry.value),
+        );
+      }
+    }
+
+    final currentUniqueConstraints = current._uniqueConstraintByName;
+    final desiredUniqueConstraints = desired._uniqueConstraintByName;
+    for (final entry in desiredUniqueConstraints.entries) {
+      final currentConstraint = currentUniqueConstraints[entry.key];
+      final desiredConstraint = entry.value;
+      if (currentConstraint == null) {
+        operations.add(
+          AddSqlUniqueConstraint(table: desired, constraint: desiredConstraint),
+        );
+      } else if (!_sameUniqueConstraint(currentConstraint, desiredConstraint)) {
+        operations
+          ..add(
+            DropSqlUniqueConstraint(
+              table: current,
+              constraint: currentConstraint,
+            ),
+          )
+          ..add(
+            AddSqlUniqueConstraint(
+              table: desired,
+              constraint: desiredConstraint,
+            ),
+          );
+      }
+    }
+
+    for (final entry in currentUniqueConstraints.entries) {
+      if (!desiredUniqueConstraints.containsKey(entry.key)) {
+        operations.add(
+          DropSqlUniqueConstraint(table: current, constraint: entry.value),
+        );
+      }
+    }
+
+    final currentForeignKeys = current._foreignKeyByName;
+    final desiredForeignKeys = desired._foreignKeyByName;
+    for (final entry in desiredForeignKeys.entries) {
+      final currentForeignKey = currentForeignKeys[entry.key];
+      final desiredForeignKey = entry.value;
+      if (currentForeignKey == null) {
+        operations.add(
+          AddSqlForeignKeyConstraint(
+            table: desired,
+            foreignKey: desiredForeignKey,
+          ),
+        );
+      } else if (!_sameForeignKey(currentForeignKey, desiredForeignKey)) {
+        operations
+          ..add(
+            DropSqlForeignKeyConstraint(
+              table: current,
+              foreignKey: currentForeignKey,
+            ),
+          )
+          ..add(
+            AddSqlForeignKeyConstraint(
+              table: desired,
+              foreignKey: desiredForeignKey,
+            ),
+          );
+      }
+    }
+
+    for (final entry in currentForeignKeys.entries) {
+      if (!desiredForeignKeys.containsKey(entry.key)) {
+        operations.add(
+          DropSqlForeignKeyConstraint(table: current, foreignKey: entry.value),
+        );
+      }
+    }
+
     final currentIndexes = current._indexByName;
     final desiredIndexes = desired._indexByName;
     for (final entry in desiredIndexes.entries) {
@@ -297,7 +553,40 @@ final class SqlSchemaDiff {
 
   static bool _sameIndex(SqlIndexSchema left, SqlIndexSchema right) {
     return left.unique == right.unique &&
-        _sameStrings(left.columns, right.columns);
+        _sameStrings(left.columns, right.columns) &&
+        _sameMaps(left.columnOrders, right.columnOrders) &&
+        _sameMaps(left.columnNullsOrders, right.columnNullsOrders) &&
+        _normalizeOptionalSqlExpression(left.whereExpression) ==
+            _normalizeOptionalSqlExpression(right.whereExpression);
+  }
+
+  static bool _sameCheck(
+    SqlCheckConstraintSchema left,
+    SqlCheckConstraintSchema right,
+  ) {
+    return _normalizeCheckExpression(left.expression) ==
+        _normalizeCheckExpression(right.expression);
+  }
+
+  static bool _sameUniqueConstraint(
+    SqlUniqueConstraintSchema left,
+    SqlUniqueConstraintSchema right,
+  ) {
+    return _sameStrings(left.columns, right.columns);
+  }
+
+  static bool _sameForeignKey(
+    SqlForeignKeyConstraintSchema left,
+    SqlForeignKeyConstraintSchema right,
+  ) {
+    return _sameStrings(left.columns, right.columns) &&
+        left.referencesSchema == right.referencesSchema &&
+        left.referencesTable == right.referencesTable &&
+        _sameStrings(left.referencesColumns, right.referencesColumns) &&
+        _normalizeForeignKeyAction(left.onDelete) ==
+            _normalizeForeignKeyAction(right.onDelete) &&
+        _normalizeForeignKeyAction(left.onUpdate) ==
+            _normalizeForeignKeyAction(right.onUpdate);
   }
 
   static bool _sameRoutine(SqlRoutineSchema left, SqlRoutineSchema right) {
@@ -311,6 +600,18 @@ final class SqlSchemaDiff {
     }
     for (var index = 0; index < left.length; index += 1) {
       if (left[index] != right[index]) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  static bool _sameMaps<K, V>(Map<K, V> left, Map<K, V> right) {
+    if (left.length != right.length) {
+      return false;
+    }
+    for (final entry in left.entries) {
+      if (right[entry.key] != entry.value) {
         return false;
       }
     }
@@ -457,6 +758,15 @@ final class CreateSqlTable extends SqlSchemaMigrationOp {
     ];
     if (primaryKeyColumns.length > 1) {
       columns.add('PRIMARY KEY (${primaryKeyColumns.join(', ')})');
+    }
+    for (final check in table.checks) {
+      columns.add(_checkConstraintDefinition(check));
+    }
+    for (final constraint in table.uniqueConstraints) {
+      columns.add(_uniqueConstraintDefinition(constraint));
+    }
+    for (final foreignKey in table.foreignKeys) {
+      columns.add(_foreignKeyConstraintDefinition(foreignKey));
     }
     return [
       sql('CREATE TABLE ${_tableName(table, dialect)} (${columns.join(', ')})'),
@@ -615,6 +925,279 @@ final class DropSqlColumn extends SqlSchemaMigrationOp {
   }
 }
 
+/// Adds one CHECK constraint to an existing table.
+final class AddSqlCheckConstraint extends SqlSchemaMigrationOp {
+  const AddSqlCheckConstraint({required this.table, required this.check});
+
+  final SqlTableSchema table;
+  final SqlCheckConstraintSchema check;
+
+  @override
+  SqlSchemaMigrationSafety get safety =>
+      SqlSchemaMigrationSafety.requiresReview;
+
+  @override
+  List<SqlSchemaMigrationReviewItem> get _reviewItems {
+    return [
+      SqlSchemaMigrationReviewItem(
+        target: '${_tableDisplayName(table)}.${check.name}',
+        summary: 'add check constraint',
+        details: ['expression: ${check.expression}'],
+        suggestedAction:
+            'Validate existing rows satisfy the CHECK expression before '
+            'adding the constraint, or use a reviewed database-specific '
+            'validation strategy.',
+      ),
+    ];
+  }
+
+  @override
+  List<SqlSchemaMigrationReviewItem> reviewItemsForDialect(SqlDialect dialect) {
+    return [
+      SqlSchemaMigrationReviewItem(
+        target: '${_tableDisplayName(table)}.${check.name}',
+        summary: 'add check constraint',
+        details: [
+          'expression: ${check.expression}',
+          switch (dialect) {
+            SqlDialect.postgres =>
+              'PostgreSQL validates existing rows when the constraint is '
+                  'added unless a reviewed NOT VALID flow is used.',
+            SqlDialect.sqlite =>
+              'SQLite requires a table rebuild to add table constraints.',
+          },
+        ],
+        suggestedAction:
+            'Validate existing rows satisfy the CHECK expression before '
+            'adding the constraint, or use a reviewed database-specific '
+            'validation strategy.',
+      ),
+    ];
+  }
+
+  @override
+  List<SqlStatement> toStatements(SqlDialect dialect) {
+    return switch (dialect) {
+      SqlDialect.postgres => [
+        sql(
+          'ALTER TABLE ${_tableName(table, dialect)} ADD '
+          '${_checkConstraintDefinition(check)}',
+        ),
+      ],
+      SqlDialect.sqlite => const <SqlStatement>[],
+    };
+  }
+}
+
+/// Drops one CHECK constraint from an existing table.
+final class DropSqlCheckConstraint extends SqlSchemaMigrationOp {
+  const DropSqlCheckConstraint({required this.table, required this.check});
+
+  final SqlTableSchema table;
+  final SqlCheckConstraintSchema check;
+
+  @override
+  SqlSchemaMigrationSafety get safety => SqlSchemaMigrationSafety.destructive;
+
+  @override
+  List<SqlStatement> toStatements(SqlDialect dialect) {
+    return switch (dialect) {
+      SqlDialect.postgres => [
+        sql(
+          'ALTER TABLE ${_tableName(table, dialect)} '
+          'DROP CONSTRAINT ${_quoteIdentifier(check.name)}',
+        ),
+      ],
+      SqlDialect.sqlite => const <SqlStatement>[],
+    };
+  }
+}
+
+/// Adds one UNIQUE constraint to an existing table.
+final class AddSqlUniqueConstraint extends SqlSchemaMigrationOp {
+  const AddSqlUniqueConstraint({required this.table, required this.constraint});
+
+  final SqlTableSchema table;
+  final SqlUniqueConstraintSchema constraint;
+
+  @override
+  SqlSchemaMigrationSafety get safety =>
+      SqlSchemaMigrationSafety.requiresReview;
+
+  @override
+  List<SqlSchemaMigrationReviewItem> get _reviewItems {
+    return [
+      SqlSchemaMigrationReviewItem(
+        target: '${_tableDisplayName(table)}.${constraint.name}',
+        summary: 'add unique constraint',
+        details: ['columns: ${constraint.columns.join(', ')}'],
+        suggestedAction:
+            'Validate existing rows do not contain duplicates before adding '
+            'the UNIQUE constraint.',
+      ),
+    ];
+  }
+
+  @override
+  List<SqlSchemaMigrationReviewItem> reviewItemsForDialect(SqlDialect dialect) {
+    return [
+      SqlSchemaMigrationReviewItem(
+        target: '${_tableDisplayName(table)}.${constraint.name}',
+        summary: 'add unique constraint',
+        details: [
+          'columns: ${constraint.columns.join(', ')}',
+          switch (dialect) {
+            SqlDialect.postgres =>
+              'PostgreSQL validates existing rows when the constraint is '
+                  'added.',
+            SqlDialect.sqlite =>
+              'SQLite requires a table rebuild to add table constraints.',
+          },
+        ],
+        suggestedAction:
+            'Validate existing rows do not contain duplicates before adding '
+            'the UNIQUE constraint.',
+      ),
+    ];
+  }
+
+  @override
+  List<SqlStatement> toStatements(SqlDialect dialect) {
+    return switch (dialect) {
+      SqlDialect.postgres => [
+        sql(
+          'ALTER TABLE ${_tableName(table, dialect)} ADD '
+          '${_uniqueConstraintDefinition(constraint)}',
+        ),
+      ],
+      SqlDialect.sqlite => const <SqlStatement>[],
+    };
+  }
+}
+
+/// Drops one UNIQUE constraint from an existing table.
+final class DropSqlUniqueConstraint extends SqlSchemaMigrationOp {
+  const DropSqlUniqueConstraint({
+    required this.table,
+    required this.constraint,
+  });
+
+  final SqlTableSchema table;
+  final SqlUniqueConstraintSchema constraint;
+
+  @override
+  SqlSchemaMigrationSafety get safety => SqlSchemaMigrationSafety.destructive;
+
+  @override
+  List<SqlStatement> toStatements(SqlDialect dialect) {
+    return switch (dialect) {
+      SqlDialect.postgres => [
+        sql(
+          'ALTER TABLE ${_tableName(table, dialect)} '
+          'DROP CONSTRAINT ${_quoteIdentifier(constraint.name)}',
+        ),
+      ],
+      SqlDialect.sqlite => const <SqlStatement>[],
+    };
+  }
+}
+
+/// Adds one foreign key constraint to an existing table.
+final class AddSqlForeignKeyConstraint extends SqlSchemaMigrationOp {
+  const AddSqlForeignKeyConstraint({
+    required this.table,
+    required this.foreignKey,
+  });
+
+  final SqlTableSchema table;
+  final SqlForeignKeyConstraintSchema foreignKey;
+
+  @override
+  SqlSchemaMigrationSafety get safety =>
+      SqlSchemaMigrationSafety.requiresReview;
+
+  @override
+  List<SqlSchemaMigrationReviewItem> get _reviewItems {
+    return [
+      SqlSchemaMigrationReviewItem(
+        target: '${_tableDisplayName(table)}.${foreignKey.name}',
+        summary: 'add foreign key constraint',
+        details: [
+          'columns: ${foreignKey.columns.join(', ')}',
+          'references: ${_foreignKeyReferenceDisplay(foreignKey)}',
+        ],
+        suggestedAction:
+            'Validate existing rows have matching referenced rows before '
+            'adding the foreign key.',
+      ),
+    ];
+  }
+
+  @override
+  List<SqlSchemaMigrationReviewItem> reviewItemsForDialect(SqlDialect dialect) {
+    return [
+      SqlSchemaMigrationReviewItem(
+        target: '${_tableDisplayName(table)}.${foreignKey.name}',
+        summary: 'add foreign key constraint',
+        details: [
+          'columns: ${foreignKey.columns.join(', ')}',
+          'references: ${_foreignKeyReferenceDisplay(foreignKey)}',
+          switch (dialect) {
+            SqlDialect.postgres =>
+              'PostgreSQL validates existing rows when the constraint is '
+                  'added unless a reviewed NOT VALID flow is used.',
+            SqlDialect.sqlite =>
+              'SQLite requires a table rebuild to add table constraints.',
+          },
+        ],
+        suggestedAction:
+            'Validate existing rows have matching referenced rows before '
+            'adding the foreign key.',
+      ),
+    ];
+  }
+
+  @override
+  List<SqlStatement> toStatements(SqlDialect dialect) {
+    return switch (dialect) {
+      SqlDialect.postgres => [
+        sql(
+          'ALTER TABLE ${_tableName(table, dialect)} ADD '
+          '${_foreignKeyConstraintDefinition(foreignKey)}',
+        ),
+      ],
+      SqlDialect.sqlite => const <SqlStatement>[],
+    };
+  }
+}
+
+/// Drops one foreign key constraint from an existing table.
+final class DropSqlForeignKeyConstraint extends SqlSchemaMigrationOp {
+  const DropSqlForeignKeyConstraint({
+    required this.table,
+    required this.foreignKey,
+  });
+
+  final SqlTableSchema table;
+  final SqlForeignKeyConstraintSchema foreignKey;
+
+  @override
+  SqlSchemaMigrationSafety get safety => SqlSchemaMigrationSafety.destructive;
+
+  @override
+  List<SqlStatement> toStatements(SqlDialect dialect) {
+    return switch (dialect) {
+      SqlDialect.postgres => [
+        sql(
+          'ALTER TABLE ${_tableName(table, dialect)} '
+          'DROP CONSTRAINT ${_quoteIdentifier(foreignKey.name)}',
+        ),
+      ],
+      SqlDialect.sqlite => const <SqlStatement>[],
+    };
+  }
+}
+
 /// Creates one secondary index.
 final class CreateSqlIndex extends SqlSchemaMigrationOp {
   const CreateSqlIndex({required this.table, required this.index});
@@ -628,11 +1211,17 @@ final class CreateSqlIndex extends SqlSchemaMigrationOp {
   @override
   List<SqlStatement> toStatements(SqlDialect dialect) {
     final unique = index.unique ? 'UNIQUE ' : '';
-    final columns = index.columns.map(_quoteIdentifier).join(', ');
+    final columns = [
+      for (final column in index.columns) _indexColumnDefinition(index, column),
+    ].join(', ');
+    final whereExpression = index.whereExpression;
+    final whereClause = whereExpression == null
+        ? ''
+        : ' WHERE $whereExpression';
     return [
       sql(
         'CREATE ${unique}INDEX ${_quoteIdentifier(index.name)} '
-        'ON ${_tableName(table, dialect)} ($columns)',
+        'ON ${_tableName(table, dialect)} ($columns)$whereClause',
       ),
     ];
   }
@@ -791,6 +1380,58 @@ String _columnDefinition(
   return parts.join(' ');
 }
 
+String _checkConstraintDefinition(SqlCheckConstraintSchema check) {
+  return 'CONSTRAINT ${_quoteIdentifier(check.name)} '
+      'CHECK (${check.expression})';
+}
+
+String _uniqueConstraintDefinition(SqlUniqueConstraintSchema constraint) {
+  final columns = constraint.columns.map(_quoteIdentifier).join(', ');
+  return 'CONSTRAINT ${_quoteIdentifier(constraint.name)} UNIQUE ($columns)';
+}
+
+String _foreignKeyConstraintDefinition(
+  SqlForeignKeyConstraintSchema foreignKey,
+) {
+  final columns = foreignKey.columns.map(_quoteIdentifier).join(', ');
+  final referencedColumns = foreignKey.referencesColumns
+      .map(_quoteIdentifier)
+      .join(', ');
+  final parts = <String>[
+    'CONSTRAINT ${_quoteIdentifier(foreignKey.name)}',
+    'FOREIGN KEY ($columns)',
+    'REFERENCES ${_schemaQualifiedName(foreignKey.referencesSchema, foreignKey.referencesTable)} '
+        '($referencedColumns)',
+  ];
+  final onDelete = foreignKey.onDelete;
+  if (onDelete != null && onDelete != SqlForeignKeyAction.noAction) {
+    parts.add('ON DELETE ${onDelete.sql}');
+  }
+  final onUpdate = foreignKey.onUpdate;
+  if (onUpdate != null && onUpdate != SqlForeignKeyAction.noAction) {
+    parts.add('ON UPDATE ${onUpdate.sql}');
+  }
+  return parts.join(' ');
+}
+
+String _indexColumnDefinition(SqlIndexSchema index, String column) {
+  final parts = <String>[_quoteIdentifier(column)];
+  final order = index.columnOrders[column];
+  if (order != null) {
+    parts.add(order.sql);
+  }
+  final nullsOrder = index.columnNullsOrders[column];
+  if (nullsOrder != null) {
+    parts.add(nullsOrder.sql);
+  }
+  return parts.join(' ');
+}
+
+String _foreignKeyReferenceDisplay(SqlForeignKeyConstraintSchema foreignKey) {
+  return '${_schemaQualifiedName(foreignKey.referencesSchema, foreignKey.referencesTable)}'
+      '(${foreignKey.referencesColumns.join(', ')})';
+}
+
 List<String> _columnReviewDetails(
   SqlColumnSchema current,
   SqlColumnSchema desired,
@@ -911,4 +1552,111 @@ String _normalizeRoutineDefinition(String definition) {
 
 String _normalizeRoutineIdentityArguments(String identityArguments) {
   return identityArguments.trim().replaceAll(RegExp(r'\s+'), ' ');
+}
+
+String? _normalizeOptionalSqlExpression(String? expression) {
+  return expression?.trim().replaceAll(RegExp(r'\s+'), ' ');
+}
+
+SqlForeignKeyAction _normalizeForeignKeyAction(SqlForeignKeyAction? action) {
+  return action ?? SqlForeignKeyAction.noAction;
+}
+
+String _normalizeCheckExpression(String expression) {
+  final stripped = _stripCheckKeyword(
+    expression,
+  ).replaceFirst(RegExp(r';\s*$'), '').trim();
+  final normalizedWhitespace = _stripOuterParentheses(
+    stripped,
+  ).replaceAll(RegExp(r'\s+'), ' ');
+  return _normalizeEnumCheckExpression(normalizedWhitespace) ??
+      normalizedWhitespace;
+}
+
+String _stripCheckKeyword(String expression) {
+  final trimmed = expression.trim();
+  if (!trimmed.startsWith(RegExp('CHECK\\s*\\(', caseSensitive: false))) {
+    return trimmed;
+  }
+  final openIndex = trimmed.indexOf('(');
+  final content = trimmed.substring(openIndex + 1);
+  if (!content.endsWith(')')) {
+    return content;
+  }
+  return content.substring(0, content.length - 1);
+}
+
+String _stripOuterParentheses(String expression) {
+  var current = expression.trim();
+  while (current.length >= 2 &&
+      current.startsWith('(') &&
+      current.endsWith(')') &&
+      _outerParenthesesWrapWholeExpression(current)) {
+    current = current.substring(1, current.length - 1).trim();
+  }
+  return current;
+}
+
+bool _outerParenthesesWrapWholeExpression(String expression) {
+  var depth = 0;
+  for (var index = 0; index < expression.length; index += 1) {
+    final character = expression[index];
+    if (character == '(') {
+      depth += 1;
+    } else if (character == ')') {
+      depth -= 1;
+      if (depth == 0 && index != expression.length - 1) {
+        return false;
+      }
+      if (depth < 0) {
+        return false;
+      }
+    }
+  }
+  return depth == 0;
+}
+
+String? _normalizeEnumCheckExpression(String expression) {
+  final inMatch = RegExp(
+    r'^"?([A-Za-z_][A-Za-z0-9_]*)"?\s+in\s*\((.*)\)$',
+    caseSensitive: false,
+  ).firstMatch(expression);
+  if (inMatch != null) {
+    return _normalizedEnumCheck(
+      inMatch.group(1)!,
+      _normalizeSqlLiteralList(inMatch.group(2)!),
+    );
+  }
+
+  final anyMatch = RegExp(
+    r'^"?([A-Za-z_][A-Za-z0-9_]*)"?\s*=\s*ANY\s*'
+    r'\(\s*ARRAY\s*\[(.*)\]\s*\)$',
+    caseSensitive: false,
+  ).firstMatch(expression);
+  if (anyMatch != null) {
+    return _normalizedEnumCheck(
+      anyMatch.group(1)!,
+      _normalizeSqlLiteralList(anyMatch.group(2)!),
+    );
+  }
+
+  return null;
+}
+
+String _normalizedEnumCheck(String column, List<String> values) {
+  return '${column.toLowerCase()} IN (${values.join(', ')})';
+}
+
+List<String> _normalizeSqlLiteralList(String text) {
+  return [
+    for (final value in text.split(','))
+      value.trim().replaceFirst(
+        RegExp(r'::[A-Za-z_][A-Za-z0-9_]*(\[\])?$'),
+        '',
+      ),
+  ];
+}
+
+String _quoteStringLiteral(String value) {
+  return "'${value.replaceAll("'", "''")}'";
 }
