@@ -1001,10 +1001,7 @@ void main() {
     expect(issueAssigneeTable, contains("import 'workspace.g.dart';"));
     expect(issueAssigneeTable, contains("import 'workspace_issue.g.dart';"));
     expect(issueAssigneeTable, isNot(contains('extension type const')));
-    expect(
-      issueAssigneeTable,
-      contains('final WorkspaceIssueId issueId;'),
-    );
+    expect(issueAssigneeTable, contains('final WorkspaceIssueId issueId;'));
     expect(issueAssigneeTable, contains('final WorkspaceId workspaceId;'));
     expect(
       issueAssigneeTable,
@@ -1014,14 +1011,8 @@ void main() {
       issueAssigneeTable,
       contains("workspaceId: WorkspaceId(row.read<String>("),
     );
-    expect(
-      issueAssigneeTable,
-      contains("'issue_id': issueId.value,"),
-    );
-    expect(
-      issueAssigneeTable,
-      contains("'workspace_id': workspaceId.value,"),
-    );
+    expect(issueAssigneeTable, contains("'issue_id': issueId.value,"));
+    expect(issueAssigneeTable, contains("'workspace_id': workspaceId.value,"));
   });
 
   test('names primary key extension types after the primary key column', () {

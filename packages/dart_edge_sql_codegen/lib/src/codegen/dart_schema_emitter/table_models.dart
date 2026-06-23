@@ -535,12 +535,3 @@ final class _TableImportSpec {
 
   final String path;
 }
-
-T? _firstWhereOrNull<T>(Iterable<T> values, bool Function(T value) test) {
-  for (final value in values) {
-    if (test(value)) {
-      return value;
-    }
-  }
-  return null;
-}
