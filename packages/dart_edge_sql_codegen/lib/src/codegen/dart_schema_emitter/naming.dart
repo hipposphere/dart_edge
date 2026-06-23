@@ -304,31 +304,29 @@ IntrospectedDatabase _withGeneratedPrimaryKeyExtensionTypes(
   for (final table in database.tables) {
     for (final constraint in table.constraints) {
       if (constraint.kind != IntrospectedTableConstraintKind.foreignKey ||
-          constraint.columns.length != 1 ||
           constraint.referencedTable == null ||
-          constraint.referencedColumns.length != 1) {
+          constraint.columns.length != constraint.referencedColumns.length) {
         continue;
       }
-      foreignKeyReferences[_columnKey(table, constraint.columns.single)] = (
-        schema: _schemaName(constraint.referencedSchema ?? table.schema),
-        table: constraint.referencedTable!,
-        column: constraint.referencedColumns.single,
-      );
+      for (var index = 0; index < constraint.columns.length; index += 1) {
+        foreignKeyReferences[_columnKey(table, constraint.columns[index])] = (
+          schema: _schemaName(constraint.referencedSchema ?? table.schema),
+          table: constraint.referencedTable!,
+          column: constraint.referencedColumns[index],
+        );
+      }
     }
   }
 
-  final resolvedPrimaryKeyTypes = <_ColumnKey, _PrimaryKeyTypeSpec>{};
-  _PrimaryKeyTypeSpec? resolvePrimaryKeyType(
+  final resolvedColumnTypes = <_ColumnKey, _PrimaryKeyTypeSpec>{};
+  _PrimaryKeyTypeSpec? resolveColumnType(
     _ColumnKey key, [
     Set<_ColumnKey>? seen,
   ]) {
-    if (resolvedPrimaryKeyTypes[key] case final resolved?) {
+    if (resolvedColumnTypes[key] case final resolved?) {
       return resolved;
     }
     final localType = declaredPrimaryKeyTypes[key];
-    if (localType == null) {
-      return null;
-    }
     final active = seen ?? <_ColumnKey>{};
     if (!active.add(key)) {
       return localType;
@@ -337,28 +335,26 @@ IntrospectedDatabase _withGeneratedPrimaryKeyExtensionTypes(
     final inheritedType = switch (referencedKey) {
       null => null,
       final key =>
-        resolvePrimaryKeyType(key, active) ??
+        resolveColumnType(key, active) ??
             _externalPrimaryKeyType(externalPrimaryKeyTypeSpecs, key),
     };
     active.remove(key);
 
     final resolvedType = inheritedType ?? localType;
-    resolvedPrimaryKeyTypes[key] = resolvedType;
+    if (resolvedType != null) {
+      resolvedColumnTypes[key] = resolvedType;
+    }
     return resolvedType;
   }
 
   final primaryKeyTypes = <_ColumnKey, _PrimaryKeyTypeSpec>{};
   for (final key in declaredPrimaryKeyTypes.keys) {
-    primaryKeyTypes[key] = resolvePrimaryKeyType(key)!;
+    primaryKeyTypes[key] = resolveColumnType(key)!;
   }
 
   final foreignKeyTypes = <_ColumnKey, _PrimaryKeyTypeSpec>{};
-  for (final entry in foreignKeyReferences.entries) {
-    final key = entry.key;
-    final referencedKey = entry.value;
-    final referencedType =
-        primaryKeyTypes[referencedKey] ??
-        _externalPrimaryKeyType(externalPrimaryKeyTypeSpecs, referencedKey);
+  for (final key in foreignKeyReferences.keys) {
+    final referencedType = resolveColumnType(key);
     if (referencedType == null) {
       continue;
     }

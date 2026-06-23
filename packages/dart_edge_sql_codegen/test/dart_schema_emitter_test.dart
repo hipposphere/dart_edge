@@ -924,6 +924,106 @@ void main() {
     expect(notesTable, contains('static final userId = SqlColumn<UserId>('));
   });
 
+  test('emits extension types for composite foreign key columns', () {
+    const database = IntrospectedDatabase(
+      dialect: SqlCodegenDialect.postgres,
+      tables: [
+        IntrospectedTable(
+          name: 'workspace',
+          columns: [
+            IntrospectedColumn(
+              name: 'id',
+              databaseType: 'uuid',
+              dartType: 'String',
+              primaryKey: true,
+            ),
+          ],
+        ),
+        IntrospectedTable(
+          name: 'workspace_issue',
+          columns: [
+            IntrospectedColumn(
+              name: 'id',
+              databaseType: 'uuid',
+              dartType: 'String',
+              primaryKey: true,
+            ),
+            IntrospectedColumn(
+              name: 'workspace_id',
+              databaseType: 'uuid',
+              dartType: 'String',
+            ),
+          ],
+          constraints: [
+            IntrospectedTableConstraint(
+              name: 'workspace_issue_workspace_id_fkey',
+              kind: IntrospectedTableConstraintKind.foreignKey,
+              columns: ['workspace_id'],
+              referencedTable: 'workspace',
+              referencedColumns: ['id'],
+            ),
+          ],
+        ),
+        IntrospectedTable(
+          name: 'workspace_issue_assignee',
+          columns: [
+            IntrospectedColumn(
+              name: 'issue_id',
+              databaseType: 'uuid',
+              dartType: 'String',
+              primaryKey: true,
+            ),
+            IntrospectedColumn(
+              name: 'workspace_id',
+              databaseType: 'uuid',
+              dartType: 'String',
+              primaryKey: true,
+            ),
+          ],
+          constraints: [
+            IntrospectedTableConstraint(
+              name: 'workspace_issue_assignee_issue_workspace_fkey',
+              kind: IntrospectedTableConstraintKind.foreignKey,
+              columns: ['issue_id', 'workspace_id'],
+              referencedTable: 'workspace_issue',
+              referencedColumns: ['id', 'workspace_id'],
+            ),
+          ],
+        ),
+      ],
+    );
+
+    final emission = emitDartSchema(database, databaseClassName: 'AppSchema');
+    final issueAssigneeTable = emission
+        .fileAt('schemas/default/tables/workspace_issue_assignee.g.dart')
+        .contents;
+
+    expect(issueAssigneeTable, contains("import 'workspace.g.dart';"));
+    expect(issueAssigneeTable, contains("import 'workspace_issue.g.dart';"));
+    expect(issueAssigneeTable, isNot(contains('extension type const')));
+    expect(
+      issueAssigneeTable,
+      contains('final WorkspaceIssueId issueId;'),
+    );
+    expect(issueAssigneeTable, contains('final WorkspaceId workspaceId;'));
+    expect(
+      issueAssigneeTable,
+      contains("issueId: WorkspaceIssueId(row.read<String>("),
+    );
+    expect(
+      issueAssigneeTable,
+      contains("workspaceId: WorkspaceId(row.read<String>("),
+    );
+    expect(
+      issueAssigneeTable,
+      contains("'issue_id': issueId.value,"),
+    );
+    expect(
+      issueAssigneeTable,
+      contains("'workspace_id': workspaceId.value,"),
+    );
+  });
+
   test('names primary key extension types after the primary key column', () {
     const database = IntrospectedDatabase(
       dialect: SqlCodegenDialect.postgres,

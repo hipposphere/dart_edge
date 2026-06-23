@@ -478,53 +478,56 @@ List<_TableImportSpec> _tablePrimaryKeyTypeImports(
   IntrospectedTable table,
   _SchemaGroup group,
   List<_SchemaGroup> schemaGroups,
+  DartSchemaNaming naming,
 ) {
   final imports = <_TableImportSpec>[];
   final seenPaths = <String>{};
-  for (final constraint in table.constraints) {
-    if (constraint.kind != IntrospectedTableConstraintKind.foreignKey ||
-        constraint.columns.length != 1 ||
-        constraint.referencedTable == null ||
-        constraint.referencedColumns.length != 1) {
+  for (final column in table.columns) {
+    if (!_hasExtensionBackedValueType(column) ||
+        _declaresExtensionValueType(table, naming, column)) {
       continue;
     }
-    final localColumn = _firstWhereOrNull(
-      table.columns,
-      (column) => column.name == constraint.columns.single,
-    );
-    if (localColumn == null || !_hasExtensionBackedValueType(localColumn)) {
-      continue;
-    }
-    final referencedSchema = _schemaName(
-      constraint.referencedSchema ?? table.schema,
-    );
-    final referencedTableName = constraint.referencedTable!;
-    if (referencedSchema == group.schemaName &&
-        referencedTableName == table.name) {
-      continue;
-    }
-    final referencedGroup = _firstWhereOrNull(
+    final declaringTable = _primaryKeyTypeDeclaringTable(
+      column.dartType,
       schemaGroups,
-      (candidate) => candidate.schemaName == referencedSchema,
+      naming,
     );
-    if (referencedGroup == null) {
+    if (declaringTable == null) {
       continue;
     }
-    final referencedTable = _firstWhereOrNull(
-      referencedGroup.tables,
-      (candidate) => candidate.name == referencedTableName,
-    );
-    if (referencedTable == null) {
+    final (declaringGroup, declaringTableValue) = declaringTable;
+    if (declaringGroup.schemaName == group.schemaName &&
+        declaringTableValue.name == table.name) {
       continue;
     }
-    final path = referencedGroup.schemaName == group.schemaName
-        ? _tableFileName(referencedTable)
-        : '../../${referencedGroup.folderName}/tables/${_tableFileName(referencedTable)}';
+    final path = declaringGroup.schemaName == group.schemaName
+        ? _tableFileName(declaringTableValue)
+        : '../../${declaringGroup.folderName}/tables/${_tableFileName(declaringTableValue)}';
     if (seenPaths.add(path)) {
       imports.add(_TableImportSpec(path: path));
     }
   }
   return imports;
+}
+
+(_SchemaGroup, IntrospectedTable)? _primaryKeyTypeDeclaringTable(
+  String typeName,
+  List<_SchemaGroup> schemaGroups,
+  DartSchemaNaming naming,
+) {
+  for (final group in schemaGroups) {
+    for (final table in group.tables) {
+      final declaresType = table.columns.any(
+        (column) =>
+            column.dartType == typeName &&
+            _declaresExtensionValueType(table, naming, column),
+      );
+      if (declaresType) {
+        return (group, table);
+      }
+    }
+  }
+  return null;
 }
 
 final class _TableImportSpec {

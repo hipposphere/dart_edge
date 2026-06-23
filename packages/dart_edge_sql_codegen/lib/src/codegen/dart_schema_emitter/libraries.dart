@@ -116,6 +116,7 @@ String _emitTableLibrary(
       table,
       group,
       schemaGroups,
+      naming,
     )) {
       builder.directives.add(Directive.import(import.path));
     }
