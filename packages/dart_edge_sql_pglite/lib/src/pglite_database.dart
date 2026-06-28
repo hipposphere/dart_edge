@@ -2,6 +2,33 @@ import 'package:dart_edge_sql/dart_edge_sql.dart';
 
 import 'native/dart_edge_sql_pglite_native.dart';
 
+/// Bundled PGlite extension to install before exposing the database.
+final class PgliteExtension {
+  /// Creates an extension by its SQL extension name.
+  const PgliteExtension(this.sqlName);
+
+  /// pgvector, exposed in SQL as `vector`.
+  static const vector = PgliteExtension('vector');
+
+  /// PostgreSQL trigram matching extension.
+  static const pgTrgm = PgliteExtension('pg_trgm');
+
+  /// PostgreSQL case-insensitive text extension.
+  static const citext = PgliteExtension('citext');
+
+  /// PostgreSQL hstore extension.
+  static const hstore = PgliteExtension('hstore');
+
+  /// PostgreSQL tree-like label path extension.
+  static const ltree = PgliteExtension('ltree');
+
+  /// SQL extension name passed to PGlite, for example `vector`.
+  final String sqlName;
+
+  @override
+  String toString() => sqlName;
+}
+
 /// Embedded PGlite database exposed as a PostgreSQL endpoint.
 final class PgliteDatabase implements PgliteEndpoint {
   PgliteDatabase._({
@@ -11,8 +38,12 @@ final class PgliteDatabase implements PgliteEndpoint {
   });
 
   /// Starts a temporary PGlite database.
-  factory PgliteDatabase.temporary() {
-    final handle = DartEdgeSqlPgliteNative.openTemporary();
+  factory PgliteDatabase.temporary({
+    Iterable<PgliteExtension> extensions = const [],
+  }) {
+    final handle = DartEdgeSqlPgliteNative.openTemporary(
+      extensions: extensions.map((extension) => extension.sqlName),
+    );
     return PgliteDatabase._(
       handle: handle,
       connectionString: DartEdgeSqlPgliteNative.connectionString(handle),
@@ -21,8 +52,14 @@ final class PgliteDatabase implements PgliteEndpoint {
   }
 
   /// Starts a persistent PGlite database rooted at [path].
-  factory PgliteDatabase.open(String path) {
-    final handle = DartEdgeSqlPgliteNative.openPersistent(path);
+  factory PgliteDatabase.open(
+    String path, {
+    Iterable<PgliteExtension> extensions = const [],
+  }) {
+    final handle = DartEdgeSqlPgliteNative.openPersistent(
+      path,
+      extensions: extensions.map((extension) => extension.sqlName),
+    );
     return PgliteDatabase._(
       handle: handle,
       connectionString: DartEdgeSqlPgliteNative.connectionString(handle),

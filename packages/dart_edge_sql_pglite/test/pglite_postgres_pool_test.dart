@@ -29,4 +29,38 @@ void main() {
       expect(result.single.read<String>('email'), 'ada@example.com');
     },
   );
+
+  test('opens a temporary PGlite database with pgvector', () async {
+    final pool = PgliteDatabase.temporary(
+      extensions: const [PgliteExtension.vector],
+    ).asPostgresPool();
+    addTearDown(pool.close);
+
+    await pool.execute(
+      sql('''
+      CREATE TABLE items (
+        id SERIAL PRIMARY KEY,
+        embedding vector(3) NOT NULL
+      )
+      '''),
+    );
+
+    await pool.execute(
+      sql('''
+      INSERT INTO items (embedding)
+      VALUES ('[1,2,3]'::vector), ('[4,5,6]'::vector)
+      '''),
+    );
+
+    final result = await pool.execute(
+      sql('''
+      SELECT id
+      FROM items
+      ORDER BY embedding <-> '[1,2,2]'::vector
+      LIMIT 1
+      '''),
+    );
+
+    expect(result.single.read<int>('id'), 1);
+  });
 }

@@ -26,8 +26,19 @@ external int dart_edge_sql_pglite_native_abi_version();
 @ffi.Native<ffi.Int64 Function(ffi.Pointer<ffi.Char>)>()
 external int dart_edge_sql_pglite_open_persistent(ffi.Pointer<ffi.Char> path);
 
+@ffi.Native<ffi.Int64 Function(ffi.Pointer<ffi.Char>, ffi.Pointer<ffi.Char>)>()
+external int dart_edge_sql_pglite_open_persistent_with_extensions(
+  ffi.Pointer<ffi.Char> path,
+  ffi.Pointer<ffi.Char> extensions,
+);
+
 @ffi.Native<ffi.Int64 Function()>()
 external int dart_edge_sql_pglite_open_temporary();
+
+@ffi.Native<ffi.Int64 Function(ffi.Pointer<ffi.Char>)>()
+external int dart_edge_sql_pglite_open_temporary_with_extensions(
+  ffi.Pointer<ffi.Char> extensions,
+);
 
 @ffi.Native<ffi.Pointer<ffi.Char> Function()>()
 external ffi.Pointer<ffi.Char> dart_edge_sql_pglite_take_last_error();

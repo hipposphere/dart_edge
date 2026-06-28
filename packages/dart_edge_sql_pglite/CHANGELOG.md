@@ -1,3 +1,9 @@
+## 0.1.12
+
+- Add bundled PGlite extension support, including pgvector via
+  `PgliteExtension.vector`.
+- Bump the native artifact version to 0.1.5 for the extension-aware ABI.
+
 ## 0.1.10
 
 - Bump the native artifact version to 0.1.4 for Rust 1.95 and dependency

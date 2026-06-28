@@ -7,19 +7,31 @@ import 'generated_bindings.dart' as gen;
 abstract final class DartEdgeSqlPgliteNative {
   static int get abiVersion => gen.dart_edge_sql_pglite_native_abi_version();
 
-  static int openTemporary() {
-    final handle = gen.dart_edge_sql_pglite_open_temporary();
-    if (handle <= 0) {
-      throw StateError(_takeLastError());
+  static int openTemporary({Iterable<String> extensions = const []}) {
+    final extensionsPtr = _extensionsToNativeUtf8(extensions);
+    try {
+      final handle = gen.dart_edge_sql_pglite_open_temporary_with_extensions(
+        extensionsPtr.cast<Char>(),
+      );
+      if (handle <= 0) {
+        throw StateError(_takeLastError());
+      }
+      return handle;
+    } finally {
+      calloc.free(extensionsPtr);
     }
-    return handle;
   }
 
-  static int openPersistent(String path) {
+  static int openPersistent(
+    String path, {
+    Iterable<String> extensions = const [],
+  }) {
     final pathPtr = path.toNativeUtf8();
+    final extensionsPtr = _extensionsToNativeUtf8(extensions);
     try {
-      final handle = gen.dart_edge_sql_pglite_open_persistent(
+      final handle = gen.dart_edge_sql_pglite_open_persistent_with_extensions(
         pathPtr.cast<Char>(),
+        extensionsPtr.cast<Char>(),
       );
       if (handle <= 0) {
         throw StateError(_takeLastError());
@@ -27,6 +39,7 @@ abstract final class DartEdgeSqlPgliteNative {
       return handle;
     } finally {
       calloc.free(pathPtr);
+      calloc.free(extensionsPtr);
     }
   }
 
@@ -49,6 +62,23 @@ abstract final class DartEdgeSqlPgliteNative {
       throw StateError(_takeLastError());
     }
   }
+}
+
+Pointer<Utf8> _extensionsToNativeUtf8(Iterable<String> extensions) {
+  final names = extensions.toList(growable: false);
+  for (final name in names) {
+    if (name.isEmpty ||
+        name.contains('\n') ||
+        name.contains('\r') ||
+        name.contains('\x00')) {
+      throw ArgumentError.value(
+        name,
+        'extensions',
+        'PGlite extension names must be non-empty SQL names.',
+      );
+    }
+  }
+  return names.join('\n').toNativeUtf8();
 }
 
 String _takeLastError() {

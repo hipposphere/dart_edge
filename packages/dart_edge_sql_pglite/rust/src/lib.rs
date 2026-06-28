@@ -4,9 +4,9 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicI64, Ordering};
 
 use once_cell::sync::Lazy;
-use pglite_oxide::PgliteServer;
+use pglite_oxide::{PgliteServer, PgliteServerBuilder, extensions};
 
-const DART_EDGE_SQL_PGLITE_NATIVE_ABI_VERSION: i32 = 1;
+const DART_EDGE_SQL_PGLITE_NATIVE_ABI_VERSION: i32 = 2;
 
 static NEXT_HANDLE: AtomicI64 = AtomicI64::new(1);
 static SERVERS: Lazy<Mutex<HashMap<i64, PgliteServer>>> = Lazy::new(|| Mutex::new(HashMap::new()));
@@ -19,17 +19,32 @@ pub extern "C" fn dart_edge_sql_pglite_native_abi_version() -> i32 {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn dart_edge_sql_pglite_open_temporary() -> i64 {
-    open_server(|| PgliteServer::temporary_tcp())
+    open_server_with_extensions(std::ptr::null(), || PgliteServer::builder().temporary())
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_sql_pglite_open_temporary_with_extensions(
+    extensions: *const c_char,
+) -> i64 {
+    open_server_with_extensions(extensions, || PgliteServer::builder().temporary())
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn dart_edge_sql_pglite_open_persistent(path: *const c_char) -> i64 {
+    dart_edge_sql_pglite_open_persistent_with_extensions(path, std::ptr::null())
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_sql_pglite_open_persistent_with_extensions(
+    path: *const c_char,
+    extensions: *const c_char,
+) -> i64 {
     let Some(path) = (unsafe { read_c_string(path) }) else {
         set_last_error("Missing PGlite storage path.");
         return 0;
     };
 
-    open_server(|| PgliteServer::builder().path(path).start())
+    open_server_with_extensions(extensions, || PgliteServer::builder().path(path))
 }
 
 #[unsafe(no_mangle)]
@@ -114,6 +129,52 @@ where
             0
         }
     }
+}
+
+fn open_server_with_extensions(
+    extensions: *const c_char,
+    builder: impl FnOnce() -> PgliteServerBuilder,
+) -> i64 {
+    let extension_names = match read_extension_names(extensions) {
+        Ok(value) => value,
+        Err(error) => {
+            set_last_error(error);
+            return 0;
+        }
+    };
+
+    open_server(|| {
+        let mut builder = builder();
+        for name in extension_names {
+            let Some(extension) = extensions::by_sql_name(&name) else {
+                return Err(format!("Unsupported bundled PGlite extension: {name}"));
+            };
+            builder = builder.extension(extension);
+        }
+        builder.start().map_err(|error| error.to_string())
+    })
+}
+
+fn read_extension_names(extensions: *const c_char) -> Result<Vec<String>, String> {
+    let Some(value) = (unsafe { read_c_string(extensions) }) else {
+        return Ok(Vec::new());
+    };
+    if value.trim().is_empty() {
+        return Ok(Vec::new());
+    }
+
+    value
+        .lines()
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .map(|name| {
+            if name.contains('\0') {
+                Err("PGlite extension names must not contain NUL bytes.".to_owned())
+            } else {
+                Ok(name.to_owned())
+            }
+        })
+        .collect()
 }
 
 fn reserve_handle() -> i64 {
