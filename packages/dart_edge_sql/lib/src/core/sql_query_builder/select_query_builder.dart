@@ -12,6 +12,7 @@ final class _SqlSelectCore {
     this.limit,
     this.offset,
     this.distinct = false,
+    this.locking,
   }) : joins = List<_SqlJoin>.unmodifiable(joins),
        groupBy = List<Object>.unmodifiable(groupBy),
        orderBy = List<SqlOrderBy>.unmodifiable(orderBy);
@@ -26,6 +27,7 @@ final class _SqlSelectCore {
   final int? limit;
   final int? offset;
   final bool distinct;
+  final _SqlLockingClause? locking;
 
   _SqlSelectCore innerJoin(
     SqlTable<dynamic, dynamic, dynamic> table, {
@@ -72,6 +74,9 @@ final class _SqlSelectCore {
 
   _SqlSelectCore setDistinct() => _copyWith(distinct: true);
 
+  _SqlSelectCore setLocking(_SqlLockingClause value) =>
+      _copyWith(locking: value, useLocking: true);
+
   _SqlSelectCore _copyWith({
     List<_SqlJoin>? joins,
     SqlPredicate? where,
@@ -85,6 +90,8 @@ final class _SqlSelectCore {
     int? offset,
     bool useOffset = false,
     bool? distinct,
+    _SqlLockingClause? locking,
+    bool useLocking = false,
   }) {
     return _SqlSelectCore(
       executor: executor,
@@ -97,6 +104,7 @@ final class _SqlSelectCore {
       limit: useLimit ? limit : this.limit,
       offset: useOffset ? offset : this.offset,
       distinct: distinct ?? this.distinct,
+      locking: useLocking ? locking : this.locking,
     );
   }
 
@@ -200,6 +208,45 @@ final class SqlRawSelectQueryBuilder {
   /// Adds `DISTINCT` to the selection.
   SqlRawSelectQueryBuilder distinct() =>
       SqlRawSelectQueryBuilder._fromCore(_core.setDistinct());
+
+  /// Adds a PostgreSQL row-locking clause.
+  SqlRawSelectQueryBuilder forLock(
+    SqlRowLockStrength strength, {
+    Iterable<Object> of = const <Object>[],
+    SqlLockWaitPolicy wait = SqlLockWaitPolicy.wait,
+  }) => SqlRawSelectQueryBuilder._fromCore(
+    _core.setLocking(
+      _SqlLockingClause(
+        strength: strength,
+        of: _normalizeLockTargets(of),
+        wait: wait,
+      ),
+    ),
+  );
+
+  /// Adds `FOR UPDATE`.
+  SqlRawSelectQueryBuilder forUpdate({
+    Iterable<Object> of = const <Object>[],
+    SqlLockWaitPolicy wait = SqlLockWaitPolicy.wait,
+  }) => forLock(.update, of: of, wait: wait);
+
+  /// Adds `FOR NO KEY UPDATE`.
+  SqlRawSelectQueryBuilder forNoKeyUpdate({
+    Iterable<Object> of = const <Object>[],
+    SqlLockWaitPolicy wait = SqlLockWaitPolicy.wait,
+  }) => forLock(.noKeyUpdate, of: of, wait: wait);
+
+  /// Adds `FOR SHARE`.
+  SqlRawSelectQueryBuilder forShare({
+    Iterable<Object> of = const <Object>[],
+    SqlLockWaitPolicy wait = SqlLockWaitPolicy.wait,
+  }) => forLock(.share, of: of, wait: wait);
+
+  /// Adds `FOR KEY SHARE`.
+  SqlRawSelectQueryBuilder forKeyShare({
+    Iterable<Object> of = const <Object>[],
+    SqlLockWaitPolicy wait = SqlLockWaitPolicy.wait,
+  }) => forLock(.keyShare, of: of, wait: wait);
 
   /// Selects every column into raw [SqlRow] objects.
   SelectedSelectQueryBuilder<SqlRow> selectAll() {
@@ -320,6 +367,39 @@ final class SelectQueryBuilder<TRow, TInsert, TUpdate> {
   /// Adds `DISTINCT` to the selection.
   SelectQueryBuilder<TRow, TInsert, TUpdate> distinct() =>
       _copyWith(raw: _raw.distinct());
+
+  /// Adds a PostgreSQL row-locking clause.
+  SelectQueryBuilder<TRow, TInsert, TUpdate> forLock(
+    SqlRowLockStrength strength, {
+    Iterable<Object> of = const <Object>[],
+    SqlLockWaitPolicy wait = SqlLockWaitPolicy.wait,
+  }) => _copyWith(
+    raw: _raw.forLock(strength, of: of, wait: wait),
+  );
+
+  /// Adds `FOR UPDATE`.
+  SelectQueryBuilder<TRow, TInsert, TUpdate> forUpdate({
+    Iterable<Object> of = const <Object>[],
+    SqlLockWaitPolicy wait = SqlLockWaitPolicy.wait,
+  }) => forLock(.update, of: of, wait: wait);
+
+  /// Adds `FOR NO KEY UPDATE`.
+  SelectQueryBuilder<TRow, TInsert, TUpdate> forNoKeyUpdate({
+    Iterable<Object> of = const <Object>[],
+    SqlLockWaitPolicy wait = SqlLockWaitPolicy.wait,
+  }) => forLock(.noKeyUpdate, of: of, wait: wait);
+
+  /// Adds `FOR SHARE`.
+  SelectQueryBuilder<TRow, TInsert, TUpdate> forShare({
+    Iterable<Object> of = const <Object>[],
+    SqlLockWaitPolicy wait = SqlLockWaitPolicy.wait,
+  }) => forLock(.share, of: of, wait: wait);
+
+  /// Adds `FOR KEY SHARE`.
+  SelectQueryBuilder<TRow, TInsert, TUpdate> forKeyShare({
+    Iterable<Object> of = const <Object>[],
+    SqlLockWaitPolicy wait = SqlLockWaitPolicy.wait,
+  }) => forLock(.keyShare, of: of, wait: wait);
 
   /// Selects the full `from` table and maps it back into typed rows.
   SelectedSelectQueryBuilder<TRow> selectAll() {
@@ -489,6 +569,46 @@ final class SelectedSelectQueryBuilder<TSelection> {
         core: _core.setDistinct(),
         selection: _selection,
       );
+
+  /// Adds a PostgreSQL row-locking clause.
+  SelectedSelectQueryBuilder<TSelection> forLock(
+    SqlRowLockStrength strength, {
+    Iterable<Object> of = const <Object>[],
+    SqlLockWaitPolicy wait = SqlLockWaitPolicy.wait,
+  }) => SelectedSelectQueryBuilder<TSelection>._(
+    core: _core.setLocking(
+      _SqlLockingClause(
+        strength: strength,
+        of: _normalizeLockTargets(of),
+        wait: wait,
+      ),
+    ),
+    selection: _selection,
+  );
+
+  /// Adds `FOR UPDATE`.
+  SelectedSelectQueryBuilder<TSelection> forUpdate({
+    Iterable<Object> of = const <Object>[],
+    SqlLockWaitPolicy wait = SqlLockWaitPolicy.wait,
+  }) => forLock(.update, of: of, wait: wait);
+
+  /// Adds `FOR NO KEY UPDATE`.
+  SelectedSelectQueryBuilder<TSelection> forNoKeyUpdate({
+    Iterable<Object> of = const <Object>[],
+    SqlLockWaitPolicy wait = SqlLockWaitPolicy.wait,
+  }) => forLock(.noKeyUpdate, of: of, wait: wait);
+
+  /// Adds `FOR SHARE`.
+  SelectedSelectQueryBuilder<TSelection> forShare({
+    Iterable<Object> of = const <Object>[],
+    SqlLockWaitPolicy wait = SqlLockWaitPolicy.wait,
+  }) => forLock(.share, of: of, wait: wait);
+
+  /// Adds `FOR KEY SHARE`.
+  SelectedSelectQueryBuilder<TSelection> forKeyShare({
+    Iterable<Object> of = const <Object>[],
+    SqlLockWaitPolicy wait = SqlLockWaitPolicy.wait,
+  }) => forLock(.keyShare, of: of, wait: wait);
 
   /// Executes the query and returns all selected rows.
   Future<List<TSelection>> execute() async {

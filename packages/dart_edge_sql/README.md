@@ -15,6 +15,8 @@ It currently ships native PostgreSQL and SQLite pool implementations.
 - `from`, `insertInto`, `deleteFrom`, and `updateTable` live on the typed
   query root
 - `executeExists()` checks whether a query yields any rows without loading them
+- PostgreSQL row-locking helpers such as `forUpdate(wait: .skipLocked)` cover
+  queue-style claims and contention control
 - `SqlPredicate.and([...])` and `SqlPredicate.or([...])` compose grouped
   predicates explicitly; in typed contexts Dart dot shorthand allows
   `.and([...])` and `.or([...])`
@@ -68,6 +70,22 @@ final rows = await raw
     ])
     .where(raw.eq('"u"."email"', 'ada@example.com'))
     .execute();
+```
+
+PostgreSQL row locks are available on typed and raw select builders. Run these
+queries inside `withTransaction` when the lock must protect follow-up work:
+
+```dart
+final jobs = await pool.withTransaction((tx) {
+  return tx.typed
+      .from(JobsTable.table)
+      .where(JobsTable.status.equals('queued'))
+      .orderBy(JobsTable.createdAt)
+      .limit(10)
+      .forUpdate(wait: .skipLocked)
+      .selectAll()
+      .execute();
+});
 ```
 
 ## Native Integration

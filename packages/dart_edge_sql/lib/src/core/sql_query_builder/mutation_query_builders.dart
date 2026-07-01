@@ -207,6 +207,7 @@ SqlStatement _compileSelect(
   if (query.offset case final int offset) {
     compiler.write(' OFFSET $offset');
   }
+  _writeLockingClause(compiler, query);
   return compiler.toStatement();
 }
 
@@ -263,10 +264,15 @@ SqlStatement _compileExists(_SqlSelectCore query) {
   if (query.offset case final int offset) {
     compiler.write(' OFFSET $offset');
   }
+  _writeLockingClause(compiler, query);
   return compiler.toStatement();
 }
 
 SqlStatement _compileCount(_SqlSelectCore query) {
+  if (query.locking != null) {
+    throw StateError('Row-locking SELECT queries cannot be counted.');
+  }
+
   final compiler = _SqlCompiler(query.executor.dialect);
   compiler.write('SELECT COUNT(*) AS ');
   compiler.writeIdentifier('count');

@@ -345,6 +345,68 @@ void main() {
     expect(statement.namedParameters, {'p1': '{"name":"Ada"}'});
   });
 
+  test('compiles PostgreSQL row-locking select clauses', () {
+    final pg = const _NoopSqlExecutor(SqlDialect.postgres);
+
+    final typedStatement = pg.typed
+        .from(UsersTable.table)
+        .orderBy(UsersTable.id)
+        .limit(10)
+        .forUpdate(of: [UsersTable.table], wait: .skipLocked)
+        .selectAll()
+        .toStatement();
+
+    expect(
+      typedStatement.sql,
+      'SELECT "users"."id" AS "users__id", '
+      '"users"."email" AS "users__email", '
+      '"users"."display_name" AS "users__display_name" '
+      'FROM "users" ORDER BY "users"."id" ASC LIMIT 10 '
+      'FOR UPDATE OF "users" SKIP LOCKED',
+    );
+
+    final selectedStatement = pg.typed
+        .from(UsersTable.table)
+        .selectAll()
+        .forNoKeyUpdate(wait: .noWait)
+        .toStatement();
+
+    expect(selectedStatement.sql, endsWith(' FOR NO KEY UPDATE NOWAIT'));
+
+    final rawStatement = pg.raw
+        .from('jobs', alias: 'j')
+        .select(['"j"."id" AS "id"'])
+        .forKeyShare(of: ['j'])
+        .toStatement();
+
+    expect(
+      rawStatement.sql,
+      'SELECT "j"."id" AS "id" FROM jobs AS "j" FOR KEY SHARE OF "j"',
+    );
+  });
+
+  test('rejects row-locking select clauses outside PostgreSQL', () {
+    final sqlite = const _NoopSqlExecutor(SqlDialect.sqlite);
+
+    expect(
+      () => sqlite.typed
+          .from(UsersTable.table)
+          .forUpdate(wait: .skipLocked)
+          .selectAll()
+          .toStatement(),
+      throwsStateError,
+    );
+  });
+
+  test('rejects counting row-locking select queries', () {
+    final pg = const _NoopSqlExecutor(SqlDialect.postgres);
+
+    expect(
+      () => pg.typed.from(UsersTable.table).forShare().toCountStatement(),
+      throwsStateError,
+    );
+  });
+
   test('formats SqlValue for debugging', () {
     expect(const SqlValue<int>.absent().toString(), 'SqlValue.absent()');
     expect(const SqlValue<int>(42).toString(), 'SqlValue(42)');

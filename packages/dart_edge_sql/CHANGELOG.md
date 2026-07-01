@@ -1,3 +1,9 @@
+## 0.3.25
+
+- Add PostgreSQL row-locking select helpers, including `FOR UPDATE`,
+  `FOR NO KEY UPDATE`, `FOR SHARE`, `FOR KEY SHARE`, `NOWAIT`, `SKIP LOCKED`,
+  and optional `OF` lock targets.
+
 ## 0.3.18
 
 - Bump the native artifact version to 0.1.6 for Rust 1.95 and dependency

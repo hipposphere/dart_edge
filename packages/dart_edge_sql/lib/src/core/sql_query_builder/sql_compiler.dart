@@ -509,6 +509,84 @@ SqlOrderBy _normalizeOrderBy(Object value, {required bool descending}) {
   };
 }
 
+final class _SqlLockingClause {
+  _SqlLockingClause({
+    required this.strength,
+    required Iterable<Object> of,
+    required this.wait,
+  }) : of = List<Object>.unmodifiable(of);
+
+  final SqlRowLockStrength strength;
+  final List<Object> of;
+  final SqlLockWaitPolicy wait;
+}
+
+List<Object> _normalizeLockTargets(Iterable<Object> targets) {
+  return targets
+      .map(
+        (target) => switch (target) {
+          String() || SqlTable<dynamic, dynamic, dynamic>() => target,
+          final Object invalid => throw ArgumentError.value(
+            invalid,
+            'of',
+            'Lock targets must be table names or SqlTable descriptors.',
+          ),
+        },
+      )
+      .toList(growable: false);
+}
+
+void _writeLockingClause(_SqlCompiler compiler, _SqlSelectCore query) {
+  final locking = query.locking;
+  if (locking == null) {
+    return;
+  }
+  if (query.executor.dialect != SqlDialect.postgres) {
+    throw StateError(
+      'Row-locking SELECT clauses are only supported by PostgreSQL.',
+    );
+  }
+
+  compiler.write(' FOR ');
+  compiler.write(switch (locking.strength) {
+    SqlRowLockStrength.update => 'UPDATE',
+    SqlRowLockStrength.noKeyUpdate => 'NO KEY UPDATE',
+    SqlRowLockStrength.share => 'SHARE',
+    SqlRowLockStrength.keyShare => 'KEY SHARE',
+  });
+  if (locking.of.isNotEmpty) {
+    compiler.write(' OF ');
+    compiler.writeJoined(
+      locking.of,
+      separator: ', ',
+      writeElement: (target) {
+        compiler.writeIdentifier(_lockTargetName(target));
+      },
+    );
+  }
+  switch (locking.wait) {
+    case SqlLockWaitPolicy.wait:
+      break;
+    case SqlLockWaitPolicy.noWait:
+      compiler.write(' NOWAIT');
+    case SqlLockWaitPolicy.skipLocked:
+      compiler.write(' SKIP LOCKED');
+  }
+}
+
+String _lockTargetName(Object target) {
+  return switch (target) {
+    final SqlRawTable table => table.alias ?? table.tableExpression,
+    final SqlTable<dynamic, dynamic, dynamic> table => table.name,
+    final String name => name,
+    final Object invalid => throw ArgumentError.value(
+      invalid,
+      'target',
+      'Lock targets must be table names or SqlTable descriptors.',
+    ),
+  };
+}
+
 _SqlFragment _sqlOrderByFragment(SqlOrderBy order, {String prefix = 'order'}) {
   final fragment = switch ((order.column, order.expression)) {
     (final SqlColumn<dynamic> column?, _) => _sqlFragment(column),

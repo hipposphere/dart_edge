@@ -412,6 +412,33 @@ final class SqlOrderBy {
   final bool descending;
 }
 
+/// PostgreSQL row-locking strength for `SELECT ... FOR ...` clauses.
+enum SqlRowLockStrength {
+  /// `FOR UPDATE`.
+  update,
+
+  /// `FOR NO KEY UPDATE`.
+  noKeyUpdate,
+
+  /// `FOR SHARE`.
+  share,
+
+  /// `FOR KEY SHARE`.
+  keyShare,
+}
+
+/// Wait behavior for PostgreSQL row-locking clauses.
+enum SqlLockWaitPolicy {
+  /// Wait for locked rows normally.
+  wait,
+
+  /// Fail immediately when a selected row is already locked.
+  noWait,
+
+  /// Skip rows that are already locked.
+  skipLocked,
+}
+
 /// Pair of typed rows returned from [SelectQueryBuilder.selectTables2].
 final class SqlJoined2<TLeft, TRight> {
   const SqlJoined2({required this.left, required this.right});
