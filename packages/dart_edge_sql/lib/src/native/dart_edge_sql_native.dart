@@ -4,9 +4,11 @@ import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
 
+import '../core/sql_decimal.dart';
 import '../core/sql_result.dart';
 import '../core/sql_row.dart';
 import '../core/sql_statement.dart';
+import '../core/sql_vector.dart';
 import 'generated_bindings.dart' as gen;
 
 abstract final class DartEdgeSqlNative {
@@ -151,9 +153,11 @@ Object? _decodeValue(Map<String, Object?> payload) {
     'double' => (payload['value'] as num).toDouble(),
     'boolean' => payload['value'] as bool,
     'string' => payload['value'] as String,
+    'decimal' => SqlDecimal.fromJson(payload['value']),
     'bytes' => Uint8List.fromList(base64Decode(payload['value'] as String)),
     'dateTime' => DateTime.parse(payload['value'] as String),
     'json' => payload['value'],
+    'vector' => SqlVector.fromJson(payload['value']),
     final Object? value => throw StateError(
       'Unsupported SQL value kind: $value',
     ),
@@ -176,12 +180,14 @@ Map<String, Object?> _encodeValue(Object? value) => switch (value) {
   final double value => {'kind': 'double', 'value': value},
   final bool value => {'kind': 'boolean', 'value': value},
   final String value => {'kind': 'string', 'value': value},
+  final SqlDecimal value => {'kind': 'decimal', 'value': value.toJson()},
   final Uint8List value => {'kind': 'bytes', 'value': base64Encode(value)},
   final List<int> value => {'kind': 'bytes', 'value': base64Encode(value)},
   final DateTime value => {
     'kind': 'dateTime',
     'value': value.toUtc().toIso8601String(),
   },
+  final SqlVector value => {'kind': 'vector', 'value': value.toJson()},
   final Map<String, Object?> value => {'kind': 'json', 'value': value},
   final List<Object?> value => {'kind': 'json', 'value': value},
   final Object value => throw ArgumentError.value(

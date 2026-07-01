@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'postgres_type_mapping.dart';
+import 'sql_decimal.dart';
 import 'sql_dialect.dart';
 import 'sql_executor.dart';
 import 'sql_result.dart';
@@ -8,6 +9,7 @@ import 'sql_row.dart';
 import 'sql_schema.dart';
 import 'sql_statement.dart';
 import 'sql_value.dart';
+import 'sql_vector.dart';
 
 part 'sql_query_builder/entrypoint.dart';
 part 'sql_query_builder/select_query_builder.dart';

@@ -296,6 +296,22 @@ Expression _rowReadExpression(IntrospectedColumn column) {
     };
     return CodeExpression(Code(expression));
   }
+  if (type == 'SqlDecimal' || type == 'SqlVector') {
+    final source = column.nullable
+        ? refer('row')
+              .property('readNullable')
+              .call([literalString(fieldKey)], const {}, [refer('Object?')])
+        : refer('row')
+              .property('read')
+              .call([literalString(fieldKey)], const {}, [refer('Object?')]);
+    final parsed = refer(type).property('fromJson').call([source]);
+    if (!column.nullable) {
+      return parsed;
+    }
+    return CodeExpression(
+      Code('${_code(source)} == null ? null : ${_code(parsed)}'),
+    );
+  }
   if (column.nullable) {
     return refer('row')
         .property('readNullable')
@@ -394,6 +410,10 @@ Expression _fromJsonExpression(
     return wrapNullable(refer(type).call([parsed]));
   }
 
+  if (type == 'SqlDecimal' || type == 'SqlVector') {
+    return wrapNullable(refer(type).property('fromJson').call([source]));
+  }
+
   return switch (databaseType) {
     'int' => wrapNullable(
       source.asA(refer('num')).property('toInt').call(const []),
@@ -471,6 +491,10 @@ Expression _toJsonExpression(
     return wrapNullable(source.property('toString').call(const []));
   }
 
+  if (databaseType == 'SqlDecimal' || databaseType == 'SqlVector') {
+    return wrapNullable(source.property('toJson').call(const []));
+  }
+
   return switch (databaseType) {
     'DateTime' =>
       valueNullable
@@ -535,6 +559,16 @@ Expression _jsonSchemaForColumn(
       'array',
       nullable: column.nullable,
       items: refer('JsonSchema').constInstanceNamed('any', const []),
+    ),
+    'SqlDecimal' => _jsonSchemaFactory(
+      'string',
+      nullable: column.nullable,
+      format: 'decimal',
+    ),
+    'SqlVector' => _jsonSchemaFactory(
+      'array',
+      nullable: column.nullable,
+      items: refer('JsonSchema').constInstanceNamed('number', const []),
     ),
     _ => _jsonSchemaFactory('string', nullable: column.nullable),
   };

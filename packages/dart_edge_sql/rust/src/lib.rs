@@ -13,7 +13,7 @@ use sqlx::postgres::{PgPool, PgPoolOptions, PgRow};
 use sqlx::sqlite::{SqlitePool, SqlitePoolOptions, SqliteRow};
 use sqlx::types::chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
 use sqlx::types::{Decimal, Uuid};
-use sqlx::{Column, Postgres, Row, Sqlite, TypeInfo};
+use sqlx::{Column, Postgres, Row, Sqlite, TypeInfo, ValueRef};
 use tokio::runtime::{Builder, Runtime};
 
 const DART_EDGE_SQL_NATIVE_ABI_VERSION: i32 = 1;
@@ -549,12 +549,18 @@ fn bind_postgres_value<'q>(
         SqlValue::Double(value) => query.bind(*value),
         SqlValue::Boolean(value) => query.bind(*value),
         SqlValue::String(value) => query.bind(value.clone()),
+        SqlValue::Decimal(value) => query.bind(
+            value
+                .parse::<Decimal>()
+                .expect("PostgreSQL decimal values are validated before binding"),
+        ),
         SqlValue::Bytes(value) => query.bind(BASE64.decode(value).unwrap_or_default()),
         SqlValue::DateTime(value) => match parse_datetime_value(value) {
             Some(value) => query.bind(value),
             None => query.bind(value.clone()),
         },
         SqlValue::Json(value) => query.bind(sqlx::types::Json(value.clone())),
+        SqlValue::Vector(value) => query.bind(format_postgres_vector(value)),
     }
 }
 
@@ -570,9 +576,29 @@ fn validate_postgres_value(value: &SqlValue, location: &str) -> Result<(), Strin
         SqlValue::String(value) | SqlValue::DateTime(value) => {
             validate_postgres_text(value, location)
         }
+        SqlValue::Decimal(value) => validate_postgres_decimal(value, location),
         SqlValue::Json(value) => validate_postgres_json(value, location),
+        SqlValue::Vector(value) => validate_postgres_vector(value, location),
         _ => Ok(()),
     }
+}
+
+fn validate_postgres_vector(value: &[f64], location: &str) -> Result<(), String> {
+    for (index, value) in value.iter().enumerate() {
+        if !value.is_finite() {
+            return Err(format!(
+                "PostgreSQL vector value contains a non-finite number at {location}[{index}]."
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_postgres_decimal(value: &str, location: &str) -> Result<(), String> {
+    value
+        .parse::<Decimal>()
+        .map(|_| ())
+        .map_err(|error| format!("PostgreSQL decimal value is invalid at {location}: {error}"))
 }
 
 fn validate_postgres_json(value: &serde_json::Value, location: &str) -> Result<(), String> {
@@ -620,9 +646,11 @@ fn bind_sqlite_value<'q>(
         SqlValue::Double(value) => query.bind(*value),
         SqlValue::Boolean(value) => query.bind(*value),
         SqlValue::String(value) => query.bind(value.clone()),
+        SqlValue::Decimal(value) => query.bind(value.clone()),
         SqlValue::Bytes(value) => query.bind(BASE64.decode(value).unwrap_or_default()),
         SqlValue::DateTime(value) => query.bind(value.clone()),
         SqlValue::Json(value) => query.bind(serde_json::to_string(value).unwrap_or_default()),
+        SqlValue::Vector(value) => query.bind(format_postgres_vector(value)),
     }
 }
 
@@ -650,6 +678,10 @@ fn decode_postgres_value(
     column_name: &str,
     type_name: &str,
 ) -> Result<SqlValue, String> {
+    if type_name.eq_ignore_ascii_case("vector") {
+        return decode_postgres_vector(row, index);
+    }
+
     let value = match type_name {
         "BOOL" => match row.try_get::<Option<bool>, usize>(index) {
             Ok(Some(value)) => SqlValue::Boolean(value),
@@ -687,12 +719,12 @@ fn decode_postgres_value(
             Err(error) => return Err(format!("Failed to decode PostgreSQL float8: {error}")),
         },
         "NUMERIC" => match row.try_get::<Option<Decimal>, usize>(index) {
-            Ok(Some(value)) => SqlValue::Double(postgres_decimal_to_f64(value, "numeric")?),
+            Ok(Some(value)) => SqlValue::Decimal(value.to_string()),
             Ok(None) => SqlValue::Null,
             Err(error) => return Err(format!("Failed to decode PostgreSQL numeric: {error}")),
         },
         "MONEY" => match row.try_get::<Option<sqlx::postgres::types::PgMoney>, usize>(index) {
-            Ok(Some(value)) => SqlValue::Double(postgres_money_to_f64(value)?),
+            Ok(Some(value)) => SqlValue::Decimal(postgres_money_to_decimal_text(value)),
             Ok(None) => SqlValue::Null,
             Err(error) => return Err(format!("Failed to decode PostgreSQL money: {error}")),
         },
@@ -796,19 +828,99 @@ fn decode_postgres_value(
     Ok(value)
 }
 
+fn decode_postgres_vector(row: &PgRow, index: usize) -> Result<SqlValue, String> {
+    let value = row
+        .try_get_raw(index)
+        .map_err(|error| format!("Failed to decode PostgreSQL vector: {error}"))?;
+    if value.is_null() {
+        return Ok(SqlValue::Null);
+    }
+    if let Ok(text) = value.as_str() {
+        return Ok(SqlValue::Vector(parse_postgres_vector(text)?));
+    }
+    let bytes = value
+        .as_bytes()
+        .map_err(|error| format!("Failed to decode PostgreSQL vector bytes: {error}"))?;
+    Ok(SqlValue::Vector(parse_postgres_vector_binary(bytes)?))
+}
+
+fn parse_postgres_vector(value: &str) -> Result<Vec<f64>, String> {
+    let trimmed = value.trim();
+    let Some(body) = trimmed
+        .strip_prefix('[')
+        .and_then(|value| value.strip_suffix(']'))
+    else {
+        return Err(format!("Invalid PostgreSQL vector value: {value}"));
+    };
+
+    let body = body.trim();
+    if body.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    body.split(',')
+        .map(|part| {
+            let text = part.trim();
+            let value = text
+                .parse::<f64>()
+                .map_err(|error| format!("Invalid PostgreSQL vector element {text:?}: {error}"))?;
+            if !value.is_finite() {
+                return Err(format!(
+                    "Invalid PostgreSQL vector element {text:?}: value is not finite."
+                ));
+            }
+            Ok(value)
+        })
+        .collect()
+}
+
+fn parse_postgres_vector_binary(value: &[u8]) -> Result<Vec<f64>, String> {
+    if value.len() < 4 {
+        return Err("Invalid PostgreSQL vector binary value: too short.".to_string());
+    }
+    let dimensions = u16::from_be_bytes([value[0], value[1]]) as usize;
+    let expected_len = 4 + dimensions * 4;
+    if value.len() != expected_len {
+        return Err(format!(
+            "Invalid PostgreSQL vector binary value: expected {expected_len} bytes, got {}.",
+            value.len()
+        ));
+    }
+
+    let mut values = Vec::with_capacity(dimensions);
+    for chunk in value[4..].chunks_exact(4) {
+        let value = f32::from_be_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]) as f64;
+        if !value.is_finite() {
+            return Err(
+                "Invalid PostgreSQL vector binary value: element is not finite.".to_string(),
+            );
+        }
+        values.push(value);
+    }
+    Ok(values)
+}
+
+fn format_postgres_vector(values: &[f64]) -> String {
+    format!(
+        "[{}]",
+        values
+            .iter()
+            .map(|value| value.to_string())
+            .collect::<Vec<_>>()
+            .join(",")
+    )
+}
+
 fn decode_postgres_numeric_array(row: &PgRow, index: usize) -> Result<SqlValue, String> {
     match row.try_get::<Option<Vec<Option<Decimal>>>, usize>(index) {
-        Ok(Some(value)) => Ok(SqlValue::Json(
+        Ok(Some(value)) => serde_json::to_value(
             value
                 .into_iter()
-                .map(|value| {
-                    value
-                        .map(|value| postgres_decimal_to_f64(value, "numeric array"))
-                        .transpose()
-                })
-                .collect::<Result<Vec<_>, _>>()?
-                .into(),
-        )),
+                .map(|value| value.map(|value| value.to_string()))
+                .collect::<Vec<_>>(),
+        )
+        .map(SqlValue::Json)
+        .map_err(|error| format!("Failed to encode PostgreSQL numeric array: {error}")),
         Ok(None) => Ok(SqlValue::Null),
         Err(error) => Err(format!(
             "Failed to decode PostgreSQL numeric array: {error}"
@@ -818,13 +930,14 @@ fn decode_postgres_numeric_array(row: &PgRow, index: usize) -> Result<SqlValue, 
 
 fn decode_postgres_money_array(row: &PgRow, index: usize) -> Result<SqlValue, String> {
     match row.try_get::<Option<Vec<Option<sqlx::postgres::types::PgMoney>>>, usize>(index) {
-        Ok(Some(value)) => Ok(SqlValue::Json(
+        Ok(Some(value)) => serde_json::to_value(
             value
                 .into_iter()
-                .map(|value| value.map(postgres_money_to_f64).transpose())
-                .collect::<Result<Vec<_>, _>>()?
-                .into(),
-        )),
+                .map(|value| value.map(postgres_money_to_decimal_text))
+                .collect::<Vec<_>>(),
+        )
+        .map(SqlValue::Json)
+        .map_err(|error| format!("Failed to encode PostgreSQL money array: {error}")),
         Ok(None) => Ok(SqlValue::Null),
         Err(error) => Err(format!("Failed to decode PostgreSQL money array: {error}")),
     }
@@ -866,21 +979,8 @@ fn postgres_char_to_string(value: i8) -> String {
     }
 }
 
-fn postgres_decimal_to_f64(value: Decimal, label: &str) -> Result<f64, String> {
-    let value = value
-        .to_string()
-        .parse::<f64>()
-        .map_err(|error| format!("Failed to convert PostgreSQL {label} to double: {error}"))?;
-    if !value.is_finite() {
-        return Err(format!(
-            "Failed to convert PostgreSQL {label} to double: value is not finite."
-        ));
-    }
-    Ok(value)
-}
-
-fn postgres_money_to_f64(value: sqlx::postgres::types::PgMoney) -> Result<f64, String> {
-    postgres_decimal_to_f64(value.to_decimal(2), "money")
+fn postgres_money_to_decimal_text(value: sqlx::postgres::types::PgMoney) -> String {
+    value.to_decimal(2).to_string()
 }
 
 fn fallback_postgres_value(
@@ -1073,12 +1173,64 @@ mod tests {
     }
 
     #[test]
-    fn converts_postgres_decimal_values_to_finite_doubles() {
-        let value = "12345.6789".parse::<Decimal>().expect("valid decimal");
+    fn parses_postgres_vector_text() {
+        assert_eq!(
+            parse_postgres_vector("[1, 2.5, -3]").expect("valid vector"),
+            vec![1.0, 2.5, -3.0]
+        );
+    }
+
+    #[test]
+    fn parses_postgres_vector_binary() {
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(&2_u16.to_be_bytes());
+        bytes.extend_from_slice(&0_u16.to_be_bytes());
+        bytes.extend_from_slice(&1.0_f32.to_be_bytes());
+        bytes.extend_from_slice(&2.5_f32.to_be_bytes());
 
         assert_eq!(
-            postgres_decimal_to_f64(value, "numeric").expect("finite double"),
-            12345.6789
+            parse_postgres_vector_binary(&bytes).expect("valid vector"),
+            vec![1.0, 2.5]
+        );
+    }
+
+    #[test]
+    fn rejects_non_finite_postgres_vector_parameters() {
+        let statement = SqlStatement::with_parameters(
+            "INSERT INTO embeddings (embedding) VALUES ($1::vector)",
+            vec![SqlValue::Vector(vec![f64::NAN])],
+        );
+
+        let error = validate_postgres_statement(&statement).expect_err("NaN rejected");
+
+        assert_eq!(
+            error,
+            "PostgreSQL vector value contains a non-finite number at parameter 1[0]."
+        );
+    }
+
+    #[test]
+    fn validates_postgres_decimal_parameters() {
+        let statement = SqlStatement::with_parameters(
+            "INSERT INTO invoices (amount) VALUES ($1::numeric)",
+            vec![SqlValue::Decimal("12345.6789".to_string())],
+        );
+
+        validate_postgres_statement(&statement).expect("decimal is valid");
+    }
+
+    #[test]
+    fn rejects_invalid_postgres_decimal_parameters() {
+        let statement = SqlStatement::with_parameters(
+            "INSERT INTO invoices (amount) VALUES ($1::numeric)",
+            vec![SqlValue::Decimal("not-a-decimal".to_string())],
+        );
+
+        let error = validate_postgres_statement(&statement).expect_err("decimal rejected");
+
+        assert!(
+            error.starts_with("PostgreSQL decimal value is invalid at parameter 1:"),
+            "{error}"
         );
     }
 }

@@ -15,6 +15,12 @@ abstract final class PostgresTypeMapping {
     if (arrayParameterCastFor(normalized) case final cast?) {
       return cast;
     }
+    if (isDecimalType(normalized)) {
+      return normalized;
+    }
+    if (isVectorType(normalized)) {
+      return normalized;
+    }
     return switch (normalized) {
       'bool' => normalized,
       'int2' || 'int4' || 'int8' => normalized,
@@ -26,9 +32,6 @@ abstract final class PostgresTypeMapping {
       'timestamptz' ||
       'float4' ||
       'float8' ||
-      'numeric' ||
-      'decimal' ||
-      'money' ||
       'json' ||
       'jsonb' ||
       'bytea' => normalized,
@@ -76,6 +79,24 @@ abstract final class PostgresTypeMapping {
     return arrayParameterCastFor(normalizeTypeName(type)) != null;
   }
 
+  /// Whether a PostgreSQL type should receive decimal text parameters.
+  static bool usesDecimalTextParameter(String? databaseType) {
+    final type = databaseType?.trim();
+    if (type == null || type.isEmpty) {
+      return false;
+    }
+    return isDecimalType(normalizeTypeName(type));
+  }
+
+  /// Whether a PostgreSQL type should receive pgvector text parameters.
+  static bool usesVectorTextParameter(String? databaseType) {
+    final type = databaseType?.trim();
+    if (type == null || type.isEmpty) {
+      return false;
+    }
+    return isVectorType(normalizeTypeName(type));
+  }
+
   /// Normalizes common PostgreSQL type aliases to catalog-style type names.
   static String normalizeTypeName(String databaseType) {
     final normalized = databaseType.trim().toLowerCase();
@@ -86,6 +107,28 @@ abstract final class PostgresTypeMapping {
       'boolean' => 'bool',
       _ => normalized,
     };
+  }
+
+  /// Whether [normalizedType] is a lossless decimal-like type.
+  static bool isDecimalType(String normalizedType) {
+    return switch (normalizedType) {
+      'numeric' || 'decimal' || 'money' => true,
+      _
+          when normalizedType.startsWith('numeric(') &&
+              normalizedType.endsWith(')') =>
+        true,
+      _
+          when normalizedType.startsWith('decimal(') &&
+              normalizedType.endsWith(')') =>
+        true,
+      _ => false,
+    };
+  }
+
+  /// Whether [normalizedType] is a pgvector `vector` type.
+  static bool isVectorType(String normalizedType) {
+    return normalizedType == 'vector' ||
+        (normalizedType.startsWith('vector(') && normalizedType.endsWith(')'));
   }
 
   /// Whether a normalized PostgreSQL type name should be treated as user-owned.
@@ -128,6 +171,7 @@ abstract final class PostgresTypeMapping {
     'json',
     'jsonb',
     'bytea',
+    'vector',
   };
 
   static String _arrayElementCastFor(String normalizedElementType) {

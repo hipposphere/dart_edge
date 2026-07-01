@@ -1,3 +1,12 @@
+## 0.3.26
+
+- Add pgvector parameter encoding and result decoding through `SqlVector`.
+- Add lossless decimal parameter encoding and result decoding through
+  `SqlDecimal`.
+- Bump the native artifact version to 0.1.8 for vector and decimal result
+  decoding.
+- Require `dart_edge_core` 0.3.26.
+
 ## 0.3.25
 
 - Add PostgreSQL row-locking select helpers, including `FOR UPDATE`,

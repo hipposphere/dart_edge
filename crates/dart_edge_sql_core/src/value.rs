@@ -14,10 +14,14 @@ pub enum SqlValue {
     Boolean(bool),
     /// UTF-8 text value.
     String(String),
+    /// Lossless decimal value encoded as database decimal text.
+    Decimal(String),
     /// Base64-encoded bytes.
     Bytes(String),
     /// Date/time value encoded as text, normally RFC 3339.
     DateTime(String),
     /// Arbitrary JSON value.
     Json(serde_json::Value),
+    /// PostgreSQL pgvector value.
+    Vector(Vec<f64>),
 }

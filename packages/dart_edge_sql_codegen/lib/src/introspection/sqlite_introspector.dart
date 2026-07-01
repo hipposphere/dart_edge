@@ -147,7 +147,7 @@ String _mapSqliteType(String databaseType) {
     return 'double';
   }
   if (normalized.contains('NUMERIC') || normalized.contains('DECIMAL')) {
-    return 'num';
+    return 'SqlDecimal';
   }
   if (normalized.contains('DATE') || normalized.contains('TIME')) {
     return 'DateTime';

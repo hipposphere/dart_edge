@@ -1,3 +1,8 @@
+## 0.3.26
+
+- Add `SqlVector` as a shared pgvector value contract.
+- Add `SqlDecimal` as a shared lossless decimal value contract.
+
 ## 0.3.24
 
 - Add generated-client streamed response contracts for SSE and other long-lived

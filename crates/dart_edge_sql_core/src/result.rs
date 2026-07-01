@@ -101,4 +101,50 @@ mod tests {
 
         assert!(result.rows.is_empty());
     }
+
+    #[test]
+    fn result_deserializes_vector_values() {
+        let result: SqlResult = serde_json::from_value(serde_json::json!({
+            "affectedRows": 0,
+            "rows": [
+                {
+                    "values": [
+                        {"name": "embedding", "value": {"kind": "vector", "value": [1.0, 2.0]}}
+                    ]
+                }
+            ]
+        }))
+        .unwrap();
+
+        assert_eq!(
+            result,
+            SqlResult::rows(vec![SqlRow::new(vec![SqlColumn::new(
+                "embedding",
+                SqlValue::Vector(vec![1.0, 2.0]),
+            )])])
+        );
+    }
+
+    #[test]
+    fn result_deserializes_decimal_values() {
+        let result: SqlResult = serde_json::from_value(serde_json::json!({
+            "affectedRows": 0,
+            "rows": [
+                {
+                    "values": [
+                        {"name": "amount", "value": {"kind": "decimal", "value": "123.45"}}
+                    ]
+                }
+            ]
+        }))
+        .unwrap();
+
+        assert_eq!(
+            result,
+            SqlResult::rows(vec![SqlRow::new(vec![SqlColumn::new(
+                "amount",
+                SqlValue::Decimal("123.45".to_string()),
+            )])])
+        );
+    }
 }

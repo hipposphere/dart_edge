@@ -46,21 +46,59 @@ void main() {
     );
 
     await pool.execute(
-      sql('''
+      SqlStatement.named(
+        '''
       INSERT INTO items (embedding)
-      VALUES ('[1,2,3]'::vector), ('[4,5,6]'::vector)
-      '''),
+      VALUES (@first::vector), (@second::vector)
+      ''',
+        {
+          'first': SqlVector([1, 2, 3]),
+          'second': SqlVector([4, 5, 6]),
+        },
+      ),
     );
 
     final result = await pool.execute(
-      sql('''
-      SELECT id
+      SqlStatement.named(
+        '''
+      SELECT id, embedding
       FROM items
-      ORDER BY embedding <-> '[1,2,2]'::vector
+      ORDER BY embedding <-> @query::vector
       LIMIT 1
-      '''),
+      ''',
+        {
+          'query': SqlVector([1, 2, 2]),
+        },
+      ),
     );
 
     expect(result.single.read<int>('id'), 1);
+    expect(result.single.read<SqlVector>('embedding'), SqlVector([1, 2, 3]));
+  });
+
+  test('opens a temporary PGlite database with lossless decimals', () async {
+    final pool = PgliteDatabase.temporary().asPostgresPool();
+    addTearDown(pool.close);
+
+    await pool.execute(
+      sql('''
+      CREATE TABLE invoices (
+        id SERIAL PRIMARY KEY,
+        amount numeric(12, 4) NOT NULL
+      )
+      '''),
+    );
+
+    await pool.execute(
+      SqlStatement.named('INSERT INTO invoices (amount) VALUES (@amount)', {
+        'amount': SqlDecimal('123.4500'),
+      }),
+    );
+
+    final result = await pool.execute(
+      sql('SELECT amount FROM invoices WHERE id = 1'),
+    );
+
+    expect(result.single.read<SqlDecimal>('amount'), SqlDecimal('123.4500'));
   });
 }

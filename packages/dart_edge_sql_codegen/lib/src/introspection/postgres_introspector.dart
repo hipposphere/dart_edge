@@ -538,13 +538,14 @@ String _mapPostgresType(String databaseType) {
   return switch (normalized) {
     'int2' || 'int4' || 'int8' => 'int',
     'float4' || 'float8' => 'double',
-    'numeric' || 'decimal' || 'money' => 'num',
+    'numeric' || 'decimal' || 'money' => 'SqlDecimal',
     'bool' => 'bool',
     'date' || 'timestamp' || 'timestamptz' => 'DateTime',
     'time' || 'timetz' => 'String',
     'text' || 'varchar' || 'bpchar' || 'citext' || 'uuid' => 'String',
     'json' || 'jsonb' => 'Object?',
     'bytea' => 'List<int>',
+    _ when PostgresTypeMapping.isVectorType(normalized) => 'SqlVector',
     _ when normalized.startsWith('_') => 'List<Object?>',
     _ => 'Object?',
   };

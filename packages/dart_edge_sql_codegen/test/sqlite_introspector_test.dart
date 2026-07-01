@@ -13,6 +13,7 @@ void main() {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         email TEXT NOT NULL,
         display_name TEXT,
+        balance DECIMAL(12, 2) NOT NULL,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )
     '''),
@@ -41,12 +42,19 @@ void main() {
     };
     expect(
       columnsByName.keys,
-      containsAll(<String>['id', 'email', 'display_name', 'created_at']),
+      containsAll(<String>[
+        'id',
+        'email',
+        'display_name',
+        'balance',
+        'created_at',
+      ]),
     );
     expect(columnsByName['id']!.primaryKey, isTrue);
     expect(columnsByName['email']!.nullable, isFalse);
     expect(columnsByName['email']!.dartType, 'String');
     expect(columnsByName['display_name']!.nullable, isTrue);
+    expect(columnsByName['balance']!.dartType, 'SqlDecimal');
     expect(columnsByName['created_at']!.hasDefault, isTrue);
     expect(columnsByName['created_at']!.dartType, 'DateTime');
 

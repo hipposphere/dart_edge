@@ -102,6 +102,38 @@ void main() {
     },
   );
 
+  test('returns individual columns from typed mutations', () async {
+    await _createSchema(pool);
+
+    final insertedId = await pool.typed
+        .insertInto(UsersTable.table)
+        .values(
+          const UsersInsert(
+            email: 'grace@example.com',
+            displayName: 'Grace Hopper',
+          ),
+        )
+        .executeReturningColumnFirstOrNull(UsersTable.id);
+
+    expect(insertedId, isNotNull);
+    expect(insertedId, greaterThan(0));
+
+    final updatedEmails = await pool.typed
+        .updateTable(UsersTable.table)
+        .set(const UsersUpdate(displayName: SqlValue<String?>('Amazing Grace')))
+        .where(UsersTable.id.equals(insertedId))
+        .executeReturningColumn(UsersTable.email);
+
+    expect(updatedEmails, ['grace@example.com']);
+
+    final deletedIds = await pool.typed
+        .deleteFrom(UsersTable.table)
+        .where(UsersTable.id.equals(insertedId))
+        .executeReturningColumn(UsersTable.id);
+
+    expect(deletedIds, [insertedId]);
+  });
+
   test('deletes rows through typed deleteFrom', () async {
     await _createSchema(pool);
     await _seedData(pool);
@@ -385,6 +417,33 @@ void main() {
     );
   });
 
+  test('compiles typed mutation returning a single column', () async {
+    final executor = _RecordingSqlExecutor(SqlDialect.postgres, [
+      SqlRow({'users__id': 42}),
+    ]);
+
+    final ids = await executor.typed
+        .insertInto(UsersTable.table)
+        .values(
+          const UsersInsert(
+            email: 'grace@example.com',
+            displayName: 'Grace Hopper',
+          ),
+        )
+        .executeReturningColumn(UsersTable.id);
+
+    expect(ids, [42]);
+    expect(
+      executor.statement.sql,
+      'INSERT INTO "users" ("email", "display_name") '
+      'VALUES (@p1, @p2) RETURNING "users"."id" AS "users__id"',
+    );
+    expect(
+      executor.statement.sql.split(' RETURNING ').last,
+      isNot(contains('"users"."display_name"')),
+    );
+  });
+
   test('rejects row-locking select clauses outside PostgreSQL', () {
     final sqlite = const _NoopSqlExecutor(SqlDialect.sqlite);
 
@@ -587,6 +646,23 @@ final class _NoopSqlExecutor implements SqlExecutor {
   @override
   Future<SqlResult> execute(SqlStatement statement) {
     throw UnsupportedError('This executor only compiles statements.');
+  }
+}
+
+final class _RecordingSqlExecutor implements SqlExecutor {
+  _RecordingSqlExecutor(this.dialect, [this._rows = const <SqlRow>[]]);
+
+  final List<SqlRow> _rows;
+
+  @override
+  final SqlDialect dialect;
+
+  late SqlStatement statement;
+
+  @override
+  Future<SqlResult> execute(SqlStatement statement) async {
+    this.statement = statement;
+    return SqlResult(rows: _rows);
   }
 }
 

@@ -1,9 +1,11 @@
 import 'dart:convert';
 
 import '../../core/postgres_type_mapping.dart';
+import '../../core/sql_decimal.dart';
 import '../../core/sql_dialect.dart';
 import '../../core/sql_statement.dart';
 import '../../core/sql_value.dart';
+import '../../core/sql_vector.dart';
 
 SqlStatement compileSqlStatement(SqlDialect dialect, SqlStatement statement) {
   final namedParameters = statement.namedParameters;
@@ -122,6 +124,12 @@ SqlStatement compileSqlStatement(SqlDialect dialect, SqlStatement statement) {
       SqlDialect.postgres
           when _hasArrayCast(statement.sql, placeholder.endIndex + 1) =>
         _encodePostgresArrayTextParameter(value),
+      SqlDialect.postgres
+          when _hasDecimalCast(statement.sql, placeholder.endIndex + 1) =>
+        _encodePostgresDecimalTextParameter(value),
+      SqlDialect.postgres
+          when _hasVectorCast(statement.sql, placeholder.endIndex + 1) =>
+        _encodePostgresVectorTextParameter(value),
       SqlDialect.postgres
           when _hasJsonCast(statement.sql, placeholder.endIndex + 1) =>
         _encodeJsonTextParameter(value),
@@ -244,6 +252,22 @@ bool _hasArrayCast(String sql, int index) {
   return PostgresTypeMapping.usesArrayTextParameter(type);
 }
 
+bool _hasDecimalCast(String sql, int index) {
+  final type = _castTypeAt(sql, index);
+  if (type == null) {
+    return false;
+  }
+  return PostgresTypeMapping.usesDecimalTextParameter(type);
+}
+
+bool _hasVectorCast(String sql, int index) {
+  final type = _castTypeAt(sql, index);
+  if (type == null) {
+    return false;
+  }
+  return PostgresTypeMapping.usesVectorTextParameter(type);
+}
+
 String? _castTypeAt(String sql, int index) {
   if (!_startsWith(sql, index, '::')) {
     return null;
@@ -269,6 +293,17 @@ int _readCastTypeEnd(String sql, int start) {
         char == '[' ||
         char == ']') {
       index += 1;
+      continue;
+    }
+    if (char == '(') {
+      index += 1;
+      while (index < sql.length) {
+        final innerChar = sql[index];
+        index += 1;
+        if (innerChar == ')') {
+          break;
+        }
+      }
       continue;
     }
     break;
@@ -305,6 +340,32 @@ String _postgresArrayElement(Object? value) {
     ),
   };
   return '"${text.replaceAll(r'\', r'\\').replaceAll('"', r'\"')}"';
+}
+
+Object? _encodePostgresVectorTextParameter(Object? value) {
+  return switch (value) {
+    null || String() => value,
+    final SqlVector value => value.toPostgresText(),
+    final Iterable<num> value => SqlVector(value).toPostgresText(),
+    _ => throw ArgumentError.value(
+      value,
+      'value',
+      'PostgreSQL vector parameters must be a SqlVector, Iterable<num>, String, or null.',
+    ),
+  };
+}
+
+Object? _encodePostgresDecimalTextParameter(Object? value) {
+  return switch (value) {
+    null || String() => value,
+    final SqlDecimal value => value.toPostgresText(),
+    final num value => SqlDecimal.fromNum(value).toPostgresText(),
+    _ => throw ArgumentError.value(
+      value,
+      'value',
+      'PostgreSQL decimal parameters must be a SqlDecimal, num, String, or null.',
+    ),
+  };
 }
 
 bool _startsWith(String value, int index, String pattern) {

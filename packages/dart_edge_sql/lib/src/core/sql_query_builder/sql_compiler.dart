@@ -228,6 +228,10 @@ final class _SqlCompiler {
     _parameters[parameterName] = switch (dialect) {
       SqlDialect.postgres when _hasArrayCast(sql, end) =>
         _encodePostgresArrayTextParameter(value),
+      SqlDialect.postgres when _hasDecimalCast(sql, end) =>
+        _encodePostgresDecimalTextParameter(value),
+      SqlDialect.postgres when _hasVectorCast(sql, end) =>
+        _encodePostgresVectorTextParameter(value),
       SqlDialect.postgres when _hasJsonCast(sql, end) =>
         _encodeJsonTextParameter(value),
       _ => value,
@@ -302,6 +306,12 @@ Object? _encodePostgresParameterValue(
   if (PostgresTypeMapping.usesArrayTextParameter(column?.databaseType)) {
     return _encodePostgresArrayTextParameter(value);
   }
+  if (PostgresTypeMapping.usesDecimalTextParameter(column?.databaseType)) {
+    return _encodePostgresDecimalTextParameter(value);
+  }
+  if (PostgresTypeMapping.usesVectorTextParameter(column?.databaseType)) {
+    return _encodePostgresVectorTextParameter(value);
+  }
   if (!PostgresTypeMapping.usesJsonTextParameter(column?.databaseType)) {
     return value;
   }
@@ -364,6 +374,22 @@ bool _hasArrayCast(String sql, int index) {
   return PostgresTypeMapping.usesArrayTextParameter(type);
 }
 
+bool _hasDecimalCast(String sql, int index) {
+  final type = _castTypeAt(sql, index);
+  if (type == null) {
+    return false;
+  }
+  return PostgresTypeMapping.usesDecimalTextParameter(type);
+}
+
+bool _hasVectorCast(String sql, int index) {
+  final type = _castTypeAt(sql, index);
+  if (type == null) {
+    return false;
+  }
+  return PostgresTypeMapping.usesVectorTextParameter(type);
+}
+
 String? _castTypeAt(String sql, int index) {
   if (!_startsWith(sql, index, '::')) {
     return null;
@@ -389,6 +415,17 @@ int _readCastTypeEnd(String sql, int start) {
         char == '[' ||
         char == ']') {
       index += 1;
+      continue;
+    }
+    if (char == '(') {
+      index += 1;
+      while (index < sql.length) {
+        final innerChar = sql[index];
+        index += 1;
+        if (innerChar == ')') {
+          break;
+        }
+      }
       continue;
     }
     break;
@@ -425,6 +462,32 @@ String _postgresArrayElement(Object? value) {
     ),
   };
   return '"${text.replaceAll(r'\', r'\\').replaceAll('"', r'\"')}"';
+}
+
+Object? _encodePostgresVectorTextParameter(Object? value) {
+  return switch (value) {
+    null || String() => value,
+    final SqlVector value => value.toPostgresText(),
+    final Iterable<num> value => SqlVector(value).toPostgresText(),
+    _ => throw ArgumentError.value(
+      value,
+      'value',
+      'PostgreSQL vector parameters must be a SqlVector, Iterable<num>, String, or null.',
+    ),
+  };
+}
+
+Object? _encodePostgresDecimalTextParameter(Object? value) {
+  return switch (value) {
+    null || String() => value,
+    final SqlDecimal value => value.toPostgresText(),
+    final num value => SqlDecimal.fromNum(value).toPostgresText(),
+    _ => throw ArgumentError.value(
+      value,
+      'value',
+      'PostgreSQL decimal parameters must be a SqlDecimal, num, String, or null.',
+    ),
+  };
 }
 
 _SelectedProjection _normalizeProjection(Object value) {
@@ -777,6 +840,23 @@ final class _RawRowSelection extends _SqlSelection<SqlRow> {
   final List<_SelectedProjection> projections;
   @override
   SqlRow map(SqlRow row) => row;
+}
+
+final class _ColumnSelection<TValue> extends _SqlSelection<TValue> {
+  _ColumnSelection(this.column);
+
+  final SqlColumn<TValue> column;
+
+  @override
+  late final List<_SelectedProjection> projections = [
+    _SelectedProjection(
+      column: column.asObjectColumn,
+      alias: _aliasFor(column),
+    ),
+  ];
+
+  @override
+  TValue map(SqlRow row) => row.read<TValue>(_aliasFor(column));
 }
 
 final class _TableSelection<TRow, TInsert, TUpdate>

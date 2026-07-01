@@ -213,6 +213,66 @@ void main() {
     expect(statement.sql, r'SELECT $1::text[]');
     expect(statement.positionalParameters, ['{"admin","member"}']);
   });
+
+  test('encodes explicitly cast vector parameters as pgvector text', () {
+    final statement = compileSqlStatement(
+      SqlDialect.postgres,
+      SqlStatement.named('SELECT @embedding::vector(3)', {
+        'embedding': SqlVector([1, 2, 3]),
+      }),
+    );
+
+    expect(statement.sql, r'SELECT $1::vector(3)');
+    expect(statement.positionalParameters, ['[1.0,2.0,3.0]']);
+  });
+
+  test('encodes explicitly cast decimal parameters as decimal text', () {
+    final statement = compileSqlStatement(
+      SqlDialect.postgres,
+      SqlStatement.named('SELECT @amount::numeric(12,2)', {
+        'amount': SqlDecimal('123.45'),
+      }),
+    );
+
+    expect(statement.sql, r'SELECT $1::numeric(12,2)');
+    expect(statement.positionalParameters, ['123.45']);
+  });
+
+  test('casts generated decimal column parameters', () async {
+    final db = _RecordingExecutor(SqlDialect.postgres);
+
+    await db.typed
+        .insertInto(ScalarSamplesTable.table)
+        .values(
+          ScalarSampleInsert(
+            numericValue: SqlDecimal('123.45'),
+            moneyValue: SqlDecimal('9.99'),
+          ),
+        )
+        .execute();
+
+    expect(db.statement.sql, contains('@p3::numeric'));
+    expect(db.statement.sql, contains('@p4::money'));
+    expect(db.statement.namedParameters, {
+      'p1': null,
+      'p2': null,
+      'p3': '123.45',
+      'p4': '9.99',
+      'p5': null,
+    });
+  });
+
+  test('casts generated vector column parameters', () async {
+    final db = _RecordingExecutor(SqlDialect.postgres);
+
+    await db.typed
+        .insertInto(EmbeddingsTable.table)
+        .values(EmbeddingInsert(embedding: SqlVector([1, 2, 3])))
+        .execute();
+
+    expect(db.statement.sql, contains('@p1::vector(3)'));
+    expect(db.statement.namedParameters, {'p1': '[1.0,2.0,3.0]'});
+  });
 }
 
 final class _RecordingExecutor implements SqlExecutor {
@@ -484,8 +544,8 @@ final class ScalarSampleInsert {
 
   final double? realValue;
   final double? doubleValue;
-  final num? numericValue;
-  final num? moneyValue;
+  final SqlDecimal? numericValue;
+  final SqlDecimal? moneyValue;
   final List<int>? bytesValue;
 
   Map<String, Object?> toColumns() => <String, Object?>{
@@ -523,14 +583,14 @@ final class ScalarSamplesTable
     databaseType: 'float8',
   );
 
-  static const numericValue = SqlColumn<num>(
+  static const numericValue = SqlColumn<SqlDecimal>(
     table: table,
     name: 'numeric_value',
     nullable: true,
     databaseType: 'numeric',
   );
 
-  static const moneyValue = SqlColumn<num>(
+  static const moneyValue = SqlColumn<SqlDecimal>(
     table: table,
     name: 'money_value',
     nullable: true,
@@ -569,4 +629,55 @@ final class ScalarSamplesTable
 
   @override
   SqlRow mapRow(SqlRow row, {String prefix = ''}) => row;
+}
+
+final class EmbeddingInsert {
+  const EmbeddingInsert({required this.embedding});
+
+  final SqlVector embedding;
+
+  Map<String, Object?> toColumns() => <String, Object?>{'embedding': embedding};
+}
+
+final class EmbeddingUpdate {
+  const EmbeddingUpdate({this.embedding = const SqlValue.absent()});
+
+  final SqlValue<SqlVector> embedding;
+
+  Map<String, Object?> toColumns() => <String, Object?>{
+    if (embedding.isPresent) 'embedding': embedding.value,
+  };
+}
+
+final class EmbeddingsTable
+    extends SqlTable<SqlRow, EmbeddingInsert, EmbeddingUpdate> {
+  const EmbeddingsTable._();
+
+  static const table = EmbeddingsTable._();
+
+  static final embedding = SqlColumn<SqlVector>(
+    table: table,
+    name: 'embedding',
+    databaseType: 'vector(3)',
+  );
+
+  @override
+  List<SqlColumn<Object?>> get columns => <SqlColumn<Object?>>[
+    embedding.asObjectColumn,
+  ];
+
+  @override
+  Map<String, Object?> encodeInsert(EmbeddingInsert value) => value.toColumns();
+
+  @override
+  Map<String, Object?> encodeUpdate(EmbeddingUpdate value) => value.toColumns();
+
+  @override
+  SqlRow mapRow(SqlRow row, {String prefix = ''}) => row;
+
+  @override
+  String get name => 'embeddings';
+
+  @override
+  String? get schema => null;
 }

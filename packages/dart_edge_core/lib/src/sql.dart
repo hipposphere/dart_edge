@@ -1,4 +1,5 @@
 export 'sql/postgres_type_mapping.dart';
+export 'sql/sql_decimal.dart';
 export 'sql/sql_dialect.dart';
 export 'sql/sql_executor.dart';
 export 'sql/sql_result.dart';
@@ -6,3 +7,4 @@ export 'sql/sql_row.dart';
 export 'sql/sql_schema.dart';
 export 'sql/sql_statement.dart';
 export 'sql/sql_value.dart';
+export 'sql/sql_vector.dart';

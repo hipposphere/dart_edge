@@ -65,4 +65,42 @@ mod tests {
 
         assert!(statement.parameters.is_empty());
     }
+
+    #[test]
+    fn statement_serializes_vector_values() {
+        let statement =
+            SqlStatement::with_parameters("select $1::vector", vec![SqlValue::Vector(vec![1.0])]);
+
+        let json = serde_json::to_value(statement).unwrap();
+
+        assert_eq!(
+            json,
+            serde_json::json!({
+                "sql": "select $1::vector",
+                "parameters": [
+                    {"kind": "vector", "value": [1.0]}
+                ]
+            })
+        );
+    }
+
+    #[test]
+    fn statement_serializes_decimal_values() {
+        let statement = SqlStatement::with_parameters(
+            "select $1::numeric",
+            vec![SqlValue::Decimal("123.45".to_string())],
+        );
+
+        let json = serde_json::to_value(statement).unwrap();
+
+        assert_eq!(
+            json,
+            serde_json::json!({
+                "sql": "select $1::numeric",
+                "parameters": [
+                    {"kind": "decimal", "value": "123.45"}
+                ]
+            })
+        );
+    }
 }

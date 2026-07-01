@@ -6,6 +6,7 @@
 library;
 
 export 'src/core/postgres_type_mapping.dart';
+export 'src/core/sql_decimal.dart';
 export 'src/core/sql_dialect.dart';
 export 'src/core/sql_executor.dart';
 export 'src/core/sql_query_builder.dart';
@@ -14,6 +15,7 @@ export 'src/core/sql_row.dart';
 export 'src/core/sql_schema.dart' hide SqlRawTable;
 export 'src/core/sql_statement.dart';
 export 'src/core/sql_value.dart';
+export 'src/core/sql_vector.dart';
 export 'src/drivers/postgres/pglite_endpoint.dart';
 export 'src/drivers/postgres/postgres_pool.dart';
 export 'src/drivers/sqlite/sqlite_database.dart';

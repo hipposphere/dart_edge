@@ -182,6 +182,98 @@ void main() {
     expect(_avoidableDoubleQuotedStrings(usersTable), isEmpty);
   });
 
+  test('emits pgvector columns as SqlVector', () {
+    const database = IntrospectedDatabase(
+      dialect: SqlCodegenDialect.postgres,
+      tables: [
+        IntrospectedTable(
+          name: 'document_embeddings',
+          columns: [
+            IntrospectedColumn(
+              name: 'id',
+              databaseType: 'int8',
+              dartType: 'int',
+              primaryKey: true,
+            ),
+            IntrospectedColumn(
+              name: 'embedding',
+              databaseType: 'vector(3)',
+              dartType: 'SqlVector',
+            ),
+            IntrospectedColumn(
+              name: 'optional_embedding',
+              databaseType: 'vector(3)',
+              dartType: 'SqlVector',
+              nullable: true,
+            ),
+          ],
+        ),
+      ],
+    );
+
+    final emission = emitDartSchema(database, databaseClassName: 'AppSchema');
+    final table = emission
+        .fileAt('schemas/default/tables/document_embeddings.g.dart')
+        .contents;
+
+    expect(table, contains('required this.embedding'));
+    expect(table, contains('final SqlVector embedding;'));
+    expect(table, contains('final SqlVector? optionalEmbedding;'));
+    expect(table, contains('static final embedding = SqlColumn<SqlVector>('));
+    expect(table, contains("databaseType: 'vector(3)'"));
+    expect(table, contains("embedding: SqlVector.fromJson(row.read<Object?>"));
+    expect(table, contains("embedding: SqlVector.fromJson(json['embedding'])"));
+    expect(table, contains("'embedding': embedding"));
+    expect(table, contains("'embedding': embedding.toJson()"));
+    expect(table, contains('JsonSchema.array(items: JsonSchema.number())'));
+  });
+
+  test('emits decimal columns as SqlDecimal', () {
+    const database = IntrospectedDatabase(
+      dialect: SqlCodegenDialect.postgres,
+      tables: [
+        IntrospectedTable(
+          name: 'invoices',
+          columns: [
+            IntrospectedColumn(
+              name: 'id',
+              databaseType: 'int8',
+              dartType: 'int',
+              primaryKey: true,
+            ),
+            IntrospectedColumn(
+              name: 'amount',
+              databaseType: 'numeric(12,2)',
+              dartType: 'SqlDecimal',
+            ),
+            IntrospectedColumn(
+              name: 'tax',
+              databaseType: 'money',
+              dartType: 'SqlDecimal',
+              nullable: true,
+            ),
+          ],
+        ),
+      ],
+    );
+
+    final emission = emitDartSchema(database, databaseClassName: 'AppSchema');
+    final table = emission
+        .fileAt('schemas/default/tables/invoices.g.dart')
+        .contents;
+
+    expect(table, contains('required this.amount'));
+    expect(table, contains('final SqlDecimal amount;'));
+    expect(table, contains('final SqlDecimal? tax;'));
+    expect(table, contains('static final amount = SqlColumn<SqlDecimal>('));
+    expect(table, contains("databaseType: 'numeric(12,2)'"));
+    expect(table, contains("amount: SqlDecimal.fromJson(row.read<Object?>"));
+    expect(table, contains("amount: SqlDecimal.fromJson(json['amount'])"));
+    expect(table, contains("'amount': amount"));
+    expect(table, contains("'amount': amount.toJson()"));
+    expect(table, contains("JsonSchema.string(format: 'decimal')"));
+  });
+
   test('uses configured formatter page width', () {
     const database = IntrospectedDatabase(
       dialect: SqlCodegenDialect.sqlite,

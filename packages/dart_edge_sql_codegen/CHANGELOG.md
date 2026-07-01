@@ -1,3 +1,11 @@
+## 0.3.30
+
+- Map PostgreSQL `vector(...)` columns to `SqlVector` in generated table
+  models.
+- Map PostgreSQL `numeric`, `decimal`, and `money` columns, and SQLite
+  `NUMERIC`/`DECIMAL` columns, to `SqlDecimal` in generated table models.
+- Require `dart_edge_core` 0.3.26 and `dart_edge_sql` 0.3.26.
+
 ## 0.3.28
 
 - Support formatter options for emitted Dart schema libraries and schema

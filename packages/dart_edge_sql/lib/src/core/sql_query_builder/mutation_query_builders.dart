@@ -39,9 +39,27 @@ final class InsertQueryBuilder<TRow, TInsert, TUpdate> {
         .toList(growable: false);
   }
 
+  /// Executes the insert and returns one projected column from each row.
+  Future<List<TValue>> executeReturningColumn<TValue>(
+    SqlColumn<TValue> column,
+  ) async {
+    final selection = _ColumnSelection<TValue>(column);
+    final statement = _compileInsert(this, returning: selection);
+    final result = await _executor.execute(statement);
+    return result.rows.map(selection.map).toList(growable: false);
+  }
+
   /// Executes the insert and returns the first inserted row, if any.
   Future<TRow?> executeReturningFirstOrNull() async {
     final rows = await executeReturningAll();
+    return rows.isEmpty ? null : rows.first;
+  }
+
+  /// Executes the insert and returns one projected column from the first row.
+  Future<TValue?> executeReturningColumnFirstOrNull<TValue>(
+    SqlColumn<TValue> column,
+  ) async {
+    final rows = await executeReturningColumn(column);
     return rows.isEmpty ? null : rows.first;
   }
 }
@@ -81,9 +99,27 @@ final class DeleteQueryBuilder<TRow, TInsert, TUpdate> {
         .toList(growable: false);
   }
 
+  /// Executes the delete and returns one projected column from each row.
+  Future<List<TValue>> executeReturningColumn<TValue>(
+    SqlColumn<TValue> column,
+  ) async {
+    final selection = _ColumnSelection<TValue>(column);
+    final statement = _compileDelete(this, returning: selection);
+    final result = await _executor.execute(statement);
+    return result.rows.map(selection.map).toList(growable: false);
+  }
+
   /// Executes the delete and returns the first deleted row, if any.
   Future<TRow?> executeReturningFirstOrNull() async {
     final rows = await executeReturningAll();
+    return rows.isEmpty ? null : rows.first;
+  }
+
+  /// Executes the delete and returns one projected column from the first row.
+  Future<TValue?> executeReturningColumnFirstOrNull<TValue>(
+    SqlColumn<TValue> column,
+  ) async {
+    final rows = await executeReturningColumn(column);
     return rows.isEmpty ? null : rows.first;
   }
 }
@@ -137,9 +173,27 @@ final class UpdateQueryBuilder<TRow, TInsert, TUpdate> {
         .toList(growable: false);
   }
 
+  /// Executes the update and returns one projected column from each row.
+  Future<List<TValue>> executeReturningColumn<TValue>(
+    SqlColumn<TValue> column,
+  ) async {
+    final selection = _ColumnSelection<TValue>(column);
+    final statement = _compileUpdate(this, returning: selection);
+    final result = await _executor.execute(statement);
+    return result.rows.map(selection.map).toList(growable: false);
+  }
+
   /// Executes the update and returns the first updated row, if any.
   Future<TRow?> executeReturningFirstOrNull() async {
     final rows = await executeReturningAll();
+    return rows.isEmpty ? null : rows.first;
+  }
+
+  /// Executes the update and returns one projected column from the first row.
+  Future<TValue?> executeReturningColumnFirstOrNull<TValue>(
+    SqlColumn<TValue> column,
+  ) async {
+    final rows = await executeReturningColumn(column);
     return rows.isEmpty ? null : rows.first;
   }
 }
