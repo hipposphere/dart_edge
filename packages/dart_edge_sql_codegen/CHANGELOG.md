@@ -1,3 +1,8 @@
+## 0.3.31
+
+- Fix nullable JSON encoding for `SqlDecimal` and `SqlVector` values in
+  generated update models.
+
 ## 0.3.30
 
 - Map PostgreSQL `vector(...)` columns to `SqlVector` in generated table

@@ -225,6 +225,15 @@ void main() {
     expect(table, contains("embedding: SqlVector.fromJson(json['embedding'])"));
     expect(table, contains("'embedding': embedding"));
     expect(table, contains("'embedding': embedding.toJson()"));
+    expect(
+      table,
+      contains("'optional_embedding': optionalEmbedding?.toJson()"),
+    );
+    expect(table, contains("'embedding': embedding.value?.toJson()"));
+    expect(
+      table,
+      contains("'optional_embedding': optionalEmbedding.value?.toJson()"),
+    );
     expect(table, contains('JsonSchema.array(items: JsonSchema.number())'));
   });
 

@@ -492,7 +492,9 @@ Expression _toJsonExpression(
   }
 
   if (databaseType == 'SqlDecimal' || databaseType == 'SqlVector') {
-    return wrapNullable(source.property('toJson').call(const []));
+    return valueNullable
+        ? CodeExpression(Code('${_code(source)}?.toJson()'))
+        : source.property('toJson').call(const []);
   }
 
   return switch (databaseType) {
