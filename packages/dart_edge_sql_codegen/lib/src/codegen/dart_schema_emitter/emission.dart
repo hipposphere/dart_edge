@@ -127,6 +127,7 @@ DartSchemaEmission emitDartSchema(
         relativePath: 'external_keys.g.dart',
         contents: _emitExternalPrimaryKeysLibrary(
           externalPrimaryKeyTypes,
+          database: database,
           formatterOptions: formatterOptions,
         ),
       ),
@@ -251,16 +252,7 @@ String emitDartSchemaLibrary(
       );
 
     builder.body.addAll(
-      externalPrimaryKeyTypes.map(
-        (type) => _extensionValueTypeSpec(
-          IntrospectedColumn(
-            name: type.typeName,
-            databaseType: type.baseDartType,
-            dartType: type.typeName,
-            extensionBaseDartType: type.baseDartType,
-          ),
-        ),
-      ),
+      _externalPrimaryKeyExtensionTypeSpecs(database, externalPrimaryKeyTypes),
     );
 
     if (schemaGroups.any((group) => group.routines.isNotEmpty)) {

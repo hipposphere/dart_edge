@@ -530,16 +530,9 @@ Expression _jsonSchemaForColumn(
   }
 
   if (_hasExtensionBackedValueType(column) && type == 'String') {
-    final format = _jsonStringFormatForColumn(column);
-    if (!column.nullable && format == null) {
-      return refer(_valueType(column)).property('schema');
-    }
-    return _jsonSchemaFactory(
-      'string',
-      nullable: column.nullable,
-      format: format,
-      dartType: _dartSchemaTypeValue(_valueType(column)),
-    );
+    return refer(
+      _valueType(column),
+    ).property(column.nullable ? 'schemaNullable' : 'schema');
   }
 
   if (type == 'Object?') {
@@ -608,12 +601,6 @@ Expression _jsonSchemaFactory(
     'items': ?items,
     'enumValues': ?enumValues,
   });
-}
-
-Expression _dartSchemaTypeValue(String typeName) {
-  return refer(
-    'DartSchemaType',
-  ).constInstanceNamed('value', [literalString(typeName)]);
 }
 
 String? _jsonStringFormatForColumn(IntrospectedColumn column) {

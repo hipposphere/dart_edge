@@ -30,6 +30,7 @@ String _emitEntrypoint({
 
 String _emitExternalPrimaryKeysLibrary(
   List<ExternalPrimaryKeySpec> externalPrimaryKeyTypes, {
+  required IntrospectedDatabase database,
   required DartSchemaFormatterOptions formatterOptions,
 }) {
   final library = Library((builder) {
@@ -39,16 +40,7 @@ String _emitExternalPrimaryKeysLibrary(
       );
     }
     builder.body.addAll(
-      externalPrimaryKeyTypes.map(
-        (type) => _extensionValueTypeSpec(
-          IntrospectedColumn(
-            name: type.typeName,
-            databaseType: type.baseDartType,
-            dartType: type.typeName,
-            extensionBaseDartType: type.baseDartType,
-          ),
-        ),
-      ),
+      _externalPrimaryKeyExtensionTypeSpecs(database, externalPrimaryKeyTypes),
     );
   });
   return _format(library, formatterOptions: formatterOptions);

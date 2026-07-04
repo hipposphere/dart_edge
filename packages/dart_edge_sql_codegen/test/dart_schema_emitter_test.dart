@@ -1179,6 +1179,8 @@ void main() {
       contains('extension type const AuthUserId(String value) {'),
     );
     expect(userTable, contains('static const JsonSchema schema = .string('));
+    expect(userTable, contains("format: 'uuid'"));
+    expect(userTable, contains('static const JsonSchema schemaNullable'));
     expect(
       apiKeyTable,
       contains('extension type const AuthApiKeyKey(String value) {'),
@@ -1344,6 +1346,70 @@ void main() {
     );
   });
 
+  test('uses nullable string extension schemas for nullable foreign keys', () {
+    const database = IntrospectedDatabase(
+      dialect: SqlCodegenDialect.postgres,
+      tables: [
+        IntrospectedTable(
+          name: 'users',
+          columns: [
+            IntrospectedColumn(
+              name: 'id',
+              databaseType: 'uuid',
+              dartType: 'String',
+              primaryKey: true,
+            ),
+          ],
+        ),
+        IntrospectedTable(
+          name: 'notes',
+          columns: [
+            IntrospectedColumn(
+              name: 'id',
+              databaseType: 'int4',
+              dartType: 'int',
+              primaryKey: true,
+            ),
+            IntrospectedColumn(
+              name: 'owner_id',
+              databaseType: 'uuid',
+              dartType: 'String',
+              nullable: true,
+            ),
+          ],
+          constraints: [
+            IntrospectedTableConstraint(
+              name: 'notes_owner_id_fkey',
+              kind: IntrospectedTableConstraintKind.foreignKey,
+              columns: ['owner_id'],
+              referencedTable: 'users',
+              referencedColumns: ['id'],
+            ),
+          ],
+        ),
+      ],
+    );
+
+    final emission = emitDartSchema(database, databaseClassName: 'AppSchema');
+    final usersTable = emission
+        .fileAt('schemas/default/tables/users.g.dart')
+        .contents;
+    final notesTable = emission
+        .fileAt('schemas/default/tables/notes.g.dart')
+        .contents;
+
+    expect(usersTable, contains('extension type const UserId(String value) {'));
+    expect(usersTable, contains('static const JsonSchema schema = .string('));
+    expect(usersTable, contains("format: 'uuid'"));
+    expect(
+      usersTable,
+      contains('static const JsonSchema schemaNullable = .string('),
+    );
+    expect(usersTable, contains('nullable: true'));
+    expect(notesTable, contains('final UserId? ownerId;'));
+    expect(notesTable, contains("'owner_id': UserId.schemaNullable"));
+  });
+
   test('can opt out of primary key extension types', () {
     const database = IntrospectedDatabase(
       dialect: SqlCodegenDialect.sqlite,
@@ -1431,12 +1497,12 @@ void main() {
     expect(notesTable, contains('final AuthUserId ownerId;'));
     expect(notesTable, contains("ownerId: AuthUserId(row.read<String>("));
     expect(notesTable, contains("'owner_id': ownerId.value"));
-    expect(notesTable, contains("'owner_id': JsonSchema.string("));
-    expect(notesTable, contains("format: 'uuid'"));
+    expect(externalKeys, contains("format: 'uuid'"));
     expect(
-      notesTable,
-      contains("dartType: DartSchemaType.value('AuthUserId')"),
+      externalKeys,
+      contains('static const JsonSchema schemaNullable = .string('),
     );
+    expect(notesTable, contains("'owner_id': AuthUserId.schema"));
     expect(
       notesTable,
       contains('static final ownerId = SqlColumn<AuthUserId>('),

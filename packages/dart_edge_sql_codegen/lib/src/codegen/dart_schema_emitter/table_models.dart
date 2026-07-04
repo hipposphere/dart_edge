@@ -23,14 +23,27 @@ Iterable<Spec> _tableSpecs(
   yield _tableColumnsExtension(table, naming);
 }
 
-Code _extensionValueTypeSpec(IntrospectedColumn column) {
+Code _extensionValueTypeSpec(
+  IntrospectedColumn column, {
+  String? schemaFormat,
+}) {
   final typeName = _valueType(column);
   final baseType = _databaseValueType(column);
   if (baseType == 'String') {
+    final format = schemaFormat ?? _jsonStringFormatForColumn(column);
+    final formatArgument = switch (format) {
+      final format? => "    format: '${_escapeLiteral(format)}',\n",
+      null => '',
+    };
     return Code('''
 extension type const $typeName($baseType value) {
   static const JsonSchema schema = .string(
-    dartType: .value('$typeName'),
+$formatArgument    dartType: .value('$typeName'),
+  );
+
+  static const JsonSchema schemaNullable = .string(
+    nullable: true,
+$formatArgument    dartType: .value('$typeName'),
   );
 }
 ''');
@@ -38,6 +51,54 @@ extension type const $typeName($baseType value) {
   return Code('''
 extension type const $typeName($baseType value) {}
 ''');
+}
+
+Iterable<Spec> _externalPrimaryKeyExtensionTypeSpecs(
+  IntrospectedDatabase database,
+  List<ExternalPrimaryKeySpec> externalPrimaryKeyTypes,
+) {
+  return externalPrimaryKeyTypes.map((type) {
+    return _extensionValueTypeSpec(
+      IntrospectedColumn(
+        name: type.typeName,
+        databaseType: type.baseDartType,
+        dartType: type.typeName,
+        extensionBaseDartType: type.baseDartType,
+      ),
+      schemaFormat: _externalPrimaryKeyStringFormat(database, type),
+    );
+  });
+}
+
+String? _externalPrimaryKeyStringFormat(
+  IntrospectedDatabase database,
+  ExternalPrimaryKeySpec type,
+) {
+  if (type.baseDartType != 'String') {
+    return null;
+  }
+
+  String? sharedFormat;
+  var sawColumn = false;
+  for (final table in database.tables) {
+    for (final column in table.columns) {
+      if (column.dartType != type.typeName ||
+          column.extensionBaseDartType != type.baseDartType) {
+        continue;
+      }
+
+      final format = _jsonStringFormatForColumn(column);
+      if (!sawColumn) {
+        sharedFormat = format;
+        sawColumn = true;
+        continue;
+      }
+      if (format != sharedFormat) {
+        return null;
+      }
+    }
+  }
+  return sharedFormat;
 }
 
 bool _declaresExtensionValueType(

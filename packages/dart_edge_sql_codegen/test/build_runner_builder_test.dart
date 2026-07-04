@@ -312,10 +312,11 @@ void main() {
           allOf([
             contains('extension type const AuthUserId(String value) {'),
             contains('static const JsonSchema schema = .string('),
+            contains("format: 'uuid'"),
+            contains('static const JsonSchema schemaNullable = .string('),
             contains('final AuthUserId ownerId;'),
             contains("ownerId: AuthUserId(row.read<String>("),
-            contains("'owner_id': JsonSchema.string("),
-            contains("format: 'uuid'"),
+            contains("'owner_id': AuthUserId.schema"),
             contains("dartType: .value('AuthUserId')"),
             contains('static final ownerId = SqlColumn<AuthUserId>('),
           ]),
