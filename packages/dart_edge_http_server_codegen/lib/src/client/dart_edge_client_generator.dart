@@ -1140,18 +1140,47 @@ bool _isMultipartBinaryField(JsonSchema schema) {
 String _multipartTextFieldExpression(_ClientModelFieldSpec field) {
   final name = field.name;
   final wireName = _dartString(field.wireName);
-  if (field.schema case JsonArraySchema()) {
+  if (field.schema case JsonArraySchema(:final items)) {
+    final value = _multipartTextValueExpression(
+      items ?? const JsonSchema.any(),
+      'value',
+      field.schemaTypes,
+    );
     if (field.required) {
       return '    for (final value in $name) '
-          'MultipartFormField(name: $wireName, value: value.toString()),';
+          'MultipartFormField(name: $wireName, value: $value),';
     }
     return '    if ($name != null) for (final value in $name!) '
-        'MultipartFormField(name: $wireName, value: value.toString()),';
+        'MultipartFormField(name: $wireName, value: $value),';
   }
+  final value = _multipartTextValueExpression(
+    field.schema,
+    name,
+    field.schemaTypes,
+  );
+  final nullableValue = _multipartTextValueExpression(
+    field.schema,
+    '$name!',
+    field.schemaTypes,
+  );
   if (field.required) {
-    return "    MultipartFormField(name: $wireName, value: $name.toString()),";
+    return '    MultipartFormField(name: $wireName, value: $value),';
   }
-  return "    if ($name != null) MultipartFormField(name: $wireName, value: $name.toString()),";
+  return '    if ($name != null) MultipartFormField(name: $wireName, value: $nullableValue),';
+}
+
+String _multipartTextValueExpression(
+  JsonSchema schema,
+  String value,
+  Map<String, String> schemaTypes,
+) {
+  final encoded = _encodeSchemaValue(
+    schema,
+    value,
+    nullable: false,
+    schemaTypes: schemaTypes,
+  );
+  return '$encoded.toString()';
 }
 
 String _multipartFileExpression(_ClientModelFieldSpec field) {
@@ -1218,21 +1247,17 @@ String _decodeSchemaValue(
       _schemaTypeFromId(jsonSchemaRouteId(schema), schemaTypes),
       value,
     ),
-    JsonStringSchema(:final dartType, :final format)
-        when dartType == null && format == 'date-time' =>
-      'DateTime.parse($value as String)',
-    JsonStringSchema _ => '$value as String',
+    JsonStringSchema(:final dartType, :final format) =>
+      _decodeClientStringValue(dartType, value, format: format),
     JsonIntegerSchema _ => '($value as num).toInt()',
     JsonNumberSchema _ => '$value as num',
     JsonBooleanSchema _ => '$value as bool',
     JsonArraySchema _ =>
       '($value as List).map((item) => ${_decodeSchemaValue(schema.items ?? const JsonSchema.any(), 'item', schemaTypes)}).toList(growable: false)',
-    JsonCompositeSchema(:final dartType) => switch (_clientDartTypeName(
+    JsonCompositeSchema(:final dartType) => _decodeClientCustomValue(
       dartType,
-    )) {
-      final typeName? => '$typeName.decode($value)',
-      null => value,
-    },
+      value,
+    ),
     JsonObjectSchema(:final id?) => _decodeClientModelValue(
       _schemaTypeFromId(id, schemaTypes),
       value,
@@ -1268,18 +1293,130 @@ String _encodeSchemaValue(
       value,
       nullable: nullable,
     ),
-    JsonStringSchema(:final dartType, :final format)
-        when dartType == null && format == 'date-time' =>
-      nullable ? '$value?.toIso8601String()' : '$value.toIso8601String()',
+    JsonStringSchema(:final dartType, :final format) =>
+      _encodeClientStringValue(
+        dartType,
+        value,
+        nullable: nullable,
+        format: format,
+      ),
     JsonArraySchema(:final items?) => _encodeArrayValue(
       items,
       value,
       nullable: nullable,
       schemaTypes: schemaTypes,
     ),
-    JsonCompositeSchema(:final dartType) when dartType != null =>
-      nullable ? '$value?.toJson()' : '$value.toJson()',
+    JsonCompositeSchema(:final dartType) => _encodeClientCustomValue(
+      dartType,
+      value,
+      nullable: nullable,
+    ),
     _ => value,
+  };
+}
+
+String _decodeClientStringValue(
+  DartSchemaType? dartType,
+  String value, {
+  required String? format,
+}) {
+  if (dartType == null) {
+    if (format == 'date-time') {
+      return 'DateTime.parse($value as String)';
+    }
+    return '$value as String';
+  }
+
+  final typeName = _clientDartTypeName(dartType);
+  if (typeName == null) {
+    return '$value as String';
+  }
+  return switch (dartType) {
+    DartConcreteSchemaType() ||
+    DartNamedSchemaType() => switch (_clientDartSchemaConversion(
+      dartType,
+      defaultConversion: DartSchemaConversion.value,
+    )) {
+      DartSchemaConversion.value => '$typeName($value as String)',
+      DartSchemaConversion.model => '$typeName.decode($value)',
+      DartSchemaConversion.infer => throw StateError(
+        'Dart schema conversion inference should be resolved.',
+      ),
+    },
+    DartGenericSchemaType() => '$value as $typeName',
+  };
+}
+
+String _encodeClientStringValue(
+  DartSchemaType? dartType,
+  String value, {
+  required bool nullable,
+  required String? format,
+}) {
+  if (dartType == null) {
+    if (format == 'date-time') {
+      return nullable
+          ? '$value?.toIso8601String()'
+          : '$value.toIso8601String()';
+    }
+    return value;
+  }
+
+  return switch (dartType) {
+    DartConcreteSchemaType() ||
+    DartNamedSchemaType() => switch (_clientDartSchemaConversion(
+      dartType,
+      defaultConversion: DartSchemaConversion.value,
+    )) {
+      DartSchemaConversion.value => nullable ? '$value?.value' : '$value.value',
+      DartSchemaConversion.model =>
+        nullable ? '$value?.toJson()' : '$value.toJson()',
+      DartSchemaConversion.infer => throw StateError(
+        'Dart schema conversion inference should be resolved.',
+      ),
+    },
+    DartGenericSchemaType() => value,
+  };
+}
+
+String _decodeClientCustomValue(DartSchemaType? dartType, String value) {
+  final typeName = _clientDartTypeName(dartType);
+  if (typeName == null) {
+    return value;
+  }
+  if (dartType case DartGenericSchemaType()) {
+    return '$value as $typeName';
+  }
+  return switch (_clientDartSchemaConversion(
+    dartType!,
+    defaultConversion: DartSchemaConversion.model,
+  )) {
+    DartSchemaConversion.value => '$typeName($value)',
+    DartSchemaConversion.model => '$typeName.decode($value)',
+    DartSchemaConversion.infer => throw StateError(
+      'Dart schema conversion inference should be resolved.',
+    ),
+  };
+}
+
+String _encodeClientCustomValue(
+  DartSchemaType? dartType,
+  String value, {
+  required bool nullable,
+}) {
+  if (dartType == null || dartType is DartGenericSchemaType) {
+    return value;
+  }
+  return switch (_clientDartSchemaConversion(
+    dartType,
+    defaultConversion: DartSchemaConversion.model,
+  )) {
+    DartSchemaConversion.value => nullable ? '$value?.value' : '$value.value',
+    DartSchemaConversion.model =>
+      nullable ? '$value?.toJson()' : '$value.toJson()',
+    DartSchemaConversion.infer => throw StateError(
+      'Dart schema conversion inference should be resolved.',
+    ),
   };
 }
 
@@ -1317,6 +1454,20 @@ String? _clientDartTypeName(DartSchemaType? dartType) {
     DartGenericSchemaType(:final name) => name,
     null => null,
   };
+}
+
+DartSchemaConversion _clientDartSchemaConversion(
+  DartSchemaType dartType, {
+  required DartSchemaConversion defaultConversion,
+}) {
+  final conversion = switch (dartType) {
+    DartConcreteSchemaType(:final conversion) ||
+    DartNamedSchemaType(:final conversion) => conversion,
+    DartGenericSchemaType() => DartSchemaConversion.infer,
+  };
+  return conversion == DartSchemaConversion.infer
+      ? defaultConversion
+      : conversion;
 }
 
 String _encodeArrayValue(

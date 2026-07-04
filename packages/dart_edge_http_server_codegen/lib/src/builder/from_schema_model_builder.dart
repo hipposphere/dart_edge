@@ -645,13 +645,23 @@ Expression _schemaListExpression(List<JsonSchema> schemas) {
 
 Expression _dartSchemaTypeExpression(DartSchemaType dartType) {
   final typeName = _dartTypeName(dartType);
+  final name = literalString(typeName ?? 'Object');
   return switch (dartType) {
-    DartConcreteSchemaType() || DartNamedSchemaType() => refer(
-      'DartSchemaType',
-    ).constInstanceNamed('named', [literalString(typeName ?? 'Object')]),
+    DartConcreteSchemaType(:final conversion) ||
+    DartNamedSchemaType(:final conversion) => switch (conversion) {
+      DartSchemaConversion.value => refer(
+        'DartSchemaType',
+      ).constInstanceNamed('value', [name]),
+      DartSchemaConversion.model => refer(
+        'DartSchemaType',
+      ).constInstanceNamed('model', [name]),
+      DartSchemaConversion.infer => refer(
+        'DartSchemaType',
+      ).constInstanceNamed('named', [name]),
+    },
     DartGenericSchemaType() => refer(
       'DartSchemaType',
-    ).constInstanceNamed('parameter', [literalString(typeName ?? 'Object')]),
+    ).constInstanceNamed('parameter', [name]),
   };
 }
 
@@ -881,10 +891,10 @@ String _decodeMultipartValue(_SchemaFieldSpec field) {
   return switch (field.schema) {
     JsonStringSchema(:final format) when format == 'binary' =>
       _decodeMultipartFile(fieldName, nullable: field.nullable),
-    JsonStringSchema() => _decodeMultipartText(
+    JsonStringSchema(:final dartType) => _decodeMultipartText(
       fieldName,
       nullable: field.nullable,
-      convert: (value) => value,
+      convert: (value) => _decodeMultipartStringValue(dartType, value),
     ),
     JsonIntegerSchema() => _decodeMultipartText(
       fieldName,
@@ -962,7 +972,10 @@ String _decodeMultipartTextList(
   String convert(String value) {
     return switch (items) {
       null => value,
-      JsonStringSchema() => value,
+      JsonStringSchema(:final dartType) => _decodeMultipartStringValue(
+        dartType,
+        value,
+      ),
       JsonIntegerSchema() => 'int.parse($value)',
       JsonNumberSchema() => 'double.parse($value)',
       JsonBooleanSchema() => 'bool.parse($value)',
@@ -1159,9 +1172,22 @@ String _decodeStringValue(
     if (typeName == null) {
       return stringValue;
     }
-    return nullable
-        ? '$source == null ? null : $typeName($source as String)'
-        : '$typeName($source! as String)';
+    return switch (_dartSchemaConversion(
+      dartType,
+      defaultConversion: DartSchemaConversion.value,
+    )) {
+      DartSchemaConversion.value =>
+        nullable
+            ? '$source == null ? null : $typeName($source as String)'
+            : '$typeName($source! as String)',
+      DartSchemaConversion.model =>
+        nullable
+            ? '$source == null ? null : $typeName.decode($source)'
+            : '$typeName.decode($source)',
+      DartSchemaConversion.infer => throw StateError(
+        'Dart schema conversion inference should be resolved.',
+      ),
+    };
   }
 
   if (dartType case DartGenericSchemaType()) {
@@ -1181,13 +1207,33 @@ String _decodeCompositeValue(
   required bool nullable,
   required List<TypeParameterSpec> typeParameters,
 }) {
-  final typeName = _dartTypeName(dartType, typeParameters: typeParameters);
+  final type = dartType;
+  if (type == null) {
+    return source;
+  }
+  final typeName = _dartTypeName(type, typeParameters: typeParameters);
   if (typeName == null) {
     return source;
   }
-  return nullable
-      ? '$source == null ? null : $typeName.decode($source)'
-      : '$typeName.decode($source)';
+  if (type case DartGenericSchemaType()) {
+    return nullable ? '$source as $typeName?' : '$source as $typeName';
+  }
+  return switch (_dartSchemaConversion(
+    type,
+    defaultConversion: DartSchemaConversion.model,
+  )) {
+    DartSchemaConversion.value =>
+      nullable
+          ? '$source == null ? null : $typeName($source)'
+          : '$typeName($source)',
+    DartSchemaConversion.model =>
+      nullable
+          ? '$source == null ? null : $typeName.decode($source)'
+          : '$typeName.decode($source)',
+    DartSchemaConversion.infer => throw StateError(
+      'Dart schema conversion inference should be resolved.',
+    ),
+  };
 }
 
 String _encodeValue(
@@ -1200,6 +1246,8 @@ String _encodeValue(
     JsonStringSchema(:final dartType, :final format)
         when dartType == null && format == 'date-time' =>
       nullable ? '$source?.toIso8601String()' : '$source.toIso8601String()',
+    JsonStringSchema(:final dartType) when dartType != null =>
+      _encodeTypedStringValue(dartType, source, nullable: nullable),
     JsonArraySchema(:final items) => _encodeArrayValue(
       items,
       source,
@@ -1221,6 +1269,28 @@ String _encodeValue(
   };
 }
 
+String _decodeMultipartStringValue(DartSchemaType? dartType, String source) {
+  final type = dartType;
+  if (type == null ||
+      (type is! DartConcreteSchemaType && type is! DartNamedSchemaType)) {
+    return source;
+  }
+  final typeName = _dartTypeName(type);
+  if (typeName == null) {
+    return source;
+  }
+  return switch (_dartSchemaConversion(
+    type,
+    defaultConversion: DartSchemaConversion.value,
+  )) {
+    DartSchemaConversion.value => '$typeName($source)',
+    DartSchemaConversion.model => '$typeName.decode($source)',
+    DartSchemaConversion.infer => throw StateError(
+      'Dart schema conversion inference should be resolved.',
+    ),
+  };
+}
+
 String _encodeCustomValue(
   DartSchemaType? dartType,
   String source, {
@@ -1229,7 +1299,55 @@ String _encodeCustomValue(
   if (dartType == null) {
     return source;
   }
-  return nullable ? '$source?.toJson()' : '$source.toJson()';
+  if (dartType case DartGenericSchemaType()) {
+    return source;
+  }
+  return switch (_dartSchemaConversion(
+    dartType,
+    defaultConversion: DartSchemaConversion.model,
+  )) {
+    DartSchemaConversion.value => nullable ? '$source?.value' : '$source.value',
+    DartSchemaConversion.model =>
+      nullable ? '$source?.toJson()' : '$source.toJson()',
+    DartSchemaConversion.infer => throw StateError(
+      'Dart schema conversion inference should be resolved.',
+    ),
+  };
+}
+
+String _encodeTypedStringValue(
+  DartSchemaType dartType,
+  String source, {
+  required bool nullable,
+}) {
+  if (dartType case DartGenericSchemaType()) {
+    return source;
+  }
+  return switch (_dartSchemaConversion(
+    dartType,
+    defaultConversion: DartSchemaConversion.value,
+  )) {
+    DartSchemaConversion.value => nullable ? '$source?.value' : '$source.value',
+    DartSchemaConversion.model =>
+      nullable ? '$source?.toJson()' : '$source.toJson()',
+    DartSchemaConversion.infer => throw StateError(
+      'Dart schema conversion inference should be resolved.',
+    ),
+  };
+}
+
+DartSchemaConversion _dartSchemaConversion(
+  DartSchemaType dartType, {
+  required DartSchemaConversion defaultConversion,
+}) {
+  final conversion = switch (dartType) {
+    DartConcreteSchemaType(:final conversion) ||
+    DartNamedSchemaType(:final conversion) => conversion,
+    DartGenericSchemaType() => DartSchemaConversion.infer,
+  };
+  return conversion == DartSchemaConversion.infer
+      ? defaultConversion
+      : conversion;
 }
 
 String _stringSchemaDartType(
@@ -1537,6 +1655,7 @@ DartSchemaType? _dartSchemaTypeField(
     'DartConcreteSchemaType' => switch (_field(value, 'type')?.toTypeValue()) {
       final type? => DartConcreteSchemaType.named(
         type.element?.name ?? type.getDisplayString(),
+        conversion: _dartSchemaConversionField(value),
       ),
       _ => throw InvalidGenerationSourceError(
         'DartSchemaType.type must be called with a Dart type.',
@@ -1544,7 +1663,10 @@ DartSchemaType? _dartSchemaTypeField(
       ),
     },
     'DartNamedSchemaType' => switch (_stringField(value, 'name')) {
-      final name? when name.isNotEmpty => DartSchemaType.named(name),
+      final name? when name.isNotEmpty => DartSchemaType.named(
+        name,
+        conversion: _dartSchemaConversionField(value),
+      ),
       _ => throw InvalidGenerationSourceError(
         'DartSchemaType.named must use a non-empty type name.',
         element: element,
@@ -1561,6 +1683,16 @@ DartSchemaType? _dartSchemaTypeField(
       'JsonSchema.string dartType must be a const DartSchemaType value.',
       element: element,
     ),
+  };
+}
+
+DartSchemaConversion _dartSchemaConversionField(DartObject object) {
+  final name = _field(object, 'conversion')?.getField('_name')?.toStringValue();
+  return switch (name) {
+    null || 'infer' => DartSchemaConversion.infer,
+    'value' => DartSchemaConversion.value,
+    'model' => DartSchemaConversion.model,
+    _ => DartSchemaConversion.infer,
   };
 }
 

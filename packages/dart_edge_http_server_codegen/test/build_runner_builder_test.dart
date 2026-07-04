@@ -114,24 +114,46 @@ sealed class JsonSchema {
   final bool nullable;
 }
 
+enum DartSchemaConversion { infer, value, model }
+
 sealed class DartSchemaType {
   const DartSchemaType();
 
-  const factory DartSchemaType.type(Type type) = DartConcreteSchemaType;
-  const factory DartSchemaType.named(String name) = DartNamedSchemaType;
+  const factory DartSchemaType.type(
+    Type type, {
+    DartSchemaConversion conversion,
+  }) = DartConcreteSchemaType;
+  const factory DartSchemaType.named(
+    String name, {
+    DartSchemaConversion conversion,
+  }) = DartNamedSchemaType;
+  const factory DartSchemaType.value(String name) = DartNamedSchemaType.value;
+  const factory DartSchemaType.model(String name) = DartNamedSchemaType.model;
   const factory DartSchemaType.parameter(String name) = DartGenericSchemaType;
 }
 
 final class DartConcreteSchemaType extends DartSchemaType {
-  const DartConcreteSchemaType(this.type);
+  const DartConcreteSchemaType(
+    this.type, {
+    this.conversion = DartSchemaConversion.infer,
+  });
 
   final Type type;
+  final DartSchemaConversion conversion;
 }
 
 final class DartNamedSchemaType extends DartSchemaType {
-  const DartNamedSchemaType(this.name);
+  const DartNamedSchemaType(
+    this.name, {
+    this.conversion = DartSchemaConversion.infer,
+  });
+  const DartNamedSchemaType.value(this.name)
+    : conversion = DartSchemaConversion.value;
+  const DartNamedSchemaType.model(this.name)
+    : conversion = DartSchemaConversion.model;
 
   final String name;
+  final DartSchemaConversion conversion;
 }
 
 final class DartGenericSchemaType extends DartSchemaType {
@@ -675,16 +697,28 @@ final class JsonAnyOfSchema extends JsonSchema {
   final DartSchemaType? dartType;
 }
 
+enum DartSchemaConversion { infer, value, model }
+
 sealed class DartSchemaType {
   const DartSchemaType();
 
-  const factory DartSchemaType.named(String name) = DartNamedSchemaType;
+  const factory DartSchemaType.named(
+    String name, {
+    DartSchemaConversion conversion,
+  }) = DartNamedSchemaType;
+  const factory DartSchemaType.model(String name) = DartNamedSchemaType.model;
 }
 
 final class DartNamedSchemaType extends DartSchemaType {
-  const DartNamedSchemaType(this.name);
+  const DartNamedSchemaType(
+    this.name, {
+    this.conversion = DartSchemaConversion.infer,
+  });
+  const DartNamedSchemaType.model(this.name)
+    : conversion = DartSchemaConversion.model;
 
   final String name;
+  final DartSchemaConversion conversion;
 }
 
 final class FromSchema {
@@ -743,7 +777,7 @@ const roleInputSchema = JsonSchema.anyOf(
     JsonSchema.string(),
     JsonSchema.array(items: JsonSchema.string()),
   ],
-  dartType: DartSchemaType.named('RoleInput'),
+  dartType: DartSchemaType.model('RoleInput'),
 );
 
 const setRoleBodySchema = JsonSchema.object(
@@ -768,7 +802,7 @@ typedef SetRoleBody = _$SetRoleBody;
               contains('"role": role.toJson()'),
               contains('static const JsonSchema schema = JsonSchema.object('),
               contains('JsonSchema.anyOf'),
-              contains("dartType: DartSchemaType.named('RoleInput')"),
+              contains("dartType: DartSchemaType.model('RoleInput')"),
             ]),
           ),
         },
@@ -964,24 +998,46 @@ sealed class JsonSchema {
   final bool nullable;
 }
 
+enum DartSchemaConversion { infer, value, model }
+
 sealed class DartSchemaType {
   const DartSchemaType();
 
-  const factory DartSchemaType.type(Type type) = DartConcreteSchemaType;
-  const factory DartSchemaType.named(String name) = DartNamedSchemaType;
+  const factory DartSchemaType.type(
+    Type type, {
+    DartSchemaConversion conversion,
+  }) = DartConcreteSchemaType;
+  const factory DartSchemaType.named(
+    String name, {
+    DartSchemaConversion conversion,
+  }) = DartNamedSchemaType;
+  const factory DartSchemaType.value(String name) = DartNamedSchemaType.value;
+  const factory DartSchemaType.model(String name) = DartNamedSchemaType.model;
   const factory DartSchemaType.parameter(String name) = DartGenericSchemaType;
 }
 
 final class DartConcreteSchemaType extends DartSchemaType {
-  const DartConcreteSchemaType(this.type);
+  const DartConcreteSchemaType(
+    this.type, {
+    this.conversion = DartSchemaConversion.infer,
+  });
 
   final Type type;
+  final DartSchemaConversion conversion;
 }
 
 final class DartNamedSchemaType extends DartSchemaType {
-  const DartNamedSchemaType(this.name);
+  const DartNamedSchemaType(
+    this.name, {
+    this.conversion = DartSchemaConversion.infer,
+  });
+  const DartNamedSchemaType.value(this.name)
+    : conversion = DartSchemaConversion.value;
+  const DartNamedSchemaType.model(this.name)
+    : conversion = DartSchemaConversion.model;
 
   final String name;
+  final DartSchemaConversion conversion;
 }
 
 final class DartGenericSchemaType extends DartSchemaType {
@@ -1104,6 +1160,16 @@ final class SchemaRefModel {
 
 extension type DocumentId(String value) implements String {}
 
+final class WorkspaceName {
+  const WorkspaceName(this.value);
+
+  final String value;
+
+  static WorkspaceName decode(Object? value) => WorkspaceName(value as String);
+
+  String toJson() => value;
+}
+
 const idParamsSchema = JsonSchema.object(
   id: 'IdParams',
   properties: <String, JsonSchema>{
@@ -1118,10 +1184,13 @@ const idParamsSchema = JsonSchema.object(
       ),
     ),
     'concrete_id': JsonSchema.string(
-      dartType: DartSchemaType.named('DocumentId'),
+      dartType: DartSchemaType.value('DocumentId'),
+    ),
+    'workspace_name': JsonSchema.string(
+      dartType: DartSchemaType.model('WorkspaceName'),
     ),
   },
-  required: <String>['id', 'items', 'concrete_id'],
+  required: <String>['id', 'items', 'concrete_id', 'workspace_name'],
   additionalProperties: false,
 );
 
@@ -1143,6 +1212,7 @@ typedef StringIdParams = _$StringIdParams;
               contains('final TId? optionalId;'),
               contains('final List<Map<String, Object?>> items;'),
               contains('final DocumentId concreteId;'),
+              contains('final WorkspaceName workspaceName;'),
               contains(
                 'static const RequestBody requestBody = RequestBody.json(',
               ),
@@ -1159,6 +1229,13 @@ typedef StringIdParams = _$StringIdParams;
               contains(
                 'concreteId: DocumentId(json["concrete_id"]! as String),',
               ),
+              contains('workspaceName: WorkspaceName.decode('),
+              contains('"concrete_id": concreteId.value,'),
+              contains('"workspace_name": workspaceName.toJson(),'),
+              contains("'concrete_id': JsonSchema.string("),
+              contains("dartType: DartSchemaType.value('DocumentId')"),
+              contains("'workspace_name': JsonSchema.string("),
+              contains("dartType: DartSchemaType.model('WorkspaceName')"),
               contains(
                 'final class _\$StringIdParams implements JsonEncodable',
               ),

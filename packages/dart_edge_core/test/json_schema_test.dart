@@ -64,16 +64,62 @@ void main() {
     expect(schema.toJson(), {'type': 'string', 'format': 'uuid'});
   });
 
+  test('supports named Dart string type metadata', () {
+    const schema = JsonSchema.string(
+      format: 'uuid',
+      dartType: DartSchemaType.named('WorkspaceId'),
+    );
+
+    expect(schema, isA<JsonStringSchema>());
+    expect((schema as JsonStringSchema).dartType, isA<DartNamedSchemaType>());
+    expect(schema.toJson(), {'type': 'string', 'format': 'uuid'});
+  });
+
+  test('distinguishes Dart value and model conversions', () {
+    const valueSchema = JsonSchema.string(
+      dartType: DartSchemaType.value('WorkspaceId'),
+    );
+    const modelSchema = JsonSchema.string(
+      dartType: DartSchemaType.model('WorkspaceId'),
+    );
+
+    expect(
+      (valueSchema as JsonStringSchema).dartType,
+      isA<DartNamedSchemaType>().having(
+        (type) => type.conversion,
+        'conversion',
+        DartSchemaConversion.value,
+      ),
+    );
+    expect(
+      (modelSchema as JsonStringSchema).dartType,
+      isA<DartNamedSchemaType>().having(
+        (type) => type.conversion,
+        'conversion',
+        DartSchemaConversion.model,
+      ),
+    );
+    expect(valueSchema.toJson(), {'type': 'string'});
+    expect(modelSchema.toJson(), {'type': 'string'});
+  });
+
   test(
     'serializes anyOf schemas and keeps Dart type metadata out of output',
     () {
       const schema = JsonSchema.anyOf([
         JsonSchema.string(),
         JsonSchema.array(items: JsonSchema.string()),
-      ], dartType: DartSchemaType.named('RoleInput'));
+      ], dartType: DartSchemaType.model('RoleInput'));
 
       expect(schema, isA<JsonAnyOfSchema>());
-      expect((schema as JsonAnyOfSchema).dartType, isA<DartNamedSchemaType>());
+      expect(
+        (schema as JsonAnyOfSchema).dartType,
+        isA<DartNamedSchemaType>().having(
+          (type) => type.conversion,
+          'conversion',
+          DartSchemaConversion.model,
+        ),
+      );
       expect(schema.toJson(), {
         'anyOf': [
           {'type': 'string'},

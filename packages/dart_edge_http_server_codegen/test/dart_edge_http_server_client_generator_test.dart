@@ -290,6 +290,106 @@ void main() {
       expect(models, contains("'ban_expires': banExpires?.toIso8601String()"));
     });
 
+    test('emits named string scalar client model fields', () {
+      final spec = DartEdgeClientLibrarySpec(
+        className: 'WorkspaceClient',
+        schemas: const [
+          JsonSchema.object(
+            id: 'ListWorkspaceFilesBody',
+            properties: {
+              'workspace_id': JsonSchema.string(
+                format: 'uuid',
+                dartType: DartSchemaType.value('WorkspaceWorkspaceId'),
+              ),
+              'folder_id': JsonSchema.string(
+                nullable: true,
+                format: 'uuid',
+                dartType: DartSchemaType.value('WorkspaceWorkspaceFolderId'),
+              ),
+            },
+            required: ['workspace_id'],
+            additionalProperties: false,
+          ),
+        ],
+        operations: [
+          DartEdgeClientOperation(
+            method: HttpMethod.post,
+            path: '/workspace/files',
+            options: const RouteOptions(
+              operationId: 'listWorkspaceFiles',
+              body: RequestBody.json(
+                schema: JsonSchema.ref('ListWorkspaceFilesBody'),
+              ),
+              success: ResponseSpec.json(),
+            ),
+            successType: 'Object?',
+            bodyType: 'ListWorkspaceFilesBody',
+          ),
+        ],
+      );
+
+      final models = const DartEdgeClientGenerator().generateModelsPart(spec);
+
+      expect(models, contains('final WorkspaceWorkspaceId workspaceId;'));
+      expect(models, contains('final WorkspaceWorkspaceFolderId? folderId;'));
+      expect(
+        models,
+        contains(
+          "workspaceId: WorkspaceWorkspaceId(json['workspace_id']! as String)",
+        ),
+      );
+      expect(
+        models,
+        contains("WorkspaceWorkspaceFolderId(json['folder_id'] as String)"),
+      );
+      expect(models, contains("'workspace_id': workspaceId.value"));
+      expect(models, contains("'folder_id': folderId?.value"));
+    });
+
+    test('emits model string scalar client model fields', () {
+      final spec = DartEdgeClientLibrarySpec(
+        className: 'WorkspaceClient',
+        schemas: const [
+          JsonSchema.object(
+            id: 'RenameWorkspaceBody',
+            properties: {
+              'workspace_name': JsonSchema.string(
+                dartType: DartSchemaType.model('WorkspaceName'),
+              ),
+            },
+            required: ['workspace_name'],
+            additionalProperties: false,
+          ),
+        ],
+        operations: [
+          DartEdgeClientOperation(
+            method: HttpMethod.post,
+            path: '/workspace/rename',
+            options: const RouteOptions(
+              operationId: 'renameWorkspace',
+              body: RequestBody.json(
+                schema: JsonSchema.ref('RenameWorkspaceBody'),
+              ),
+              success: ResponseSpec.json(),
+            ),
+            successType: 'Object?',
+            bodyType: 'RenameWorkspaceBody',
+          ),
+        ],
+      );
+
+      final models = const DartEdgeClientGenerator().generateModelsPart(spec);
+
+      expect(models, contains('final WorkspaceName workspaceName;'));
+      expect(
+        models,
+        contains(
+          "workspaceName: WorkspaceName.decode(json['workspace_name']!)",
+        ),
+      );
+      expect(models, contains("'workspace_name': workspaceName.toJson()"));
+    });
+
     test('emits multipart client body models and encoders', () {
       final spec = DartEdgeClientLibrarySpec(
         className: 'UploadsClient',
@@ -398,6 +498,53 @@ void main() {
       expect(models, contains('MultipartFormData toMultipartFormData()'));
       expect(models, contains('file.asFile("file")'));
       expect(models, isNot(contains('final String file;')));
+    });
+
+    test('emits named string scalar multipart fields', () {
+      final spec = DartEdgeClientLibrarySpec(
+        className: 'UploadsClient',
+        schemas: const [
+          JsonSchema.object(
+            id: 'UploadBody',
+            properties: {
+              'workspace_id': JsonSchema.string(
+                format: 'uuid',
+                dartType: DartSchemaType.value('WorkspaceWorkspaceId'),
+              ),
+              'folder_id': JsonSchema.string(
+                nullable: true,
+                format: 'uuid',
+                dartType: DartSchemaType.value('WorkspaceWorkspaceFolderId'),
+              ),
+              'file': JsonSchema.string(format: 'binary'),
+            },
+            required: ['workspace_id', 'file'],
+            additionalProperties: false,
+          ),
+        ],
+        operations: [
+          DartEdgeClientOperation(
+            method: HttpMethod.post,
+            path: '/uploads',
+            options: const RouteOptions(
+              operationId: 'upload',
+              body: RequestBody.multipartFormData(
+                schema: JsonSchema.ref('UploadBody'),
+              ),
+              success: ResponseSpec.json(),
+            ),
+            successType: 'Object?',
+            bodyType: 'UploadBody',
+          ),
+        ],
+      );
+
+      final models = const DartEdgeClientGenerator().generateModelsPart(spec);
+
+      expect(models, contains('final WorkspaceWorkspaceId workspaceId;'));
+      expect(models, contains('final WorkspaceWorkspaceFolderId? folderId;'));
+      expect(models, contains('value: workspaceId.value.toString()'));
+      expect(models, contains('value: folderId!.value.toString()'));
     });
 
     test('uses configured formatter page width for model parts', () {

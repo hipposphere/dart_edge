@@ -310,9 +310,13 @@ void main() {
       outputs: {
         'test_app|lib/app_schema.g.dart': decodedMatches(
           allOf([
-            contains('extension type const AuthUserId(String value) {}'),
+            contains('extension type const AuthUserId(String value) {'),
+            contains('static const JsonSchema schema = .string('),
             contains('final AuthUserId ownerId;'),
             contains("ownerId: AuthUserId(row.read<String>("),
+            contains("'owner_id': JsonSchema.string("),
+            contains("format: 'uuid'"),
+            contains("dartType: .value('AuthUserId')"),
             contains('static final ownerId = SqlColumn<AuthUserId>('),
           ]),
         ),

@@ -26,6 +26,15 @@ Iterable<Spec> _tableSpecs(
 Code _extensionValueTypeSpec(IntrospectedColumn column) {
   final typeName = _valueType(column);
   final baseType = _databaseValueType(column);
+  if (baseType == 'String') {
+    return Code('''
+extension type const $typeName($baseType value) {
+  static const JsonSchema schema = .string(
+    dartType: .value('$typeName'),
+  );
+}
+''');
+  }
   return Code('''
 extension type const $typeName($baseType value) {}
 ''');

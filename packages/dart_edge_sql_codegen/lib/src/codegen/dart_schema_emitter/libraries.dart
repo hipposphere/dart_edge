@@ -33,6 +33,11 @@ String _emitExternalPrimaryKeysLibrary(
   required DartSchemaFormatterOptions formatterOptions,
 }) {
   final library = Library((builder) {
+    if (externalPrimaryKeyTypes.any((type) => type.baseDartType == 'String')) {
+      builder.directives.add(
+        Directive.import('package:dart_edge_core/dart_edge_core.dart'),
+      );
+    }
     builder.body.addAll(
       externalPrimaryKeyTypes.map(
         (type) => _extensionValueTypeSpec(

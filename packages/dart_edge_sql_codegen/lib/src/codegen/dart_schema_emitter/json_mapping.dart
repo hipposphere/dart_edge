@@ -529,6 +529,19 @@ Expression _jsonSchemaForColumn(
     );
   }
 
+  if (_hasExtensionBackedValueType(column) && type == 'String') {
+    final format = _jsonStringFormatForColumn(column);
+    if (!column.nullable && format == null) {
+      return refer(_valueType(column)).property('schema');
+    }
+    return _jsonSchemaFactory(
+      'string',
+      nullable: column.nullable,
+      format: format,
+      dartType: _dartSchemaTypeValue(_valueType(column)),
+    );
+  }
+
   if (type == 'Object?') {
     return refer('JsonSchema').constInstanceNamed('any', const []);
   }
@@ -546,7 +559,11 @@ Expression _jsonSchemaForColumn(
     'double' ||
     'num' => _jsonSchemaFactory('number', nullable: column.nullable),
     'bool' => _jsonSchemaFactory('boolean', nullable: column.nullable),
-    'String' => _jsonSchemaFactory('string', nullable: column.nullable),
+    'String' => _jsonSchemaFactory(
+      'string',
+      nullable: column.nullable,
+      format: _jsonStringFormatForColumn(column),
+    ),
     'DateTime' => _jsonSchemaFactory(
       'string',
       nullable: column.nullable,
@@ -580,15 +597,30 @@ Expression _jsonSchemaFactory(
   String kind, {
   required bool nullable,
   String? format,
+  Expression? dartType,
   Expression? items,
   Expression? enumValues,
 }) {
   return refer('JsonSchema').constInstanceNamed(kind, const <Expression>[], {
     if (nullable) 'nullable': literalBool(true),
     if (format case final format?) 'format': literalString(format),
+    'dartType': ?dartType,
     'items': ?items,
     'enumValues': ?enumValues,
   });
+}
+
+Expression _dartSchemaTypeValue(String typeName) {
+  return refer(
+    'DartSchemaType',
+  ).constInstanceNamed('value', [literalString(typeName)]);
+}
+
+String? _jsonStringFormatForColumn(IntrospectedColumn column) {
+  return switch (_normalizeDatabaseType(column.databaseType)) {
+    'uuid' => 'uuid',
+    _ => null,
+  };
 }
 
 Method _mapMethod({

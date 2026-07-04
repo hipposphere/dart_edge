@@ -1176,11 +1176,12 @@ void main() {
     );
     expect(
       userTable,
-      contains('extension type const AuthUserId(String value) {}'),
+      contains('extension type const AuthUserId(String value) {'),
     );
+    expect(userTable, contains('static const JsonSchema schema = .string('));
     expect(
       apiKeyTable,
-      contains('extension type const AuthApiKeyKey(String value) {}'),
+      contains('extension type const AuthApiKeyKey(String value) {'),
     );
   });
 
@@ -1241,7 +1242,7 @@ void main() {
 
     expect(
       phoneCallTable,
-      contains('extension type const PublicPhoneCallId(String value) {}'),
+      contains('extension type const PublicPhoneCallId(String value) {'),
     );
     expect(phoneCallDataTable, contains("import 'phone_call.g.dart';"));
     expect(
@@ -1422,12 +1423,20 @@ void main() {
 
     expect(
       externalKeys,
-      contains('extension type const AuthUserId(String value) {}'),
+      contains('extension type const AuthUserId(String value) {'),
     );
+    expect(externalKeys, contains('static const JsonSchema schema = .string('));
+    expect(externalKeys, contains("dartType: .value('AuthUserId')"));
     expect(notesTable, contains("import '../../../external_keys.g.dart';"));
     expect(notesTable, contains('final AuthUserId ownerId;'));
     expect(notesTable, contains("ownerId: AuthUserId(row.read<String>("));
     expect(notesTable, contains("'owner_id': ownerId.value"));
+    expect(notesTable, contains("'owner_id': JsonSchema.string("));
+    expect(notesTable, contains("format: 'uuid'"));
+    expect(
+      notesTable,
+      contains("dartType: DartSchemaType.value('AuthUserId')"),
+    );
     expect(
       notesTable,
       contains('static final ownerId = SqlColumn<AuthUserId>('),
@@ -1470,7 +1479,7 @@ void main() {
 
     expect(
       emission.fileAt('external_keys.g.dart').contents,
-      contains('extension type const AuthApiKeyKey(String value) {}'),
+      contains('extension type const AuthApiKeyKey(String value) {'),
     );
     expect(
       emission.fileAt('app_schema.g.dart').contents,
