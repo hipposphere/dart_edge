@@ -17,7 +17,7 @@ on:
         description: Flutter SDK version.
         required: false
         type: string
-        default: "3.44.0"
+        default: "3.44.4"
       publish:
         description: Upload the built IPA to App Store Connect.
         required: false
