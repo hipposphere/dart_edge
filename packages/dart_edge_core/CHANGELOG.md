@@ -1,3 +1,7 @@
+## 0.3.28
+
+- Add reusable API contract endpoint and metadata-only route helpers.
+
 ## 0.3.26
 
 - Add `SqlVector` as a shared pgvector value contract.
