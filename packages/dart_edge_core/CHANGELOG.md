@@ -1,3 +1,7 @@
+## 0.3.29
+
+- Add `SqlRow` helpers for reading values by typed SQL column projection aliases.
+
 ## 0.3.28
 
 - Add reusable API contract endpoint and metadata-only route helpers.

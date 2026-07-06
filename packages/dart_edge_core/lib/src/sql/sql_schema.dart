@@ -80,6 +80,30 @@ final class SqlColumn<TValue> {
   SqlColumn<Object?> get asObjectColumn => this as SqlColumn<Object?>;
 }
 
+/// Column-aware helpers for rows produced by typed SQL projections.
+///
+/// Selecting a [SqlColumn] aliases it with the owning table's
+/// [SqlTable.selectionPrefix] to avoid collisions in joined selections. These
+/// helpers read that default alias without requiring callers to duplicate the
+/// aliasing convention as a string.
+extension SqlRowColumnRead on SqlRow {
+  /// Whether this row contains the default projection alias for [column].
+  bool containsColumn(SqlColumn<dynamic> column) =>
+      containsKey(column.selectionAlias);
+
+  /// Reads the default projection alias for [column] as a non-null value.
+  TValue readColumn<TValue>(SqlColumn<TValue> column) =>
+      read<TValue>(column.selectionAlias);
+
+  /// Reads the default projection alias for [column] as a nullable value.
+  TValue? readNullableColumn<TValue>(SqlColumn<TValue> column) =>
+      readNullable<TValue>(column.selectionAlias);
+}
+
+extension on SqlColumn<dynamic> {
+  String get selectionAlias => '${table.selectionPrefix}$name';
+}
+
 /// Lightweight table descriptor for system catalogs and ad hoc query inputs.
 final class SqlRawTable
     extends SqlTable<SqlRow, Map<String, Object?>, Map<String, Object?>> {

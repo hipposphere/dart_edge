@@ -1,3 +1,8 @@
+## 0.3.27
+
+- Re-export `SqlRow` typed-column read helpers from `dart_edge_core`.
+- Require `dart_edge_core` 0.3.29.
+
 ## 0.3.26
 
 - Add pgvector parameter encoding and result decoding through `SqlVector`.

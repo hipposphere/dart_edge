@@ -10,6 +10,15 @@ void main() {
     expect(row.asMap(), {'id': 1, 'name': 'Ada', 'nickname': null});
   });
 
+  test('SqlRow reads values by typed column projection alias', () {
+    final row = SqlRow({'public_users__id': 1, 'public_users__nickname': null});
+
+    expect(row.containsColumn(_UsersTable.id), isTrue);
+    expect(row.readColumn(_UsersTable.id), 1);
+    expect(row.readNullableColumn(_UsersTable.nickname), isNull);
+    expect(() => row.readColumn(_UsersTable.email), throwsStateError);
+  });
+
   test('SqlValue distinguishes absent from present null', () {
     expect(const SqlValue<int>.absent().isPresent, isFalse);
     expect(const SqlValue<int?>(null).isPresent, isTrue);
@@ -39,6 +48,12 @@ final class _UsersTable
     name: 'id',
     databaseType: 'uuid',
   );
+  static const email = SqlColumn<String>(table: table, name: 'email');
+  static const nickname = SqlColumn<String?>(
+    table: table,
+    name: 'nickname',
+    nullable: true,
+  );
 
   @override
   String get name => 'users';
@@ -49,6 +64,8 @@ final class _UsersTable
   @override
   List<SqlColumn<Object?>> get columns => <SqlColumn<Object?>>[
     id.asObjectColumn,
+    email.asObjectColumn,
+    nickname.asObjectColumn,
   ];
 
   @override

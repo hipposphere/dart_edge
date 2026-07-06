@@ -50,7 +50,9 @@ void main() {
 
     expect(rawRows, hasLength(3));
     expect(rawRows.first.read<String>('users__email'), 'ada@example.com');
+    expect(rawRows.first.readColumn(UsersTable.email), 'ada@example.com');
     expect(rawRows.first.read<String>('posts__title'), 'Analytical Engine');
+    expect(rawRows.first.readColumn(PostsTable.title), 'Analytical Engine');
 
     final joinedRows = await pool.typed
         .from(UsersTable.table)
