@@ -18,7 +18,7 @@ void main() {
     final users = await pool.typed
         .from(UsersTable.table)
         .selectAll()
-        .orderBy(UsersTable.id)
+        .orderByColumn(UsersTable.id)
         .execute();
 
     expect(users, hasLength(2));
@@ -31,7 +31,7 @@ void main() {
           on: UsersTable.id.equalsColumn(PostsTable.userId),
         )
         .selectAllRaw()
-        .orderBy(PostsTable.id)
+        .orderByColumn(PostsTable.id)
         .execute();
 
     expect(rawAllRows, hasLength(3));
@@ -45,7 +45,7 @@ void main() {
           on: UsersTable.id.equalsColumn(PostsTable.userId),
         )
         .select([UsersTable.email, PostsTable.title])
-        .orderBy(PostsTable.id)
+        .orderByColumn(PostsTable.id)
         .execute();
 
     expect(rawRows, hasLength(3));
@@ -61,7 +61,7 @@ void main() {
           on: UsersTable.id.equalsColumn(PostsTable.userId),
         )
         .selectTables2(UsersTable.table, PostsTable.table)
-        .orderBy(PostsTable.id)
+        .orderByColumn(PostsTable.id)
         .execute();
 
     expect(joinedRows, hasLength(3));
@@ -148,7 +148,7 @@ void main() {
     final remaining = await pool.typed
         .from(UsersTable.table)
         .selectAll()
-        .orderBy(UsersTable.id)
+        .orderByColumn(UsersTable.id)
         .execute();
 
     expect(remaining, hasLength(1));
@@ -225,7 +225,18 @@ void main() {
             UsersTable.email.equals('alan@example.com'),
           ]),
         )
-        .orderBy(UsersTable.email)
+        .orderBy(UsersTable.email.asc())
+        .selectAll()
+        .execute();
+    final alanOrAda = await pool.typed
+        .from(UsersTable.table)
+        .where(
+          .or([
+            UsersTable.email.equals('ada@example.com'),
+            UsersTable.email.equals('alan@example.com'),
+          ]),
+        )
+        .orderBy(UsersTable.email.desc())
         .selectAll()
         .execute();
 
@@ -233,6 +244,10 @@ void main() {
     expect(adaOrAlan.map((user) => user.email), [
       'ada@example.com',
       'alan@example.com',
+    ]);
+    expect(alanOrAda.map((user) => user.email), [
+      'alan@example.com',
+      'ada@example.com',
     ]);
   });
 
@@ -256,7 +271,7 @@ void main() {
         .distinct()
         .where(raw.eq('"u"."email"', 'ada@example.com'))
         .where(raw.gt('"u"."id"', 0))
-        .orderBy('"u"."id"')
+        .orderByExpression(const SqlRawExpression<dynamic>('"u"."id"'))
         .execute();
 
     expect(rows, hasLength(1));
@@ -274,7 +289,7 @@ void main() {
         .select(['"u"."email" AS "email"', 'COUNT("p"."id") AS "post_count"'])
         .groupBy('"u"."email"')
         .having('COUNT("p"."id") > @minimum', parameters: {'minimum': 1})
-        .orderBy('"u"."email"')
+        .orderByExpression(const SqlRawExpression<dynamic>('"u"."email"'))
         .execute();
 
     expect(grouped, hasLength(1));
@@ -290,7 +305,7 @@ void main() {
             raw.eq('"u"."email"', 'alan@example.com'),
           ]),
         )
-        .orderBy('"u"."email"')
+        .orderByExpression(const SqlRawExpression<dynamic>('"u"."email"'))
         .execute();
 
     expect(rawOrRows.map((row) => row.read<String>('email')), [
@@ -384,7 +399,7 @@ void main() {
 
     final typedStatement = pg.typed
         .from(UsersTable.table)
-        .orderBy(UsersTable.id)
+        .orderByColumn(UsersTable.id)
         .limit(10)
         .forUpdate(of: [UsersTable.table], wait: .skipLocked)
         .selectAll()

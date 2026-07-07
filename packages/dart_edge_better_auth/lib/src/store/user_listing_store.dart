@@ -15,7 +15,7 @@ extension BetterAuthStoreUserListing on BetterAuthStore {
       final users = await pool.typed
           .from(_schema.user)
           .selectAll()
-          .orderBy(_schema.user.createdAt)
+          .orderByColumn(_schema.user.createdAt)
           .limit(limit)
           .execute();
       return BetterAuthListUsersResult(

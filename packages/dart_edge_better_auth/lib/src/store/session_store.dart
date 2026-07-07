@@ -9,7 +9,7 @@ extension BetterAuthStoreSessions on BetterAuthStore {
           .from(_schema.session)
           .selectAll()
           .where(_schema.session.userId.equals(userId))
-          .orderBy(_schema.session.createdAt)
+          .orderByColumn(_schema.session.createdAt)
           .execute();
       return BetterAuthListUserSessionsResult(
         sessions: sessions.map(_sessionFromGeneratedRow).toList(),

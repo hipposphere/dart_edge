@@ -101,7 +101,7 @@ SelectedSelectQueryBuilder<SqlRow> _tablesQuery(SqlRawQueryRoot raw) {
       .select(const ['CAST(name AS TEXT) AS table_name'])
       .where(raw.eq('type', 'table'))
       .where(.raw("name NOT LIKE 'sqlite_%'"))
-      .orderBy('name');
+      .orderByExpression(const SqlRawExpression<dynamic>('name'));
 }
 
 SelectedSelectQueryBuilder<SqlRow> _columnsQuery(
@@ -117,7 +117,7 @@ SelectedSelectQueryBuilder<SqlRow> _columnsQuery(
         'CAST(dflt_value IS NOT NULL AS INTEGER) AS has_default',
         'CAST("pk" AS INTEGER) AS is_primary_key',
       ])
-      .orderBy('cid');
+      .orderByExpression(const SqlRawExpression<dynamic>('cid'));
 }
 
 String _quoteString(String value) {

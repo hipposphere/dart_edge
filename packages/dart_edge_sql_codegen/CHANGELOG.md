@@ -1,3 +1,9 @@
+## 0.3.34
+
+- Update SQL introspection queries for the typed `orderBy` API in
+  `dart_edge_sql` 0.3.28.
+- Require `dart_edge_sql` 0.3.28.
+
 ## 0.3.31
 
 - Fix nullable JSON encoding for `SqlDecimal` and `SqlVector` values in

@@ -341,7 +341,11 @@ final class SelectQueryBuilder<TRow, TInsert, TUpdate> {
       _copyWith(raw: _raw.having(predicate));
 
   /// Appends an `ORDER BY` clause.
-  SelectQueryBuilder<TRow, TInsert, TUpdate> orderBy(
+  SelectQueryBuilder<TRow, TInsert, TUpdate> orderBy(SqlOrderBy orderBy) =>
+      _copyWith(raw: _raw._orderByValue(orderBy));
+
+  /// Appends an `ORDER BY` clause for [column].
+  SelectQueryBuilder<TRow, TInsert, TUpdate> orderByColumn(
     SqlColumn<dynamic> column, {
     bool descending = false,
   }) => _copyWith(
@@ -530,11 +534,18 @@ final class SelectedSelectQueryBuilder<TSelection> {
   );
 
   /// Appends an `ORDER BY` clause.
-  SelectedSelectQueryBuilder<TSelection> orderBy(
-    Object value, {
+  SelectedSelectQueryBuilder<TSelection> orderBy(SqlOrderBy orderBy) =>
+      SelectedSelectQueryBuilder<TSelection>._(
+        core: _core.addOrderBy(orderBy),
+        selection: _selection,
+      );
+
+  /// Appends an `ORDER BY` clause for [column].
+  SelectedSelectQueryBuilder<TSelection> orderByColumn(
+    SqlColumn<dynamic> column, {
     bool descending = false,
   }) => SelectedSelectQueryBuilder<TSelection>._(
-    core: _core.addOrderBy(_normalizeOrderBy(value, descending: descending)),
+    core: _core.addOrderBy(SqlOrderBy(column: column, descending: descending)),
     selection: _selection,
   );
 

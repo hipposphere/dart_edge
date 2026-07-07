@@ -1,6 +1,6 @@
 name: dart_edge_better_auth
 description: Pure Dart Better Auth-compatible authentication routes for Dart Edge.
-version: 0.1.1
+version: 0.1.2
 # publish_to: "https://registry.hippolabs.org/pub/internal-pub/"
 publish_to: none
 repository: https://github.com/hipposphere/dart_edge/tree/main/packages/dart_edge_better_auth
@@ -17,7 +17,7 @@ dependencies:
     version: ^0.3.20
   dart_edge_sql:
     hosted: "https://registry.hippolabs.org/pub/internal-pub/"
-    version: ^0.3.22
+    version: ^0.3.28
   dart_edge_sql_migrator:
     hosted: "https://registry.hippolabs.org/pub/internal-pub/"
     version: ^0.3.12
@@ -26,7 +26,7 @@ dependencies:
 dev_dependencies:
   dart_edge_sql_codegen:
     hosted: "https://registry.hippolabs.org/pub/internal-pub/"
-    version: ^0.3.22
+    version: ^0.3.34
   dart_edge_http_server:
     hosted: "https://registry.hippolabs.org/pub/internal-pub/"
     version: ^0.3.16

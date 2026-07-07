@@ -368,8 +368,10 @@ SelectedSelectQueryBuilder<SqlRow> _columnsQuery(
       .where(raw.gt('attributes.attnum', 0))
       .where(raw.isFalse('attributes.attisdropped'))
       .where(schemaPredicate)
-      .orderBy('table_classes.relname')
-      .orderBy('attributes.attnum');
+      .orderByExpression(
+        const SqlRawExpression<dynamic>('table_classes.relname'),
+      )
+      .orderByExpression(const SqlRawExpression<dynamic>('attributes.attnum'));
 }
 
 SelectedSelectQueryBuilder<SqlRow> _enumsQuery(
@@ -397,8 +399,8 @@ SelectedSelectQueryBuilder<SqlRow> _enumsQuery(
       .where(schemaPredicate)
       .groupBy('namespaces.nspname')
       .groupBy('types.typname')
-      .orderBy('namespaces.nspname')
-      .orderBy('types.typname');
+      .orderByExpression(const SqlRawExpression<dynamic>('namespaces.nspname'))
+      .orderByExpression(const SqlRawExpression<dynamic>('types.typname'));
 }
 
 SelectedSelectQueryBuilder<SqlRow> _constraintsQuery(
@@ -472,9 +474,13 @@ END AS expression''',
       ])
       .where(schemaPredicate)
       .where(.raw("constraints.contype IN ('p', 'u', 'f', 'c')"))
-      .orderBy('namespaces.nspname')
-      .orderBy('table_classes.relname')
-      .orderBy('constraints.conname');
+      .orderByExpression(const SqlRawExpression<dynamic>('namespaces.nspname'))
+      .orderByExpression(
+        const SqlRawExpression<dynamic>('table_classes.relname'),
+      )
+      .orderByExpression(
+        const SqlRawExpression<dynamic>('constraints.conname'),
+      );
 }
 
 SelectedSelectQueryBuilder<SqlRow> _routinesQuery(
@@ -530,7 +536,7 @@ END AS routine_kind''',
       .where(schemaPredicate)
       .where(.raw("procedures.prokind IN ('f', 'p')"))
       .where(raw.notEq('return_types.typname', 'trigger'))
-      .orderBy('procedures.proname');
+      .orderByExpression(const SqlRawExpression<dynamic>('procedures.proname'));
 }
 
 String _mapPostgresType(String databaseType) {

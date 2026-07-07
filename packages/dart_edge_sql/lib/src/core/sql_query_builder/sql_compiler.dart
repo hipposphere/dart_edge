@@ -550,28 +550,6 @@ Object _normalizeSelectable(Object value) {
   };
 }
 
-SqlOrderBy _normalizeOrderBy(Object value, {required bool descending}) {
-  return switch (value) {
-    final String rawSql => SqlOrderBy(
-      expression: SqlRawExpression<dynamic>(rawSql),
-      descending: descending,
-    ),
-    final SqlRawExpression<dynamic> expression => SqlOrderBy(
-      expression: expression,
-      descending: descending,
-    ),
-    final SqlColumn<dynamic> column => SqlOrderBy(
-      column: column.asObjectColumn,
-      descending: descending,
-    ),
-    final Object invalid => throw ArgumentError.value(
-      invalid,
-      'value',
-      'Expected String, SqlRawExpression, or SqlColumn.',
-    ),
-  };
-}
-
 final class _SqlLockingClause {
   _SqlLockingClause({
     required this.strength,

@@ -80,7 +80,7 @@ final jobs = await pool.withTransaction((tx) {
   return tx.typed
       .from(JobsTable.table)
       .where(JobsTable.status.equals('queued'))
-      .orderBy(JobsTable.createdAt)
+      .orderBy(JobsTable.createdAt.asc())
       .limit(10)
       .forUpdate(wait: .skipLocked)
       .selectAll()

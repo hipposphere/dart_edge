@@ -1,3 +1,8 @@
+## 0.3.34
+
+- Update SQL package constraints for `dart_edge_sql` 0.3.28 and
+  `dart_edge_sql_codegen` 0.3.34.
+
 ## 0.3.16
 
 - Use Better Auth's singular default table names and camelCase default columns

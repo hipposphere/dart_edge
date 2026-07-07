@@ -1,3 +1,8 @@
+## 0.3.28
+
+- Make typed select `orderBy` accept `SqlOrderBy` values from `.asc()` and
+  `.desc()`, and add `orderByColumn` for column-based ordering.
+
 ## 0.3.27
 
 - Re-export `SqlRow` typed-column read helpers from `dart_edge_core`.
