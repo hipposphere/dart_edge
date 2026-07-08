@@ -394,6 +394,169 @@ void main() {
     expect(statement.namedParameters, {'p1': '{"name":"Ada"}'});
   });
 
+  test('composes scalar expression helpers', () {
+    final statement = const _NoopSqlExecutor(SqlDialect.postgres).typed
+        .from(UsersTable.table)
+        .select([
+          Sql.substring(
+            Sql.coalesce<String>([
+              UsersTable.displayName,
+              Sql.value<String>(''),
+            ]),
+            start: Sql.add<int>(SqlParam.int4(2), Sql.value<int>(1)),
+            length: SqlParam.int4(8),
+          ).as('display_page'),
+          Sql.cast<int>(
+            Sql.length(UsersTable.email),
+            postgres: 'int4',
+          ).as('email_length'),
+          Sql.lower(UsersTable.email).as('lower_email'),
+          Sql.upper(UsersTable.email).as('upper_email'),
+          Sql.trim(UsersTable.displayName).as('trimmed_name'),
+          Sql.concat([
+            UsersTable.email,
+            Sql.value<String>(' / '),
+            UsersTable.displayName,
+          ]).as('label'),
+        ])
+        .toStatement();
+
+    expect(statement.sql, contains('substr('));
+    expect(statement.sql, contains('COALESCE("users"."display_name", @'));
+    expect(statement.sql, contains('::int4 + @'));
+    expect(statement.sql, contains('::int4)'));
+    expect(statement.sql, contains('length("users"."email")::int4'));
+    expect(statement.sql, contains('lower("users"."email")'));
+    expect(statement.sql, contains('upper("users"."email")'));
+    expect(statement.sql, contains('trim("users"."display_name")'));
+    expect(statement.sql, contains('concat("users"."email", @'));
+    expect(
+      statement.namedParameters!.values,
+      containsAll(['', 2, 1, 8, ' / ']),
+    );
+  });
+
+  test('composes aggregate expression helpers', () {
+    final statement = const _NoopSqlExecutor(SqlDialect.postgres).typed
+        .from(PostsTable.table)
+        .select([
+          Sql.count().as('post_count'),
+          Sql.count(PostsTable.title).as('title_count'),
+          Sql.countDistinct(PostsTable.userId).as('author_count'),
+          Sql.sum<int>(PostsTable.userId).as('user_sum'),
+          Sql.min<int>(PostsTable.userId).as('min_user'),
+          Sql.max<int>(PostsTable.userId).as('max_user'),
+          Sql.avg<num>(PostsTable.userId).as('avg_user'),
+        ])
+        .toStatement();
+
+    expect(statement.sql, contains('count(*) AS "post_count"'));
+    expect(statement.sql, contains('count("posts"."title") AS "title_count"'));
+    expect(
+      statement.sql,
+      contains('count(DISTINCT "posts"."user_id") AS "author_count"'),
+    );
+    expect(statement.sql, contains('sum("posts"."user_id") AS "user_sum"'));
+    expect(statement.sql, contains('min("posts"."user_id") AS "min_user"'));
+    expect(statement.sql, contains('max("posts"."user_id") AS "max_user"'));
+    expect(statement.sql, contains('avg("posts"."user_id") AS "avg_user"'));
+  });
+
+  test('composes boolean and comparison expression helpers', () {
+    final statement = const _NoopSqlExecutor(SqlDialect.postgres).typed
+        .from(UsersTable.table)
+        .select([
+          Sql.isNull(UsersTable.displayName).as('missing_name'),
+          Sql.isNotNull(UsersTable.displayName).as('has_name'),
+          Sql.and([
+            Sql.isNotNull(UsersTable.displayName),
+            Sql.gt(Sql.length(UsersTable.email), Sql.value<int>(3)),
+            Sql.not(Sql.eq(UsersTable.email, Sql.value<String>('blocked'))),
+          ]).as('eligible'),
+          Sql.or([
+            Sql.lte(UsersTable.id, Sql.value<int>(10)),
+            Sql.notEq(UsersTable.email, Sql.value<String>('x@example.com')),
+          ]).as('visible'),
+        ])
+        .toStatement();
+
+    expect(statement.sql, contains('"users"."display_name" IS NULL'));
+    expect(statement.sql, contains('"users"."display_name" IS NOT NULL'));
+    expect(statement.sql, contains(' AND '));
+    expect(statement.sql, contains(' OR '));
+    expect(statement.sql, contains('NOT ('));
+    expect(statement.sql, contains('length("users"."email") > @'));
+    expect(
+      statement.namedParameters!.values,
+      containsAll([3, 'blocked', 10, 'x@example.com']),
+    );
+  });
+
+  test('composes JSONB expression helpers', () {
+    final statement = const _NoopSqlExecutor(SqlDialect.postgres).typed
+        .from(UsersTable.table)
+        .select([
+          Sql.jsonbExtract(
+            UsersTable.displayName,
+            Sql.value<String>('profile'),
+          ).as('profile'),
+          Sql.jsonbExtractText(
+            UsersTable.displayName,
+            Sql.value<String>('name'),
+          ).as('name'),
+          Sql.jsonbContains(
+            UsersTable.displayName,
+            SqlParam.jsonb({'name': 'Ada'}),
+          ).as('matches'),
+          Sql.jsonbSet(
+            UsersTable.displayName,
+            path: SqlParam.array(['name'], 'text'),
+            value: Sql.toJsonb(Sql.value<String>('Ada')),
+            createMissing: Sql.value<bool>(true),
+          ).as('updated'),
+          Sql.jsonbArrayLength(
+            Sql.raw<Object?>("'[]'::jsonb"),
+          ).as('array_length'),
+        ])
+        .toStatement();
+
+    expect(statement.sql, contains('("users"."display_name" -> @'));
+    expect(statement.sql, contains('("users"."display_name" ->> @'));
+    expect(statement.sql, contains('("users"."display_name" @> @'));
+    expect(statement.sql, contains('::jsonb'));
+    expect(statement.sql, contains('jsonb_set('));
+    expect(statement.sql, contains('::text[]'));
+    expect(statement.sql, contains('to_jsonb(@'));
+    expect(statement.sql, contains("jsonb_array_length('[]'::jsonb)"));
+    expect(
+      statement.namedParameters!.values,
+      containsAll([
+        'profile',
+        'name',
+        '{"name":"Ada"}',
+        '{"name"}',
+        'Ada',
+        true,
+      ]),
+    );
+  });
+
+  test('composes date and time expression helpers', () {
+    final statement = const _NoopSqlExecutor(SqlDialect.postgres).typed
+        .from(UsersTable.table)
+        .select([
+          Sql.now().as('current_time'),
+          Sql.dateTrunc(Sql.value<String>('day'), Sql.now()).as('day_bucket'),
+          Sql.extract('epoch', Sql.now()).as('epoch_seconds'),
+        ])
+        .toStatement();
+
+    expect(statement.sql, contains('now() AS "current_time"'));
+    expect(statement.sql, contains('date_trunc(@'));
+    expect(statement.sql, contains('extract(epoch FROM now())'));
+    expect(statement.namedParameters!.values, contains('day'));
+  });
+
   test('compiles PostgreSQL row-locking select clauses', () {
     final pg = const _NoopSqlExecutor(SqlDialect.postgres);
 

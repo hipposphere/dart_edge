@@ -1,3 +1,12 @@
+## 0.3.29
+
+- Add `SqlParam` and `SqlParameter` for explicitly typed PostgreSQL raw query
+  parameters.
+- Add typed SQL expression helpers for scalar values, casts, text functions,
+  arithmetic, boolean expressions, comparisons, aggregates, JSONB operations,
+  and date/time expressions.
+- Preserve nested expression parameters when composing generated SQL fragments.
+
 ## 0.3.28
 
 - Make typed select `orderBy` accept `SqlOrderBy` values from `.asc()` and

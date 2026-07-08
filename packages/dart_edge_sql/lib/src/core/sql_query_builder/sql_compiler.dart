@@ -43,7 +43,11 @@ final class _SqlCompiler {
 
   void writeValue(Object? value, {SqlColumn<dynamic>? column}) {
     final parameterName = 'p${++_parameterIndex}';
-    final parameterValue = _unwrapSqlParameterValue(value);
+    final explicitParameter = value is SqlParameter<dynamic> ? value : null;
+    final parameterValue = switch (explicitParameter) {
+      final parameter? => parameter.encode(dialect),
+      null => _unwrapSqlParameterValue(value),
+    };
     _parameters[parameterName] = switch (dialect) {
       SqlDialect.postgres => _encodePostgresParameterValue(
         parameterValue,
@@ -57,8 +61,10 @@ final class _SqlCompiler {
     };
     _buffer.write('$placeholderPrefix$parameterName');
     if (dialect == SqlDialect.postgres) {
-      if (PostgresTypeMapping.parameterCastFor(column?.databaseType)
-          case final cast?) {
+      final cast =
+          explicitParameter?.cast(dialect) ??
+          PostgresTypeMapping.parameterCastFor(column?.databaseType);
+      if (cast != null) {
         _buffer.write('::$cast');
       }
     }
@@ -225,21 +231,29 @@ final class _SqlCompiler {
     }
     final parameterName = 'p${++_parameterIndex}';
     final value = parameters[name];
-    _parameters[parameterName] = switch (dialect) {
-      SqlDialect.postgres when _hasArrayCast(sql, end) =>
-        _encodePostgresArrayTextParameter(value),
-      SqlDialect.postgres when _hasDecimalCast(sql, end) =>
-        _encodePostgresDecimalTextParameter(value),
-      SqlDialect.postgres when _hasVectorCast(sql, end) =>
-        _encodePostgresVectorTextParameter(value),
-      SqlDialect.postgres when _hasJsonCast(sql, end) =>
-        _encodeJsonTextParameter(value),
-      _ => value,
+    final explicitParameter = value is SqlParameter<dynamic> ? value : null;
+    _parameters[parameterName] = switch (explicitParameter) {
+      final parameter? => parameter.encode(dialect),
+      null => switch (dialect) {
+        SqlDialect.postgres when _hasArrayCast(sql, end) =>
+          _encodePostgresArrayTextParameter(value),
+        SqlDialect.postgres when _hasDecimalCast(sql, end) =>
+          _encodePostgresDecimalTextParameter(value),
+        SqlDialect.postgres when _hasVectorCast(sql, end) =>
+          _encodePostgresVectorTextParameter(value),
+        SqlDialect.postgres when _hasJsonCast(sql, end) =>
+          _encodeJsonTextParameter(value),
+        _ => value,
+      },
     };
     write(switch (dialect) {
       SqlDialect.sqlite => ':$parameterName',
       SqlDialect.postgres => '@$parameterName',
     });
+    if (explicitParameter?.cast(dialect) case final cast?
+        when _castTypeAt(sql, end) == null) {
+      write('::$cast');
+    }
     return end;
   }
 
@@ -643,6 +657,68 @@ _SqlFragment _sqlOrderByFragment(SqlOrderBy order, {String prefix = 'order'}) {
   );
 }
 
+_SqlFragment _valueFragment(Object? value, {required String prefix}) {
+  return _compileSqlFragment((compiler) {
+    compiler.writeValue(value);
+  }, prefix: prefix);
+}
+
+SqlRawExpression<TValue> _sqlFunction<TValue>(
+  String name,
+  Iterable<Object> values,
+) {
+  final fragments = [
+    for (final (index, value) in values.indexed)
+      _sqlFragment(value, prefix: '${name}_$index'),
+  ];
+  return SqlRawExpression<TValue>(
+    '$name(${fragments.map((fragment) => fragment.sql).join(', ')})',
+    parameters: _mergeSqlFragmentParameters(fragments),
+  );
+}
+
+SqlRawExpression<TValue> _binaryExpression<TValue>(
+  Object left,
+  String operator,
+  Object right, {
+  required String prefix,
+}) {
+  final leftFragment = _sqlFragment(left, prefix: '${prefix}_left');
+  final rightFragment = _sqlFragment(right, prefix: '${prefix}_right');
+  return SqlRawExpression<TValue>(
+    '(${leftFragment.sql} $operator ${rightFragment.sql})',
+    parameters: _mergeSqlFragmentParameters([leftFragment, rightFragment]),
+  );
+}
+
+SqlRawExpression<bool> _compoundExpression(
+  String operator,
+  Iterable<Object> values, {
+  required String name,
+}) {
+  final fragments = [
+    for (final (index, value) in values.indexed)
+      _sqlFragment(value, prefix: '${name}_$index'),
+  ];
+  if (fragments.isEmpty) {
+    throw ArgumentError.value(
+      values,
+      'values',
+      '$name() requires at least one expression.',
+    );
+  }
+  if (fragments.length == 1) {
+    return SqlRawExpression<bool>(
+      fragments.single.sql,
+      parameters: fragments.single.parameters,
+    );
+  }
+  return SqlRawExpression<bool>(
+    '(${fragments.map((fragment) => fragment.sql).join(' $operator ')})',
+    parameters: _mergeSqlFragmentParameters(fragments),
+  );
+}
+
 _SqlFragment _sqlFragment(
   Object value, {
   Map<String, Object?>? parameters,
@@ -664,6 +740,11 @@ _SqlFragment _sqlFragment(
     final SqlColumn<dynamic> column => _compileSqlFragment((compiler) {
       compiler.writeColumn(column.asObjectColumn);
     }),
+    final SqlParameter<dynamic> parameter => _valueFragment(
+      parameter,
+      prefix: prefix,
+    ),
+    final SqlValue<dynamic> value => _valueFragment(value, prefix: prefix),
     final SqlTable<dynamic, dynamic, dynamic> table => _compileSqlFragment((
       compiler,
     ) {
@@ -682,10 +763,18 @@ _SqlFragment _sqlFragment(
   };
 }
 
-_SqlFragment _compileSqlFragment(void Function(_SqlCompiler compiler) write) {
+_SqlFragment _compileSqlFragment(
+  void Function(_SqlCompiler compiler) write, {
+  String prefix = 'expr',
+}) {
   final compiler = _SqlCompiler(SqlDialect.postgres);
   write(compiler);
-  return _SqlFragment(compiler.toStatement().sql);
+  final statement = compiler.toStatement();
+  return _rewriteSqlFragmentParameters(
+    statement.sql,
+    parameters: statement.namedParameters ?? const <String, Object?>{},
+    prefix: prefix,
+  );
 }
 
 _SqlFragment _rewriteSqlFragmentParameters(
@@ -791,6 +880,38 @@ Map<String, Object?> _mergeSqlFragmentParameters(
 
 String _sqlStringLiteral(String value) {
   return "'${value.replaceAll("'", "''")}'";
+}
+
+String _sqlCastType(String type) {
+  final trimmed = type.trim();
+  final normalized = PostgresTypeMapping.normalizeTypeName(trimmed);
+  if (PostgresTypeMapping.parameterCastFor(normalized) case final cast?) {
+    return cast;
+  }
+  if (PostgresTypeMapping.builtInTypeNames.contains(normalized)) {
+    return normalized;
+  }
+  final modifierIndex = normalized.indexOf('(');
+  if (modifierIndex > 0 &&
+      normalized.endsWith(')') &&
+      PostgresTypeMapping.builtInTypeNames.contains(
+        normalized.substring(0, modifierIndex),
+      )) {
+    return normalized;
+  }
+  return PostgresTypeMapping.quoteTypeName(trimmed);
+}
+
+bool _isSqlIdentifier(String value) {
+  if (value.isEmpty || !_isIdentifierStart(value[0])) {
+    return false;
+  }
+  for (var index = 1; index < value.length; index += 1) {
+    if (!_isIdentifierPart(value[index])) {
+      return false;
+    }
+  }
+  return true;
 }
 
 final class _SqlFragment {

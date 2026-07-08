@@ -100,6 +100,18 @@ void main() {
     expect(statement.positionalParameters.single, 'responses');
   });
 
+  test('encodes typed positional statement parameters', () {
+    final statement = compileSqlStatement(
+      SqlDialect.postgres,
+      SqlStatement.positional('SELECT \$1::jsonb', [
+        SqlParam.jsonb({'name': 'seeded'}),
+      ]),
+    );
+
+    expect(statement.sql, r'SELECT $1::jsonb');
+    expect(statement.positionalParameters, ['{"name":"seeded"}']);
+  });
+
   test('rejects absent sql values in compiled statements', () {
     expect(
       () => compileSqlStatement(
@@ -236,6 +248,49 @@ void main() {
 
     expect(statement.sql, r'SELECT $1::numeric(12,2)');
     expect(statement.positionalParameters, ['123.45']);
+  });
+
+  test('casts explicitly typed raw statement parameters', () {
+    final statement = compileSqlStatement(
+      SqlDialect.postgres,
+      SqlStatement.named('SELECT substr(@text, @offset + 1, @limit)', {
+        'text': SqlParam.text('abcdef'),
+        'offset': SqlParam.int4(2),
+        'limit': SqlParam.int4(3),
+      }),
+    );
+
+    expect(statement.sql, r'SELECT substr($1::text, $2::int4 + 1, $3::int4)');
+    expect(statement.positionalParameters, ['abcdef', 2, 3]);
+  });
+
+  test('does not duplicate casts for typed raw statement parameters', () {
+    final statement = compileSqlStatement(
+      SqlDialect.postgres,
+      SqlStatement.named('SELECT @payload::jsonb', {
+        'payload': SqlParam.jsonb({'name': 'seeded'}),
+      }),
+    );
+
+    expect(statement.sql, r'SELECT $1::jsonb');
+    expect(statement.positionalParameters, ['{"name":"seeded"}']);
+  });
+
+  test('casts explicitly typed query builder raw parameters', () async {
+    final db = _RecordingExecutor(SqlDialect.postgres);
+
+    await db.typed.from(DocumentsTable.table).select([
+      Sql.raw<String>(
+        'substr(coalesce("body", \'\'), @offset + 1, @limit)',
+        parameters: {'offset': SqlParam.int4(2), 'limit': SqlParam.int4(3)},
+      ).as('page'),
+    ]).execute();
+
+    expect(
+      db.statement.sql,
+      contains('substr(coalesce("body", \'\'), @p1::int4 + 1, @p2::int4)'),
+    );
+    expect(db.statement.namedParameters, {'p1': 2, 'p2': 3});
   });
 
   test('casts generated decimal column parameters', () async {

@@ -9,6 +9,7 @@ export 'src/core/postgres_type_mapping.dart';
 export 'src/core/sql_decimal.dart';
 export 'src/core/sql_dialect.dart';
 export 'src/core/sql_executor.dart';
+export 'src/core/sql_parameter.dart';
 export 'src/core/sql_query_builder.dart';
 export 'src/core/sql_result.dart';
 export 'src/core/sql_row.dart';

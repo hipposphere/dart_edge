@@ -4,6 +4,7 @@ import 'postgres_type_mapping.dart';
 import 'sql_decimal.dart';
 import 'sql_dialect.dart';
 import 'sql_executor.dart';
+import 'sql_parameter.dart';
 import 'sql_result.dart';
 import 'sql_row.dart';
 import 'sql_schema.dart';

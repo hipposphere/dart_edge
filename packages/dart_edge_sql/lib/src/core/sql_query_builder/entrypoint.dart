@@ -195,6 +195,34 @@ abstract final class Sql {
     return SqlRawExpression<TValue>(sql, parameters: parameters);
   }
 
+  /// Creates a parameterized SQL value expression.
+  static SqlRawExpression<TValue> value<TValue>(Object? value) {
+    final fragment = _valueFragment(value, prefix: 'value');
+    return SqlRawExpression<TValue>(
+      fragment.sql,
+      parameters: fragment.parameters,
+    );
+  }
+
+  /// Creates `value::type`.
+  static SqlRawExpression<TValue> cast<TValue>(
+    Object value, {
+    String? postgres,
+  }) {
+    if (postgres == null || postgres.trim().isEmpty) {
+      throw ArgumentError.value(
+        postgres,
+        'postgres',
+        'cast() requires a PostgreSQL type.',
+      );
+    }
+    final fragment = _sqlFragment(value, prefix: 'cast_value');
+    return SqlRawExpression<TValue>(
+      '${fragment.sql}::${_sqlCastType(postgres)}',
+      parameters: fragment.parameters,
+    );
+  }
+
   /// Creates a scalar subquery expression from a selected query.
   static SqlRawExpression<TValue> scalarSubquery<TValue>(
     SelectedSelectQueryBuilder<dynamic> query,
@@ -209,6 +237,180 @@ abstract final class Sql {
       '(${fragment.sql})',
       parameters: fragment.parameters,
     );
+  }
+
+  /// Creates `length(value)`.
+  static SqlRawExpression<int> length(Object value) {
+    return _sqlFunction<int>('length', [value]);
+  }
+
+  /// Creates `char_length(value)`.
+  static SqlRawExpression<int> charLength(Object value) {
+    return _sqlFunction<int>('char_length', [value]);
+  }
+
+  /// Creates `substr(value, start[, length])`.
+  static SqlRawExpression<String> substring(
+    Object value, {
+    required Object start,
+    Object? length,
+  }) {
+    return _sqlFunction<String>(
+      'substr',
+      length == null ? [value, start] : [value, start, length],
+    );
+  }
+
+  /// Creates `left + right`.
+  static SqlRawExpression<TValue> add<TValue>(Object left, Object right) {
+    return _binaryExpression<TValue>(left, '+', right, prefix: 'add');
+  }
+
+  /// Creates `left - right`.
+  static SqlRawExpression<TValue> subtract<TValue>(Object left, Object right) {
+    return _binaryExpression<TValue>(left, '-', right, prefix: 'subtract');
+  }
+
+  /// Creates `left * right`.
+  static SqlRawExpression<TValue> multiply<TValue>(Object left, Object right) {
+    return _binaryExpression<TValue>(left, '*', right, prefix: 'multiply');
+  }
+
+  /// Creates `left / right`.
+  static SqlRawExpression<TValue> divide<TValue>(Object left, Object right) {
+    return _binaryExpression<TValue>(left, '/', right, prefix: 'divide');
+  }
+
+  /// Creates `value IS NULL`.
+  static SqlRawExpression<bool> isNull(Object value) {
+    final fragment = _sqlFragment(value, prefix: 'is_null');
+    return SqlRawExpression<bool>(
+      '${fragment.sql} IS NULL',
+      parameters: fragment.parameters,
+    );
+  }
+
+  /// Creates `value IS NOT NULL`.
+  static SqlRawExpression<bool> isNotNull(Object value) {
+    final fragment = _sqlFragment(value, prefix: 'is_not_null');
+    return SqlRawExpression<bool>(
+      '${fragment.sql} IS NOT NULL',
+      parameters: fragment.parameters,
+    );
+  }
+
+  /// Creates `left = right`.
+  static SqlRawExpression<bool> eq(Object left, Object right) {
+    return _binaryExpression<bool>(left, '=', right, prefix: 'eq');
+  }
+
+  /// Creates `left != right`.
+  static SqlRawExpression<bool> notEq(Object left, Object right) {
+    return _binaryExpression<bool>(left, '!=', right, prefix: 'not_eq');
+  }
+
+  /// Creates `left > right`.
+  static SqlRawExpression<bool> gt(Object left, Object right) {
+    return _binaryExpression<bool>(left, '>', right, prefix: 'gt');
+  }
+
+  /// Creates `left >= right`.
+  static SqlRawExpression<bool> gte(Object left, Object right) {
+    return _binaryExpression<bool>(left, '>=', right, prefix: 'gte');
+  }
+
+  /// Creates `left < right`.
+  static SqlRawExpression<bool> lt(Object left, Object right) {
+    return _binaryExpression<bool>(left, '<', right, prefix: 'lt');
+  }
+
+  /// Creates `left <= right`.
+  static SqlRawExpression<bool> lte(Object left, Object right) {
+    return _binaryExpression<bool>(left, '<=', right, prefix: 'lte');
+  }
+
+  /// Creates `(value AND value ...)`.
+  static SqlRawExpression<bool> and(Iterable<Object> values) {
+    return _compoundExpression('AND', values, name: 'and');
+  }
+
+  /// Creates `(value OR value ...)`.
+  static SqlRawExpression<bool> or(Iterable<Object> values) {
+    return _compoundExpression('OR', values, name: 'or');
+  }
+
+  /// Creates `NOT (value)`.
+  static SqlRawExpression<bool> not(Object value) {
+    final fragment = _sqlFragment(value, prefix: 'not');
+    return SqlRawExpression<bool>(
+      'NOT (${fragment.sql})',
+      parameters: fragment.parameters,
+    );
+  }
+
+  /// Creates `count(*)` or `count(value)`.
+  static SqlRawExpression<int> count([Object? value]) {
+    if (value == null) {
+      return const SqlRawExpression<int>('count(*)');
+    }
+    return _sqlFunction<int>('count', [value]);
+  }
+
+  /// Creates `count(DISTINCT value)`.
+  static SqlRawExpression<int> countDistinct(Object value) {
+    final fragment = _sqlFragment(value, prefix: 'count_distinct');
+    return SqlRawExpression<int>(
+      'count(DISTINCT ${fragment.sql})',
+      parameters: fragment.parameters,
+    );
+  }
+
+  /// Creates `sum(value)`.
+  static SqlRawExpression<TValue> sum<TValue>(Object value) {
+    return _sqlFunction<TValue>('sum', [value]);
+  }
+
+  /// Creates `min(value)`.
+  static SqlRawExpression<TValue> min<TValue>(Object value) {
+    return _sqlFunction<TValue>('min', [value]);
+  }
+
+  /// Creates `max(value)`.
+  static SqlRawExpression<TValue> max<TValue>(Object value) {
+    return _sqlFunction<TValue>('max', [value]);
+  }
+
+  /// Creates `avg(value)`.
+  static SqlRawExpression<TValue> avg<TValue>(Object value) {
+    return _sqlFunction<TValue>('avg', [value]);
+  }
+
+  /// Creates `lower(value)`.
+  static SqlRawExpression<String> lower(Object value) {
+    return _sqlFunction<String>('lower', [value]);
+  }
+
+  /// Creates `upper(value)`.
+  static SqlRawExpression<String> upper(Object value) {
+    return _sqlFunction<String>('upper', [value]);
+  }
+
+  /// Creates `trim(value)`.
+  static SqlRawExpression<String> trim(Object value) {
+    return _sqlFunction<String>('trim', [value]);
+  }
+
+  /// Creates `concat(value, ...)`.
+  static SqlRawExpression<String> concat(Iterable<Object> values) {
+    final list = values.toList(growable: false);
+    if (list.isEmpty) {
+      throw ArgumentError.value(
+        values,
+        'values',
+        'concat() requires at least one expression.',
+      );
+    }
+    return _sqlFunction<String>('concat', list);
   }
 
   /// Creates `to_jsonb(value)`.
@@ -292,6 +494,77 @@ abstract final class Sql {
   /// Creates the PostgreSQL `jsonb` empty array literal.
   static SqlRawExpression<List<Object?>> jsonbEmptyArray() {
     return const SqlRawExpression<List<Object?>>("'[]'::jsonb");
+  }
+
+  /// Creates `value -> key`.
+  static SqlRawExpression<Object?> jsonbExtract(Object value, Object key) {
+    return _binaryExpression<Object?>(
+      value,
+      '->',
+      key,
+      prefix: 'jsonb_extract',
+    );
+  }
+
+  /// Creates `value ->> key`.
+  static SqlRawExpression<String?> jsonbExtractText(Object value, Object key) {
+    return _binaryExpression<String?>(
+      value,
+      '->>',
+      key,
+      prefix: 'jsonb_extract_text',
+    );
+  }
+
+  /// Creates `left @> right`.
+  static SqlRawExpression<bool> jsonbContains(Object left, Object right) {
+    return _binaryExpression<bool>(left, '@>', right, prefix: 'jsonb_contains');
+  }
+
+  /// Creates `jsonb_set(target, path, value[, create_missing])`.
+  static SqlRawExpression<Object?> jsonbSet(
+    Object target, {
+    required Object path,
+    required Object value,
+    Object? createMissing,
+  }) {
+    return _sqlFunction<Object?>(
+      'jsonb_set',
+      createMissing == null
+          ? [target, path, value]
+          : [target, path, value, createMissing],
+    );
+  }
+
+  /// Creates `jsonb_array_length(value)`.
+  static SqlRawExpression<int> jsonbArrayLength(Object value) {
+    return _sqlFunction<int>('jsonb_array_length', [value]);
+  }
+
+  /// Creates `now()`.
+  static SqlRawExpression<DateTime> now() {
+    return const SqlRawExpression<DateTime>('now()');
+  }
+
+  /// Creates `date_trunc(precision, value)`.
+  static SqlRawExpression<DateTime> dateTrunc(Object precision, Object value) {
+    return _sqlFunction<DateTime>('date_trunc', [precision, value]);
+  }
+
+  /// Creates `extract(field FROM value)`.
+  static SqlRawExpression<num> extract(String field, Object value) {
+    if (!_isSqlIdentifier(field)) {
+      throw ArgumentError.value(
+        field,
+        'field',
+        'extract() field must be a SQL identifier.',
+      );
+    }
+    final fragment = _sqlFragment(value, prefix: 'extract_value');
+    return SqlRawExpression<num>(
+      'extract($field FROM ${fragment.sql})',
+      parameters: fragment.parameters,
+    );
   }
 }
 

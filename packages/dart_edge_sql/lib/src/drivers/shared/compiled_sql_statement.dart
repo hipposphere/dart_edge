@@ -3,6 +3,7 @@ import 'dart:convert';
 import '../../core/postgres_type_mapping.dart';
 import '../../core/sql_decimal.dart';
 import '../../core/sql_dialect.dart';
+import '../../core/sql_parameter.dart';
 import '../../core/sql_statement.dart';
 import '../../core/sql_value.dart';
 import '../../core/sql_vector.dart';
@@ -15,7 +16,7 @@ SqlStatement compileSqlStatement(SqlDialect dialect, SqlStatement statement) {
     }
     return SqlStatement.positional(statement.sql, [
       for (final value in statement.positionalParameters)
-        _unwrapSqlParameterValue(value),
+        _encodeValue(dialect, value),
     ]);
   }
 
@@ -111,7 +112,6 @@ SqlStatement compileSqlStatement(SqlDialect dialect, SqlStatement statement) {
       continue;
     }
 
-    final value = _unwrapSqlParameterValue(namedParameters[placeholder.name]);
     if (!namedParameters.containsKey(placeholder.name)) {
       throw ArgumentError.value(
         placeholder.name,
@@ -119,19 +119,25 @@ SqlStatement compileSqlStatement(SqlDialect dialect, SqlStatement statement) {
         'Missing named SQL parameter.',
       );
     }
+    final rawValue = namedParameters[placeholder.name];
+    final explicitParameter = rawValue is SqlParameter<dynamic>
+        ? rawValue
+        : null;
+    final value = switch (explicitParameter) {
+      final parameter? => parameter.encode(dialect),
+      null => _unwrapSqlParameterValue(rawValue),
+    };
+    final castIndex = placeholder.endIndex + 1;
 
     positionalParameters.add(switch (dialect) {
-      SqlDialect.postgres
-          when _hasArrayCast(statement.sql, placeholder.endIndex + 1) =>
+      SqlDialect.postgres when explicitParameter != null => value,
+      SqlDialect.postgres when _hasArrayCast(statement.sql, castIndex) =>
         _encodePostgresArrayTextParameter(value),
-      SqlDialect.postgres
-          when _hasDecimalCast(statement.sql, placeholder.endIndex + 1) =>
+      SqlDialect.postgres when _hasDecimalCast(statement.sql, castIndex) =>
         _encodePostgresDecimalTextParameter(value),
-      SqlDialect.postgres
-          when _hasVectorCast(statement.sql, placeholder.endIndex + 1) =>
+      SqlDialect.postgres when _hasVectorCast(statement.sql, castIndex) =>
         _encodePostgresVectorTextParameter(value),
-      SqlDialect.postgres
-          when _hasJsonCast(statement.sql, placeholder.endIndex + 1) =>
+      SqlDialect.postgres when _hasJsonCast(statement.sql, castIndex) =>
         _encodeJsonTextParameter(value),
       _ => value,
     });
@@ -139,10 +145,21 @@ SqlStatement compileSqlStatement(SqlDialect dialect, SqlStatement statement) {
       SqlDialect.postgres => '\$${positionalParameters.length}',
       SqlDialect.sqlite => '?',
     });
+    if (explicitParameter?.cast(dialect) case final cast?
+        when _castTypeAt(statement.sql, castIndex) == null) {
+      buffer.write('::$cast');
+    }
     index = placeholder.endIndex;
   }
 
   return SqlStatement.positional(buffer.toString(), positionalParameters);
+}
+
+Object? _encodeValue(SqlDialect dialect, Object? value) {
+  return switch (value) {
+    final SqlParameter<dynamic> value => value.encode(dialect),
+    _ => _unwrapSqlParameterValue(value),
+  };
 }
 
 ({String name, int endIndex})? _parseNamedParameter({
