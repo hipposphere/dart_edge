@@ -34,7 +34,7 @@ dependencies:
   dart_edge_http_server: ^0.3.2
 
 dev_dependencies:
-  build_runner: ^2.15.0
+  build_runner: ^2.15.1
   dart_edge_http_server_codegen: ^0.3.3
 ```
 
