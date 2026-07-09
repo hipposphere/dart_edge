@@ -495,15 +495,32 @@ _ColumnKey _externalPrimaryKey(String key) {
   return (schema: _schemaName(parts[0]), table: parts[1], column: parts[2]);
 }
 
-List<ExternalPrimaryKeySpec> _externalPrimaryKeyTypes(
+List<
+  ({String schema, String table, String column, ExternalPrimaryKeySpec spec})
+>
+_externalPrimaryKeyTypes(
   Map<_ColumnKey, ExternalPrimaryKeySpec> externalPrimaryKeyTypeSpecs,
 ) {
-  final externalPrimaryKeyTypes = <String, ExternalPrimaryKeySpec>{};
-  for (final spec in externalPrimaryKeyTypeSpecs.values) {
-    externalPrimaryKeyTypes[spec.typeName] = spec;
+  final externalPrimaryKeyTypes =
+      <
+        String,
+        ({
+          String schema,
+          String table,
+          String column,
+          ExternalPrimaryKeySpec spec,
+        })
+      >{};
+  for (final entry in externalPrimaryKeyTypeSpecs.entries) {
+    externalPrimaryKeyTypes[entry.value.typeName] = (
+      schema: entry.key.schema,
+      table: entry.key.table,
+      column: entry.key.column,
+      spec: entry.value,
+    );
   }
   return externalPrimaryKeyTypes.values.toList(growable: false)
-    ..sort((left, right) => left.typeName.compareTo(right.typeName));
+    ..sort((left, right) => left.spec.typeName.compareTo(right.spec.typeName));
 }
 
 bool _usesExternalPrimaryKeyType(

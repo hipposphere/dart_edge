@@ -794,11 +794,7 @@ final class UsersTable extends SqlTable<UsersRow, UsersInsert, UsersUpdate> {
   );
 
   @override
-  List<SqlColumn<Object?>> get columns => <SqlColumn<Object?>>[
-    id.asObjectColumn,
-    email.asObjectColumn,
-    displayName.asObjectColumn,
-  ];
+  List<SqlColumnBase> get columns => <SqlColumnBase>[id, email, displayName];
 
   @override
   Map<String, Object?> encodeInsert(UsersInsert value) => value.toColumns();
@@ -912,11 +908,7 @@ final class PostsTable extends SqlTable<PostsRow, PostsInsert, PostsUpdate> {
   static final title = SqlColumn<String>(table: table, name: 'title');
 
   @override
-  List<SqlColumn<Object?>> get columns => <SqlColumn<Object?>>[
-    id.asObjectColumn,
-    userId.asObjectColumn,
-    title.asObjectColumn,
-  ];
+  List<SqlColumnBase> get columns => <SqlColumnBase>[id, userId, title];
 
   @override
   Map<String, Object?> encodeInsert(PostsInsert value) => value.toColumns();

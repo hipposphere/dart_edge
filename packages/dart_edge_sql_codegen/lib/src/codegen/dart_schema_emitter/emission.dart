@@ -88,24 +88,17 @@ DartSchemaEmission emitDartSchema(
       const DartSchemaFormatterOptions(),
 }) {
   final effectiveNaming = naming ?? DartSchemaNaming.defaults;
-  final effectiveInt8JsonEncoding = _effectiveInt8JsonEncoding(
+  final prepared = _prepareDartSchemaEmission(
     database,
-    int8JsonEncoding,
+    naming: effectiveNaming,
+    primaryKeyExtensionTypes: primaryKeyExtensionTypes,
+    int8JsonEncoding: int8JsonEncoding,
+    externalPrimaryKeys: externalPrimaryKeys,
   );
-  final normalizedExternalPrimaryKeys = _externalPrimaryKeyNames(
-    externalPrimaryKeys,
-  );
-  if (primaryKeyExtensionTypes) {
-    database = _withGeneratedPrimaryKeyExtensionTypes(
-      database,
-      effectiveNaming,
-      externalPrimaryKeyTypeSpecs: normalizedExternalPrimaryKeys,
-    );
-  }
-  database = _withGeneratedConstrainedTextTypes(database, effectiveNaming);
+  database = prepared.database;
   final schemaGroups = _groupBySchema(database);
   final externalPrimaryKeyTypes = _externalPrimaryKeyTypes(
-    normalizedExternalPrimaryKeys,
+    prepared.externalPrimaryKeys,
   );
   final entrypointFileName = '${_fileStem(databaseClassName)}.g.dart';
   final files = <DartSchemaEmissionFile>[
@@ -115,6 +108,16 @@ DartSchemaEmission emitDartSchema(
         databaseClassName: databaseClassName,
         schemaGroups: schemaGroups,
         hasExternalPrimaryKeys: externalPrimaryKeyTypes.isNotEmpty,
+        formatterOptions: formatterOptions,
+      ),
+    ),
+    DartSchemaEmissionFile(
+      relativePath: 'key_manifest.g.dart',
+      contents: _emitSqlKeyManifestLibrary(
+        database,
+        prepared.externalPrimaryKeys,
+        naming: effectiveNaming,
+        generatedLibraryImport: null,
         formatterOptions: formatterOptions,
       ),
     ),
@@ -165,9 +168,9 @@ DartSchemaEmission emitDartSchema(
             schemaGroups,
             effectiveNaming,
             externalPrimaryKeyTypeNames: {
-              for (final type in externalPrimaryKeyTypes) type.typeName,
+              for (final type in externalPrimaryKeyTypes) type.spec.typeName,
             },
-            int8JsonEncoding: effectiveInt8JsonEncoding,
+            int8JsonEncoding: prepared.int8JsonEncoding,
             formatterOptions: formatterOptions,
           ),
         ),
@@ -216,23 +219,16 @@ String emitDartSchemaLibrary(
       const DartSchemaFormatterOptions(),
 }) {
   final effectiveNaming = naming ?? DartSchemaNaming.defaults;
-  final effectiveInt8JsonEncoding = _effectiveInt8JsonEncoding(
+  final prepared = _prepareDartSchemaEmission(
     database,
-    int8JsonEncoding,
+    naming: effectiveNaming,
+    primaryKeyExtensionTypes: primaryKeyExtensionTypes,
+    int8JsonEncoding: int8JsonEncoding,
+    externalPrimaryKeys: externalPrimaryKeys,
   );
-  final normalizedExternalPrimaryKeys = _externalPrimaryKeyNames(
-    externalPrimaryKeys,
-  );
-  if (primaryKeyExtensionTypes) {
-    database = _withGeneratedPrimaryKeyExtensionTypes(
-      database,
-      effectiveNaming,
-      externalPrimaryKeyTypeSpecs: normalizedExternalPrimaryKeys,
-    );
-  }
-  database = _withGeneratedConstrainedTextTypes(database, effectiveNaming);
+  database = prepared.database;
   final externalPrimaryKeyTypes = _externalPrimaryKeyTypes(
-    normalizedExternalPrimaryKeys,
+    prepared.externalPrimaryKeys,
   );
   final schemaGroups = _groupBySchema(database);
   final library = Library((builder) {
@@ -270,7 +266,7 @@ String emitDartSchemaLibrary(
           _tableSpecs(
             table,
             effectiveNaming,
-            int8JsonEncoding: effectiveInt8JsonEncoding,
+            int8JsonEncoding: prepared.int8JsonEncoding,
           ),
         );
       }
@@ -280,6 +276,35 @@ String emitDartSchemaLibrary(
     }
   });
   return _format(library, formatterOptions: formatterOptions);
+}
+
+/// Emits a generated manifest describing SQL key extension types.
+String emitDartSqlKeyManifestLibrary(
+  IntrospectedDatabase database, {
+  DartSchemaNaming? naming,
+  bool primaryKeyExtensionTypes = true,
+  SqlInt8JsonEncoding int8JsonEncoding = SqlInt8JsonEncoding.number,
+  Map<String, ExternalPrimaryKeySpec> externalPrimaryKeys =
+      const <String, ExternalPrimaryKeySpec>{},
+  String? generatedLibraryImport,
+  DartSchemaFormatterOptions formatterOptions =
+      const DartSchemaFormatterOptions(),
+}) {
+  final effectiveNaming = naming ?? DartSchemaNaming.defaults;
+  final prepared = _prepareDartSchemaEmission(
+    database,
+    naming: effectiveNaming,
+    primaryKeyExtensionTypes: primaryKeyExtensionTypes,
+    int8JsonEncoding: int8JsonEncoding,
+    externalPrimaryKeys: externalPrimaryKeys,
+  );
+  return _emitSqlKeyManifestLibrary(
+    prepared.database,
+    prepared.externalPrimaryKeys,
+    naming: effectiveNaming,
+    generatedLibraryImport: generatedLibraryImport,
+    formatterOptions: formatterOptions,
+  );
 }
 
 /// Emits only SQL table descriptors for existing row/insert/update models.
@@ -308,9 +333,9 @@ String emitDartTableDescriptorLibrary(
 
     for (final group in schemaGroups) {
       for (final table in group.tables) {
-        builder.body
-          ..add(_tableClass(table, effectiveNaming, encodeMapValues: true))
-          ..add(_tableColumnsExtension(table, effectiveNaming));
+        builder.body.add(
+          _tableClass(table, effectiveNaming, encodeMapValues: true),
+        );
       }
     }
 
@@ -390,4 +415,45 @@ SqlInt8JsonEncoding _effectiveInt8JsonEncoding(
   return database.dialect == SqlCodegenDialect.postgres
       ? int8JsonEncoding
       : SqlInt8JsonEncoding.number;
+}
+
+_PreparedDartSchemaEmission _prepareDartSchemaEmission(
+  IntrospectedDatabase database, {
+  required DartSchemaNaming naming,
+  required bool primaryKeyExtensionTypes,
+  required SqlInt8JsonEncoding int8JsonEncoding,
+  required Map<String, ExternalPrimaryKeySpec> externalPrimaryKeys,
+}) {
+  final effectiveInt8JsonEncoding = _effectiveInt8JsonEncoding(
+    database,
+    int8JsonEncoding,
+  );
+  final normalizedExternalPrimaryKeys = _externalPrimaryKeyNames(
+    externalPrimaryKeys,
+  );
+  if (primaryKeyExtensionTypes) {
+    database = _withGeneratedPrimaryKeyExtensionTypes(
+      database,
+      naming,
+      externalPrimaryKeyTypeSpecs: normalizedExternalPrimaryKeys,
+    );
+  }
+  database = _withGeneratedConstrainedTextTypes(database, naming);
+  return _PreparedDartSchemaEmission(
+    database: database,
+    int8JsonEncoding: effectiveInt8JsonEncoding,
+    externalPrimaryKeys: normalizedExternalPrimaryKeys,
+  );
+}
+
+final class _PreparedDartSchemaEmission {
+  const _PreparedDartSchemaEmission({
+    required this.database,
+    required this.int8JsonEncoding,
+    required this.externalPrimaryKeys,
+  });
+
+  final IntrospectedDatabase database;
+  final SqlInt8JsonEncoding int8JsonEncoding;
+  final Map<_ColumnKey, ExternalPrimaryKeySpec> externalPrimaryKeys;
 }

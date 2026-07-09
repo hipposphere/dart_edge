@@ -114,7 +114,8 @@ void main() {
     );
     expect(usersTable, contains('const UsersTable.withSchema(this.schema);'));
     expect(usersTable, contains('final String? schema;'));
-    expect(usersTable, contains('extension UsersTableColumns on UsersTable'));
+    expect(usersTable, isNot(contains('extension UsersTableColumns')));
+    expect(usersTable, contains('static final id = SqlColumn<UserId>('));
     expect(
       usersTable,
       contains('final class UsersRow implements JsonEncodable {'),
@@ -161,8 +162,8 @@ void main() {
     expect(usersTable, contains('UsersUpdate copyWith({'));
     expect(usersTable, contains('SqlValue<DateTime>? createdAt,'));
     expect(usersTable, contains("if (id.isPresent) 'id': id.value?.value,"));
-    expect(usersTable, contains("databaseType: 'INTEGER',"));
-    expect(usersTable, contains("databaseType: 'TEXT',"));
+    expect(usersTable, contains("databaseType: 'INTEGER'"));
+    expect(usersTable, contains("databaseType: 'TEXT'"));
     expect(
       usersTable,
       contains("'created_at': createdAt.value?.toIso8601String(),"),
@@ -400,7 +401,8 @@ void main() {
     );
     expect(library, contains('const DartEdgeAuthUsersTable.withSchema'));
     expect(library, contains('final String? schema;'));
-    expect(library, contains('extension DartEdgeAuthUsersTableColumns'));
+    expect(library, isNot(contains('extension DartEdgeAuthUsersTableColumns')));
+    expect(library, contains('static final id = SqlColumn<String>('));
     expect(
       library,
       contains(
@@ -887,7 +889,7 @@ void main() {
     expect(schema, contains("export 'enums/user_status.g.dart';"));
     expect(usersTable, contains("import '../enums/user_status.g.dart';"));
     expect(usersTable, contains('final UserStatus status;'));
-    expect(usersTable, contains("static final status = SqlColumn<String>("));
+    expect(usersTable, contains('static final status = SqlColumn<String>('));
     expect(usersTable, contains("databaseType: 'public.user_status',"));
     expect(usersTable, contains("status: UserStatus.fromDatabase("));
     expect(usersTable, contains("'status': status.value,"));
@@ -946,8 +948,8 @@ void main() {
     );
     expect(membersTable, contains('static PublicMembersRole fromDatabase'));
     expect(membersTable, contains('final PublicMembersRole role;'));
-    expect(membersTable, contains("static final role = SqlColumn<String>("));
-    expect(membersTable, contains("databaseType: 'text',"));
+    expect(membersTable, contains('static final role = SqlColumn<String>('));
+    expect(membersTable, contains("databaseType: 'text'"));
     expect(membersTable, contains("role: PublicMembersRole.fromDatabase("));
     expect(membersTable, contains("'role': role.value,"));
     expect(
@@ -956,6 +958,10 @@ void main() {
         "'role': JsonSchema.string("
         "enumValues: <String>['admin', 'member']",
       ),
+    );
+    expect(
+      emission.fileAt('key_manifest.g.dart').contents,
+      isNot(contains('PublicMembersRole')),
     );
   });
 
@@ -1009,20 +1015,46 @@ void main() {
     final notesTable = emission
         .fileAt('schemas/default/tables/notes.g.dart')
         .contents;
+    final keyManifest = emission.fileAt('key_manifest.g.dart').contents;
 
-    expect(usersTable, contains('extension type const UserId(int value) {}'));
+    expect(usersTable, contains('extension type const UserId(int value) {'));
+    expect(
+      usersTable,
+      contains('static const manifest = SqlKeyManifestEntry('),
+    );
+    expect(usersTable, contains("dartType: 'UserId'"));
+    expect(usersTable, contains("baseDartType: 'int'"));
+    expect(usersTable, contains("schema: 'default'"));
+    expect(usersTable, contains("table: 'users'"));
+    expect(usersTable, contains("column: 'id'"));
     expect(usersTable, contains('final UserId id;'));
     expect(usersTable, contains("id: UserId(row.read<int>('\${prefix}id'))"));
     expect(usersTable, contains("'id': id.value"));
     expect(usersTable, contains('static final id = SqlColumn<UserId>('));
 
     expect(notesTable, contains("import 'users.g.dart';"));
-    expect(notesTable, contains('extension type const NoteId(int value) {}'));
+    expect(notesTable, contains('extension type const NoteId(int value) {'));
     expect(notesTable, contains('final NoteId id;'));
     expect(notesTable, contains('final UserId userId;'));
     expect(notesTable, contains("userId: UserId(row.read<int>("));
     expect(notesTable, contains("'user_id': userId.value,"));
     expect(notesTable, contains('static final userId = SqlColumn<UserId>('));
+
+    expect(
+      keyManifest,
+      contains("import 'package:dart_edge_core/dart_edge_core.dart';"),
+    );
+    expect(keyManifest, isNot(contains('final class SqlKeyManifestEntry')));
+    expect(
+      keyManifest,
+      contains(
+        'const List<SqlKeyManifestEntry> sqlKeyManifest = '
+        '<SqlKeyManifestEntry>[',
+      ),
+    );
+    expect(keyManifest, contains('NoteId.manifest'));
+    expect(keyManifest, contains('UserId.manifest'));
+    expect(keyManifest, isNot(contains("column: 'user_id'")));
   });
 
   test('emits extension types for composite foreign key columns', () {
@@ -1172,7 +1204,7 @@ void main() {
 
     expect(
       notesTable,
-      contains('extension type const PublicNoteId(int value) {}'),
+      contains('extension type const PublicNoteId(int value) {'),
     );
     expect(
       userTable,
@@ -1483,6 +1515,7 @@ void main() {
       },
     );
     final externalKeys = emission.fileAt('external_keys.g.dart').contents;
+    final keyManifest = emission.fileAt('key_manifest.g.dart').contents;
     final notesTable = emission
         .fileAt('schemas/public/tables/notes.g.dart')
         .contents;
@@ -1507,6 +1540,18 @@ void main() {
       notesTable,
       contains('static final ownerId = SqlColumn<AuthUserId>('),
     );
+    expect(
+      externalKeys,
+      contains('static const manifest = SqlKeyManifestEntry('),
+    );
+    expect(externalKeys, contains("dartType: 'AuthUserId'"));
+    expect(externalKeys, contains("baseDartType: 'String'"));
+    expect(externalKeys, contains("schema: 'auth'"));
+    expect(externalKeys, contains("table: 'user'"));
+    expect(externalKeys, contains("column: 'id'"));
+    expect(externalKeys, contains('external: true'));
+    expect(keyManifest, contains('AuthUserId.manifest'));
+    expect(keyManifest, contains('PublicNoteId.manifest'));
     expect(
       emission.files.map((file) => file.relativePath),
       isNot(contains('schemas/auth/tables/user.g.dart')),
@@ -1825,7 +1870,7 @@ void main() {
         .contents;
 
     expect(tableFile, contains('static final nameColumn = SqlColumn<String>('));
-    expect(tableFile, contains("column<String>('name'"));
+    expect(tableFile, contains("name: 'name'"));
     expect(tableFile, contains("String get name => 'schema_migrations';"));
   });
 }

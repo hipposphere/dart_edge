@@ -37,6 +37,7 @@ That writes a structured generated tree:
 ```text
 lib/generated/
   app_schema.g.dart
+  key_manifest.g.dart
   schemas/
     default/
       schema.g.dart
@@ -70,6 +71,7 @@ That writes the same layout as the CLI:
 ```text
 lib/generated/
   app_schema.g.dart
+  key_manifest.g.dart
   schemas/
     default/
       schema.g.dart
@@ -87,11 +89,12 @@ run build_runner:
 dart run build_runner build
 ```
 
-The builder emits a single Dart library beside the snapshot:
+The builder emits Dart libraries beside the snapshot:
 
 ```text
 lib/app_schema.schema.json
 lib/app_schema.g.dart
+lib/app_schema.key_manifest.g.dart
 ```
 
 Configure build_runner naming in your package `build.yaml`:
@@ -135,6 +138,12 @@ The structured emitter always writes configured external value types to
 `external_keys.g.dart` and imports them from tables whose foreign keys use them.
 The one-shot CLI accepts the same mapping as
 `--external-primary-keys auth.user.id=AuthUserId:String`.
+
+Generated key extension types expose a static `manifest` constant describing
+their SQL key. Structured output also writes `key_manifest.g.dart`, which
+aggregates those constants for single-column primary keys and configured
+external primary keys. The build_runner form emits the same data beside the
+snapshot as `<name>.key_manifest.g.dart`.
 
 Snapshot JSON uses the same shape as `IntrospectedDatabase.toJson()`:
 

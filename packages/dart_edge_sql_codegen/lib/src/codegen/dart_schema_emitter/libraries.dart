@@ -13,13 +13,16 @@ String _emitEntrypoint({
       )
       ..body.add(_databaseClass(databaseClassName, schemaGroups));
 
-    if (hasExternalPrimaryKeys) {
-      builder.directives.add(Directive.export('external_keys.g.dart'));
-    }
     for (final group in schemaGroups) {
       builder.directives.add(
         Directive.import('schemas/${group.folderName}/schema.g.dart'),
       );
+    }
+    builder.directives.add(Directive.export('key_manifest.g.dart'));
+    if (hasExternalPrimaryKeys) {
+      builder.directives.add(Directive.export('external_keys.g.dart'));
+    }
+    for (final group in schemaGroups) {
       builder.directives.add(
         Directive.export('schemas/${group.folderName}/schema.g.dart'),
       );
@@ -28,22 +31,159 @@ String _emitEntrypoint({
   return _format(library, formatterOptions: formatterOptions);
 }
 
+String _emitSqlKeyManifestLibrary(
+  IntrospectedDatabase database,
+  Map<_ColumnKey, ExternalPrimaryKeySpec> externalPrimaryKeyTypeSpecs, {
+  required DartSchemaNaming naming,
+  required String? generatedLibraryImport,
+  required DartSchemaFormatterOptions formatterOptions,
+}) {
+  final entries = _sqlKeyManifestEntries(
+    database,
+    externalPrimaryKeyTypeSpecs,
+    naming,
+  );
+  final library = Library((builder) {
+    builder
+      ..comments.add('GENERATED CODE - DO NOT MODIFY BY HAND.')
+      ..directives.add(
+        Directive.import('package:dart_edge_core/dart_edge_core.dart'),
+      )
+      ..body.add(
+        Field((field) {
+          field
+            ..modifier = FieldModifier.constant
+            ..name = 'sqlKeyManifest'
+            ..type = _listOf(refer('SqlKeyManifestEntry'))
+            ..assignment = literalList([
+              for (final entry in entries)
+                refer(entry.dartType).property('manifest'),
+            ], refer('SqlKeyManifestEntry')).code;
+        }),
+      );
+    if (generatedLibraryImport case final import?) {
+      builder.directives.add(Directive.import(import));
+    } else {
+      if (externalPrimaryKeyTypeSpecs.isNotEmpty) {
+        builder.directives.add(Directive.import('external_keys.g.dart'));
+      }
+      for (final group in _groupBySchema(database)) {
+        builder.directives.add(
+          Directive.import('schemas/${group.folderName}/schema.g.dart'),
+        );
+      }
+    }
+  });
+  return _format(library, formatterOptions: formatterOptions);
+}
+
 String _emitExternalPrimaryKeysLibrary(
-  List<ExternalPrimaryKeySpec> externalPrimaryKeyTypes, {
+  List<
+    ({String schema, String table, String column, ExternalPrimaryKeySpec spec})
+  >
+  externalPrimaryKeyTypes, {
   required IntrospectedDatabase database,
   required DartSchemaFormatterOptions formatterOptions,
 }) {
   final library = Library((builder) {
-    if (externalPrimaryKeyTypes.any((type) => type.baseDartType == 'String')) {
-      builder.directives.add(
-        Directive.import('package:dart_edge_core/dart_edge_core.dart'),
-      );
-    }
+    builder.directives.add(
+      Directive.import('package:dart_edge_core/dart_edge_core.dart'),
+    );
     builder.body.addAll(
       _externalPrimaryKeyExtensionTypeSpecs(database, externalPrimaryKeyTypes),
     );
   });
   return _format(library, formatterOptions: formatterOptions);
+}
+
+String _sqlKeyManifestEntryCode(_SqlKeyManifestEntry entry) {
+  final fields = <String>[
+    "dartType: '${_escapeLiteral(entry.dartType)}'",
+    "baseDartType: '${_escapeLiteral(entry.baseDartType)}'",
+    "schema: '${_escapeLiteral(entry.schema)}'",
+    "table: '${_escapeLiteral(entry.table)}'",
+    "column: '${_escapeLiteral(entry.column)}'",
+  ];
+  if (entry.nullable) {
+    fields.add('nullable: true');
+  }
+  if (entry.external) {
+    fields.add('external: true');
+  }
+  return 'SqlKeyManifestEntry(${fields.join(', ')})';
+}
+
+List<_SqlKeyManifestEntry> _sqlKeyManifestEntries(
+  IntrospectedDatabase database,
+  Map<_ColumnKey, ExternalPrimaryKeySpec> externalPrimaryKeyTypeSpecs,
+  DartSchemaNaming naming,
+) {
+  final entries = <_SqlKeyManifestEntry>[
+    for (final externalEntry in externalPrimaryKeyTypeSpecs.entries)
+      _SqlKeyManifestEntry(
+        dartType: externalEntry.value.typeName,
+        baseDartType: externalEntry.value.baseDartType,
+        schema: externalEntry.key.schema,
+        table: externalEntry.key.table,
+        column: externalEntry.key.column,
+        external: true,
+      ),
+  ];
+
+  for (final table in database.tables) {
+    for (final column in table.columns) {
+      if (!_declaresExtensionValueType(table, naming, column)) {
+        continue;
+      }
+      entries.add(
+        _SqlKeyManifestEntry(
+          dartType: _valueType(column),
+          baseDartType: _databaseValueType(column),
+          schema: _schemaName(table.schema),
+          table: table.name,
+          column: column.name,
+          nullable: column.nullable,
+        ),
+      );
+    }
+  }
+
+  entries.sort((left, right) {
+    final schemaOrder = left.schema.compareTo(right.schema);
+    if (schemaOrder != 0) {
+      return schemaOrder;
+    }
+    final tableOrder = left.table.compareTo(right.table);
+    if (tableOrder != 0) {
+      return tableOrder;
+    }
+    final columnOrder = left.column.compareTo(right.column);
+    if (columnOrder != 0) {
+      return columnOrder;
+    }
+    return left.dartType.compareTo(right.dartType);
+  });
+  return entries;
+}
+
+final class _SqlKeyManifestEntry {
+  const _SqlKeyManifestEntry({
+    required this.dartType,
+    required this.baseDartType,
+    required this.schema,
+    required this.table,
+    required this.column,
+    this.nullable = false,
+    this.external = false,
+  });
+
+  final String dartType;
+  final String baseDartType;
+  final String schema;
+  final String table;
+  final String column;
+  final bool nullable;
+  final bool external;
 }
 
 String _emitSchemaLibrary(

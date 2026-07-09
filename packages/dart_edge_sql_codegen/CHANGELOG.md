@@ -1,3 +1,29 @@
+## 0.3.39
+
+- Keep generated table columns as static fields on the table class and stop
+  emitting separate `*TableColumns` extensions.
+
+## 0.3.38
+
+- Emit generated table `columns` metadata as `List<SqlColumnBase>` without
+  erased `asObjectColumn` casts.
+- Require `dart_edge_core` 0.3.31 and `dart_edge_sql` 0.3.30.
+
+## 0.3.37
+
+- Emit key metadata as static `manifest` constants on generated key extension
+  types and aggregate those constants in generated key manifest libraries.
+
+## 0.3.36
+
+- Use `SqlKeyManifestEntry` from `dart_edge_core` in generated key manifests.
+- Require `dart_edge_core` 0.3.30.
+
+## 0.3.35
+
+- Emit generated SQL key manifests for primary key extension types and
+  configured external primary keys.
+
 ## 0.3.34
 
 - Update SQL introspection queries for the typed `orderBy` API in

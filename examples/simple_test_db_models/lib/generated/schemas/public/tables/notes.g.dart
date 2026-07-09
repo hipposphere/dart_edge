@@ -1,7 +1,15 @@
 import 'package:dart_edge_core/dart_edge_core.dart';
 import 'people.g.dart';
 
-extension type const PublicNoteId(int value) {}
+extension type const PublicNoteId(int value) {
+  static const manifest = SqlKeyManifestEntry(
+    dartType: 'PublicNoteId',
+    baseDartType: 'int',
+    schema: 'public',
+    table: 'notes',
+    column: 'id',
+  );
+}
 
 final class PublicNotesRow implements JsonEncodable {
   const PublicNotesRow({
@@ -292,7 +300,12 @@ final class PublicNotesUpdate implements JsonEncodable {
 
 final class PublicNotesTable
     extends SqlTable<PublicNotesRow, PublicNotesInsert, PublicNotesUpdate> {
-  const PublicNotesTable._();
+  const PublicNotesTable._() : schema = 'public';
+
+  const PublicNotesTable.withSchema(this.schema);
+
+  @override
+  final String? schema;
 
   static const table = PublicNotesTable._();
 
@@ -335,15 +348,12 @@ final class PublicNotesTable
   String get name => 'notes';
 
   @override
-  String? get schema => 'public';
-
-  @override
-  List<SqlColumn<Object?>> get columns => <SqlColumn<Object?>>[
-    id.asObjectColumn,
-    title.asObjectColumn,
-    body.asObjectColumn,
-    ownerId.asObjectColumn,
-    createdAt.asObjectColumn,
+  List<SqlColumnBase> get columns => <SqlColumnBase>[
+    id,
+    title,
+    body,
+    ownerId,
+    createdAt,
   ];
 
   @override

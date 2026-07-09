@@ -27,13 +27,31 @@ void main() {
   test('SqlTable and SqlColumn describe table shape', () {
     expect(_UsersTable.table.qualifiedName, 'public.users');
     expect(_UsersTable.id.qualifiedName, 'public.users.id');
-    expect(_UsersTable.id.asObjectColumn.name, 'id');
+    expect(_UsersTable.id.name, 'id');
     expect(_UsersTable.id.databaseType, 'uuid');
 
     const tenantUsers = _UsersTable.withSchema('tenant_auth');
     final tenantId = tenantUsers.column<int>('id', databaseType: 'uuid');
     expect(tenantUsers.qualifiedName, 'tenant_auth.users');
     expect(tenantId.qualifiedName, 'tenant_auth.users.id');
+  });
+
+  test('SqlKeyManifestEntry describes generated SQL key value types', () {
+    const entry = SqlKeyManifestEntry(
+      dartType: 'PublicUserId',
+      baseDartType: 'int',
+      schema: 'public',
+      table: 'users',
+      column: 'id',
+    );
+
+    expect(entry.dartType, 'PublicUserId');
+    expect(entry.baseDartType, 'int');
+    expect(entry.schema, 'public');
+    expect(entry.table, 'users');
+    expect(entry.column, 'id');
+    expect(entry.nullable, isFalse);
+    expect(entry.external, isFalse);
   });
 }
 
@@ -62,11 +80,7 @@ final class _UsersTable
   final String? schema;
 
   @override
-  List<SqlColumn<Object?>> get columns => <SqlColumn<Object?>>[
-    id.asObjectColumn,
-    email.asObjectColumn,
-    nickname.asObjectColumn,
-  ];
+  List<SqlColumnBase> get columns => <SqlColumnBase>[id, email, nickname];
 
   @override
   SqlRow mapRow(SqlRow row, {String prefix = ''}) => row;

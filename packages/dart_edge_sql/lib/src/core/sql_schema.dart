@@ -1,2 +1,2 @@
 export 'package:dart_edge_core/dart_edge_core.dart'
-    show SqlColumn, SqlRawTable, SqlRowColumnRead, SqlTable;
+    show SqlColumn, SqlColumnBase, SqlRawTable, SqlRowColumnRead, SqlTable;

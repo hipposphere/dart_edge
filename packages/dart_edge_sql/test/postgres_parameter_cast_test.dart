@@ -384,9 +384,7 @@ final class PhoneCallsTable
   String? get schema => 'public';
 
   @override
-  List<SqlColumn<Object?>> get columns => <SqlColumn<Object?>>[
-    durationSeconds.asObjectColumn,
-  ];
+  List<SqlColumnBase> get columns => <SqlColumnBase>[durationSeconds];
 
   @override
   Map<String, Object?> encodeInsert(PhoneCallInsert value) => value.toColumns();
@@ -465,11 +463,7 @@ final class DocumentsTable
   String? get schema => 'public';
 
   @override
-  List<SqlColumn<Object?>> get columns => <SqlColumn<Object?>>[
-    id.asObjectColumn,
-    status.asObjectColumn,
-    publishTime.asObjectColumn,
-  ];
+  List<SqlColumnBase> get columns => <SqlColumnBase>[id, status, publishTime];
 
   @override
   Map<String, Object?> encodeInsert(DocumentsInsert value) => value.toColumns();
@@ -520,9 +514,7 @@ final class BlueprintsTable
   String? get schema => 'public';
 
   @override
-  List<SqlColumn<Object?>> get columns => <SqlColumn<Object?>>[
-    definition.asObjectColumn,
-  ];
+  List<SqlColumnBase> get columns => <SqlColumnBase>[definition];
 
   @override
   Map<String, Object?> encodeInsert(BlueprintInsert value) => value.toColumns();
@@ -574,9 +566,7 @@ final class AgentsTable extends SqlTable<SqlRow, AgentInsert, AgentUpdate> {
   String? get schema => 'agento';
 
   @override
-  List<SqlColumn<Object?>> get columns => <SqlColumn<Object?>>[
-    includeThinkingSummaries.asObjectColumn,
-  ];
+  List<SqlColumnBase> get columns => <SqlColumnBase>[includeThinkingSummaries];
 
   @override
   Map<String, Object?> encodeInsert(AgentInsert value) => value.toColumns();
@@ -666,12 +656,12 @@ final class ScalarSamplesTable
   String? get schema => 'public';
 
   @override
-  List<SqlColumn<Object?>> get columns => <SqlColumn<Object?>>[
-    realValue.asObjectColumn,
-    doubleValue.asObjectColumn,
-    numericValue.asObjectColumn,
-    moneyValue.asObjectColumn,
-    bytesValue.asObjectColumn,
+  List<SqlColumnBase> get columns => <SqlColumnBase>[
+    realValue,
+    doubleValue,
+    numericValue,
+    moneyValue,
+    bytesValue,
   ];
 
   @override
@@ -717,9 +707,7 @@ final class EmbeddingsTable
   );
 
   @override
-  List<SqlColumn<Object?>> get columns => <SqlColumn<Object?>>[
-    embedding.asObjectColumn,
-  ];
+  List<SqlColumnBase> get columns => <SqlColumnBase>[embedding];
 
   @override
   Map<String, Object?> encodeInsert(EmbeddingInsert value) => value.toColumns();

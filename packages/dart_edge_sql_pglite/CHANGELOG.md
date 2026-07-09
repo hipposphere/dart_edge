@@ -1,3 +1,7 @@
+## 0.1.13
+
+- Require `dart_edge_sql` 0.3.30.
+
 ## 0.1.12
 
 - Add bundled PGlite extension support, including pgvector via

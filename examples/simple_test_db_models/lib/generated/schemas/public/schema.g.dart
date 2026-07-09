@@ -5,7 +5,11 @@ export 'tables/notes.g.dart';
 export 'tables/people.g.dart';
 
 final class PublicSchema {
-  const PublicSchema._();
+  const PublicSchema({this.databaseSchema});
+
+  const PublicSchema._() : databaseSchema = null;
+
+  final String? databaseSchema;
 
   static const instance = PublicSchema._();
 
@@ -26,5 +30,15 @@ final class PublicSchema {
 
   static const JsonSchemaRegistry jsonSchemas = JsonSchemaRegistry(
     schemas: schemas,
+  );
+}
+
+extension PublicSchemaTables on PublicSchema {
+  PublicNotesTable get notes => PublicNotesTable.withSchema(
+    databaseSchema ?? PublicNotesTable.table.schema,
+  );
+
+  PublicPeopleTable get people => PublicPeopleTable.withSchema(
+    databaseSchema ?? PublicPeopleTable.table.schema,
   );
 }

@@ -14,7 +14,7 @@ abstract base class SqlTable<TRow, TInsert, TUpdate> {
   String? get schema;
 
   /// All columns that belong to the table.
-  List<SqlColumn<Object?>> get columns;
+  List<SqlColumnBase> get columns;
 
   /// Creates a column descriptor bound to this table instance.
   SqlColumn<TValue> column<TValue>(
@@ -52,8 +52,26 @@ abstract base class SqlTable<TRow, TInsert, TUpdate> {
   };
 }
 
-/// Descriptor for one column on a [SqlTable].
-final class SqlColumn<TValue> {
+/// Untyped descriptor for one column on a [SqlTable].
+abstract interface class SqlColumnBase {
+  /// Table that owns the column.
+  SqlTable<dynamic, dynamic, dynamic> get table;
+
+  /// Column name without qualification.
+  String get name;
+
+  /// Whether the column may contain `NULL`.
+  bool get nullable;
+
+  /// Database-native column type name, when known.
+  String? get databaseType;
+
+  /// Fully qualified column name.
+  String get qualifiedName;
+}
+
+/// Typed descriptor for one column on a [SqlTable].
+final class SqlColumn<TValue> implements SqlColumnBase {
   const SqlColumn({
     required this.table,
     required this.name,
@@ -62,21 +80,30 @@ final class SqlColumn<TValue> {
   });
 
   /// Table that owns the column.
+  @override
   final SqlTable<dynamic, dynamic, dynamic> table;
 
   /// Column name without qualification.
+  @override
   final String name;
 
   /// Whether the column may contain `NULL`.
+  @override
   final bool nullable;
 
   /// Database-native column type name, when known.
+  @override
   final String? databaseType;
 
   /// Fully qualified column name.
+  @override
   String get qualifiedName => '${table.qualifiedName}.$name';
 
   /// Reinterprets this column as `SqlColumn<Object?>`.
+  ///
+  /// New table metadata should prefer [SqlColumnBase] for heterogeneous column
+  /// lists. This remains for older generated code and query-builder internals
+  /// that need an erased typed column.
   SqlColumn<Object?> get asObjectColumn => this as SqlColumn<Object?>;
 }
 
@@ -100,7 +127,7 @@ extension SqlRowColumnRead on SqlRow {
       readNullable<TValue>(column.selectionAlias);
 }
 
-extension on SqlColumn<dynamic> {
+extension on SqlColumnBase {
   String get selectionAlias => '${table.selectionPrefix}$name';
 }
 
@@ -122,7 +149,7 @@ final class SqlRawTable
   String? get schema => null;
 
   @override
-  List<SqlColumn<Object?>> get columns => const <SqlColumn<Object?>>[];
+  List<SqlColumnBase> get columns => const <SqlColumnBase>[];
 
   /// Creates a column descriptor attached to this raw table expression.
   @override

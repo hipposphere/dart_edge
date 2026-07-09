@@ -153,11 +153,11 @@ final class ReproTable extends SqlTable<ReproRow, ReproInsert, ReproUpdate> {
   String? get schema => null;
 
   @override
-  List<SqlColumn<Object?>> get columns => [
-    id.asObjectColumn,
-    modelName.asObjectColumn,
-    payload.asObjectColumn,
-    createdAt.asObjectColumn,
+  List<SqlColumnBase> get columns => <SqlColumnBase>[
+    id,
+    modelName,
+    payload,
+    createdAt,
   ];
 
   @override

@@ -1,3 +1,13 @@
+## 0.3.36
+
+- Update SQL codegen constraint for `dart_edge_sql_codegen` 0.3.39.
+
+## 0.3.35
+
+- Update SQL package constraints for `dart_edge_core` 0.3.31,
+  `dart_edge_sql` 0.3.30, `dart_edge_sql_codegen` 0.3.38, and
+  `dart_edge_sql_pglite` 0.1.13.
+
 ## 0.3.34
 
 - Update SQL package constraints for `dart_edge_sql` 0.3.28 and

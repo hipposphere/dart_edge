@@ -1,3 +1,8 @@
+## 0.3.30
+
+- Re-export `SqlColumnBase` and use it for heterogeneous table column metadata.
+- Require `dart_edge_core` 0.3.31.
+
 ## 0.3.29
 
 - Add `SqlParam` and `SqlParameter` for explicitly typed PostgreSQL raw query

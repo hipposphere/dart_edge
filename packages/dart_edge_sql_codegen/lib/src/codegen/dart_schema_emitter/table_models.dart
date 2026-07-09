@@ -10,7 +10,17 @@ Iterable<Spec> _tableSpecs(
     (column) => _declaresExtensionValueType(table, naming, column),
   )) {
     if (emittedExtensionTypes.add(_valueType(column))) {
-      yield _extensionValueTypeSpec(column);
+      yield _extensionValueTypeSpec(
+        column,
+        manifest: _SqlKeyManifestEntry(
+          dartType: _valueType(column),
+          baseDartType: _databaseValueType(column),
+          schema: _schemaName(table.schema),
+          table: table.name,
+          column: column.name,
+          nullable: column.nullable,
+        ),
+      );
     }
   }
   for (final column in table.columns.where(_isConstrainedTextColumn)) {
@@ -20,15 +30,23 @@ Iterable<Spec> _tableSpecs(
   yield _insertClass(table, naming, int8JsonEncoding: int8JsonEncoding);
   yield _updateClass(table, naming, int8JsonEncoding: int8JsonEncoding);
   yield _tableClass(table, naming);
-  yield _tableColumnsExtension(table, naming);
 }
 
 Code _extensionValueTypeSpec(
   IntrospectedColumn column, {
   String? schemaFormat,
+  _SqlKeyManifestEntry? manifest,
 }) {
   final typeName = _valueType(column);
   final baseType = _databaseValueType(column);
+  final manifestDeclaration = switch (manifest) {
+    final manifest? =>
+      '''
+  static const manifest = ${_sqlKeyManifestEntryCode(manifest)};
+
+''',
+    null => '',
+  };
   if (baseType == 'String') {
     final format = schemaFormat ?? _jsonStringFormatForColumn(column);
     final formatArgument = switch (format) {
@@ -37,7 +55,7 @@ Code _extensionValueTypeSpec(
     };
     return Code('''
 extension type const $typeName($baseType value) {
-  static const JsonSchema schema = .string(
+$manifestDeclaration  static const JsonSchema schema = .string(
 $formatArgument    dartType: .value('$typeName'),
   );
 
@@ -49,23 +67,35 @@ $formatArgument    dartType: .value('$typeName'),
 ''');
   }
   return Code('''
-extension type const $typeName($baseType value) {}
+extension type const $typeName($baseType value) {
+$manifestDeclaration}
 ''');
 }
 
 Iterable<Spec> _externalPrimaryKeyExtensionTypeSpecs(
   IntrospectedDatabase database,
-  List<ExternalPrimaryKeySpec> externalPrimaryKeyTypes,
+  List<
+    ({String schema, String table, String column, ExternalPrimaryKeySpec spec})
+  >
+  externalPrimaryKeyTypes,
 ) {
   return externalPrimaryKeyTypes.map((type) {
     return _extensionValueTypeSpec(
       IntrospectedColumn(
-        name: type.typeName,
-        databaseType: type.baseDartType,
-        dartType: type.typeName,
-        extensionBaseDartType: type.baseDartType,
+        name: type.spec.typeName,
+        databaseType: type.spec.baseDartType,
+        dartType: type.spec.typeName,
+        extensionBaseDartType: type.spec.baseDartType,
       ),
-      schemaFormat: _externalPrimaryKeyStringFormat(database, type),
+      schemaFormat: _externalPrimaryKeyStringFormat(database, type.spec),
+      manifest: _SqlKeyManifestEntry(
+        dartType: type.spec.typeName,
+        baseDartType: type.spec.baseDartType,
+        schema: type.schema,
+        table: type.table,
+        column: type.column,
+        external: true,
+      ),
     );
   });
 }
@@ -456,11 +486,11 @@ Class _tableClass(
         _getter('name', refer('String'), literalString(table.name)),
         _getter(
           'columns',
-          _listOf(_type('SqlColumn', [refer('Object?')])),
+          _listOf(refer('SqlColumnBase')),
           literalList([
             for (final column in table.columns)
-              _instanceColumnExpression(column).property('asObjectColumn'),
-          ], _type('SqlColumn', [refer('Object?')])),
+              refer(_columnFieldName(column.name)),
+          ], refer('SqlColumnBase')),
         ),
         Method((method) {
           method
@@ -508,40 +538,6 @@ Constructor _tableConstConstructor(IntrospectedTable table) {
         }).code,
       );
   });
-}
-
-Extension _tableColumnsExtension(
-  IntrospectedTable table,
-  DartSchemaNaming naming,
-) {
-  final tableClassName = _tableClassName(table, naming);
-  return Extension((builder) {
-    builder
-      ..name = '${tableClassName}Columns'
-      ..on = refer(tableClassName)
-      ..methods.addAll([
-        for (final column in table.columns)
-          Method((method) {
-            method
-              ..type = MethodType.getter
-              ..returns = _type('SqlColumn', [_sqlColumnType(column)])
-              ..name = _columnFieldName(column.name)
-              ..lambda = true
-              ..body = _instanceColumnExpression(column).code;
-          }),
-      ]);
-  });
-}
-
-Expression _instanceColumnExpression(IntrospectedColumn column) {
-  return refer('column').call(
-    [literalString(column.name)],
-    {
-      'nullable': literalBool(column.nullable),
-      'databaseType': literalString(_columnDatabaseType(column)),
-    },
-    [_sqlColumnType(column)],
-  );
 }
 
 List<_TableImportSpec> _tablePrimaryKeyTypeImports(

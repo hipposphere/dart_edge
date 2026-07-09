@@ -1,5 +1,6 @@
 import 'package:dart_edge_core/dart_edge_core.dart';
 import 'schemas/public/schema.g.dart';
+export 'key_manifest.g.dart';
 export 'schemas/public/schema.g.dart';
 
 final class AppSchema {

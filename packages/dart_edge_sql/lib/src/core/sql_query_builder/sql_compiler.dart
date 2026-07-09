@@ -31,7 +31,7 @@ final class _SqlCompiler {
     writeIdentifier(table.name);
   }
 
-  void writeColumn(SqlColumn<dynamic> column) {
+  void writeColumn(SqlColumnBase column) {
     if (column.table case final SqlRawTable rawTable) {
       writeIdentifier(rawTable.alias ?? rawTable.tableExpression);
     } else {
@@ -41,7 +41,7 @@ final class _SqlCompiler {
     writeIdentifier(column.name);
   }
 
-  void writeValue(Object? value, {SqlColumn<dynamic>? column}) {
+  void writeValue(Object? value, {SqlColumnBase? column}) {
     final parameterName = 'p${++_parameterIndex}';
     final explicitParameter = value is SqlParameter<dynamic> ? value : null;
     final parameterValue = switch (explicitParameter) {
@@ -75,29 +75,29 @@ final class _SqlCompiler {
       case _SqlRawPredicate():
         writeRaw(predicate.sql, predicate.parameters);
       case _SqlComparisonPredicate():
-        writeColumn(predicate.left.asObjectColumn);
+        writeColumn(predicate.left);
         write(' ${predicate.operator} ');
         switch (predicate.right) {
           case final SqlColumn<dynamic> column:
             writeColumn(column);
           default:
-            writeValue(predicate.right, column: predicate.left.asObjectColumn);
+            writeValue(predicate.right, column: predicate.left);
         }
       case _SqlNullPredicate():
-        writeColumn(predicate.column.asObjectColumn);
+        writeColumn(predicate.column);
         write(predicate.isNull ? ' IS NULL' : ' IS NOT NULL');
       case _SqlInPredicate():
         if (predicate.values.isEmpty) {
           write('1 = 0');
           return;
         }
-        writeColumn(predicate.column.asObjectColumn);
+        writeColumn(predicate.column);
         write(' IN (');
         writeJoined(
           predicate.values,
           separator: ', ',
           writeElement: (value) {
-            writeValue(value, column: predicate.column.asObjectColumn);
+            writeValue(value, column: predicate.column);
           },
         );
         write(')');
@@ -313,10 +313,7 @@ bool _isIdentifierPart(String? char) {
   return _isIdentifierStart(char) || (code >= 48 && code <= 57);
 }
 
-Object? _encodePostgresParameterValue(
-  Object? value,
-  SqlColumn<dynamic>? column,
-) {
+Object? _encodePostgresParameterValue(Object? value, SqlColumnBase? column) {
   if (PostgresTypeMapping.usesArrayTextParameter(column?.databaseType)) {
     return _encodePostgresArrayTextParameter(value);
   }
@@ -515,11 +512,11 @@ _SelectedProjection _normalizeProjection(Object value) {
     ),
     final String rawSql => _SelectedProjection(rawSql: rawSql),
     final SqlSelectedColumn<dynamic> selected => _SelectedProjection(
-      column: selected.column.asObjectColumn,
+      column: selected.column,
       alias: selected.alias ?? _aliasFor(selected.column),
     ),
     final SqlColumn<dynamic> column => _SelectedProjection(
-      column: column.asObjectColumn,
+      column: column,
       alias: _aliasFor(column),
     ),
     final Object invalid => throw ArgumentError.value(
@@ -555,7 +552,7 @@ Object _normalizeSelectable(Object value) {
   return switch (value) {
     final String rawSql => rawSql,
     final SqlRawExpression<dynamic> expression => expression,
-    final SqlColumn<dynamic> column => column.asObjectColumn,
+    final SqlColumn<dynamic> column => column,
     final Object invalid => throw ArgumentError.value(
       invalid,
       'value',
@@ -738,7 +735,7 @@ _SqlFragment _sqlFragment(
       prefix: prefix,
     ),
     final SqlColumn<dynamic> column => _compileSqlFragment((compiler) {
-      compiler.writeColumn(column.asObjectColumn);
+      compiler.writeColumn(column);
     }),
     final SqlParameter<dynamic> parameter => _valueFragment(
       parameter,
@@ -921,7 +918,7 @@ final class _SqlFragment {
   final Map<String, Object?> parameters;
 }
 
-String _aliasFor(SqlColumn<dynamic> column) =>
+String _aliasFor(SqlColumnBase column) =>
     '${column.table.selectionPrefix}${column.name}';
 
 sealed class _SqlSelection<TSelection> {
@@ -948,10 +945,7 @@ final class _ColumnSelection<TValue> extends _SqlSelection<TValue> {
 
   @override
   late final List<_SelectedProjection> projections = [
-    _SelectedProjection(
-      column: column.asObjectColumn,
-      alias: _aliasFor(column),
-    ),
+    _SelectedProjection(column: column, alias: _aliasFor(column)),
   ];
 
   @override
@@ -1013,7 +1007,7 @@ final class _SelectedProjection {
     this.alias,
   }) : assert(column != null || expression != null || rawSql != null);
 
-  final SqlColumn<dynamic>? column;
+  final SqlColumnBase? column;
   final SqlRawExpression<dynamic>? expression;
   final String? rawSql;
   final String? alias;

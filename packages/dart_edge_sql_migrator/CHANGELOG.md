@@ -1,3 +1,7 @@
+## 0.3.17
+
+- Require `dart_edge_sql` 0.3.30.
+
 ## 0.3.7
 
 - Update `dart_edge_sql` constraint for rebuilt native artifacts.

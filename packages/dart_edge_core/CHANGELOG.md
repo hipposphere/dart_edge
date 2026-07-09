@@ -1,3 +1,11 @@
+## 0.3.31
+
+- Add `SqlColumnBase` for heterogeneous SQL table column metadata.
+
+## 0.3.30
+
+- Add `SqlKeyManifestEntry` for generated SQL key manifests.
+
 ## 0.3.29
 
 - Add `SqlRow` helpers for reading values by typed SQL column projection aliases.
