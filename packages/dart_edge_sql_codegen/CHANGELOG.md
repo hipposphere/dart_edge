@@ -1,7 +1,9 @@
 ## 0.3.39
 
-- Keep generated table columns as static fields on the table class and stop
-  emitting separate `*TableColumns` extensions.
+- Keep generated table columns as `static const` fields on the table class and
+  stop emitting separate `*TableColumns` extensions.
+- Expose key metadata as `static const sqlKeyManifest` on the generated database
+  class instead of generating a separate key manifest library.
 
 ## 0.3.38
 

@@ -3,6 +3,7 @@ part of '../dart_schema_emitter.dart';
 String _emitEntrypoint({
   required String databaseClassName,
   required List<_SchemaGroup> schemaGroups,
+  required List<_SqlKeyManifestEntry> keyManifestEntries,
   required bool hasExternalPrimaryKeys,
   required DartSchemaFormatterOptions formatterOptions,
 }) {
@@ -11,15 +12,17 @@ String _emitEntrypoint({
       ..directives.add(
         Directive.import('package:dart_edge_core/dart_edge_core.dart'),
       )
-      ..body.add(_databaseClass(databaseClassName, schemaGroups));
+      ..body.add(
+        _databaseClass(databaseClassName, schemaGroups, keyManifestEntries),
+      );
 
     for (final group in schemaGroups) {
       builder.directives.add(
         Directive.import('schemas/${group.folderName}/schema.g.dart'),
       );
     }
-    builder.directives.add(Directive.export('key_manifest.g.dart'));
     if (hasExternalPrimaryKeys) {
+      builder.directives.add(Directive.import('external_keys.g.dart'));
       builder.directives.add(Directive.export('external_keys.g.dart'));
     }
     for (final group in schemaGroups) {
@@ -291,6 +294,7 @@ String _emitRoutineLibrary(
 Class _databaseClass(
   String databaseClassName,
   List<_SchemaGroup> schemaGroups,
+  List<_SqlKeyManifestEntry> keyManifestEntries,
 ) {
   return Class((builder) {
     builder
@@ -303,6 +307,14 @@ Class _databaseClass(
             name: group.memberName,
             assignment: refer(group.className).property('instance'),
           ),
+        _staticConstField(
+          name: 'sqlKeyManifest',
+          type: _listOf(refer('SqlKeyManifestEntry')),
+          assignment: literalList([
+            for (final entry in keyManifestEntries)
+              refer(entry.dartType).property('manifest'),
+          ], refer('SqlKeyManifestEntry')),
+        ),
         _staticConstField(
           name: 'schemas',
           type: _listOf(refer('JsonSchema')),

@@ -10,8 +10,7 @@ import '../introspection/introspected_database.dart';
 /// Build runner integration for schema snapshots.
 ///
 /// Inputs are JSON files ending in `.schema.json`. The builder emits Dart
-/// libraries beside the snapshot, ending in `.g.dart` and
-/// `.key_manifest.g.dart`.
+/// library beside the snapshot, ending in `.g.dart`.
 final class DartEdgeSqlBuilder implements Builder {
   const DartEdgeSqlBuilder(this.options);
 
@@ -19,7 +18,7 @@ final class DartEdgeSqlBuilder implements Builder {
 
   @override
   Map<String, List<String>> get buildExtensions => const {
-    '.schema.json': ['.g.dart', '.key_manifest.g.dart'],
+    '.schema.json': ['.g.dart'],
   };
 
   @override
@@ -42,13 +41,6 @@ final class DartEdgeSqlBuilder implements Builder {
       input.package,
       input.path.replaceFirst(RegExp(r'\.schema\.json$'), '.g.dart'),
     );
-    final keyManifestOutput = AssetId(
-      input.package,
-      input.path.replaceFirst(
-        RegExp(r'\.schema\.json$'),
-        '.key_manifest.g.dart',
-      ),
-    );
     final primaryKeyExtensionTypes = _primaryKeyExtensionTypes(options.config);
     final int8JsonEncoding = _int8JsonEncoding(options.config);
     final externalPrimaryKeys = _externalPrimaryKeys(options.config);
@@ -66,24 +58,7 @@ final class DartEdgeSqlBuilder implements Builder {
         formatterOptions: formatterOptions,
       ),
     );
-    await buildStep.writeAsString(
-      keyManifestOutput,
-      emitDartSqlKeyManifestLibrary(
-        database,
-        naming: naming,
-        primaryKeyExtensionTypes: primaryKeyExtensionTypes,
-        int8JsonEncoding: int8JsonEncoding,
-        externalPrimaryKeys: externalPrimaryKeys,
-        generatedLibraryImport: _fileName(output.path),
-        formatterOptions: formatterOptions,
-      ),
-    );
   }
-}
-
-String _fileName(String path) {
-  final slash = path.lastIndexOf('/');
-  return slash == -1 ? path : path.substring(slash + 1);
 }
 
 DartSchemaFormatterOptions _formatterOptions(Map<String, dynamic> config) {

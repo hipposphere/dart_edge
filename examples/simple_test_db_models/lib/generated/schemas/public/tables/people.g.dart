@@ -305,28 +305,28 @@ final class PublicPeopleTable
 
   static const table = PublicPeopleTable._();
 
-  static final id = SqlColumn<PublicPeopleId>(
+  static const id = SqlColumn<PublicPeopleId>(
     table: table,
     name: 'id',
     nullable: false,
     databaseType: 'int4',
   );
 
-  static final nameColumn = SqlColumn<String>(
+  static const nameColumn = SqlColumn<String>(
     table: table,
     name: 'name',
     nullable: false,
     databaseType: 'text',
   );
 
-  static final email = SqlColumn<String>(
+  static const email = SqlColumn<String>(
     table: table,
     name: 'email',
     nullable: false,
     databaseType: 'text',
   );
 
-  static final role = SqlColumn<String>(
+  static const role = SqlColumn<String>(
     table: table,
     name: 'role',
     nullable: false,

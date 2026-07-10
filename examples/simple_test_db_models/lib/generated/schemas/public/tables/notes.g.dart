@@ -309,35 +309,35 @@ final class PublicNotesTable
 
   static const table = PublicNotesTable._();
 
-  static final id = SqlColumn<PublicNoteId>(
+  static const id = SqlColumn<PublicNoteId>(
     table: table,
     name: 'id',
     nullable: false,
     databaseType: 'int4',
   );
 
-  static final title = SqlColumn<String>(
+  static const title = SqlColumn<String>(
     table: table,
     name: 'title',
     nullable: false,
     databaseType: 'text',
   );
 
-  static final body = SqlColumn<String>(
+  static const body = SqlColumn<String>(
     table: table,
     name: 'body',
     nullable: false,
     databaseType: 'text',
   );
 
-  static final ownerId = SqlColumn<PublicPeopleId>(
+  static const ownerId = SqlColumn<PublicPeopleId>(
     table: table,
     name: 'owner_id',
     nullable: false,
     databaseType: 'int4',
   );
 
-  static final createdAt = SqlColumn<String>(
+  static const createdAt = SqlColumn<String>(
     table: table,
     name: 'created_at',
     nullable: false,

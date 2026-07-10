@@ -107,17 +107,12 @@ DartSchemaEmission emitDartSchema(
       contents: _emitEntrypoint(
         databaseClassName: databaseClassName,
         schemaGroups: schemaGroups,
+        keyManifestEntries: _sqlKeyManifestEntries(
+          database,
+          prepared.externalPrimaryKeys,
+          effectiveNaming,
+        ),
         hasExternalPrimaryKeys: externalPrimaryKeyTypes.isNotEmpty,
-        formatterOptions: formatterOptions,
-      ),
-    ),
-    DartSchemaEmissionFile(
-      relativePath: 'key_manifest.g.dart',
-      contents: _emitSqlKeyManifestLibrary(
-        database,
-        prepared.externalPrimaryKeys,
-        naming: effectiveNaming,
-        generatedLibraryImport: null,
         formatterOptions: formatterOptions,
       ),
     ),
@@ -237,7 +232,17 @@ String emitDartSchemaLibrary(
       ..directives.add(
         Directive.import('package:dart_edge_core/dart_edge_core.dart'),
       )
-      ..body.add(_databaseClass(databaseClassName, schemaGroups))
+      ..body.add(
+        _databaseClass(
+          databaseClassName,
+          schemaGroups,
+          _sqlKeyManifestEntries(
+            database,
+            prepared.externalPrimaryKeys,
+            effectiveNaming,
+          ),
+        ),
+      )
       ..body.addAll(
         schemaGroups.expand(
           (group) => [

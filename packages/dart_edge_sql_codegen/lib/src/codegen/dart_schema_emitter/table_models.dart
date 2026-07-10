@@ -470,10 +470,10 @@ Class _tableClass(
           Field((field) {
             field
               ..static = true
-              ..modifier = FieldModifier.final$
+              ..modifier = FieldModifier.constant
               ..name = _columnFieldName(column.name)
               ..assignment = _type('SqlColumn', [_sqlColumnType(column)])
-                  .newInstance(const <Expression>[], {
+                  .constInstance(const <Expression>[], {
                     'table': refer('table'),
                     'name': literalString(column.name),
                     'nullable': literalBool(column.nullable),

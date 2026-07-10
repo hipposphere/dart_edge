@@ -29,7 +29,6 @@ The output is checked in:
 
 ```text
 ../simple_test_db_models/lib/generated/app_schema.g.dart
-../simple_test_db_models/lib/generated/key_manifest.g.dart
 ../simple_test_db_models/lib/generated/schemas/public/schema.g.dart
 ../simple_test_db_models/lib/generated/schemas/public/tables/*.g.dart
 ```

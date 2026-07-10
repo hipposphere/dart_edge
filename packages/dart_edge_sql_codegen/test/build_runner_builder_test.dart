@@ -83,14 +83,8 @@ void main() {
             isNot(contains('ref: schemaRef')),
             contains('id: schemaId'),
             contains('static const JsonSchemaRegistry jsonSchemas'),
-          ]),
-        ),
-        'test_app|lib/app_schema.key_manifest.g.dart': decodedMatches(
-          allOf([
-            contains("import 'package:dart_edge_core/dart_edge_core.dart';"),
-            isNot(contains('final class SqlKeyManifestEntry')),
             contains(
-              'const List<SqlKeyManifestEntry> sqlKeyManifest = '
+              'static const List<SqlKeyManifestEntry> sqlKeyManifest = '
               '<SqlKeyManifestEntry>[',
             ),
             contains('UserId.manifest'),
@@ -137,9 +131,6 @@ void main() {
             'JsonSchemaRegistry(schemas: schemas);',
           ),
         ),
-        'test_app|lib/app_schema.key_manifest.g.dart': decodedMatches(
-          contains('UserId.manifest'),
-        ),
       },
     );
   });
@@ -185,10 +176,8 @@ void main() {
             ),
             contains('static const group = PublicGroupTable.table;'),
             contains("static const schemaId = 'PublicGroupRow';"),
+            contains('PublicGroupId.manifest'),
           ]),
-        ),
-        'test_app|lib/app_schema.key_manifest.g.dart': decodedMatches(
-          contains('PublicGroupId.manifest'),
         ),
       },
     );
@@ -230,14 +219,10 @@ void main() {
             allOf([
               isNot(contains('extension type const NoteId')),
               contains('final int id;'),
-              contains('static final id = SqlColumn<int>('),
+              contains('static const id = SqlColumn<int>('),
+              contains('static const List<SqlKeyManifestEntry> sqlKeyManifest'),
+              contains('<SqlKeyManifestEntry>[];'),
             ]),
-          ),
-          'test_app|lib/app_schema.key_manifest.g.dart': decodedMatches(
-            contains(
-              'const List<SqlKeyManifestEntry> sqlKeyManifest = '
-              '<SqlKeyManifestEntry>[];',
-            ),
           ),
         },
       );
@@ -277,13 +262,9 @@ void main() {
             contains("'file_size': JsonSchema.string(format: 'int64')"),
             contains("'file_size': fileSize.toString(),"),
             contains("fileSize: switch (json['file_size'])"),
+            contains('static const List<SqlKeyManifestEntry> sqlKeyManifest'),
+            contains('<SqlKeyManifestEntry>[];'),
           ]),
-        ),
-        'test_app|lib/app_schema.key_manifest.g.dart': decodedMatches(
-          contains(
-            'const List<SqlKeyManifestEntry> sqlKeyManifest = '
-            '<SqlKeyManifestEntry>[];',
-          ),
         ),
       },
     );
@@ -347,11 +328,7 @@ void main() {
             contains("ownerId: AuthUserId(row.read<String>("),
             contains("'owner_id': AuthUserId.schema"),
             contains("dartType: .value('AuthUserId')"),
-            contains('static final ownerId = SqlColumn<AuthUserId>('),
-          ]),
-        ),
-        'test_app|lib/app_schema.key_manifest.g.dart': decodedMatches(
-          allOf([
+            contains('static const ownerId = SqlColumn<AuthUserId>('),
             contains('AuthUserId.manifest'),
             contains('PublicNoteId.manifest'),
           ]),
