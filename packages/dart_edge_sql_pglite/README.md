@@ -43,3 +43,45 @@ CREATE TABLE items (
 Use the SQL extension name for custom bundled extensions, for example
 `PgliteExtension('pg_trgm')`. The pgvector extension is exposed as
 `PgliteExtension.vector`, which maps to the SQL extension name `vector`.
+
+## Full-text search
+
+PGlite supports PostgreSQL's built-in `tsvector` search without an additional
+extension. The shared `dart_edge_sql` helpers create a matching GIN index and
+execute ranked queries:
+
+```dart
+final pool = PgliteDatabase.temporary().asPostgresPool();
+
+await pool.execute(sql('''
+CREATE TABLE documents (id BIGSERIAL PRIMARY KEY, content TEXT NOT NULL)
+'''));
+await pool.execute(
+  PostgresTextSearch.createIndex(
+    table: 'documents',
+    column: 'content',
+    configuration: 'simple',
+  ),
+);
+
+final matches = await pool.execute(
+  PostgresTextSearch.search(
+    table: 'documents',
+    column: 'content',
+    query: 'embedded postgres',
+    configuration: 'simple',
+  ),
+);
+```
+
+For BM25 ranking, activate the bundled `pg_textsearch` extension:
+
+```dart
+final pool = PgliteDatabase.temporary(
+  extensions: const [PgliteExtension.pgTextSearch],
+).asPostgresPool();
+```
+
+Create BM25 indexes with `USING bm25` and `text_config = 'simple'`. PGlite's
+packaged runtime includes the self-contained `simple` configuration; other
+configurations require their dictionary files to be available in the runtime.

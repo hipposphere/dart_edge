@@ -1,33 +1,7 @@
 import 'package:dart_edge_sql/dart_edge_sql.dart';
 
 import 'native/dart_edge_sql_pglite_native.dart';
-
-/// Bundled PGlite extension to install before exposing the database.
-final class PgliteExtension {
-  /// Creates an extension by its SQL extension name.
-  const PgliteExtension(this.sqlName);
-
-  /// pgvector, exposed in SQL as `vector`.
-  static const vector = PgliteExtension('vector');
-
-  /// PostgreSQL trigram matching extension.
-  static const pgTrgm = PgliteExtension('pg_trgm');
-
-  /// PostgreSQL case-insensitive text extension.
-  static const citext = PgliteExtension('citext');
-
-  /// PostgreSQL hstore extension.
-  static const hstore = PgliteExtension('hstore');
-
-  /// PostgreSQL tree-like label path extension.
-  static const ltree = PgliteExtension('ltree');
-
-  /// SQL extension name passed to PGlite, for example `vector`.
-  final String sqlName;
-
-  @override
-  String toString() => sqlName;
-}
+import 'pglite_extension.dart';
 
 /// Embedded PGlite database exposed as a PostgreSQL endpoint.
 final class PgliteDatabase implements PgliteEndpoint {

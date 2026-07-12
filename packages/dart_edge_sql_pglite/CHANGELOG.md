@@ -1,3 +1,9 @@
+## 0.1.14
+
+- Add `PgliteExtension.pgTextSearch` for bundled BM25 full-text search.
+- Use the PostgreSQL full-text search helpers exported by `dart_edge_sql`.
+- Require `dart_edge_sql` 0.3.31.
+
 ## 0.1.13
 
 - Require `dart_edge_sql` 0.3.30.

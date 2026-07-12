@@ -5,3 +5,4 @@
 library;
 
 export 'src/pglite_database.dart';
+export 'src/pglite_extension.dart';

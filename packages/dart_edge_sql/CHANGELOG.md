@@ -1,3 +1,7 @@
+## 0.3.31
+
+- Add PostgreSQL GIN-index and ranked `tsvector` full-text search helpers.
+
 ## 0.3.30
 
 - Re-export `SqlColumnBase` and use it for heterogeneous table column metadata.
