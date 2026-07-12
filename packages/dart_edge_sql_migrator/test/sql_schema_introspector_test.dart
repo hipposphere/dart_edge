@@ -65,6 +65,10 @@ void main() {
     ).introspect(executor);
 
     expect(schema.tables, isEmpty);
+    expect(schema.extensions.map((extension) => extension.name), [
+      'pg_search',
+      'vector',
+    ]);
     expect(schema.routines, hasLength(1));
     expect(schema.routines.single.schema, 'public');
     expect(schema.routines.single.name, 'search_users');
@@ -131,6 +135,14 @@ final class _RecordingExecutor implements SqlExecutor {
 
   @override
   Future<SqlResult> execute(SqlStatement statement) async {
+    if (statement.sql.contains('FROM pg_extension')) {
+      return SqlResult(
+        rows: [
+          SqlRow({'extension_name': 'pg_search'}),
+          SqlRow({'extension_name': 'vector'}),
+        ],
+      );
+    }
     if (dialect == SqlDialect.postgres &&
         statement.sql.contains('FROM information_schema.tables')) {
       return SqlResult();
@@ -167,6 +179,9 @@ final class _PostgresTableRecordingExecutor implements SqlExecutor {
 
   @override
   Future<SqlResult> execute(SqlStatement statement) async {
+    if (statement.sql.contains('FROM pg_extension')) {
+      return SqlResult();
+    }
     if (statement.sql.contains('FROM information_schema.tables')) {
       return SqlResult(
         rows: [
@@ -188,6 +203,8 @@ final class _PostgresTableRecordingExecutor implements SqlExecutor {
             'index_name': 'idx_file_revisions_active_created',
             'is_unique': false,
             'is_primary': false,
+            'access_method': 'btree',
+            'storage_parameters': null,
             'predicate': 'deleted_at IS NULL',
             'column_names': 'workspace_id,created_at',
             'column_definitions':

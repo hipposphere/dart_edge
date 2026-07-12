@@ -1,3 +1,9 @@
+## 0.3.18
+
+- Add reviewed PostgreSQL extension schema operations.
+- Support PostgreSQL index access methods, storage parameters, and
+  PostgreSQL-only indexes in schema diffs and introspection.
+
 ## 0.3.17
 
 - Require `dart_edge_sql` 0.3.30.

@@ -172,11 +172,27 @@ final class PostgresSchemaIntrospector implements SqlSchemaIntrospector {
     }
 
     final routines = await _routines(executor, placeholders);
+    final extensions = await _extensions(executor);
 
     return SqlDatabaseSchema(
       tables: List.unmodifiable(tables),
       routines: routines,
+      extensions: extensions,
     );
+  }
+
+  Future<List<SqlExtensionSchema>> _extensions(SqlExecutor executor) async {
+    final result = await executor.execute(
+      sql('''
+        SELECT extname AS extension_name
+        FROM pg_extension
+        ORDER BY extname
+        '''),
+    );
+    return List.unmodifiable([
+      for (final row in result.rows)
+        SqlExtensionSchema(name: row.read<String>('extension_name')),
+    ]);
   }
 
   Future<List<SqlRoutineSchema>> _routines(
@@ -307,6 +323,8 @@ final class PostgresSchemaIntrospector implements SqlSchemaIntrospector {
           i.relname AS index_name,
           ix.indisunique AS is_unique,
           ix.indisprimary AS is_primary,
+          am.amname AS access_method,
+          i.reloptions AS storage_parameters,
           pg_get_expr(ix.indpred, ix.indrelid) AS predicate,
           string_agg(a.attname, ',' ORDER BY keys.ordinality) AS column_names,
           string_agg(
@@ -318,6 +336,7 @@ final class PostgresSchemaIntrospector implements SqlSchemaIntrospector {
         JOIN pg_namespace AS n ON n.oid = t.relnamespace
         JOIN pg_index AS ix ON ix.indrelid = t.oid
         JOIN pg_class AS i ON i.oid = ix.indexrelid
+        JOIN pg_am AS am ON am.oid = i.relam
         LEFT JOIN pg_constraint AS con ON con.conindid = i.oid
         JOIN unnest(ix.indkey) WITH ORDINALITY AS keys(attnum, ordinality)
           ON true
@@ -332,6 +351,8 @@ final class PostgresSchemaIntrospector implements SqlSchemaIntrospector {
           i.relname,
           ix.indisunique,
           ix.indisprimary,
+          am.amname,
+          i.reloptions,
           ix.indpred,
           ix.indrelid
         ORDER BY i.relname
@@ -347,6 +368,7 @@ final class PostgresSchemaIntrospector implements SqlSchemaIntrospector {
   }
 
   SqlIndexSchema _postgresIndex(SqlRow row) {
+    final accessMethod = row.readNullable<String>('access_method');
     final columns = row
         .read<String>('column_names')
         .split(',')
@@ -378,7 +400,35 @@ final class PostgresSchemaIntrospector implements SqlSchemaIntrospector {
       columnOrders: Map.unmodifiable(columnOrders),
       columnNullsOrders: Map.unmodifiable(columnNullsOrders),
       whereExpression: row.readNullable<String>('predicate'),
+      method: switch (accessMethod) {
+        null || 'btree' => null,
+        final method => method,
+      },
+      storageParameters: Map.unmodifiable(
+        _postgresStorageParameters(row['storage_parameters']),
+      ),
+      postgresOnly: accessMethod != null && accessMethod != 'btree',
     );
+  }
+
+  Map<String, Object> _postgresStorageParameters(Object? value) {
+    final entries = switch (value) {
+      null => const <String>[],
+      final List<Object?> value => value.map((entry) => entry.toString()),
+      final String value =>
+        value
+            .replaceFirst(RegExp(r'^\{'), '')
+            .replaceFirst(RegExp(r'\}$'), '')
+            .split(','),
+      final Object value => <String>[value.toString()],
+    };
+    return <String, Object>{
+      for (final entry in entries)
+        if (entry.contains('='))
+          entry.substring(0, entry.indexOf('=')): entry.substring(
+            entry.indexOf('=') + 1,
+          ),
+    };
   }
 
   SqlSortOrder? _postgresIndexColumnOrder(String definition) {

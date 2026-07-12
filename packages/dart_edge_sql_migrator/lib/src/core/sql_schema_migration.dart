@@ -7,6 +7,7 @@ final class SqlDatabaseSchema {
   const SqlDatabaseSchema({
     required this.tables,
     this.routines = const <SqlRoutineSchema>[],
+    this.extensions = const <SqlExtensionSchema>[],
   });
 
   /// Tables that should exist in the database.
@@ -14,6 +15,15 @@ final class SqlDatabaseSchema {
 
   /// Callable routines that should exist in the database.
   final List<SqlRoutineSchema> routines;
+
+  /// PostgreSQL extensions that should be installed in the database.
+  final List<SqlExtensionSchema> extensions;
+
+  Map<String, SqlExtensionSchema> get _extensionByName {
+    return <String, SqlExtensionSchema>{
+      for (final extension in extensions) extension.name: extension,
+    };
+  }
 
   Map<_TableKey, SqlTableSchema> get _tableByKey {
     return <_TableKey, SqlTableSchema>{
@@ -138,6 +148,9 @@ final class SqlIndexSchema {
     this.columnOrders = const <String, SqlSortOrder>{},
     this.columnNullsOrders = const <String, SqlNullsOrder>{},
     this.whereExpression,
+    this.method,
+    this.storageParameters = const <String, Object>{},
+    this.postgresOnly = false,
   });
 
   /// Index name without schema qualification.
@@ -157,6 +170,27 @@ final class SqlIndexSchema {
 
   /// Optional raw SQL predicate after `WHERE` for a partial index.
   final String? whereExpression;
+
+  /// Optional PostgreSQL index access method, such as `gin`, `hnsw`, or
+  /// extension-provided methods such as `bm25`.
+  final String? method;
+
+  /// PostgreSQL index storage parameters rendered after `WITH`.
+  ///
+  /// String values are quoted as SQL string literals. Numeric and boolean
+  /// values are rendered as SQL literals.
+  final Map<String, Object> storageParameters;
+
+  /// Whether this index should only be planned for PostgreSQL.
+  final bool postgresOnly;
+}
+
+/// One PostgreSQL extension required by the desired database schema.
+final class SqlExtensionSchema {
+  const SqlExtensionSchema({required this.name});
+
+  /// Extension name as registered in `pg_available_extensions`.
+  final String name;
 }
 
 /// Desired shape for one table-level CHECK constraint.
@@ -352,7 +386,15 @@ final class SqlSchemaDiff {
     final desiredTables = desired._tableByKey;
     final currentRoutines = current._routineByKey;
     final desiredRoutines = desired._routineByKey;
+    final currentExtensions = current._extensionByName;
+    final desiredExtensions = desired._extensionByName;
     final operations = <SqlSchemaMigrationOp>[];
+
+    for (final entry in desiredExtensions.entries) {
+      if (!currentExtensions.containsKey(entry.key)) {
+        operations.add(CreateSqlExtension(entry.value));
+      }
+    }
 
     for (final entry in desiredTables.entries) {
       final desiredTable = entry.value;
@@ -556,6 +598,9 @@ final class SqlSchemaDiff {
         _sameStrings(left.columns, right.columns) &&
         _sameMaps(left.columnOrders, right.columnOrders) &&
         _sameMaps(left.columnNullsOrders, right.columnNullsOrders) &&
+        left.method == right.method &&
+        _containsMap(left.storageParameters, right.storageParameters) &&
+        left.postgresOnly == right.postgresOnly &&
         _normalizeOptionalSqlExpression(left.whereExpression) ==
             _normalizeOptionalSqlExpression(right.whereExpression);
   }
@@ -612,6 +657,15 @@ final class SqlSchemaDiff {
     }
     for (final entry in left.entries) {
       if (right[entry.key] != entry.value) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  static bool _containsMap<K, V>(Map<K, V> current, Map<K, V> desired) {
+    for (final entry in desired.entries) {
+      if (current[entry.key]?.toString() != entry.value.toString()) {
         return false;
       }
     }
@@ -1206,10 +1260,38 @@ final class CreateSqlIndex extends SqlSchemaMigrationOp {
   final SqlIndexSchema index;
 
   @override
-  SqlSchemaMigrationSafety get safety => SqlSchemaMigrationSafety.safe;
+  SqlSchemaMigrationSafety get safety =>
+      index.method == null &&
+          index.storageParameters.isEmpty &&
+          !index.postgresOnly
+      ? SqlSchemaMigrationSafety.safe
+      : SqlSchemaMigrationSafety.requiresReview;
+
+  @override
+  List<SqlSchemaMigrationReviewItem> get _reviewItems {
+    if (safety == SqlSchemaMigrationSafety.safe) {
+      return const <SqlSchemaMigrationReviewItem>[];
+    }
+    return <SqlSchemaMigrationReviewItem>[
+      SqlSchemaMigrationReviewItem(
+        target: '${_tableDisplayName(table)}.${index.name}',
+        summary: 'create PostgreSQL-specific index',
+        details: <String>[
+          if (index.method != null) 'access method: ${index.method}',
+          if (index.storageParameters.isNotEmpty)
+            'storage parameters: ${index.storageParameters}',
+        ],
+        suggestedAction:
+            'Verify the access method extension and index options are available before applying.',
+      ),
+    ];
+  }
 
   @override
   List<SqlStatement> toStatements(SqlDialect dialect) {
+    if (dialect == SqlDialect.sqlite && index.postgresOnly) {
+      return const <SqlStatement>[];
+    }
     final unique = index.unique ? 'UNIQUE ' : '';
     final columns = [
       for (final column in index.columns) _indexColumnDefinition(index, column),
@@ -1218,13 +1300,71 @@ final class CreateSqlIndex extends SqlSchemaMigrationOp {
     final whereClause = whereExpression == null
         ? ''
         : ' WHERE $whereExpression';
+    final method = index.method;
+    final usingClause = dialect == SqlDialect.postgres && method != null
+        ? ' USING ${_quoteIdentifier(method)}'
+        : '';
+    final storageClause =
+        dialect == SqlDialect.postgres && index.storageParameters.isNotEmpty
+        ? ' WITH (${index.storageParameters.entries.map(_indexStorageParameter).join(', ')})'
+        : '';
     return [
       sql(
         'CREATE ${unique}INDEX ${_quoteIdentifier(index.name)} '
-        'ON ${_tableName(table, dialect)} ($columns)$whereClause',
+        'ON ${_tableName(table, dialect)}$usingClause ($columns)'
+        '$storageClause$whereClause',
       ),
     ];
   }
+}
+
+/// Installs one PostgreSQL extension after explicit migration review.
+final class CreateSqlExtension extends SqlSchemaMigrationOp {
+  const CreateSqlExtension(this.extension);
+
+  final SqlExtensionSchema extension;
+
+  @override
+  SqlSchemaMigrationSafety get safety =>
+      SqlSchemaMigrationSafety.requiresReview;
+
+  @override
+  List<SqlSchemaMigrationReviewItem>
+  get _reviewItems => <SqlSchemaMigrationReviewItem>[
+    SqlSchemaMigrationReviewItem(
+      target: extension.name,
+      summary: 'install PostgreSQL extension',
+      details: <String>['extension: ${extension.name}'],
+      suggestedAction:
+          'Verify the extension is installed on the PostgreSQL server and approve its database code.',
+    ),
+  ];
+
+  @override
+  List<SqlStatement> toStatements(SqlDialect dialect) => switch (dialect) {
+    SqlDialect.postgres => [
+      sql('CREATE EXTENSION IF NOT EXISTS ${_quoteIdentifier(extension.name)}'),
+    ],
+    SqlDialect.sqlite => const <SqlStatement>[],
+  };
+}
+
+/// Removes one PostgreSQL extension.
+final class DropSqlExtension extends SqlSchemaMigrationOp {
+  const DropSqlExtension(this.extension);
+
+  final SqlExtensionSchema extension;
+
+  @override
+  SqlSchemaMigrationSafety get safety => SqlSchemaMigrationSafety.destructive;
+
+  @override
+  List<SqlStatement> toStatements(SqlDialect dialect) => switch (dialect) {
+    SqlDialect.postgres => [
+      sql('DROP EXTENSION ${_quoteIdentifier(extension.name)}'),
+    ],
+    SqlDialect.sqlite => const <SqlStatement>[],
+  };
 }
 
 /// Drops one secondary index.
@@ -1425,6 +1565,20 @@ String _indexColumnDefinition(SqlIndexSchema index, String column) {
     parts.add(nullsOrder.sql);
   }
   return parts.join(' ');
+}
+
+String _indexStorageParameter(MapEntry<String, Object> entry) {
+  final value = switch (entry.value) {
+    final String value => _quoteStringLiteral(value),
+    final bool value => value ? 'true' : 'false',
+    final num value => value.toString(),
+    final Object value => throw ArgumentError.value(
+      value,
+      'storageParameters[${entry.key}]',
+      'Only String, num, and bool values are supported.',
+    ),
+  };
+  return '${_quoteIdentifier(entry.key)} = $value';
 }
 
 String _foreignKeyReferenceDisplay(SqlForeignKeyConstraintSchema foreignKey) {

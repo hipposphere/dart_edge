@@ -3,6 +3,102 @@ import 'package:dart_edge_sql_migrator/dart_edge_sql_migrator.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test('plans reviewed PostgreSQL extensions and extension-backed indexes', () {
+    const table = SqlTableSchema(
+      schema: 'workspace',
+      name: 'chunk',
+      columns: [
+        SqlColumnSchema(
+          name: 'id',
+          type: 'UUID',
+          nullable: false,
+          primaryKey: true,
+        ),
+        SqlColumnSchema(name: 'search_content', type: 'TEXT', nullable: false),
+      ],
+      indexes: [
+        SqlIndexSchema(
+          name: 'chunk_search_bm25_idx',
+          columns: ['id', 'search_content'],
+          method: 'bm25',
+          storageParameters: {'key_field': 'id'},
+          postgresOnly: true,
+        ),
+      ],
+    );
+    final diff = SqlSchemaDiff.between(
+      current: const SqlDatabaseSchema(tables: []),
+      desired: const SqlDatabaseSchema(
+        tables: [table],
+        extensions: [SqlExtensionSchema(name: 'pg_search')],
+      ),
+    );
+
+    expect(diff.operations.map((operation) => operation.safety), [
+      SqlSchemaMigrationSafety.requiresReview,
+      SqlSchemaMigrationSafety.safe,
+      SqlSchemaMigrationSafety.requiresReview,
+    ]);
+    expect(
+      diff
+          .toMigrationPlan()
+          .forDialect(SqlDialect.postgres)
+          .map((statement) => statement.sql),
+      [
+        'CREATE TABLE "workspace"."chunk" '
+            '("id" UUID NOT NULL PRIMARY KEY, "search_content" TEXT NOT NULL)',
+      ],
+    );
+    expect(
+      diff
+          .toMigrationPlan(includeReviewedOperations: true)
+          .forDialect(SqlDialect.postgres)
+          .map((statement) => statement.sql),
+      [
+        'CREATE EXTENSION IF NOT EXISTS "pg_search"',
+        'CREATE TABLE "workspace"."chunk" '
+            '("id" UUID NOT NULL PRIMARY KEY, "search_content" TEXT NOT NULL)',
+        'CREATE INDEX "chunk_search_bm25_idx" ON "workspace"."chunk" '
+            'USING "bm25" ("id", "search_content") '
+            'WITH ("key_field" = \'id\')',
+      ],
+    );
+    expect(
+      diff
+          .toMigrationPlan(includeReviewedOperations: true)
+          .forDialect(SqlDialect.sqlite)
+          .map((statement) => statement.sql),
+      [
+        'CREATE TABLE "chunk" ("id" UUID NOT NULL PRIMARY KEY, "search_content" TEXT NOT NULL)',
+      ],
+    );
+  });
+
+  test(
+    'required extensions are additive and preserve unrelated installed extensions',
+    () {
+      final diff = SqlSchemaDiff.between(
+        current: const SqlDatabaseSchema(
+          tables: [],
+          extensions: [
+            SqlExtensionSchema(name: 'plpgsql'),
+            SqlExtensionSchema(name: 'vector'),
+          ],
+        ),
+        desired: const SqlDatabaseSchema(
+          tables: [],
+          extensions: [
+            SqlExtensionSchema(name: 'vector'),
+            SqlExtensionSchema(name: 'pg_search'),
+          ],
+        ),
+      );
+
+      expect(diff.operations, hasLength(1));
+      expect(diff.operations.single, isA<CreateSqlExtension>());
+    },
+  );
+
   test('plans table and index creation from an empty schema', () {
     final diff = SqlSchemaDiff.between(
       current: const SqlDatabaseSchema(tables: []),

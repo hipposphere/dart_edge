@@ -113,6 +113,9 @@ final pool = SqliteDatabase.inMemory();
 final current = await const SqliteSchemaIntrospector().introspect(pool);
 
 final desired = const SqlDatabaseSchema(
+  extensions: [
+    SqlExtensionSchema(name: 'pg_search'),
+  ],
   tables: [
     SqlTableSchema(
       name: 'users',
@@ -127,9 +130,11 @@ final desired = const SqlDatabaseSchema(
       ],
       indexes: [
         SqlIndexSchema(
-          name: 'users_email_key',
-          columns: ['email'],
-          unique: true,
+          name: 'users_search_bm25_idx',
+          columns: ['id', 'email'],
+          method: 'bm25',
+          storageParameters: {'key_field': 'id'},
+          postgresOnly: true,
         ),
       ],
     ),
@@ -169,6 +174,10 @@ adding nullable/defaulted columns, creating indexes, and creating or replacing
 PostgreSQL RPC functions. Operations that need a backfill or cast are marked
 `requiresReview`, and drops are marked
 `destructive`; opt into those only after reviewing the generated operations.
+PostgreSQL extension installation and extension-backed indexes are also marked
+`requiresReview`. Index schemas support PostgreSQL access methods (`method`),
+storage parameters, and PostgreSQL-only planning. Extension requirements are
+additive: introspection never proposes dropping unrelated installed extensions.
 Use `diff.reviewReportForDialect(SqlDialect.postgres).format()` or
 `diff.reviewReport.format()` to show actionable manual migration notes before
 deciding whether to edit a generated migration:
