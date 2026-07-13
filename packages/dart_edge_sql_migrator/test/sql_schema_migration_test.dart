@@ -877,4 +877,283 @@ AS \$\$ SELECT * FROM users WHERE users.tenant_id = tenant_id \$\$
       'DROP FUNCTION "public"."lookup_user"(id uuid)',
     ]);
   });
+
+  test('keeps changed indexes atomic and out of default plans', () {
+    final diff = SqlSchemaDiff.between(
+      current: const SqlDatabaseSchema(
+        tables: [
+          SqlTableSchema(
+            schema: 'app',
+            name: 'profile',
+            indexes: [
+              SqlIndexSchema(name: 'profile_status_idx', columns: ['status']),
+            ],
+          ),
+        ],
+      ),
+      desired: const SqlDatabaseSchema(
+        tables: [
+          SqlTableSchema(
+            schema: 'app',
+            name: 'profile',
+            indexes: [
+              SqlIndexSchema(
+                name: 'profile_status_idx',
+                columns: ['status', 'updated_at'],
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+
+    expect(diff.operations.single, isA<ReplaceSqlIndex>());
+    expect(
+      diff.operations.single.safety,
+      SqlSchemaMigrationSafety.requiresReview,
+    );
+    expect(diff.toMigrationPlan().forDialect(SqlDialect.postgres), isEmpty);
+    expect(
+      diff
+          .toMigrationPlan(includeDestructiveOperations: true)
+          .forDialect(SqlDialect.postgres),
+      isEmpty,
+    );
+    expect(
+      diff
+          .toMigrationPlan(includeReviewedOperations: true)
+          .forDialect(SqlDialect.postgres)
+          .map((statement) => statement.sql),
+      [
+        'DROP INDEX "app"."profile_status_idx"',
+        'CREATE INDEX "profile_status_idx" ON "app"."profile" '
+            '("status", "updated_at")',
+      ],
+    );
+  });
+
+  test('keeps changed constraints atomic and out of default plans', () {
+    final diff = SqlSchemaDiff.between(
+      current: const SqlDatabaseSchema(
+        tables: [
+          SqlTableSchema(
+            schema: 'app',
+            name: 'profile',
+            checks: [
+              SqlCheckConstraintSchema(
+                name: 'profile_status_check',
+                expression: "status in ('active')",
+              ),
+            ],
+            uniqueConstraints: [
+              SqlUniqueConstraintSchema(
+                name: 'profile_owner_key',
+                columns: ['owner_id'],
+              ),
+            ],
+            foreignKeys: [
+              SqlForeignKeyConstraintSchema(
+                name: 'profile_owner_fkey',
+                columns: ['owner_id'],
+                referencesTable: 'user',
+                referencesColumns: ['id'],
+              ),
+            ],
+          ),
+        ],
+      ),
+      desired: const SqlDatabaseSchema(
+        tables: [
+          SqlTableSchema(
+            schema: 'app',
+            name: 'profile',
+            checks: [
+              SqlCheckConstraintSchema(
+                name: 'profile_status_check',
+                expression: "status in ('active', 'disabled')",
+              ),
+            ],
+            uniqueConstraints: [
+              SqlUniqueConstraintSchema(
+                name: 'profile_owner_key',
+                columns: ['owner_id', 'tenant_id'],
+              ),
+            ],
+            foreignKeys: [
+              SqlForeignKeyConstraintSchema(
+                name: 'profile_owner_fkey',
+                columns: ['owner_id'],
+                referencesTable: 'user',
+                referencesColumns: ['id'],
+                onDelete: SqlForeignKeyAction.cascade,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+
+    expect(diff.operations, [
+      isA<ReplaceSqlCheckConstraint>(),
+      isA<ReplaceSqlUniqueConstraint>(),
+      isA<ReplaceSqlForeignKeyConstraint>(),
+    ]);
+    expect(
+      diff.operations.map((operation) => operation.safety),
+      everyElement(SqlSchemaMigrationSafety.requiresReview),
+    );
+    expect(diff.toMigrationPlan().forDialect(SqlDialect.postgres), isEmpty);
+  });
+
+  test('pairs unique constraint and index representation changes', () {
+    final diff = SqlSchemaDiff.between(
+      current: const SqlDatabaseSchema(
+        tables: [
+          SqlTableSchema(
+            name: 'profile',
+            uniqueConstraints: [
+              SqlUniqueConstraintSchema(
+                name: 'profile_owner_key',
+                columns: ['owner_id'],
+              ),
+            ],
+          ),
+        ],
+      ),
+      desired: const SqlDatabaseSchema(
+        tables: [
+          SqlTableSchema(
+            name: 'profile',
+            indexes: [
+              SqlIndexSchema(
+                name: 'profile_owner_key',
+                columns: ['owner_id'],
+                unique: true,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+
+    expect(diff.operations.single, isA<ReplaceSqlUniqueConstraintWithIndex>());
+    expect(diff.toMigrationPlan().forDialect(SqlDialect.postgres), isEmpty);
+    expect(
+      diff
+          .toMigrationPlan(includeReviewedOperations: true)
+          .forDialect(SqlDialect.sqlite),
+      isEmpty,
+    );
+  });
+
+  test('does not replace an unsupported object with a different kind', () {
+    final diff = SqlSchemaDiff.between(
+      current: const SqlDatabaseSchema(
+        tables: [
+          SqlTableSchema(
+            schema: 'app',
+            name: 'profile',
+            uniqueConstraints: [
+              SqlUniqueConstraintSchema(
+                name: 'profile_owner_key',
+                columns: ['owner_id'],
+              ),
+            ],
+          ),
+        ],
+      ),
+      desired: const SqlDatabaseSchema(
+        tables: [
+          SqlTableSchema(
+            schema: 'app',
+            name: 'profile',
+            indexes: [
+              SqlIndexSchema(
+                name: 'profile_owner_key',
+                columns: ['owner_id'],
+                unique: true,
+              ),
+            ],
+          ),
+        ],
+      ),
+      scope: const SqlSchemaManagementScope(
+        rules: [
+          SqlSchemaManagementRule(
+            management: SqlSchemaObjectManagement.unsupported,
+            kind: SqlSchemaObjectKind.uniqueConstraint,
+            schema: 'app',
+            table: 'profile',
+            name: 'profile_owner_key',
+          ),
+        ],
+      ),
+    );
+
+    expect(diff.operations, isEmpty);
+    expect(
+      diff.unsupportedObjects.single.kind,
+      SqlSchemaObjectKind.uniqueConstraint,
+    );
+  });
+
+  test('scopes unmanaged and unsupported introspected objects', () {
+    final diff = SqlSchemaDiff.between(
+      current: const SqlDatabaseSchema(
+        tables: [
+          SqlTableSchema(
+            schema: 'app',
+            name: 'profile',
+            columns: [SqlColumnSchema(name: 'legacy', type: 'TEXT')],
+            indexes: [
+              SqlIndexSchema(name: 'extension_owned_idx', columns: ['legacy']),
+            ],
+          ),
+        ],
+        routines: [
+          SqlRoutineSchema(
+            schema: 'app',
+            name: 'trigger_handler',
+            definition: 'CREATE FUNCTION app.trigger_handler() RETURNS trigger',
+          ),
+        ],
+      ),
+      desired: const SqlDatabaseSchema(
+        tables: [SqlTableSchema(schema: 'app', name: 'profile')],
+      ),
+      scope: const SqlSchemaManagementScope(
+        rules: [
+          SqlSchemaManagementRule(
+            management: SqlSchemaObjectManagement.unmanaged,
+            kind: SqlSchemaObjectKind.column,
+            schema: 'app',
+            table: 'profile',
+            name: 'legacy',
+          ),
+          SqlSchemaManagementRule(
+            management: SqlSchemaObjectManagement.unsupported,
+            kind: SqlSchemaObjectKind.secondaryIndex,
+            schema: 'app',
+            table: 'profile',
+            name: 'extension_owned_idx',
+          ),
+          SqlSchemaManagementRule(
+            management: SqlSchemaObjectManagement.unsupported,
+            kind: SqlSchemaObjectKind.routine,
+            schema: 'app',
+            name: 'trigger_handler',
+          ),
+        ],
+      ),
+    );
+
+    expect(diff.operations, isEmpty);
+    expect(diff.ignoredObjects.map((object) => object.displayName), [
+      'app.profile.legacy',
+    ]);
+    expect(diff.unsupportedObjects.map((object) => object.displayName), [
+      'app.profile.extension_owned_idx',
+      'app.trigger_handler()',
+    ]);
+  });
 }

@@ -195,6 +195,72 @@ Manual migration required:
 dialect renders the same SQL, and dialect-specific files such as
 `V3__add_users.sqlite.sql` / `V3__add_users.postgres.sql` when they differ.
 
+### PostgreSQL-canonical diffs and check mode
+
+Use `PostgresSchemaDiffEngine` when comparing a desired schema with PostgreSQL.
+It materializes the desired schema in a caller-owned fresh PostgreSQL or PGlite
+database, introspects both databases, and compares their PostgreSQL-canonical
+representations. This avoids false differences from implicit casts,
+parenthesized predicates, normalized checks, and formatted routine DDL.
+
+```dart
+final result = await const PostgresSchemaDiffEngine(
+  schemas: ['public', 'workspace'],
+).check(
+  currentExecutor: applicationPool,
+  canonicalizationExecutor: freshDisposablePool,
+  desired: desiredSchema,
+);
+
+stderr.writeln(result.format());
+exitCode = result.exitCode;
+```
+
+`check()` never writes a migration file. The canonicalization executor must be
+a fresh disposable database; the engine rejects it when selected schemas
+already contain tables or routines. Call `result.throwIfDrift()` when an
+exception-based CI or generator flow is more convenient.
+
+When an embedded scratch backend cannot install a required extension, pass its
+name through `skipExtensionInstallation`. The requirement remains in the
+canonical desired schema, but callers must ensure no materialized object needs
+the unavailable extension implementation.
+
+Changed indexes and constraints are represented as atomic reviewed operations,
+such as `ReplaceSqlIndex` and `ReplaceSqlForeignKeyConstraint`. Default plans
+emit neither half of a replacement. After review,
+`includeReviewedOperations: true` emits the ordered drop-and-create or
+drop-and-add pair.
+
+### Managed object scope
+
+Use `SqlSchemaManagementScope` to keep objects owned by another system or not
+safely supported by the diff engine out of destructive plans:
+
+```dart
+const scope = SqlSchemaManagementScope(
+  rules: [
+    SqlSchemaManagementRule(
+      management: SqlSchemaObjectManagement.unmanaged,
+      kind: SqlSchemaObjectKind.secondaryIndex,
+      schema: 'workspace',
+      name: 'extension_owned_index',
+    ),
+    SqlSchemaManagementRule(
+      management: SqlSchemaObjectManagement.unsupported,
+      kind: SqlSchemaObjectKind.routine,
+      schema: 'public',
+      name: 'trigger_handler',
+    ),
+  ],
+);
+```
+
+Rules are evaluated in order and null match fields act as wildcards. Managed
+objects participate in normal diffing, unmanaged objects are recorded in
+`diff.ignoredObjects`, and unsupported objects are preserved and reported in
+`diff.unsupportedObjects` without destructive operations.
+
 ## Data Asset Migrations
 
 Build hooks can turn the same folder layout into one Dart data asset containing

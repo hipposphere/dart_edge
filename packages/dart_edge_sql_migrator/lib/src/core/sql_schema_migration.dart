@@ -1,6 +1,7 @@
 import 'package:dart_edge_sql/dart_edge_sql.dart';
 
 import 'sql_migration_plan.dart';
+import 'sql_schema_management.dart';
 
 /// Desired SQL database schema used to plan migrations.
 final class SqlDatabaseSchema {
@@ -353,10 +354,20 @@ enum SqlSchemaMigrationSafety {
 
 /// Difference between two schema snapshots.
 final class SqlSchemaDiff {
-  const SqlSchemaDiff({required this.operations});
+  const SqlSchemaDiff({
+    required this.operations,
+    this.ignoredObjects = const <SqlSchemaObject>[],
+    this.unsupportedObjects = const <SqlSchemaObject>[],
+  });
 
   /// Typed operations needed to move from the old schema to the desired schema.
   final List<SqlSchemaMigrationOp> operations;
+
+  /// Objects deliberately excluded because another owner manages them.
+  final List<SqlSchemaObject> ignoredObjects;
+
+  /// Objects preserved because this diff cannot manage them safely.
+  final List<SqlSchemaObject> unsupportedObjects;
 
   /// Human-readable report for operations that need a reviewed migration.
   SqlSchemaMigrationReviewReport get reviewReport {
@@ -381,6 +392,7 @@ final class SqlSchemaDiff {
   factory SqlSchemaDiff.between({
     required SqlDatabaseSchema current,
     required SqlDatabaseSchema desired,
+    SqlSchemaManagementScope scope = const SqlSchemaManagementScope(),
   }) {
     final currentTables = current._tableByKey;
     final desiredTables = desired._tableByKey;
@@ -388,41 +400,57 @@ final class SqlSchemaDiff {
     final desiredRoutines = desired._routineByKey;
     final currentExtensions = current._extensionByName;
     final desiredExtensions = desired._extensionByName;
-    final operations = <SqlSchemaMigrationOp>[];
+    final collector = _SqlSchemaDiffCollector(scope);
 
     for (final entry in desiredExtensions.entries) {
       if (!currentExtensions.containsKey(entry.key)) {
-        operations.add(CreateSqlExtension(entry.value));
+        collector.operations.add(CreateSqlExtension(entry.value));
       }
     }
 
     for (final entry in desiredTables.entries) {
       final desiredTable = entry.value;
       final currentTable = currentTables[entry.key];
+      final tableObject = _tableObject(desiredTable);
+      if (!collector.manages(tableObject)) {
+        continue;
+      }
       if (currentTable == null) {
-        operations.add(CreateSqlTable(desiredTable));
+        collector.operations.add(CreateSqlTable(desiredTable));
         for (final index in desiredTable.indexes) {
-          operations.add(CreateSqlIndex(table: desiredTable, index: index));
+          final indexObject = _indexObject(desiredTable, index);
+          if (collector.manages(indexObject)) {
+            collector.operations.add(
+              CreateSqlIndex(table: desiredTable, index: index),
+            );
+          }
         }
         continue;
       }
 
-      operations.addAll(_diffExistingTable(currentTable, desiredTable));
+      _diffExistingTable(currentTable, desiredTable, collector);
     }
 
     for (final entry in currentTables.entries) {
       if (!desiredTables.containsKey(entry.key)) {
-        operations.add(DropSqlTable(entry.value));
+        final table = entry.value;
+        if (collector.manages(_tableObject(table))) {
+          collector.operations.add(DropSqlTable(table));
+        }
       }
     }
 
     for (final entry in desiredRoutines.entries) {
       final desiredRoutine = entry.value;
       final currentRoutine = currentRoutines[entry.key];
+      final routineObject = _routineObject(desiredRoutine);
+      if (!collector.manages(routineObject)) {
+        continue;
+      }
       if (currentRoutine == null) {
-        operations.add(CreateSqlRoutine(desiredRoutine));
+        collector.operations.add(CreateSqlRoutine(desiredRoutine));
       } else if (!_sameRoutine(currentRoutine, desiredRoutine)) {
-        operations.add(
+        collector.operations.add(
           ReplaceSqlRoutine(current: currentRoutine, desired: desiredRoutine),
         );
       }
@@ -430,28 +458,37 @@ final class SqlSchemaDiff {
 
     for (final entry in currentRoutines.entries) {
       if (!desiredRoutines.containsKey(entry.key)) {
-        operations.add(DropSqlRoutine(entry.value));
+        final routine = entry.value;
+        if (collector.manages(_routineObject(routine))) {
+          collector.operations.add(DropSqlRoutine(routine));
+        }
       }
     }
 
-    return SqlSchemaDiff(operations: List.unmodifiable(operations));
+    return collector.build();
   }
 
-  static List<SqlSchemaMigrationOp> _diffExistingTable(
+  static void _diffExistingTable(
     SqlTableSchema current,
     SqlTableSchema desired,
+    _SqlSchemaDiffCollector collector,
   ) {
-    final operations = <SqlSchemaMigrationOp>[];
     final currentColumns = current._columnByName;
     final desiredColumns = desired._columnByName;
 
     for (final entry in desiredColumns.entries) {
       final currentColumn = currentColumns[entry.key];
       final desiredColumn = entry.value;
+      final columnObject = _columnObject(desired, desiredColumn);
+      if (!collector.manages(columnObject)) {
+        continue;
+      }
       if (currentColumn == null) {
-        operations.add(AddSqlColumn(table: desired, column: desiredColumn));
+        collector.operations.add(
+          AddSqlColumn(table: desired, column: desiredColumn),
+        );
       } else if (!_sameColumn(currentColumn, desiredColumn)) {
-        operations.add(
+        collector.operations.add(
           ChangeSqlColumn(
             table: desired,
             current: currentColumn,
@@ -463,7 +500,12 @@ final class SqlSchemaDiff {
 
     for (final entry in currentColumns.entries) {
       if (!desiredColumns.containsKey(entry.key)) {
-        operations.add(DropSqlColumn(table: current, column: entry.value));
+        final column = entry.value;
+        if (collector.manages(_columnObject(current, column))) {
+          collector.operations.add(
+            DropSqlColumn(table: current, column: column),
+          );
+        }
       }
     }
 
@@ -472,56 +514,138 @@ final class SqlSchemaDiff {
     for (final entry in desiredChecks.entries) {
       final currentCheck = currentChecks[entry.key];
       final desiredCheck = entry.value;
+      final checkObject = _checkObject(desired, desiredCheck);
+      if (!collector.manages(checkObject)) {
+        continue;
+      }
       if (currentCheck == null) {
-        operations.add(
+        collector.operations.add(
           AddSqlCheckConstraint(table: desired, check: desiredCheck),
         );
       } else if (!_sameCheck(currentCheck, desiredCheck)) {
-        operations
-          ..add(DropSqlCheckConstraint(table: current, check: currentCheck))
-          ..add(AddSqlCheckConstraint(table: desired, check: desiredCheck));
+        collector.operations.add(
+          ReplaceSqlCheckConstraint(
+            currentTable: current,
+            desiredTable: desired,
+            current: currentCheck,
+            desired: desiredCheck,
+          ),
+        );
       }
     }
 
     for (final entry in currentChecks.entries) {
       if (!desiredChecks.containsKey(entry.key)) {
-        operations.add(
-          DropSqlCheckConstraint(table: current, check: entry.value),
-        );
+        final check = entry.value;
+        if (collector.manages(_checkObject(current, check))) {
+          collector.operations.add(
+            DropSqlCheckConstraint(table: current, check: check),
+          );
+        }
       }
     }
 
     final currentUniqueConstraints = current._uniqueConstraintByName;
     final desiredUniqueConstraints = desired._uniqueConstraintByName;
+    final currentIndexes = current._indexByName;
+    final desiredIndexes = desired._indexByName;
+    final replacedCurrentUniqueConstraints = <String>{};
+    final replacedDesiredUniqueConstraints = <String>{};
+    final replacedCurrentIndexes = <String>{};
+    final replacedDesiredIndexes = <String>{};
+
+    for (final entry in currentUniqueConstraints.entries) {
+      final desiredIndex = desiredIndexes[entry.key];
+      if (desiredIndex == null) {
+        continue;
+      }
+      final currentObject = _uniqueConstraintObject(current, entry.value);
+      final desiredObject = _indexObject(desired, desiredIndex);
+      final managesCurrent = collector.manages(currentObject);
+      final managesDesired = collector.manages(desiredObject);
+      if (!managesCurrent || !managesDesired) {
+        replacedCurrentUniqueConstraints.add(entry.key);
+        replacedDesiredIndexes.add(entry.key);
+        continue;
+      }
+      collector.operations.add(
+        ReplaceSqlUniqueConstraintWithIndex(
+          currentTable: current,
+          desiredTable: desired,
+          current: entry.value,
+          desired: desiredIndex,
+        ),
+      );
+      replacedCurrentUniqueConstraints.add(entry.key);
+      replacedDesiredIndexes.add(entry.key);
+    }
+
+    for (final entry in currentIndexes.entries) {
+      final desiredConstraint = desiredUniqueConstraints[entry.key];
+      if (desiredConstraint == null) {
+        continue;
+      }
+      final currentObject = _indexObject(current, entry.value);
+      final desiredObject = _uniqueConstraintObject(desired, desiredConstraint);
+      final managesCurrent = collector.manages(currentObject);
+      final managesDesired = collector.manages(desiredObject);
+      if (!managesCurrent || !managesDesired) {
+        replacedCurrentIndexes.add(entry.key);
+        replacedDesiredUniqueConstraints.add(entry.key);
+        continue;
+      }
+      collector.operations.add(
+        ReplaceSqlIndexWithUniqueConstraint(
+          currentTable: current,
+          desiredTable: desired,
+          current: entry.value,
+          desired: desiredConstraint,
+        ),
+      );
+      replacedCurrentIndexes.add(entry.key);
+      replacedDesiredUniqueConstraints.add(entry.key);
+    }
+
     for (final entry in desiredUniqueConstraints.entries) {
+      if (replacedDesiredUniqueConstraints.contains(entry.key)) {
+        continue;
+      }
       final currentConstraint = currentUniqueConstraints[entry.key];
       final desiredConstraint = entry.value;
+      final constraintObject = _uniqueConstraintObject(
+        desired,
+        desiredConstraint,
+      );
+      if (!collector.manages(constraintObject)) {
+        continue;
+      }
       if (currentConstraint == null) {
-        operations.add(
+        collector.operations.add(
           AddSqlUniqueConstraint(table: desired, constraint: desiredConstraint),
         );
       } else if (!_sameUniqueConstraint(currentConstraint, desiredConstraint)) {
-        operations
-          ..add(
-            DropSqlUniqueConstraint(
-              table: current,
-              constraint: currentConstraint,
-            ),
-          )
-          ..add(
-            AddSqlUniqueConstraint(
-              table: desired,
-              constraint: desiredConstraint,
-            ),
-          );
+        collector.operations.add(
+          ReplaceSqlUniqueConstraint(
+            currentTable: current,
+            desiredTable: desired,
+            current: currentConstraint,
+            desired: desiredConstraint,
+          ),
+        );
       }
     }
 
     for (final entry in currentUniqueConstraints.entries) {
+      if (replacedCurrentUniqueConstraints.contains(entry.key)) {
+        continue;
+      }
       if (!desiredUniqueConstraints.containsKey(entry.key)) {
-        operations.add(
-          DropSqlUniqueConstraint(table: current, constraint: entry.value),
-        );
+        final constraint = entry.value;
+        if (collector.manages(_uniqueConstraintObject(current, constraint))) {
+          collector.operations.add(
+            DropSqlUniqueConstraint(table: current, constraint: constraint),
+          );
+        }
       }
     }
 
@@ -530,59 +654,77 @@ final class SqlSchemaDiff {
     for (final entry in desiredForeignKeys.entries) {
       final currentForeignKey = currentForeignKeys[entry.key];
       final desiredForeignKey = entry.value;
+      final foreignKeyObject = _foreignKeyObject(desired, desiredForeignKey);
+      if (!collector.manages(foreignKeyObject)) {
+        continue;
+      }
       if (currentForeignKey == null) {
-        operations.add(
+        collector.operations.add(
           AddSqlForeignKeyConstraint(
             table: desired,
             foreignKey: desiredForeignKey,
           ),
         );
       } else if (!_sameForeignKey(currentForeignKey, desiredForeignKey)) {
-        operations
-          ..add(
-            DropSqlForeignKeyConstraint(
-              table: current,
-              foreignKey: currentForeignKey,
-            ),
-          )
-          ..add(
-            AddSqlForeignKeyConstraint(
-              table: desired,
-              foreignKey: desiredForeignKey,
-            ),
-          );
+        collector.operations.add(
+          ReplaceSqlForeignKeyConstraint(
+            currentTable: current,
+            desiredTable: desired,
+            current: currentForeignKey,
+            desired: desiredForeignKey,
+          ),
+        );
       }
     }
 
     for (final entry in currentForeignKeys.entries) {
       if (!desiredForeignKeys.containsKey(entry.key)) {
-        operations.add(
-          DropSqlForeignKeyConstraint(table: current, foreignKey: entry.value),
+        final foreignKey = entry.value;
+        if (collector.manages(_foreignKeyObject(current, foreignKey))) {
+          collector.operations.add(
+            DropSqlForeignKeyConstraint(table: current, foreignKey: foreignKey),
+          );
+        }
+      }
+    }
+
+    for (final entry in desiredIndexes.entries) {
+      if (replacedDesiredIndexes.contains(entry.key)) {
+        continue;
+      }
+      final currentIndex = currentIndexes[entry.key];
+      final desiredIndex = entry.value;
+      final indexObject = _indexObject(desired, desiredIndex);
+      if (!collector.manages(indexObject)) {
+        continue;
+      }
+      if (currentIndex == null) {
+        collector.operations.add(
+          CreateSqlIndex(table: desired, index: desiredIndex),
+        );
+      } else if (!_sameIndex(currentIndex, desiredIndex)) {
+        collector.operations.add(
+          ReplaceSqlIndex(
+            currentTable: current,
+            desiredTable: desired,
+            current: currentIndex,
+            desired: desiredIndex,
+          ),
         );
       }
     }
 
-    final currentIndexes = current._indexByName;
-    final desiredIndexes = desired._indexByName;
-    for (final entry in desiredIndexes.entries) {
-      final currentIndex = currentIndexes[entry.key];
-      final desiredIndex = entry.value;
-      if (currentIndex == null) {
-        operations.add(CreateSqlIndex(table: desired, index: desiredIndex));
-      } else if (!_sameIndex(currentIndex, desiredIndex)) {
-        operations
-          ..add(DropSqlIndex(table: current, index: currentIndex))
-          ..add(CreateSqlIndex(table: desired, index: desiredIndex));
-      }
-    }
-
     for (final entry in currentIndexes.entries) {
+      if (replacedCurrentIndexes.contains(entry.key)) {
+        continue;
+      }
       if (!desiredIndexes.containsKey(entry.key)) {
-        operations.add(DropSqlIndex(table: current, index: entry.value));
+        final index = entry.value;
+        if (collector.manages(_indexObject(current, index))) {
+          collector.operations.add(DropSqlIndex(table: current, index: index));
+        }
       }
     }
-
-    return operations;
   }
 
   static bool _sameColumn(SqlColumnSchema left, SqlColumnSchema right) {
@@ -703,6 +845,123 @@ final class SqlSchemaDiff {
       },
     );
   }
+}
+
+final class _SqlSchemaDiffCollector {
+  _SqlSchemaDiffCollector(this.scope);
+
+  final SqlSchemaManagementScope scope;
+  final List<SqlSchemaMigrationOp> operations = <SqlSchemaMigrationOp>[];
+  final List<SqlSchemaObject> ignoredObjects = <SqlSchemaObject>[];
+  final List<SqlSchemaObject> unsupportedObjects = <SqlSchemaObject>[];
+
+  bool manages(SqlSchemaObject object) {
+    return switch (scope.managementFor(object)) {
+      SqlSchemaObjectManagement.managed => true,
+      SqlSchemaObjectManagement.unmanaged => _record(ignoredObjects, object),
+      SqlSchemaObjectManagement.unsupported => _record(
+        unsupportedObjects,
+        object,
+      ),
+    };
+  }
+
+  bool _record(List<SqlSchemaObject> target, SqlSchemaObject object) {
+    if (!target.any(
+      (candidate) =>
+          candidate.kind == object.kind &&
+          candidate.schema == object.schema &&
+          candidate.table == object.table &&
+          candidate.name == object.name &&
+          candidate.identityArguments == object.identityArguments,
+    )) {
+      target.add(object);
+    }
+    return false;
+  }
+
+  SqlSchemaDiff build() {
+    return SqlSchemaDiff(
+      operations: List<SqlSchemaMigrationOp>.unmodifiable(operations),
+      ignoredObjects: List<SqlSchemaObject>.unmodifiable(ignoredObjects),
+      unsupportedObjects: List<SqlSchemaObject>.unmodifiable(
+        unsupportedObjects,
+      ),
+    );
+  }
+}
+
+SqlSchemaObject _tableObject(SqlTableSchema table) {
+  return SqlSchemaObject(
+    kind: SqlSchemaObjectKind.table,
+    schema: table.schema,
+    name: table.name,
+  );
+}
+
+SqlSchemaObject _columnObject(SqlTableSchema table, SqlColumnSchema column) {
+  return SqlSchemaObject(
+    kind: SqlSchemaObjectKind.column,
+    schema: table.schema,
+    table: table.name,
+    name: column.name,
+  );
+}
+
+SqlSchemaObject _checkObject(
+  SqlTableSchema table,
+  SqlCheckConstraintSchema check,
+) {
+  return SqlSchemaObject(
+    kind: SqlSchemaObjectKind.checkConstraint,
+    schema: table.schema,
+    table: table.name,
+    name: check.name,
+  );
+}
+
+SqlSchemaObject _uniqueConstraintObject(
+  SqlTableSchema table,
+  SqlUniqueConstraintSchema constraint,
+) {
+  return SqlSchemaObject(
+    kind: SqlSchemaObjectKind.uniqueConstraint,
+    schema: table.schema,
+    table: table.name,
+    name: constraint.name,
+  );
+}
+
+SqlSchemaObject _foreignKeyObject(
+  SqlTableSchema table,
+  SqlForeignKeyConstraintSchema foreignKey,
+) {
+  return SqlSchemaObject(
+    kind: SqlSchemaObjectKind.foreignKey,
+    schema: table.schema,
+    table: table.name,
+    name: foreignKey.name,
+  );
+}
+
+SqlSchemaObject _indexObject(SqlTableSchema table, SqlIndexSchema index) {
+  return SqlSchemaObject(
+    kind: SqlSchemaObjectKind.secondaryIndex,
+    schema: table.schema,
+    table: table.name,
+    name: index.name,
+  );
+}
+
+SqlSchemaObject _routineObject(SqlRoutineSchema routine) {
+  return SqlSchemaObject(
+    kind: SqlSchemaObjectKind.routine,
+    schema: routine.schema,
+    name: routine.name,
+    identityArguments: _normalizeRoutineIdentityArguments(
+      routine.identityArguments,
+    ),
+  );
 }
 
 /// Human-readable review details for non-trivial schema changes.
@@ -1067,6 +1326,52 @@ final class DropSqlCheckConstraint extends SqlSchemaMigrationOp {
   }
 }
 
+/// Atomically replaces one changed CHECK constraint after review.
+final class ReplaceSqlCheckConstraint extends SqlSchemaMigrationOp {
+  const ReplaceSqlCheckConstraint({
+    required this.currentTable,
+    required this.desiredTable,
+    required this.current,
+    required this.desired,
+  });
+
+  final SqlTableSchema currentTable;
+  final SqlTableSchema desiredTable;
+  final SqlCheckConstraintSchema current;
+  final SqlCheckConstraintSchema desired;
+
+  @override
+  SqlSchemaMigrationSafety get safety =>
+      SqlSchemaMigrationSafety.requiresReview;
+
+  @override
+  List<SqlSchemaMigrationReviewItem> get _reviewItems => [
+    SqlSchemaMigrationReviewItem(
+      target: '${_tableDisplayName(desiredTable)}.${desired.name}',
+      summary: 'replace check constraint',
+      details: [
+        'current expression: ${current.expression}',
+        'desired expression: ${desired.expression}',
+      ],
+      suggestedAction:
+          'Validate existing rows against the new expression before approving '
+          'the atomic drop-and-add replacement.',
+    ),
+  ];
+
+  @override
+  List<SqlStatement> toStatements(SqlDialect dialect) => _atomicReplacement(
+    DropSqlCheckConstraint(
+      table: currentTable,
+      check: current,
+    ).toStatements(dialect),
+    AddSqlCheckConstraint(
+      table: desiredTable,
+      check: desired,
+    ).toStatements(dialect),
+  );
+}
+
 /// Adds one UNIQUE constraint to an existing table.
 final class AddSqlUniqueConstraint extends SqlSchemaMigrationOp {
   const AddSqlUniqueConstraint({required this.table, required this.constraint});
@@ -1154,6 +1459,52 @@ final class DropSqlUniqueConstraint extends SqlSchemaMigrationOp {
       SqlDialect.sqlite => const <SqlStatement>[],
     };
   }
+}
+
+/// Atomically replaces one changed UNIQUE constraint after review.
+final class ReplaceSqlUniqueConstraint extends SqlSchemaMigrationOp {
+  const ReplaceSqlUniqueConstraint({
+    required this.currentTable,
+    required this.desiredTable,
+    required this.current,
+    required this.desired,
+  });
+
+  final SqlTableSchema currentTable;
+  final SqlTableSchema desiredTable;
+  final SqlUniqueConstraintSchema current;
+  final SqlUniqueConstraintSchema desired;
+
+  @override
+  SqlSchemaMigrationSafety get safety =>
+      SqlSchemaMigrationSafety.requiresReview;
+
+  @override
+  List<SqlSchemaMigrationReviewItem> get _reviewItems => [
+    SqlSchemaMigrationReviewItem(
+      target: '${_tableDisplayName(desiredTable)}.${desired.name}',
+      summary: 'replace unique constraint',
+      details: [
+        'current columns: ${current.columns.join(', ')}',
+        'desired columns: ${desired.columns.join(', ')}',
+      ],
+      suggestedAction:
+          'Validate uniqueness for the desired columns before approving the '
+          'atomic drop-and-add replacement.',
+    ),
+  ];
+
+  @override
+  List<SqlStatement> toStatements(SqlDialect dialect) => _atomicReplacement(
+    DropSqlUniqueConstraint(
+      table: currentTable,
+      constraint: current,
+    ).toStatements(dialect),
+    AddSqlUniqueConstraint(
+      table: desiredTable,
+      constraint: desired,
+    ).toStatements(dialect),
+  );
 }
 
 /// Adds one foreign key constraint to an existing table.
@@ -1250,6 +1601,52 @@ final class DropSqlForeignKeyConstraint extends SqlSchemaMigrationOp {
       SqlDialect.sqlite => const <SqlStatement>[],
     };
   }
+}
+
+/// Atomically replaces one changed foreign key constraint after review.
+final class ReplaceSqlForeignKeyConstraint extends SqlSchemaMigrationOp {
+  const ReplaceSqlForeignKeyConstraint({
+    required this.currentTable,
+    required this.desiredTable,
+    required this.current,
+    required this.desired,
+  });
+
+  final SqlTableSchema currentTable;
+  final SqlTableSchema desiredTable;
+  final SqlForeignKeyConstraintSchema current;
+  final SqlForeignKeyConstraintSchema desired;
+
+  @override
+  SqlSchemaMigrationSafety get safety =>
+      SqlSchemaMigrationSafety.requiresReview;
+
+  @override
+  List<SqlSchemaMigrationReviewItem> get _reviewItems => [
+    SqlSchemaMigrationReviewItem(
+      target: '${_tableDisplayName(desiredTable)}.${desired.name}',
+      summary: 'replace foreign key constraint',
+      details: [
+        'current reference: ${_foreignKeyReferenceDisplay(current)}',
+        'desired reference: ${_foreignKeyReferenceDisplay(desired)}',
+      ],
+      suggestedAction:
+          'Validate existing references and approve the atomic drop-and-add '
+          'replacement.',
+    ),
+  ];
+
+  @override
+  List<SqlStatement> toStatements(SqlDialect dialect) => _atomicReplacement(
+    DropSqlForeignKeyConstraint(
+      table: currentTable,
+      foreignKey: current,
+    ).toStatements(dialect),
+    AddSqlForeignKeyConstraint(
+      table: desiredTable,
+      foreignKey: desired,
+    ).toStatements(dialect),
+  );
 }
 
 /// Creates one secondary index.
@@ -1389,6 +1786,132 @@ final class DropSqlIndex extends SqlSchemaMigrationOp {
   }
 }
 
+/// Atomically replaces one changed secondary index after review.
+final class ReplaceSqlIndex extends SqlSchemaMigrationOp {
+  const ReplaceSqlIndex({
+    required this.currentTable,
+    required this.desiredTable,
+    required this.current,
+    required this.desired,
+  });
+
+  final SqlTableSchema currentTable;
+  final SqlTableSchema desiredTable;
+  final SqlIndexSchema current;
+  final SqlIndexSchema desired;
+
+  @override
+  SqlSchemaMigrationSafety get safety =>
+      SqlSchemaMigrationSafety.requiresReview;
+
+  @override
+  List<SqlSchemaMigrationReviewItem> get _reviewItems => [
+    SqlSchemaMigrationReviewItem(
+      target: '${_tableDisplayName(desiredTable)}.${desired.name}',
+      summary: 'replace index',
+      details: [
+        'current columns: ${current.columns.join(', ')}',
+        'desired columns: ${desired.columns.join(', ')}',
+      ],
+      suggestedAction:
+          'Review locking, uniqueness, access-method, and query-plan impact '
+          'before approving the atomic drop-and-create replacement.',
+    ),
+  ];
+
+  @override
+  List<SqlStatement> toStatements(SqlDialect dialect) => _atomicReplacement(
+    DropSqlIndex(table: currentTable, index: current).toStatements(dialect),
+    CreateSqlIndex(table: desiredTable, index: desired).toStatements(dialect),
+  );
+}
+
+/// Replaces a UNIQUE constraint with a same-named index as one reviewed unit.
+final class ReplaceSqlUniqueConstraintWithIndex extends SqlSchemaMigrationOp {
+  const ReplaceSqlUniqueConstraintWithIndex({
+    required this.currentTable,
+    required this.desiredTable,
+    required this.current,
+    required this.desired,
+  });
+
+  final SqlTableSchema currentTable;
+  final SqlTableSchema desiredTable;
+  final SqlUniqueConstraintSchema current;
+  final SqlIndexSchema desired;
+
+  @override
+  SqlSchemaMigrationSafety get safety =>
+      SqlSchemaMigrationSafety.requiresReview;
+
+  @override
+  List<SqlSchemaMigrationReviewItem> get _reviewItems => [
+    SqlSchemaMigrationReviewItem(
+      target: '${_tableDisplayName(desiredTable)}.${desired.name}',
+      summary: 'replace unique constraint with index',
+      details: [
+        'constraint columns: ${current.columns.join(', ')}',
+        'index columns: ${desired.columns.join(', ')}',
+      ],
+      suggestedAction:
+          'Confirm the application does not rely on the named UNIQUE '
+          'constraint before approving this representation change.',
+    ),
+  ];
+
+  @override
+  List<SqlStatement> toStatements(SqlDialect dialect) => _atomicReplacement(
+    DropSqlUniqueConstraint(
+      table: currentTable,
+      constraint: current,
+    ).toStatements(dialect),
+    CreateSqlIndex(table: desiredTable, index: desired).toStatements(dialect),
+  );
+}
+
+/// Replaces an index with a same-named UNIQUE constraint as one reviewed unit.
+final class ReplaceSqlIndexWithUniqueConstraint extends SqlSchemaMigrationOp {
+  const ReplaceSqlIndexWithUniqueConstraint({
+    required this.currentTable,
+    required this.desiredTable,
+    required this.current,
+    required this.desired,
+  });
+
+  final SqlTableSchema currentTable;
+  final SqlTableSchema desiredTable;
+  final SqlIndexSchema current;
+  final SqlUniqueConstraintSchema desired;
+
+  @override
+  SqlSchemaMigrationSafety get safety =>
+      SqlSchemaMigrationSafety.requiresReview;
+
+  @override
+  List<SqlSchemaMigrationReviewItem> get _reviewItems => [
+    SqlSchemaMigrationReviewItem(
+      target: '${_tableDisplayName(desiredTable)}.${desired.name}',
+      summary: 'replace index with unique constraint',
+      details: [
+        'index columns: ${current.columns.join(', ')}',
+        'constraint columns: ${desired.columns.join(', ')}',
+      ],
+      suggestedAction:
+          'Validate uniqueness and approve the representation change as one '
+          'atomic replacement.',
+    ),
+  ];
+
+  @override
+  List<SqlStatement> toStatements(SqlDialect dialect) => _atomicReplacement(
+    DropSqlIndex(table: currentTable, index: current).toStatements(dialect),
+    AddSqlUniqueConstraint(
+      table: desiredTable,
+      constraint: desired,
+    ).toStatements(dialect),
+  );
+}
+
 /// Drops one table.
 final class DropSqlTable extends SqlSchemaMigrationOp {
   const DropSqlTable(this.table);
@@ -1462,6 +1985,16 @@ final class DropSqlRoutine extends SqlSchemaMigrationOp {
       SqlDialect.sqlite => const <SqlStatement>[],
     };
   }
+}
+
+List<SqlStatement> _atomicReplacement(
+  List<SqlStatement> remove,
+  List<SqlStatement> create,
+) {
+  if (remove.isEmpty || create.isEmpty) {
+    return const <SqlStatement>[];
+  }
+  return List<SqlStatement>.unmodifiable(<SqlStatement>[...remove, ...create]);
 }
 
 final class _TableKey {
@@ -1700,7 +2233,12 @@ String _trimSql(String sql) => sql.trim();
 
 String _normalizeRoutineDefinition(String definition) {
   return _trimSql(
-    definition.replaceAll(RegExp(r'\s+'), ' '),
+    definition
+        .replaceAllMapped(
+          RegExp(r'\$[A-Za-z_][A-Za-z0-9_]*\$|\$\$'),
+          (match) => ' ${match.group(0)} ',
+        )
+        .replaceAll(RegExp(r'\s+'), ' '),
   ).replaceFirst(RegExp(r';$'), '');
 }
 
