@@ -192,6 +192,8 @@ JsonSchema jsonSchemaFromDartObject(
       enumValues: _objectListField(object, 'enumValues', element: element),
       nullable: _boolField(object, 'nullable') ?? false,
       format: _stringField(object, 'format'),
+      minimum: _numField(object, 'minimum'),
+      maximum: _numField(object, 'maximum'),
     ),
     'JsonNumberSchema' => JsonSchema.number(
       id: _stringField(object, 'id'),
@@ -200,6 +202,8 @@ JsonSchema jsonSchemaFromDartObject(
       enumValues: _objectListField(object, 'enumValues', element: element),
       nullable: _boolField(object, 'nullable') ?? false,
       format: _stringField(object, 'format'),
+      minimum: _numField(object, 'minimum'),
+      maximum: _numField(object, 'maximum'),
     ),
     'JsonBooleanSchema' => JsonSchema.boolean(
       id: _stringField(object, 'id'),
@@ -605,17 +609,31 @@ Expression _schemaExpression(JsonSchema schema, {Expression? idExpression}) {
         if (format != null) 'format': literalString(format),
         if (dartType != null) 'dartType': _dartSchemaTypeExpression(dartType),
       }),
-    JsonIntegerSchema(:final nullable, :final format) =>
+    JsonIntegerSchema(
+      :final nullable,
+      :final format,
+      :final minimum,
+      :final maximum,
+    ) =>
       refer('JsonSchema').constInstanceNamed('integer', const [], {
         ...baseArguments,
         if (nullable) 'nullable': literalBool(nullable),
         if (format != null) 'format': literalString(format),
+        if (minimum != null) 'minimum': literalNum(minimum),
+        if (maximum != null) 'maximum': literalNum(maximum),
       }),
-    JsonNumberSchema(:final nullable, :final format) =>
+    JsonNumberSchema(
+      :final nullable,
+      :final format,
+      :final minimum,
+      :final maximum,
+    ) =>
       refer('JsonSchema').constInstanceNamed('number', const [], {
         ...baseArguments,
         if (nullable) 'nullable': literalBool(nullable),
         if (format != null) 'format': literalString(format),
+        if (minimum != null) 'minimum': literalNum(minimum),
+        if (maximum != null) 'maximum': literalNum(maximum),
       }),
     JsonBooleanSchema(:final nullable) =>
       refer('JsonSchema').constInstanceNamed('boolean', const [], {
@@ -1759,6 +1777,14 @@ bool? _boolField(DartObject object, String name) {
     return null;
   }
   return value.toBoolValue();
+}
+
+num? _numField(DartObject object, String name) {
+  final value = _field(object, name);
+  if (value == null || value.isNull) {
+    return null;
+  }
+  return value.toIntValue() ?? value.toDoubleValue();
 }
 
 DartObject? _field(DartObject object, String name) {

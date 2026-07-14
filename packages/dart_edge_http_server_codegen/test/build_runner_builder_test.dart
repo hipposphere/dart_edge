@@ -69,6 +69,8 @@ sealed class JsonSchema {
     List<Object?> enumValues,
     bool nullable,
     String? format,
+    num? minimum,
+    num? maximum,
   }) = JsonIntegerSchema;
 
   const factory JsonSchema.number({
@@ -78,6 +80,8 @@ sealed class JsonSchema {
     List<Object?> enumValues,
     bool nullable,
     String? format,
+    num? minimum,
+    num? maximum,
   }) = JsonNumberSchema;
 
   const factory JsonSchema.boolean({
@@ -224,9 +228,13 @@ final class JsonIntegerSchema extends JsonSchema {
     super.enumValues,
     super.nullable = false,
     this.format,
+    this.minimum,
+    this.maximum,
   }) : super._();
 
   final String? format;
+  final num? minimum;
+  final num? maximum;
 }
 
 final class JsonNumberSchema extends JsonSchema {
@@ -237,9 +245,13 @@ final class JsonNumberSchema extends JsonSchema {
     super.enumValues,
     super.nullable = false,
     this.format,
+    this.minimum,
+    this.maximum,
   }) : super._();
 
   final String? format;
+  final num? minimum;
+  final num? maximum;
 }
 
 final class JsonBooleanSchema extends JsonSchema {
@@ -331,6 +343,20 @@ final class FromSchema {
   final int responseStatus;
 }
 
+final class FromHttpSchema {
+  const FromHttpSchema(
+    this.schema, {
+    this.registry,
+    this.refs = const [],
+    this.responseStatus = 200,
+  });
+
+  final JsonSchema schema;
+  final JsonSchemaRegistry? registry;
+  final List<SchemaRefModel> refs;
+  final int responseStatus;
+}
+
 final class SchemaRefModel {
   const SchemaRefModel(this.type, {this.schemaId});
 
@@ -374,7 +400,8 @@ const createUserInputSchema = JsonSchema.object(
   id: 'CreateUserInput',
   properties: <String, JsonSchema>{
     'name': JsonSchema.string(),
-    'age': JsonSchema.integer(),
+    'age': JsonSchema.integer(minimum: 0, maximum: 120),
+    'score': JsonSchema.number(minimum: -1.5, maximum: 1.5),
     'status': JsonSchema.string(enumValues: ['draft', 'published']),
     'tags': JsonSchema.array(items: JsonSchema.string()),
     'created_at': JsonSchema.string(format: 'date-time'),
@@ -450,7 +477,7 @@ const publishStatusSchema = JsonSchema.string(
 )
 typedef CreateUserInput = _$CreateUserInput;
 
-@FromSchema(
+@FromHttpSchema(
   createUserBodySchema,
   registry: userSchemas,
   refs: [SchemaRefModel(FriendDto)],
@@ -516,6 +543,9 @@ typedef PublishStatus = _$PublishStatus;
               isNot(contains('schema: schemaRef,\n  );')),
               contains('final String name;'),
               contains('final int? age;'),
+              contains('final num? score;'),
+              contains('JsonSchema.integer(minimum: 0, maximum: 120)'),
+              contains('JsonSchema.number(minimum: -1.5, maximum: 1.5)'),
               contains('final List<String> tags;'),
               contains('final DateTime createdAt;'),
               contains('final DateTime? deletedAt;'),

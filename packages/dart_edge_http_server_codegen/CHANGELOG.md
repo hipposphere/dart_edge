@@ -1,3 +1,14 @@
+## 0.3.37
+
+- Support `@FromHttpSchema` for generated Dart Edge request and response
+  models, keeping HTTP status metadata out of portable `@FromSchema`.
+
+## 0.3.36
+
+- Preserve JSON Schema `minimum` and `maximum` constraints in generated model
+  schemas.
+- Require `dart_edge_core` 0.3.32.
+
 ## 0.3.33
 
 - Apply configured builder formatter options to the final generated shared part

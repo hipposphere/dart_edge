@@ -18,19 +18,5 @@ export 'package:json_schema/json_schema.dart'
         JsonRawSchema,
         JsonReferenceSchema,
         JsonSchema,
-        JsonSchemaRef,
-        JsonSchemaRegistry,
         JsonSchemaType,
         JsonStringSchema;
-
-export 'http/error_response.dart';
-export 'http/http_method.dart';
-export 'http/json_decoding.dart';
-export 'http/json_encodable.dart';
-export 'http/multipart_form_data.dart';
-export 'http/raw_response.dart';
-export 'http/request_body.dart';
-export 'http/response_set.dart';
-export 'http/response_spec.dart';
-export 'http/sse_event.dart';
-export 'http/sse_response.dart';

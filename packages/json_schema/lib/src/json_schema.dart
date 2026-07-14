@@ -1,4 +1,4 @@
-/// JSON Schema primitive type keywords supported by Dart Edge.
+/// JSON Schema primitive type keywords supported by this package.
 enum JsonSchemaType {
   /// JSON object values.
   object('object'),
@@ -150,8 +150,8 @@ final class DartGenericSchemaType extends DartSchemaType {
 
 /// Typed JSON Schema model used by route metadata and installed registries.
 ///
-/// The model covers the subset of JSON Schema used by Dart Edge route
-/// contracts, OpenAPI generation, SQL model generation, and typed clients.
+/// The model covers a practical, typed subset of JSON Schema suitable for
+/// generated Dart contracts and schema registries.
 /// Use [toJson] when a JSON-compatible schema map is needed for publication.
 sealed class JsonSchema {
   const JsonSchema._({
@@ -262,7 +262,8 @@ sealed class JsonSchema {
 
   /// Describes a JSON integer.
   ///
-  /// [format] is serialized as the JSON Schema `format` keyword.
+  /// [format] is serialized as the JSON Schema `format` keyword. [minimum] and
+  /// [maximum] are inclusive numeric bounds.
   const factory JsonSchema.integer({
     String? id,
     String? title,
@@ -270,11 +271,14 @@ sealed class JsonSchema {
     List<Object?> enumValues,
     bool nullable,
     String? format,
+    num? minimum,
+    num? maximum,
   }) = JsonIntegerSchema;
 
   /// Describes a JSON number.
   ///
-  /// [format] is serialized as the JSON Schema `format` keyword.
+  /// [format] is serialized as the JSON Schema `format` keyword. [minimum] and
+  /// [maximum] are inclusive numeric bounds.
   const factory JsonSchema.number({
     String? id,
     String? title,
@@ -282,6 +286,8 @@ sealed class JsonSchema {
     List<Object?> enumValues,
     bool nullable,
     String? format,
+    num? minimum,
+    num? maximum,
   }) = JsonNumberSchema;
 
   /// Describes a JSON boolean.
@@ -563,14 +569,26 @@ final class JsonIntegerSchema extends _JsonTypedSchema {
     super.enumValues,
     super.nullable = false,
     this.format,
+    this.minimum,
+    this.maximum,
   }) : super(type: JsonSchemaType.integer);
 
   /// Optional JSON Schema integer `format`.
   final String? format;
 
+  /// Inclusive lower bound for accepted integer values.
+  final num? minimum;
+
+  /// Inclusive upper bound for accepted integer values.
+  final num? maximum;
+
   @override
   Map<String, Object?> additionalKeywords() {
-    return <String, Object?>{'format': ?format};
+    return <String, Object?>{
+      'format': ?format,
+      'minimum': ?minimum,
+      'maximum': ?maximum,
+    };
   }
 }
 
@@ -584,14 +602,26 @@ final class JsonNumberSchema extends _JsonTypedSchema {
     super.enumValues,
     super.nullable = false,
     this.format,
+    this.minimum,
+    this.maximum,
   }) : super(type: JsonSchemaType.number);
 
   /// Optional JSON Schema number `format`.
   final String? format;
 
+  /// Inclusive lower bound for accepted number values.
+  final num? minimum;
+
+  /// Inclusive upper bound for accepted number values.
+  final num? maximum;
+
   @override
   Map<String, Object?> additionalKeywords() {
-    return <String, Object?>{'format': ?format};
+    return <String, Object?>{
+      'format': ?format,
+      'minimum': ?minimum,
+      'maximum': ?maximum,
+    };
   }
 }
 

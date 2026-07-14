@@ -1,3 +1,14 @@
+## 0.3.33
+
+- Depend on and re-export the standalone `json_schema` package.
+- Keep HTTP-only model annotations in Dart Edge as `@FromHttpSchema` and
+  `@FromMultipartSchema`.
+
+## 0.3.32
+
+- Add inclusive `minimum` and `maximum` constraints to integer and number JSON
+  schemas.
+
 ## 0.3.31
 
 - Add `SqlColumnBase` for heterogeneous SQL table column metadata.

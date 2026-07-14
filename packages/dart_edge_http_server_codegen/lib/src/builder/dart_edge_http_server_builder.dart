@@ -5,6 +5,7 @@ import 'package:source_gen/source_gen.dart';
 import 'from_schema_model_builder.dart';
 
 const _fromSchemaChecker = TypeChecker.typeNamedLiterally('FromSchema');
+const _fromHttpSchemaChecker = TypeChecker.typeNamedLiterally('FromHttpSchema');
 const _fromMultipartSchemaChecker = TypeChecker.typeNamedLiterally(
   'FromMultipartSchema',
 );
@@ -43,12 +44,18 @@ final class DartEdgeHttpServerBuilderGenerator extends Generator {
       _fromMultipartSchemaChecker,
       throwOnUnresolved: false,
     );
-    if (jsonModels.isEmpty && multipartModels.isEmpty) {
+    final httpModels = library.annotatedWith(
+      _fromHttpSchemaChecker,
+      throwOnUnresolved: false,
+    );
+    if (jsonModels.isEmpty && httpModels.isEmpty && multipartModels.isEmpty) {
       return null;
     }
 
     final models = [
       for (final annotatedModel in jsonModels)
+        buildFromSchemaModel(annotatedModel.element, annotatedModel.annotation),
+      for (final annotatedModel in httpModels)
         buildFromSchemaModel(annotatedModel.element, annotatedModel.annotation),
       for (final annotatedModel in multipartModels)
         buildFromSchemaModel(
