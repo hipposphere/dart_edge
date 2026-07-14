@@ -143,8 +143,8 @@ final class JsonReferenceSchema extends JsonSchema {
   final String ref;
 }
 
-final class FromSchema {
-  const FromSchema(
+final class FromHttpSchema {
+  const FromHttpSchema(
     this.schema, {
     this.registry,
     this.refs = const [],
@@ -180,7 +180,7 @@ const bodySchema = JsonSchema.object(
   additionalProperties: false,
 );
 
-@FromSchema(bodySchema)
+@FromHttpSchema(bodySchema)
 typedef PatientDeleteBody = _$PatientDeleteBody;
 ''',
         },

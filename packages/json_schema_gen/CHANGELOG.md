@@ -1,4 +1,4 @@
 ## 0.1.0
 
-- Add generator-facing schema type adapter contracts without Dart Edge
-  dependencies.
+- Add a standalone `build_runner` generator for portable `@FromSchema` Dart
+  models, plus generator-facing schema type adapter contracts.

@@ -2,6 +2,8 @@
 
 - Support `@FromHttpSchema` for generated Dart Edge request and response
   models, keeping HTTP status metadata out of portable `@FromSchema`.
+- Reserve `@FromSchema` model generation for the standalone `json_schema_gen`
+  builder.
 
 ## 0.3.36
 

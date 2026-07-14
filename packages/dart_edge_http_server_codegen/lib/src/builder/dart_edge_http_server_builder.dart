@@ -4,13 +4,12 @@ import 'package:source_gen/source_gen.dart';
 
 import 'from_schema_model_builder.dart';
 
-const _fromSchemaChecker = TypeChecker.typeNamedLiterally('FromSchema');
 const _fromHttpSchemaChecker = TypeChecker.typeNamedLiterally('FromHttpSchema');
 const _fromMultipartSchemaChecker = TypeChecker.typeNamedLiterally(
   'FromMultipartSchema',
 );
 
-/// Turns `@FromSchema` type aliases into Dart model classes.
+/// Turns Dart Edge HTTP schema annotations into request and response models.
 final class DartEdgeHttpServerBuilderGenerator extends Generator {
   const DartEdgeHttpServerBuilderGenerator({
     this._formatterOptions = const FromSchemaFormatterOptions(),
@@ -36,10 +35,6 @@ final class DartEdgeHttpServerBuilderGenerator extends Generator {
 
   @override
   String? generate(LibraryReader library, BuildStep buildStep) {
-    final jsonModels = library.annotatedWith(
-      _fromSchemaChecker,
-      throwOnUnresolved: false,
-    );
     final multipartModels = library.annotatedWith(
       _fromMultipartSchemaChecker,
       throwOnUnresolved: false,
@@ -48,13 +43,11 @@ final class DartEdgeHttpServerBuilderGenerator extends Generator {
       _fromHttpSchemaChecker,
       throwOnUnresolved: false,
     );
-    if (jsonModels.isEmpty && httpModels.isEmpty && multipartModels.isEmpty) {
+    if (httpModels.isEmpty && multipartModels.isEmpty) {
       return null;
     }
 
     final models = [
-      for (final annotatedModel in jsonModels)
-        buildFromSchemaModel(annotatedModel.element, annotatedModel.annotation),
       for (final annotatedModel in httpModels)
         buildFromSchemaModel(annotatedModel.element, annotatedModel.annotation),
       for (final annotatedModel in multipartModels)

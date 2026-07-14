@@ -5,7 +5,7 @@ import 'package:test/test.dart';
 
 void main() {
   group('dartEdgeHttpServerBuilder', () {
-    test('emits model classes from FromSchema type aliases', () async {
+    test('emits model classes from FromHttpSchema type aliases', () async {
       final builder = dartEdgeHttpServerBuilder(BuilderOptions.empty);
 
       await testBuilder(
@@ -329,8 +329,8 @@ final class ResponseSpec {
     : this._(status: status, schema: schema);
 }
 
-final class FromSchema {
-  const FromSchema(
+final class FromHttpSchema {
+  const FromHttpSchema(
     this.schema, {
     this.registry,
     this.refs = const [],
@@ -470,7 +470,7 @@ const publishStatusSchema = JsonSchema.string(
   enumValues: <Object?>['draft', 'published', 'in-review'],
 );
 
-@FromSchema(
+@FromHttpSchema(
   createUserInputSchema,
   registry: userSchemas,
   refs: [SchemaRefModel(FriendDto)],
@@ -485,34 +485,34 @@ typedef CreateUserInput = _$CreateUserInput;
 )
 typedef CreateUserBody = _$CreateUserBody;
 
-@FromSchema(userDtoSchema, registry: userSchemas)
+@FromHttpSchema(userDtoSchema, registry: userSchemas)
 typedef UserDto = _$UserDto;
 
-@FromSchema(userListSchema, registry: userSchemas)
+@FromHttpSchema(userListSchema, registry: userSchemas)
 typedef UserList = _$UserList;
 
-@FromSchema(tagListSchema)
+@FromHttpSchema(tagListSchema)
 typedef TagList = _$TagList;
 
-@FromSchema(scoreListSchema)
+@FromHttpSchema(scoreListSchema)
 typedef ScoreList = _$ScoreList;
 
-@FromSchema(ratioListSchema)
+@FromHttpSchema(ratioListSchema)
 typedef RatioList = _$RatioList;
 
-@FromSchema(flagListSchema)
+@FromHttpSchema(flagListSchema)
 typedef FlagList = _$FlagList;
 
-@FromSchema(tagMatrixSchema)
+@FromHttpSchema(tagMatrixSchema)
 typedef TagMatrix = _$TagMatrix;
 
-@FromSchema(jsonListSchema)
+@FromHttpSchema(jsonListSchema)
 typedef JsonList = _$JsonList;
 
-@FromSchema(rawObjectListSchema)
+@FromHttpSchema(rawObjectListSchema)
 typedef RawObjectList = _$RawObjectList;
 
-@FromSchema(publishStatusSchema)
+@FromHttpSchema(publishStatusSchema)
 typedef PublishStatus = _$PublishStatus;
 ''',
         },
@@ -751,8 +751,8 @@ final class DartNamedSchemaType extends DartSchemaType {
   final DartSchemaConversion conversion;
 }
 
-final class FromSchema {
-  const FromSchema(
+final class FromHttpSchema {
+  const FromHttpSchema(
     this.schema, {
     this.registry,
     this.refs = const [],
@@ -819,7 +819,7 @@ const setRoleBodySchema = JsonSchema.object(
   required: <String>['userId', 'role'],
 );
 
-@FromSchema(setRoleBodySchema)
+@FromHttpSchema(setRoleBodySchema)
 typedef SetRoleBody = _$SetRoleBody;
 ''',
         },
@@ -963,7 +963,7 @@ typedef UploadBody = _$UploadBody;
       );
     });
 
-    test('emits generic typed string models from FromSchema aliases', () async {
+    test('emits generic typed string models from FromHttpSchema aliases', () async {
       final builder = dartEdgeHttpServerBuilder(BuilderOptions.empty);
 
       await testBuilder(
@@ -1161,8 +1161,8 @@ final class ResponseSpec {
     : this._(status: status, schema: schema);
 }
 
-final class FromSchema {
-  const FromSchema(
+final class FromHttpSchema {
+  const FromHttpSchema(
     this.schema, {
     this.registry,
     this.refs = const [],
@@ -1224,10 +1224,10 @@ const idParamsSchema = JsonSchema.object(
   additionalProperties: false,
 );
 
-@FromSchema(idParamsSchema)
+@FromHttpSchema(idParamsSchema)
 typedef IdParams<TId extends String> = _$IdParams<TId>;
 
-@FromSchema(idParamsSchema)
+@FromHttpSchema(idParamsSchema)
 typedef StringIdParams = _$StringIdParams;
 ''',
         },
