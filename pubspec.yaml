@@ -11,14 +11,12 @@ workspace:
 
 dev_dependencies:
   lints: ^6.0.0
-  melos: ^8.2.0
+  melos: ^8.2.2
 
 dependency_overrides:
   cli_util: ^0.5.1
   # Resolve the shared schema package locally until its first Hippo registry
   # release is available to this workspace.
-  json_schema:
-    path: ../hipposphere/hippo-pub-packages/packages/json_schema
   # shadcn_jaspr 0.4.3 has not widened its Jaspr constraint past ^0.22.0 yet,
   # while this workspace already standardizes on Jaspr 0.23.x.
   jaspr: ^0.23.1
