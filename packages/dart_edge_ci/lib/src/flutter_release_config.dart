@@ -227,6 +227,8 @@ final class AppStoreConnectPublishConfig {
     this.submitForReview = false,
     this.skipMetadata = true,
     this.skipScreenshots = true,
+    this.runPrecheckBeforeSubmit = true,
+    this.precheckIncludeInAppPurchases = false,
   });
 
   final String ipa;
@@ -234,6 +236,8 @@ final class AppStoreConnectPublishConfig {
   final bool submitForReview;
   final bool skipMetadata;
   final bool skipScreenshots;
+  final bool runPrecheckBeforeSubmit;
+  final bool precheckIncludeInAppPurchases;
   final AppStoreConnectApiKeyConfig apiKey;
 
   static AppStoreConnectPublishConfig? parse(Object? value, String path) {
@@ -250,6 +254,18 @@ final class AppStoreConnectPublishConfig {
       skipMetadata: _bool(map['skip_metadata'], '$path.skip_metadata') ?? true,
       skipScreenshots:
           _bool(map['skip_screenshots'], '$path.skip_screenshots') ?? true,
+      runPrecheckBeforeSubmit:
+          _bool(
+            map['run_precheck_before_submit'],
+            '$path.run_precheck_before_submit',
+          ) ??
+          true,
+      precheckIncludeInAppPurchases:
+          _bool(
+            map['precheck_include_in_app_purchases'],
+            '$path.precheck_include_in_app_purchases',
+          ) ??
+          false,
       apiKey: AppStoreConnectApiKeyConfig.parse(
         map['api_key'],
         '$path.api_key',
@@ -263,6 +279,8 @@ final class AppStoreConnectPublishConfig {
     'submit_for_review': submitForReview,
     'skip_metadata': skipMetadata,
     'skip_screenshots': skipScreenshots,
+    'run_precheck_before_submit': runPrecheckBeforeSubmit,
+    'precheck_include_in_app_purchases': precheckIncludeInAppPurchases,
     'api_key': apiKey.toJson(),
   };
 }

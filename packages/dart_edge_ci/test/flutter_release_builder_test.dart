@@ -177,6 +177,8 @@ targets:
         submitForReview: true,
         skipMetadata: false,
         skipScreenshots: false,
+        runPrecheckBeforeSubmit: false,
+        precheckIncludeInAppPurchases: false,
         apiKey: AppStoreConnectApiKeyConfig(),
       ),
       ipaPath: 'build/ios/ipa/Dicto.ipa',
@@ -198,6 +200,10 @@ targets:
       'false',
       '--submit_for_review',
       'true',
+      '--run_precheck_before_submit',
+      'false',
+      '--precheck_include_in_app_purchases',
+      'false',
     ]);
   });
 

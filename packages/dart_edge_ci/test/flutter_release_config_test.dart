@@ -45,6 +45,8 @@ targets:
         submit_for_review: true
         skip_metadata: false
         skip_screenshots: false
+        run_precheck_before_submit: false
+        precheck_include_in_app_purchases: true
         api_key:
           key_id_env: ASC_KEY_ID
           issuer_id_env: ASC_ISSUER_ID
@@ -80,9 +82,27 @@ targets:
     expect(publish.submitForReview, isTrue);
     expect(publish.skipMetadata, isFalse);
     expect(publish.skipScreenshots, isFalse);
+    expect(publish.runPrecheckBeforeSubmit, isFalse);
+    expect(publish.precheckIncludeInAppPurchases, isTrue);
     expect(publish.apiKey.keyIdEnv, 'ASC_KEY_ID');
     expect(publish.apiKey.issuerIdEnv, 'ASC_ISSUER_ID');
     expect(publish.apiKey.privateKeyEnv, 'ASC_PRIVATE_KEY');
+  });
+
+  test('disables unsupported in-app purchase precheck by default', () {
+    final config = FlutterReleaseConfig.parse('''
+package: app
+targets:
+  ios_release:
+    platform: ios
+    publish:
+      app_store_connect:
+        api_key: {}
+''');
+
+    final publish = config.target('ios_release').publish.appStoreConnect!;
+    expect(publish.runPrecheckBeforeSubmit, isTrue);
+    expect(publish.precheckIncludeInAppPurchases, isFalse);
   });
 
   test('reports undefined Flutter release variables', () {

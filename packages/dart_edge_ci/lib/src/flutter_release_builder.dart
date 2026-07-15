@@ -364,6 +364,10 @@ List<String> appStoreConnectPublishCommand(
     config.skipScreenshots.toString(),
     '--submit_for_review',
     config.submitForReview.toString(),
+    '--run_precheck_before_submit',
+    config.runPrecheckBeforeSubmit.toString(),
+    '--precheck_include_in_app_purchases',
+    config.precheckIncludeInAppPurchases.toString(),
   ];
 }
 

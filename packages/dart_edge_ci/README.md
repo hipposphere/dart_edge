@@ -304,6 +304,8 @@ targets:
         submit_for_review: false
         skip_metadata: true
         skip_screenshots: true
+        run_precheck_before_submit: true
+        precheck_include_in_app_purchases: false
         api_key:
           key_id_env: APP_STORE_CONNECT_KEY_ID
           issuer_id_env: APP_STORE_CONNECT_ISSUER_ID
@@ -370,7 +372,12 @@ expects
 fastlane App Store Connect API key JSON under `.dart_tool/dart_edge_ci/`, runs
 `fastlane deliver`, then deletes the temporary key file. Store submission is
 disabled by default; set `submit_for_review: true` only for release workflows
-that should immediately submit the uploaded build for review.
+that should immediately submit the uploaded build for review. Fastlane's
+metadata precheck remains enabled by default through
+`run_precheck_before_submit`. Its in-app purchase checks default to disabled
+because App Store Connect API keys do not support them; set
+`precheck_include_in_app_purchases: true` only when the authentication method
+supports that check.
 
 GitHub repositories can call the reusable iOS release workflow from dart_edge:
 
