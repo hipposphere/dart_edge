@@ -16,18 +16,26 @@ on:
         description: Absolute folder path on the remote server.
         required: true
         type: string
+      environment:
+        description: GitHub environment that provides deployment variables and secrets.
+        required: false
+        type: string
+        default: ""
       ssh_host:
-        description: SSH host for the remote server.
-        required: true
+        description: SSH host for the remote server. Defaults to the environment's SSH_HOST variable.
+        required: false
         type: string
+        default: ""
       ssh_port:
-        description: SSH port for the remote server.
-        required: true
+        description: SSH port for the remote server. Defaults to the environment's SSH_PORT variable, then 22.
+        required: false
         type: string
+        default: ""
       ssh_username:
-        description: SSH username for the remote server.
-        required: true
+        description: SSH username for the remote server. Defaults to the environment's SSH_USERNAME variable.
+        required: false
         type: string
+        default: ""
       compose_command:
         description: Docker Compose command to run in the target folder.
         required: false
@@ -67,12 +75,16 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    environment: ${{ inputs.environment || null }}
     permissions:
       actions: read
       contents: read
       packages: read
     env:
       HAS_ENV_FILE: ${{ secrets.ENV_FILE != '' }}
+      SSH_HOST: ${{ inputs.ssh_host || vars.SSH_HOST }}
+      SSH_PORT: ${{ inputs.ssh_port || vars.SSH_PORT || '22' }}
+      SSH_USERNAME: ${{ inputs.ssh_username || vars.SSH_USERNAME }}
 
     steps:
       - name: Checkout code
@@ -82,6 +94,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          for name in SSH_HOST SSH_USERNAME; do
+            if [ -z "${!name:-}" ]; then
+              echo "::error::$name must be provided as an input or environment variable."
+              exit 1
+            fi
+          done
           if [ -n "${{ inputs.image_artifact }}" ] && [ -n "${{ inputs.remote_image_archive }}" ]; then
             echo "::error::Use either inputs.image_artifact or inputs.remote_image_archive, not both."
             exit 1
@@ -125,9 +143,9 @@ jobs:
         if: ${{ inputs.remote_image_archive != '' }}
         uses: appleboy/ssh-action@v1.0.0
         with:
-          host: ${{ inputs.ssh_host }}
-          port: ${{ inputs.ssh_port }}
-          username: ${{ inputs.ssh_username }}
+          host: ${{ env.SSH_HOST }}
+          port: ${{ env.SSH_PORT }}
+          username: ${{ env.SSH_USERNAME }}
           key: ${{ secrets.SSH_KEY }}
           password: ${{ secrets.SSH_PASSWORD }}
           script: |
@@ -138,9 +156,9 @@ jobs:
       - name: Clear old deployment folder on remote server
         uses: appleboy/ssh-action@v1.0.0
         with:
-          host: ${{ inputs.ssh_host }}
-          port: ${{ inputs.ssh_port }}
-          username: ${{ inputs.ssh_username }}
+          host: ${{ env.SSH_HOST }}
+          port: ${{ env.SSH_PORT }}
+          username: ${{ env.SSH_USERNAME }}
           key: ${{ secrets.SSH_KEY }}
           password: ${{ secrets.SSH_PASSWORD }}
           script: |
@@ -151,9 +169,9 @@ jobs:
       - name: Copy files to remote server
         uses: appleboy/scp-action@v1.0.0
         with:
-          host: ${{ inputs.ssh_host }}
-          port: ${{ inputs.ssh_port }}
-          username: ${{ inputs.ssh_username }}
+          host: ${{ env.SSH_HOST }}
+          port: ${{ env.SSH_PORT }}
+          username: ${{ env.SSH_USERNAME }}
           key: ${{ secrets.SSH_KEY }}
           password: ${{ secrets.SSH_PASSWORD }}
           source: ${{ inputs.source }}
@@ -164,9 +182,9 @@ jobs:
         if: ${{ inputs.image_artifact != '' }}
         uses: appleboy/scp-action@v1.0.0
         with:
-          host: ${{ inputs.ssh_host }}
-          port: ${{ inputs.ssh_port }}
-          username: ${{ inputs.ssh_username }}
+          host: ${{ env.SSH_HOST }}
+          port: ${{ env.SSH_PORT }}
+          username: ${{ env.SSH_USERNAME }}
           key: ${{ secrets.SSH_KEY }}
           password: ${{ secrets.SSH_PASSWORD }}
           source: deploy-artifacts/docker-image.tar.gz
@@ -177,9 +195,9 @@ jobs:
         if: ${{ env.HAS_ENV_FILE == 'true' }}
         uses: appleboy/ssh-action@v1.0.0
         with:
-          host: ${{ inputs.ssh_host }}
-          port: ${{ inputs.ssh_port }}
-          username: ${{ inputs.ssh_username }}
+          host: ${{ env.SSH_HOST }}
+          port: ${{ env.SSH_PORT }}
+          username: ${{ env.SSH_USERNAME }}
           key: ${{ secrets.SSH_KEY }}
           password: ${{ secrets.SSH_PASSWORD }}
           script: |
@@ -193,9 +211,9 @@ jobs:
         if: ${{ inputs.login_ghcr }}
         uses: appleboy/ssh-action@v1.0.0
         with:
-          host: ${{ inputs.ssh_host }}
-          port: ${{ inputs.ssh_port }}
-          username: ${{ inputs.ssh_username }}
+          host: ${{ env.SSH_HOST }}
+          port: ${{ env.SSH_PORT }}
+          username: ${{ env.SSH_USERNAME }}
           key: ${{ secrets.SSH_KEY }}
           password: ${{ secrets.SSH_PASSWORD }}
           script: |
@@ -206,9 +224,9 @@ jobs:
         if: ${{ inputs.image_artifact != '' }}
         uses: appleboy/ssh-action@v1.0.0
         with:
-          host: ${{ inputs.ssh_host }}
-          port: ${{ inputs.ssh_port }}
-          username: ${{ inputs.ssh_username }}
+          host: ${{ env.SSH_HOST }}
+          port: ${{ env.SSH_PORT }}
+          username: ${{ env.SSH_USERNAME }}
           key: ${{ secrets.SSH_KEY }}
           password: ${{ secrets.SSH_PASSWORD }}
           script: |
@@ -219,9 +237,9 @@ jobs:
       - name: Build and deploy on remote server
         uses: appleboy/ssh-action@v1.0.0
         with:
-          host: ${{ inputs.ssh_host }}
-          port: ${{ inputs.ssh_port }}
-          username: ${{ inputs.ssh_username }}
+          host: ${{ env.SSH_HOST }}
+          port: ${{ env.SSH_PORT }}
+          username: ${{ env.SSH_USERNAME }}
           key: ${{ secrets.SSH_KEY }}
           password: ${{ secrets.SSH_PASSWORD }}
           script: |

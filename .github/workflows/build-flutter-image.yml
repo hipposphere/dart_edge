@@ -28,23 +28,28 @@ on:
         description: Image output mode. Use "ghcr", "artifact", or "ssh-upload".
         required: true
         type: string
+      environment:
+        description: GitHub environment that provides build variables and secrets.
+        required: false
+        type: string
+        default: ""
       artifact_name:
         description: Archive name for "artifact" uploads and "ssh-upload" temporary files.
         required: false
         type: string
         default: docker-image
       ssh_host:
-        description: SSH host for the remote server when output is "ssh-upload".
+        description: SSH host for "ssh-upload". Defaults to the environment's SSH_HOST variable.
         required: false
         type: string
         default: ""
       ssh_port:
-        description: SSH port for the remote server when output is "ssh-upload".
+        description: SSH port for "ssh-upload". Defaults to the environment's SSH_PORT variable, then 22.
         required: false
         type: string
-        default: "22"
+        default: ""
       ssh_username:
-        description: SSH username for the remote server when output is "ssh-upload".
+        description: SSH username for "ssh-upload". Defaults to the environment's SSH_USERNAME variable.
         required: false
         type: string
         default: ""
@@ -76,9 +81,14 @@ jobs:
   build:
     name: Build ${{ inputs.image_name }} image
     runs-on: ubuntu-latest
+    environment: ${{ inputs.environment || null }}
     permissions:
       contents: read
       packages: write
+    env:
+      SSH_HOST: ${{ inputs.ssh_host || vars.SSH_HOST }}
+      SSH_PORT: ${{ inputs.ssh_port || vars.SSH_PORT || '22' }}
+      SSH_USERNAME: ${{ inputs.ssh_username || vars.SSH_USERNAME }}
     outputs:
       image: ${{ steps.metadata.outputs.image }}
       version_tag: ${{ steps.dart-edge-ci.outputs.version-tag }}
@@ -120,14 +130,13 @@ jobs:
               ;;
           esac
           if [ "${{ inputs.output }}" = "ssh-upload" ]; then
-            for name in ssh_host ssh_username; do
-              value=""
+            for name in SSH_HOST SSH_USERNAME; do
               case "$name" in
-                ssh_host) value="${{ inputs.ssh_host }}" ;;
-                ssh_username) value="${{ inputs.ssh_username }}" ;;
+                SSH_HOST) value="$SSH_HOST" ;;
+                SSH_USERNAME) value="$SSH_USERNAME" ;;
               esac
               if [ -z "$value" ]; then
-                echo "::error::inputs.$name is required when inputs.output is 'ssh-upload'."
+                echo "::error::$name must be provided as an input or environment variable when inputs.output is 'ssh-upload'."
                 exit 1
               fi
             done
@@ -218,9 +227,9 @@ jobs:
         if: ${{ inputs.output == 'ssh-upload' }}
         uses: appleboy/ssh-action@v1.0.0
         with:
-          host: ${{ inputs.ssh_host }}
-          port: ${{ inputs.ssh_port }}
-          username: ${{ inputs.ssh_username }}
+          host: ${{ env.SSH_HOST }}
+          port: ${{ env.SSH_PORT }}
+          username: ${{ env.SSH_USERNAME }}
           key: ${{ secrets.SSH_KEY }}
           password: ${{ secrets.SSH_PASSWORD }}
           script: |
@@ -231,9 +240,9 @@ jobs:
         if: ${{ inputs.output == 'ssh-upload' }}
         uses: appleboy/scp-action@v1.0.0
         with:
-          host: ${{ inputs.ssh_host }}
-          port: ${{ inputs.ssh_port }}
-          username: ${{ inputs.ssh_username }}
+          host: ${{ env.SSH_HOST }}
+          port: ${{ env.SSH_PORT }}
+          username: ${{ env.SSH_USERNAME }}
           key: ${{ secrets.SSH_KEY }}
           password: ${{ secrets.SSH_PASSWORD }}
           source: artifacts/${{ inputs.artifact_name }}.tar.gz
@@ -244,9 +253,9 @@ jobs:
         if: ${{ inputs.output == 'ssh-upload' }}
         uses: appleboy/ssh-action@v1.0.0
         with:
-          host: ${{ inputs.ssh_host }}
-          port: ${{ inputs.ssh_port }}
-          username: ${{ inputs.ssh_username }}
+          host: ${{ env.SSH_HOST }}
+          port: ${{ env.SSH_PORT }}
+          username: ${{ env.SSH_USERNAME }}
           key: ${{ secrets.SSH_KEY }}
           password: ${{ secrets.SSH_PASSWORD }}
           script: |

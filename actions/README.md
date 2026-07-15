@@ -1,12 +1,14 @@
 # GitHub Actions
 
-This repository publishes two CI entry points for Dart Edge projects:
+This repository publishes reusable CI entry points for Dart Edge projects:
 
 - `actions/setup_ci`: installs the precompiled `dart_edge_ci` helper and can
   optionally generate Dockerfiles, read package versions, set up Dart or
   Flutter, run `pub get`, or run a `dart_edge_ci` command.
 - `.github/workflows/build-flutter-image.yml`: reusable workflow that builds and
   publishes a Flutter web Docker image to GitHub Container Registry.
+- `.github/workflows/deploy-docker.yml`: reusable workflow that copies Compose
+  configuration and optionally a built image to an SSH deployment target.
 
 ## Set up dart_edge_ci
 
@@ -77,6 +79,8 @@ jobs:
       image_name: my-app
       cache_scope: my-app
       platforms: linux/amd64
+      output: ghcr
+      environment: release
 ```
 
 Required inputs:
@@ -89,6 +93,11 @@ Required inputs:
 Optional inputs:
 
 - `platforms`: Docker platforms, default `linux/amd64`
+- `environment`: GitHub environment that supplies variables and secrets,
+  disabled by default
+- `ssh_host`, `ssh_port`, and `ssh_username`: explicit SSH values for
+  `ssh-upload`; when omitted, the workflow reads `SSH_HOST`, `SSH_PORT`, and
+  `SSH_USERNAME` from the selected environment
 
 The workflow publishes:
 
@@ -98,3 +107,22 @@ The workflow publishes:
 
 Set the Flutter base image version in `docker.yaml` with `flutter_version` at
 the root or image level.
+
+## Deploy Docker
+
+The deployment workflow can read SSH variables and secrets directly from a
+GitHub environment:
+
+```yaml
+jobs:
+  deploy:
+    uses: hipposphere/dart_edge/.github/workflows/deploy-docker.yml@main
+    with:
+      environment: web-deploy
+      source: app/compose.yaml
+      target: /opt/my-app
+```
+
+Configure `SSH_HOST`, `SSH_PORT`, and `SSH_USERNAME` as environment variables,
+and `SSH_KEY` or `SSH_PASSWORD` as environment secrets. Callers may continue to
+pass the SSH values explicitly instead.
