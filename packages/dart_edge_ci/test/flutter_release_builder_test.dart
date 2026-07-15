@@ -257,7 +257,14 @@ targets:
       '-T',
       '/usr/bin/security',
     ]);
-    expect(plan.commands.last, [
+    expect(plan.commands[7], [
+      'mkdir',
+      '-p',
+      '/tmp/runner/profiles',
+      '/Users/runner/Library/MobileDevice/Provisioning Profiles',
+      '/Users/runner/Library/Developer/Xcode/UserData/Provisioning Profiles',
+    ]);
+    expect(plan.commands[10], [
       'find',
       '/tmp/runner/profiles',
       '-name',
@@ -266,6 +273,17 @@ targets:
       'cp',
       '{}',
       '/Users/runner/Library/MobileDevice/Provisioning Profiles',
+      ';',
+    ]);
+    expect(plan.commands.last, [
+      'find',
+      '/tmp/runner/profiles',
+      '-name',
+      '*.mobileprovision',
+      '-exec',
+      'cp',
+      '{}',
+      '/Users/runner/Library/Developer/Xcode/UserData/Provisioning Profiles',
       ';',
     ]);
   });

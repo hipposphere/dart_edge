@@ -251,10 +251,18 @@ IosSigningInstallPlan iosSigningInstallPlan(Map<String, String> environment) {
   final certificatePath = p.join(runnerTemp, 'ios_distribution.p12');
   final profilesArchivePath = p.join(runnerTemp, 'profiles.tar.gz');
   final profilesExtractDir = p.join(runnerTemp, 'profiles');
-  final profilesDestination = p.join(
+  final legacyProfilesDestination = p.join(
     home,
     'Library',
     'MobileDevice',
+    'Provisioning Profiles',
+  );
+  final xcodeProfilesDestination = p.join(
+    home,
+    'Library',
+    'Developer',
+    'Xcode',
+    'UserData',
     'Provisioning Profiles',
   );
 
@@ -295,7 +303,13 @@ IosSigningInstallPlan iosSigningInstallPlan(Map<String, String> environment) {
         keychainPassword,
         'build.keychain',
       ],
-      ['mkdir', '-p', profilesExtractDir, profilesDestination],
+      [
+        'mkdir',
+        '-p',
+        profilesExtractDir,
+        legacyProfilesDestination,
+        xcodeProfilesDestination,
+      ],
       [
         'sh',
         '-c',
@@ -310,7 +324,18 @@ IosSigningInstallPlan iosSigningInstallPlan(Map<String, String> environment) {
         '-exec',
         'cp',
         '{}',
-        profilesDestination,
+        legacyProfilesDestination,
+        ';',
+      ],
+      [
+        'find',
+        profilesExtractDir,
+        '-name',
+        '*.mobileprovision',
+        '-exec',
+        'cp',
+        '{}',
+        xcodeProfilesDestination,
         ';',
       ],
     ],

@@ -357,7 +357,11 @@ target for additional files. A single string and a YAML list are both accepted.
 
 `flutter signing ios` installs the base64-encoded iOS distribution certificate
 and provisioning profiles from CI environment variables into a temporary
-keychain and the standard Xcode provisioning profile directory. It expects
+keychain. Provisioning profiles are installed into both the legacy
+`~/Library/MobileDevice/Provisioning Profiles` directory and Xcode's current
+`~/Library/Developer/Xcode/UserData/Provisioning Profiles` directory so Xcode
+and Flutter's generated IPA export options can resolve the same profile. It
+expects
 `IOS_DISTRIBUTION_CERTIFICATE_BASE64`,
 `IOS_DISTRIBUTION_CERTIFICATE_PASSWORD`,
 `IOS_PROVISIONING_PROFILES_BASE64`, and `KEYCHAIN_PASSWORD`.

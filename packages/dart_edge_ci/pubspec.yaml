@@ -1,6 +1,6 @@
 name: dart_edge_ci
 description: CI utilities for Dart Edge workspaces, including Docker image generation.
-version: 0.1.9
+version: 0.1.10
 publish_to: "https://registry.hippolabs.org/pub/internal-pub/"
 repository: https://github.com/hipposphere/dart_edge/tree/main/packages/dart_edge_ci
 

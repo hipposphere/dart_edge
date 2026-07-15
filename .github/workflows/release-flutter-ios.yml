@@ -42,7 +42,7 @@ on:
         description: dart_edge_ci release version passed to setup_ci.
         required: false
         type: string
-        default: "0.1.6"
+        default: "0.1.10"
     secrets:
       APP_STORE_CONNECT_KEY_ID:
         required: false

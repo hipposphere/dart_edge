@@ -49,7 +49,7 @@ on:
         description: dart_edge_ci release version passed to setup_ci.
         required: false
         type: string
-        default: "0.1.8"
+        default: "0.1.10"
     secrets:
       MACOS_CERTIFICATE_NAME:
         required: true
