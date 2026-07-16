@@ -17,10 +17,10 @@ dependencies:
     hosted: "https://registry.hippolabs.org/pub/internal-pub/"
     version: ^0.3.6
   data_assets: ^0.20.0
-  hooks: ^2.0.2
-  jaspr: ^0.23.1
-  jaspr_content: ^0.5.2
-  jaspr_router: ^0.8.2
+  hooks: ^2.0.3
+  jaspr: ^0.23.2
+  jaspr_content: ^0.5.3+1
+  jaspr_router: ^0.8.3
   shadcn_jaspr: ^0.4.3
 
 dev_dependencies:

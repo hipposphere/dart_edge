@@ -12,7 +12,7 @@ dependencies:
     path: ../../packages/dart_edge_docs
   dart_edge_http_server:
     path: ../../packages/dart_edge_http_server
-  jaspr: ^0.23.1
+  jaspr: ^0.23.2
 
 jaspr:
   mode: server

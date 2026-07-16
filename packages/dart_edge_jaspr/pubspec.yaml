@@ -16,7 +16,7 @@ dependencies:
   dart_edge_shelf:
     hosted: "https://registry.hippolabs.org/pub/internal-pub/"
     version: ^0.1.2
-  jaspr: ^0.23.1
+  jaspr: ^0.23.2
 
 dev_dependencies:
   dart_edge_http_server_runtime:

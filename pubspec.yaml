@@ -17,7 +17,7 @@ dependency_overrides:
   cli_util: ^0.5.1
   # shadcn_jaspr 0.4.3 has not widened its Jaspr constraint past ^0.22.0 yet,
   # while this workspace already standardizes on Jaspr 0.23.x.
-  jaspr: ^0.23.1
+  jaspr: ^0.23.2
 
 
 

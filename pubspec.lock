@@ -317,18 +317,26 @@ packages:
     dependency: transitive
     description:
       name: hippo_auth_backend
-      sha256: "0610b7dfe121594bbde6bac75562da216d11abd2d8c79c55c2637a324396540a"
+      sha256: d972817ad413ea141897b9bd500cd550800032779860549cb7cb88add16b5326
       url: "https://registry.hippolabs.org/pub/internal-pub/"
     source: hosted
-    version: "0.1.22"
+    version: "0.1.23"
+  hippobase_auth_models:
+    dependency: transitive
+    description:
+      name: hippobase_auth_models
+      sha256: eaeed3bd1cd9fd3009a72049feaa6be9050be9abe0fd6b32859779f76a9906fb
+      url: "https://pub.hippolabs.org"
+    source: hosted
+    version: "0.1.7"
   hooks:
     dependency: transitive
     description:
       name: hooks
-      sha256: "9a62a50b50b769a737bc0a8ff381f333529df3ab746b2f6b02e83760231455ba"
+      sha256: "03a564c3704524ee0f7fc56fc621e8796cc2eb8c24d1f1a33b34979815b285c4"
       url: "https://pub.dev"
     source: hosted
-    version: "2.0.2"
+    version: "2.1.0"
   hotreloader:
     dependency: transitive
     description:
@@ -405,26 +413,26 @@ packages:
     dependency: "direct overridden"
     description:
       name: jaspr
-      sha256: "0a27800a0ae8c9f5c606c278d29ce535bfddde00932aa2b56a67c2b0bd86fd80"
+      sha256: "261e2095f2e158b4fc554273ac70f170c0256f19f5e30ba744f83ec5c620dc9a"
       url: "https://pub.dev"
     source: hosted
-    version: "0.23.1"
+    version: "0.23.2"
   jaspr_content:
     dependency: transitive
     description:
       name: jaspr_content
-      sha256: "28bacdb5669a7f4b066b9e3cd2a591cbf21eda972ce6f33dcc6047868a4aa1ac"
+      sha256: "9e3dd543e9546806fd27fb6353c3cfa9d3094239949c4e21057717983b195067"
       url: "https://pub.dev"
     source: hosted
-    version: "0.5.2"
+    version: "0.5.3+1"
   jaspr_router:
     dependency: transitive
     description:
       name: jaspr_router
-      sha256: "43abdfd63c19cae8faac50334c7f3065635bac3e85fd558b6076517978ade64a"
+      sha256: "5ec42c13db34e03ef9d34bac715b2eba4a80e553c618e0263037be50db08bbe4"
       url: "https://pub.dev"
     source: hosted
-    version: "0.8.2"
+    version: "0.8.3"
   json_annotation:
     dependency: transitive
     description:
@@ -493,10 +501,10 @@ packages:
     dependency: transitive
     description:
       name: meta
-      sha256: c82594181e3312f3d0695fc95aaaf7758d75b8d4ae2bbecf223b9fd5109a059d
+      sha256: "307249ce4ff29d58a18e97f6345f539382eb9c9c29ecda628900f31de0443dd9"
       url: "https://pub.dev"
     source: hosted
-    version: "1.18.3"
+    version: "1.19.0"
   mime:
     dependency: transitive
     description:
@@ -637,10 +645,10 @@ packages:
     dependency: transitive
     description:
       name: record_use
-      sha256: "2551bd8eecfe95d14ae75f6021ad0248be5c27f138c2ec12fcb52b500b3ba1ed"
+      sha256: af37186ff9ede46fa32f152526c48f46c5b3ad7d3d5a566140cb5df3dc4ed737
       url: "https://pub.dev"
     source: hosted
-    version: "0.6.0"
+    version: "1.0.0"
   shadcn_jaspr:
     dependency: transitive
     description:
