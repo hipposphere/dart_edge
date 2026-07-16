@@ -1,3 +1,8 @@
+## 0.3.41
+
+- Require `json_schema` 0.1.1 and import JSON contracts directly in generated
+  schema and table libraries.
+
 ## 0.3.39
 
 - Keep generated table columns as `static const` fields on the table class and

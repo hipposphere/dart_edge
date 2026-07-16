@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:code_builder/code_builder.dart';
 import 'package:dart_edge_core/dart_edge_core.dart';
 import 'package:dart_style/dart_style.dart';
+import 'package:json_schema/json_schema.dart';
 
 import '../json_schema_route_id.dart';
 
@@ -364,6 +365,9 @@ final class DartEdgeClientGenerator {
         ..comments.add('GENERATED CODE - DO NOT MODIFY BY HAND.')
         ..directives.add(
           Directive.import('package:dart_edge_core/dart_edge_core.dart'),
+        )
+        ..directives.add(
+          Directive.import('package:json_schema/json_schema.dart'),
         );
       if (_needsTypedDataImport(spec)) {
         builder.directives.add(Directive.import('dart:typed_data'));
@@ -390,6 +394,9 @@ final class DartEdgeClientGenerator {
         ..comments.add('GENERATED CODE - DO NOT MODIFY BY HAND.')
         ..directives.add(
           Directive.import('package:dart_edge_core/dart_edge_core.dart'),
+        )
+        ..directives.add(
+          Directive.import('package:json_schema/json_schema.dart'),
         );
       if (_needsTypedDataImport(spec)) {
         builder.directives.add(Directive.import('dart:typed_data'));

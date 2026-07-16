@@ -1,6 +1,10 @@
+## 0.3.34
+
+- Depend on `json_schema` 0.1.1 and remove the legacy JSON Schema and
+  `JsonEncodable` re-exports.
+
 ## 0.3.33
 
-- Depend on and re-export the standalone `json_schema` package.
 - Keep HTTP-only model annotations in Dart Edge as `@FromHttpSchema` and
   `@FromMultipartSchema`.
 

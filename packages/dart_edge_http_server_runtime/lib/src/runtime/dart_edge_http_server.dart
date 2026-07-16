@@ -5,6 +5,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:dart_edge_core/dart_edge_core.dart';
+import 'package:json_schema/json_schema.dart';
 
 import '../native/dart_edge_native.dart';
 import '../native/native_transport_web_socket.dart';

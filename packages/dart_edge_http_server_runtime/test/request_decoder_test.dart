@@ -7,6 +7,7 @@ import 'package:dart_edge_http_server_runtime/src/runtime/native_request.dart';
 import 'package:dart_edge_http_server_runtime/src/runtime/request_decoder.dart';
 import 'package:dart_edge_native_bridge/dart_edge_native_bridge.dart' as bridge;
 import 'package:ffi/ffi.dart';
+import 'package:json_schema/json_schema.dart';
 import 'package:test/test.dart';
 
 void main() {

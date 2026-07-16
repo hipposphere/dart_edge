@@ -1,4 +1,4 @@
-import 'json_schema.dart';
+import 'package:json_schema/json_schema.dart';
 
 /// Declares the default response encoding for a successful route result.
 final class ResponseSpec {

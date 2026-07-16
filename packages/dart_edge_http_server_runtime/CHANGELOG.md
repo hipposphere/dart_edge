@@ -1,3 +1,8 @@
+## 0.3.26
+
+- Require `json_schema` 0.1.1 and import JSON Schema contracts directly from
+  their owning package.
+
 ## 0.3.20
 
 - Add first-class Dart HTTP request observers around route dispatch.

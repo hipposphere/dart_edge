@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:dart_edge_core/dart_edge_core.dart';
+import 'package:json_schema/json_schema.dart';
 
 final class EncodedResponse {
   const EncodedResponse({

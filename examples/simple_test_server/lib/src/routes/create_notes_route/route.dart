@@ -1,5 +1,6 @@
 import 'package:dart_edge_http_server/dart_edge_http_server.dart';
 import 'package:dart_edge_sql/dart_edge_sql.dart';
+import 'package:json_schema/json_schema.dart';
 import 'package:simple_test_db_models/simple_test_db_models.dart';
 import 'package:simple_test_server/src/routes/create_notes_route/response.dart';
 import 'package:simple_test_server/src/service.dart';

@@ -5,6 +5,7 @@ import 'dart:typed_data';
 
 import 'package:dart_edge_core/dart_edge_core.dart';
 import 'package:dart_edge_http_server_codegen/dart_edge_http_server_codegen.dart';
+import 'package:json_schema/json_schema.dart';
 import 'package:test/test.dart';
 
 void main() {
@@ -229,6 +230,10 @@ void main() {
       expect(
         library,
         contains("import 'package:dart_edge_core/dart_edge_core.dart';"),
+      );
+      expect(
+        library,
+        contains("import 'package:json_schema/json_schema.dart';"),
       );
       expect(library, contains("part 'client.models.g.dart';"));
       expect(library, contains("part 'client.bindings.g.dart';"));

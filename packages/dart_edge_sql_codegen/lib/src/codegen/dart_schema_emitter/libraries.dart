@@ -8,10 +8,13 @@ String _emitEntrypoint({
   required DartSchemaFormatterOptions formatterOptions,
 }) {
   final library = Library((builder) {
-    builder
-      ..directives.add(
+    if (keyManifestEntries.isNotEmpty) {
+      builder.directives.add(
         Directive.import('package:dart_edge_core/dart_edge_core.dart'),
-      )
+      );
+    }
+    builder
+      ..directives.add(Directive.import('package:json_schema/json_schema.dart'))
       ..body.add(
         _databaseClass(databaseClassName, schemaGroups, keyManifestEntries),
       );
@@ -91,6 +94,9 @@ String _emitExternalPrimaryKeysLibrary(
   final library = Library((builder) {
     builder.directives.add(
       Directive.import('package:dart_edge_core/dart_edge_core.dart'),
+    );
+    builder.directives.add(
+      Directive.import('package:json_schema/json_schema.dart'),
     );
     builder.body.addAll(
       _externalPrimaryKeyExtensionTypeSpecs(database, externalPrimaryKeyTypes),
@@ -196,7 +202,7 @@ String _emitSchemaLibrary(
 }) {
   final library = Library((builder) {
     builder.directives.add(
-      Directive.import('package:dart_edge_core/dart_edge_core.dart'),
+      Directive.import('package:json_schema/json_schema.dart'),
     );
     builder.body.addAll([
       _schemaClass(group, naming),
@@ -245,6 +251,9 @@ String _emitTableLibrary(
   final library = Library((builder) {
     builder.directives.add(
       Directive.import('package:dart_edge_core/dart_edge_core.dart'),
+    );
+    builder.directives.add(
+      Directive.import('package:json_schema/json_schema.dart'),
     );
     if (_usesExternalPrimaryKeyType(table, externalPrimaryKeyTypeNames)) {
       builder.directives.add(Directive.import('../../../external_keys.g.dart'));

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:dart_edge_core/dart_edge_core.dart';
+import 'package:json_schema/json_schema.dart';
 
 import 'dart_edge_auth.dart';
 

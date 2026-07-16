@@ -1,3 +1,8 @@
+## 0.3.38
+
+- Require `json_schema` 0.1.1 and import JSON contracts directly in generated
+  clients and models.
+
 ## 0.3.37
 
 - Support `@FromHttpSchema` for generated Dart Edge request and response

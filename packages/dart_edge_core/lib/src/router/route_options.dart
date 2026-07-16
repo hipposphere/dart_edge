@@ -1,5 +1,6 @@
+import 'package:json_schema/json_schema.dart';
+
 import '../http/error_response.dart';
-import '../http/json_schema.dart';
 import '../http/request_body.dart';
 import '../http/response_set.dart';
 import '../http/response_spec.dart';

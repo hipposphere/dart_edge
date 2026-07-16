@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:dart_edge_http_server/dart_edge_http_server.dart';
+import 'package:json_schema/json_schema.dart';
 import 'package:test/test.dart';
 
 void main() {

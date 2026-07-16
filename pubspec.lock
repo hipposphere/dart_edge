@@ -437,10 +437,10 @@ packages:
     dependency: transitive
     description:
       name: json_schema
-      sha256: "13debc32a15aae226b1d7c70d9e435f77aaf0b2d1644be7dfae98a0e0f717c17"
+      sha256: a28488a8449e07faedcf1bf255de8fe6720501e9a96d14eb2a4dd444327133b7
       url: "https://pub.hippolabs.org"
     source: hosted
-    version: "0.1.0"
+    version: "0.1.1"
   lints:
     dependency: "direct dev"
     description:

@@ -3,8 +3,8 @@ import 'dart:convert';
 import 'package:analyzer/dart/constant/value.dart';
 import 'package:analyzer/dart/element/element.dart';
 import 'package:code_builder/code_builder.dart';
-import 'package:dart_edge_core/dart_edge_core.dart';
 import 'package:dart_style/dart_style.dart';
+import 'package:json_schema/json_schema.dart';
 import 'package:source_gen/source_gen.dart';
 
 /// Build-time description of a model generated from a JSON Schema.

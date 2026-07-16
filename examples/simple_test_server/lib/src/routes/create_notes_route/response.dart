@@ -1,4 +1,4 @@
-import 'package:dart_edge_core/dart_edge_core.dart';
+import 'package:json_schema/json_schema.dart';
 import 'package:simple_test_db_models/simple_test_db_models.dart';
 
 final class CreateNoteResponse implements JsonEncodable {

@@ -232,6 +232,7 @@ String emitDartSchemaLibrary(
       ..directives.add(
         Directive.import('package:dart_edge_core/dart_edge_core.dart'),
       )
+      ..directives.add(Directive.import('package:json_schema/json_schema.dart'))
       ..body.add(
         _databaseClass(
           databaseClassName,
@@ -335,7 +336,6 @@ String emitDartTableDescriptorLibrary(
             ? Directive.import('package:dart_edge_core/dart_edge_core.dart')
             : Directive.partOf(partOf),
       );
-
     for (final group in schemaGroups) {
       for (final table in group.tables) {
         builder.body.add(
@@ -386,6 +386,11 @@ String emitDartTableModelLibrary(
             ? Directive.import('package:dart_edge_core/dart_edge_core.dart')
             : Directive.partOf(partOf),
       );
+    if (partOf == null) {
+      builder.directives.add(
+        Directive.import('package:json_schema/json_schema.dart'),
+      );
+    }
 
     for (final group in schemaGroups) {
       for (final table in group.tables) {

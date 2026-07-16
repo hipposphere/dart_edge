@@ -1,6 +1,7 @@
 import 'dart:async';
 
-import 'json_schema.dart';
+import 'package:json_schema/json_schema.dart';
+
 import 'multipart_form_data.dart';
 
 /// Decodes a parsed request body payload into an application type.

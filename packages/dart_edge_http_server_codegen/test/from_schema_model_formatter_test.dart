@@ -1,8 +1,8 @@
 import 'package:build/build.dart';
 import 'package:build_test/build_test.dart';
-import 'package:dart_edge_core/dart_edge_core.dart';
 import 'package:dart_edge_http_server_codegen/builder.dart';
 import 'package:dart_edge_http_server_codegen/src/builder/from_schema_model_builder.dart';
+import 'package:json_schema/json_schema.dart';
 import 'package:test/test.dart';
 
 void main() {

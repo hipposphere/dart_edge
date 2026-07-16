@@ -1,4 +1,4 @@
-import 'package:dart_edge_core/dart_edge_core.dart';
+import 'package:json_schema/json_schema.dart';
 import 'schemas/default/schema.g.dart';
 export 'schemas/default/schema.g.dart';
 

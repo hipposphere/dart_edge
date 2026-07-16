@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:dart_edge_http_server/dart_edge_http_server.dart';
+import 'package:json_schema/json_schema.dart';
 
 Future<void> main() async {
   final app = DartEdge<AppServices>(

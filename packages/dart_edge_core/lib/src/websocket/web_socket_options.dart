@@ -1,4 +1,5 @@
-import '../http/json_schema.dart';
+import 'package:json_schema/json_schema.dart';
+
 import '../router/route_exposure.dart';
 import '../router/route_options.dart';
 

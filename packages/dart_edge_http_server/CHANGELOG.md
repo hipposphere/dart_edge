@@ -1,3 +1,7 @@
+## 0.3.18
+
+- Require `json_schema` 0.1.1 for direct application-facing schema imports.
+
 ## 0.3.15
 
 - Update `dart_edge_http_server_runtime` constraint for first-class HTTP

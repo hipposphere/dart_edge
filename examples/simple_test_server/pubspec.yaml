@@ -17,6 +17,9 @@ dependencies:
     hosted: "https://registry.hippolabs.org/pub/internal-pub/"
   dart_edge_sql_pglite:
     hosted: "https://registry.hippolabs.org/pub/internal-pub/"
+  json_schema:
+    hosted: https://pub.hippolabs.org
+    version: ^0.1.1
   simple_test_db_migrator:
     path: ../simple_test_db_migrator
   simple_test_db_models:

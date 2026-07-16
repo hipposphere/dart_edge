@@ -1,3 +1,8 @@
+## 0.3.37
+
+- Require `json_schema` 0.1.1 and import `JsonEncodable` directly from its
+  owning package.
+
 ## 0.3.36
 
 - Update SQL codegen constraint for `dart_edge_sql_codegen` 0.3.39.

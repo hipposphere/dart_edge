@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:dart_edge_core/dart_edge_core.dart';
+import 'package:json_schema/json_schema.dart';
 
 import 'dart_edge_auth_config.dart';
 import 'generated/dart_edge_auth_tables.g.dart';

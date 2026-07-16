@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:dart_edge_http_server_runtime/dart_edge_http_server_runtime.dart';
 import 'package:dart_edge_http_server_runtime/src/runtime/compiled_route_table.dart';
+import 'package:json_schema/json_schema.dart';
 import 'package:test/test.dart';
 
 void main() {

@@ -67,6 +67,10 @@ void main() {
         .contents;
 
     expect(entrypoint, isNot(contains(RegExp(r'^library\s', multiLine: true))));
+    expect(
+      entrypoint,
+      contains("import 'package:json_schema/json_schema.dart';"),
+    );
     expect(entrypoint, contains('final class AppSchema {'));
     expect(
       entrypoint,
@@ -75,6 +79,14 @@ void main() {
     expect(entrypoint, contains('...DefaultSchema.schemas,'));
 
     expect(defaultSchema, contains('final class DefaultSchema {'));
+    expect(
+      defaultSchema,
+      contains("import 'package:json_schema/json_schema.dart';"),
+    );
+    expect(
+      defaultSchema,
+      isNot(contains("import 'package:dart_edge_core/dart_edge_core.dart';")),
+    );
     expect(
       defaultSchema,
       contains('const DefaultSchema({this.databaseSchema});'),
@@ -107,6 +119,10 @@ void main() {
     expect(
       usersTable,
       contains("import 'package:dart_edge_core/dart_edge_core.dart';"),
+    );
+    expect(
+      usersTable,
+      contains("import 'package:json_schema/json_schema.dart';"),
     );
     expect(
       usersTable,

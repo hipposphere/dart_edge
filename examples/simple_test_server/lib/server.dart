@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:dart_edge_auth/dart_edge_auth.dart';
 import 'package:dart_edge_http_server/dart_edge_http_server.dart';
 import 'package:dart_edge_sql/dart_edge_sql.dart';
+import 'package:json_schema/json_schema.dart';
 import 'package:simple_test_db_migrator/simple_test_db_migrator.dart';
 import 'package:simple_test_server/src/auth.dart';
 import 'package:simple_test_server/src/database.dart';
