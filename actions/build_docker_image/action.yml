@@ -1,0 +1,90 @@
+name: Build Docker Image
+description: Build a Docker image archive from dart_edge_ci Docker metadata.
+
+inputs:
+  package_path:
+    description: Path to the Dart package whose pubspec.yaml provides the image version.
+    required: true
+  image:
+    description: dart_edge_ci Docker image target from docker.yaml.
+    required: true
+  image_name:
+    description: Image name without registry or owner.
+    required: true
+  cache_scope:
+    description: GitHub Actions cache scope for Docker layers.
+    required: true
+  platforms:
+    description: Docker platform for the loadable image archive.
+    required: false
+    default: linux/amd64
+  archive_name:
+    description: File name prefix for the generated image archive.
+    required: false
+    default: docker-image
+  dart_edge_ci_version:
+    description: dart_edge_ci version passed to setup_ci.
+    required: false
+    default: 0.1.8
+
+outputs:
+  archive_path:
+    description: Absolute path to the generated .tar.gz Docker image archive.
+    value: ${{ steps.build.outputs.archive_path }}
+  image:
+    description: Fully qualified image name.
+    value: ${{ steps.metadata.outputs.image }}
+  version_tag:
+    description: Tag-safe package version.
+    value: ${{ steps.dart-edge-ci.outputs.version-tag }}
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Set up dart_edge_ci
+      id: dart-edge-ci
+      uses: hipposphere/dart_edge/actions/setup_ci@main
+      with:
+        version: ${{ inputs.dart_edge_ci_version }}
+        docker-image: ${{ inputs.image }}
+        package-version-path: ${{ inputs.package_path }}
+
+    - name: Read image metadata
+      id: metadata
+      shell: bash
+      run: |
+        set -euo pipefail
+        echo "image=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/${{ inputs.image_name }}" >> "${GITHUB_OUTPUT}"
+        echo "created=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> "${GITHUB_OUTPUT}"
+
+    - name: Build image archive
+      id: build
+      shell: bash
+      run: |
+        set -euo pipefail
+        if [[ "${{ inputs.platforms }}" == *","* ]]; then
+          echo "::error::Docker load archives support one platform. Set inputs.platforms to a single platform."
+          exit 1
+        fi
+
+        archive="${RUNNER_TEMP}/${{ inputs.archive_name }}.tar"
+        rm -f "$archive" "$archive.gz"
+        docker buildx build \
+          "${{ steps.dart-edge-ci.outputs.context }}" \
+          --file "${{ steps.dart-edge-ci.outputs.dockerfile }}" \
+          --output "type=docker,dest=$archive" \
+          --platform "${{ inputs.platforms }}" \
+          --tag "${{ steps.metadata.outputs.image }}:${{ steps.dart-edge-ci.outputs.version-tag }}" \
+          --tag "${{ steps.metadata.outputs.image }}:latest" \
+          --tag "${{ steps.metadata.outputs.image }}:sha-${{ github.sha }}" \
+          --cache-from "type=gha,scope=${{ inputs.cache_scope }}" \
+          --cache-to "type=gha,scope=${{ inputs.cache_scope }},mode=max" \
+          --build-arg "VERSION=${{ steps.dart-edge-ci.outputs.version }}" \
+          --build-arg "REVISION=${{ github.sha }}" \
+          --build-arg "CREATED=${{ steps.metadata.outputs.created }}" \
+          --build-arg "SOURCE=${{ github.server_url }}/${{ github.repository }}"
+        gzip -f "$archive"
+        echo "archive_path=$archive.gz" >> "${GITHUB_OUTPUT}"

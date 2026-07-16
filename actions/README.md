@@ -5,6 +5,10 @@ This repository publishes reusable CI entry points for Dart Edge projects:
 - `actions/setup_ci`: installs the precompiled `dart_edge_ci` helper and can
   optionally generate Dockerfiles, read package versions, set up Dart or
   Flutter, run `pub get`, or run a `dart_edge_ci` command.
+- `actions/build_docker_image`: builds a single-platform, loadable Docker image
+  archive and exposes its local path to later steps in the same job.
+- `actions/deploy_docker`: uploads deployment files and an optional local Docker
+  image archive over SSH, then runs the configured remote Compose command.
 - `.github/workflows/build-flutter-image.yml`: reusable workflow that builds and
   publishes a Flutter web Docker image to GitHub Container Registry.
 - `.github/workflows/deploy-docker.yml`: reusable workflow that copies Compose
@@ -110,19 +114,66 @@ the root or image level.
 
 ## Deploy Docker
 
-The deployment workflow can read SSH variables and secrets directly from a
-GitHub environment:
+Use the composite build and deploy actions when deployment credentials belong
+to an environment in the calling repository. Because both actions run as steps
+in a normal job, the job can bind that environment and keep the image archive
+on one runner:
+
+```yaml
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: web-deploy
+    permissions:
+      actions: read
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v5
+
+      - id: build
+        uses: hipposphere/dart_edge/actions/build_docker_image@main
+        with:
+          package_path: app
+          image: app
+          image_name: my-app
+          cache_scope: my-app
+
+      - uses: hipposphere/dart_edge/actions/deploy_docker@main
+        with:
+          source: app/compose.yaml
+          target: /opt/my-app
+          ssh_host: ${{ vars.SSH_HOST }}
+          ssh_port: ${{ vars.SSH_PORT || '22' }}
+          ssh_username: ${{ vars.SSH_USERNAME }}
+          ssh_key: ${{ secrets.SSH_KEY }}
+          image_archive: ${{ steps.build.outputs.archive_path }}
+```
+
+The composite action accepts `ssh_password` as an alternative to `ssh_key`, and
+`env_file` for secret environment-file contents. Secret values must always be
+passed from the calling job; composite actions do not acquire secrets
+implicitly.
+
+## Reusable deployment workflow
+
+The reusable workflow remains available for callers that pass repository or
+organization configuration explicitly:
 
 ```yaml
 jobs:
   deploy:
     uses: hipposphere/dart_edge/.github/workflows/deploy-docker.yml@main
     with:
-      environment: web-deploy
       source: app/compose.yaml
       target: /opt/my-app
+      ssh_host: ${{ vars.SSH_HOST }}
+      ssh_port: ${{ vars.SSH_PORT || '22' }}
+      ssh_username: ${{ vars.SSH_USERNAME }}
+    secrets:
+      SSH_KEY: ${{ secrets.SSH_KEY }}
 ```
 
-Configure `SSH_HOST`, `SSH_PORT`, and `SSH_USERNAME` as environment variables,
-and `SSH_KEY` or `SSH_PASSWORD` as environment secrets. Callers may continue to
-pass the SSH values explicitly instead.
+Use the composite action instead when the values are environment-scoped in the
+calling repository. GitHub does not let a job both bind an environment and call
+a reusable workflow directly.
