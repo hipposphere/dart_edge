@@ -17,7 +17,7 @@ on:
         description: Flutter SDK version.
         required: false
         type: string
-        default: "3.44.4"
+        default: "3.44.6"
       publish:
         description: Upload the built artifacts through the repo release tool.
         required: false

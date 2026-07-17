@@ -1278,5 +1278,121 @@ typedef StringIdParams = _$StringIdParams;
         },
       );
     });
+
+    test('resolves registries composed from imported const schema lists', () async {
+      final builder = dartEdgeHttpServerBuilder(BuilderOptions.empty);
+
+      await testBuilder(
+        builder,
+        const <String, String>{
+          'test_app|lib/schema_support.dart': r'''
+sealed class JsonSchema {
+  const JsonSchema._({this.id, this.nullable = false});
+
+  const factory JsonSchema.object({
+    String? id,
+    bool nullable,
+    Map<String, JsonSchema> properties,
+    List<String> required,
+  }) = JsonObjectSchema;
+
+  const factory JsonSchema.string({String? id, bool nullable}) = JsonStringSchema;
+
+  const factory JsonSchema.ref(String ref, {String? id}) = JsonReferenceSchema;
+
+  final String? id;
+  final bool nullable;
+}
+
+final class JsonObjectSchema extends JsonSchema {
+  const JsonObjectSchema({
+    super.id,
+    super.nullable,
+    this.properties = const <String, JsonSchema>{},
+    this.required = const <String>[],
+  }) : super._();
+
+  final Map<String, JsonSchema> properties;
+  final List<String> required;
+}
+
+final class JsonStringSchema extends JsonSchema {
+  const JsonStringSchema({super.id, super.nullable}) : super._();
+}
+
+final class JsonReferenceSchema extends JsonSchema {
+  const JsonReferenceSchema(this.ref, {super.id}) : super._();
+
+  final String ref;
+}
+
+final class JsonSchemaRegistry {
+  const JsonSchemaRegistry({required this.schemas});
+
+  final List<JsonSchema> schemas;
+}
+
+final class FromHttpSchema {
+  const FromHttpSchema(this.schema, {this.registry, this.refs = const []});
+
+  final JsonSchema schema;
+  final JsonSchemaRegistry? registry;
+  final List<SchemaRefModel> refs;
+}
+
+final class SchemaRefModel {
+  const SchemaRefModel(this.type, {this.schemaId});
+
+  final Type type;
+  final String? schemaId;
+}
+''',
+          'test_app|lib/imported_schemas.dart': r'''
+import 'schema_support.dart';
+
+final class ImportedSchemas {
+  const ImportedSchemas._();
+
+  static const List<JsonSchema> schemas = <JsonSchema>[
+    JsonSchema.object(id: 'ImportedChild'),
+  ];
+}
+''',
+          'test_app|lib/models.dart': r'''
+import 'imported_schemas.dart';
+import 'schema_support.dart';
+
+part 'models.g.dart';
+
+const List<JsonSchema> applicationSchemas = <JsonSchema>[
+  ...ImportedSchemas.schemas,
+];
+
+const requestSchema = JsonSchema.object(
+  id: 'Request',
+  properties: <String, JsonSchema>{
+    'child': JsonSchema.ref('#/components/schemas/ImportedChild'),
+  },
+  required: <String>['child'],
+);
+
+@FromHttpSchema(
+  requestSchema,
+  registry: JsonSchemaRegistry(schemas: applicationSchemas),
+)
+typedef Request = _$Request;
+''',
+        },
+        generateFor: const {'test_app|lib/models.dart'},
+        outputs: {
+          'test_app|lib/models.dart_edge_http_server.g.part': decodedMatches(
+            allOf([
+              contains('final class _\$Request'),
+              contains('final ImportedChild child;'),
+            ]),
+          ),
+        },
+      );
+    });
   });
 }
