@@ -220,6 +220,56 @@ void main() {
     });
   });
 
+  test('documents binary responses for default and custom content types', () {
+    final app = DartEdge<void>(services: () {});
+    app.get(
+      '/download',
+      options: const RouteOptions(success: ResponseSpec.binary()),
+      handler: (_) => const <int>[],
+    );
+    app.get(
+      '/audio',
+      options: const RouteOptions(
+        success: ResponseSpec.binary(contentType: 'audio/wav'),
+      ),
+      handler: (_) => const <int>[],
+    );
+
+    final paths =
+        app.buildOpenApiDocumentJson()['paths']! as Map<String, Object?>;
+
+    expect(paths['/download'], {
+      'get': {
+        'operationId': 'getDownload',
+        'responses': {
+          '200': {
+            'description': 'OK',
+            'content': {
+              'application/octet-stream': {
+                'schema': {'type': 'string', 'format': 'binary'},
+              },
+            },
+          },
+        },
+      },
+    });
+    expect(paths['/audio'], {
+      'get': {
+        'operationId': 'getAudio',
+        'responses': {
+          '200': {
+            'description': 'OK',
+            'content': {
+              'audio/wav': {
+                'schema': {'type': 'string', 'format': 'binary'},
+              },
+            },
+          },
+        },
+      },
+    });
+  });
+
   test('includes installed schemas in the native manifest', () {
     const registry = JsonSchemaRegistry(
       schemas: <JsonSchema>[

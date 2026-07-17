@@ -1,3 +1,8 @@
+## 0.3.31
+
+- Document binary response media types with an OpenAPI `string/binary` schema.
+- Require `dart_edge_core` 0.3.36.
+
 ## 0.3.30
 
 - Add first-class OpenAPI security schemes and global security requirements.

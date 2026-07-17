@@ -1,3 +1,9 @@
+## 0.3.40
+
+- Infer `Uint8List` for client operation schemas using the JSON Schema
+  `binary` string format.
+- Require `dart_edge_core` 0.3.36.
+
 ## 0.3.39
 
 - Require `json_schema` 0.1.2.

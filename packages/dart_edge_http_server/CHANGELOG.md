@@ -1,3 +1,8 @@
+## 0.3.21
+
+- Require `dart_edge_http_server_runtime` 0.3.31 for binary response schemas in
+  generated OpenAPI documents.
+
 ## 0.3.20
 
 - Require `dart_edge_http_server_runtime` 0.3.30 for expanded OpenAPI document

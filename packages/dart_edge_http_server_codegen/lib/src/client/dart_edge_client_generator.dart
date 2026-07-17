@@ -1743,7 +1743,8 @@ String? _schemaType(JsonSchema? schema, Map<String, String> schemaTypes) {
   final schemaId = _clientSchemaTypeId(schema);
   if (schemaId == null) {
     return switch (schema) {
-      JsonStringSchema _ => 'String',
+      JsonStringSchema(:final format) =>
+        format == 'binary' ? 'Uint8List' : 'String',
       JsonIntegerSchema _ => 'int',
       JsonNumberSchema _ => 'num',
       JsonBooleanSchema _ => 'bool',

@@ -1,3 +1,8 @@
+## 0.3.36
+
+- Describe `ResponseSpec.binary()` payloads with an OpenAPI-compatible
+  `string` schema using the `binary` format.
+
 ## 0.3.35
 
 - Require `json_schema` 0.1.2.

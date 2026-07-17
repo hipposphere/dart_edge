@@ -37,7 +37,11 @@ final class ResponseSpec {
   const ResponseSpec.binary({
     int status = 200,
     String contentType = 'application/octet-stream',
-  }) : this._(status: status, contentType: contentType);
+  }) : this._(
+         status: status,
+         contentType: contentType,
+         schema: const JsonSchema.string(format: 'binary'),
+       );
 
   /// Creates a server-sent events response specification.
   const ResponseSpec.sse({int status = 200})
