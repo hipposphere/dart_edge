@@ -1,3 +1,9 @@
+## 0.3.30
+
+- Add first-class OpenAPI security schemes and global security requirements.
+- Add API-key authentication schemes, tag definitions, external documentation,
+  contact and license metadata, and server variables.
+
 ## 0.3.29
 
 - Require `json_schema` 0.1.2.

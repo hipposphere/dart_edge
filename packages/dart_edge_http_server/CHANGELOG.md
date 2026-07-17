@@ -1,3 +1,8 @@
+## 0.3.20
+
+- Require `dart_edge_http_server_runtime` 0.3.30 for expanded OpenAPI document
+  metadata and security scheme support.
+
 ## 0.3.19
 
 - Require `json_schema` 0.1.2.

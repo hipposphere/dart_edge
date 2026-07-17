@@ -61,6 +61,165 @@ void main() {
     );
   });
 
+  test('includes rich OpenAPI metadata, tags, docs, and server variables', () {
+    final serverVariableValues = <String>['v1', 'v2'];
+    final serverVariables = <String, OpenApiServerVariable>{
+      'version': OpenApiServerVariable(
+        defaultValue: 'v1',
+        description: 'API version.',
+        enumValues: serverVariableValues,
+      ),
+    };
+    final tags = <OpenApiTag>[
+      const OpenApiTag(
+        name: 'users',
+        description: 'User operations.',
+        externalDocs: OpenApiExternalDocumentation(
+          url: 'https://docs.example.test/users',
+        ),
+      ),
+    ];
+    final app = DartEdge<void>(
+      services: () {},
+      openApiDocument: OpenApiDocument(
+        title: 'Example API',
+        version: '2.0.0',
+        summary: 'Example service.',
+        description: 'Longer API description.',
+        termsOfService: 'https://example.test/terms',
+        contact: const OpenApiContact(
+          name: 'API Support',
+          url: 'https://example.test/support',
+          email: 'support@example.test',
+        ),
+        license: const OpenApiLicense(name: 'MIT', identifier: 'MIT'),
+        servers: <OpenApiServer>[
+          OpenApiServer(
+            url: 'https://api.example.test/{version}',
+            description: 'Production API.',
+            variables: serverVariables,
+          ),
+        ],
+        tags: tags,
+        externalDocs: const OpenApiExternalDocumentation(
+          url: 'https://docs.example.test',
+          description: 'API guide.',
+        ),
+      ),
+    );
+
+    serverVariableValues.add('v3');
+    serverVariables.clear();
+    tags.clear();
+
+    final document = app.buildOpenApiDocumentJson();
+    expect(document['info'], {
+      'title': 'Example API',
+      'version': '2.0.0',
+      'summary': 'Example service.',
+      'description': 'Longer API description.',
+      'termsOfService': 'https://example.test/terms',
+      'contact': {
+        'name': 'API Support',
+        'url': 'https://example.test/support',
+        'email': 'support@example.test',
+      },
+      'license': {'name': 'MIT', 'identifier': 'MIT'},
+    });
+    expect(document['servers'], [
+      {
+        'url': 'https://api.example.test/{version}',
+        'description': 'Production API.',
+        'variables': {
+          'version': {
+            'default': 'v1',
+            'description': 'API version.',
+            'enum': ['v1', 'v2'],
+          },
+        },
+      },
+    ]);
+    expect(document['tags'], [
+      {
+        'name': 'users',
+        'description': 'User operations.',
+        'externalDocs': {'url': 'https://docs.example.test/users'},
+      },
+    ]);
+    expect(document['externalDocs'], {
+      'url': 'https://docs.example.test',
+      'description': 'API guide.',
+    });
+  });
+
+  test('includes global OpenAPI security schemes and requirements', () {
+    final schemes = <String, OpenApiSecurityScheme>{
+      'BearerAuth': const OpenApiSecurityScheme.http(scheme: 'bearer'),
+      'ApiKeyAuth': const OpenApiSecurityScheme.apiKey(
+        name: 'X-API-Key',
+        in_: OpenApiApiKeyLocation.header,
+      ),
+    };
+    final requirements = <OpenApiSecurityRequirement>[
+      OpenApiSecurityRequirement.scheme('BearerAuth'),
+    ];
+    final app = DartEdge<void>(
+      services: () {},
+      openApiDocument: OpenApiDocument(
+        securitySchemes: schemes,
+        security: requirements,
+      ),
+    );
+
+    schemes['BasicAuth'] = const OpenApiSecurityScheme.http(scheme: 'basic');
+    requirements.add(OpenApiSecurityRequirement.scheme('BasicAuth'));
+
+    final document = app.buildOpenApiDocumentJson();
+    expect(document['components'], {
+      'securitySchemes': {
+        'BearerAuth': {'type': 'http', 'scheme': 'bearer'},
+        'ApiKeyAuth': {'type': 'apiKey', 'name': 'X-API-Key', 'in': 'header'},
+      },
+    });
+    expect(document['security'], [
+      {'BearerAuth': <String>[]},
+    ]);
+    expect(
+      () => app.openApiDocument.securitySchemes['BasicAuth'] =
+          const OpenApiSecurityScheme.http(scheme: 'basic'),
+      throwsUnsupportedError,
+    );
+    expect(
+      () => app.openApiDocument.security.add(
+        OpenApiSecurityRequirement.scheme('BasicAuth'),
+      ),
+      throwsUnsupportedError,
+    );
+  });
+
+  test('merges OpenAPI schemas and security schemes into components', () {
+    const registry = JsonSchemaRegistry(
+      schemas: <JsonSchema>[JsonSchema.object(id: 'User')],
+    );
+    final app = DartEdge<void>(
+      services: () {},
+      openApiDocument: OpenApiDocument(
+        securitySchemes: const <String, OpenApiSecurityScheme>{
+          'BearerAuth': OpenApiSecurityScheme.http(scheme: 'bearer'),
+        },
+      ),
+    )..installSchemaRegistry(registry);
+
+    expect(app.buildOpenApiDocumentJson()['components'], {
+      'schemas': {
+        'User': {'type': 'object'},
+      },
+      'securitySchemes': {
+        'BearerAuth': {'type': 'http', 'scheme': 'bearer'},
+      },
+    });
+  });
+
   test('includes installed schemas in the native manifest', () {
     const registry = JsonSchemaRegistry(
       schemas: <JsonSchema>[

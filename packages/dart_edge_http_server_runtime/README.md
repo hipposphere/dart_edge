@@ -30,6 +30,48 @@ final class AppServices {
 }
 ```
 
+## OpenAPI Security
+
+Declare named security schemes and global requirements on `OpenApiDocument`:
+
+```dart
+final app = DartEdge<AppServices>(
+  services: AppServices.new,
+  openApiDocument: OpenApiDocument(
+    contact: const OpenApiContact(email: 'api@example.com'),
+    license: const OpenApiLicense(name: 'MIT', identifier: 'MIT'),
+    servers: const [
+      OpenApiServer(
+        url: 'https://api.example.com/{version}',
+        variables: {
+          'version': OpenApiServerVariable(
+            defaultValue: 'v1',
+            enumValues: ['v1', 'v2'],
+          ),
+        },
+      ),
+    ],
+    tags: const [
+      OpenApiTag(name: 'users', description: 'User operations.'),
+    ],
+    externalDocs: const OpenApiExternalDocumentation(
+      url: 'https://docs.example.com',
+    ),
+    securitySchemes: const {
+      'BearerAuth': OpenApiSecurityScheme.http(scheme: 'bearer'),
+      'ApiKeyAuth': OpenApiSecurityScheme.apiKey(
+        name: 'X-API-Key',
+        in_: OpenApiApiKeyLocation.header,
+      ),
+    },
+    security: [OpenApiSecurityRequirement.scheme('BearerAuth')],
+  ),
+);
+```
+
+This emits `components.securitySchemes.BearerAuth` and a global
+`security: [{BearerAuth: []}]` requirement in the OpenAPI document.
+
 For local-only development, omit `host:` and the runtime stays bound to
 `127.0.0.1`. For deployment, pass a real bind address such as `0.0.0.0` or
 `::`.
