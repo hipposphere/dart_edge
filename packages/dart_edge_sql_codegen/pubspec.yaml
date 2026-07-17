@@ -1,6 +1,6 @@
 name: dart_edge_sql_codegen
 description: Schema introspection and Dart descriptor generation for dart_edge_sql.
-version: 0.3.41
+version: 0.3.42
 publish_to: "https://registry.hippolabs.org/pub/internal-pub/"
 repository: https://github.com/hipposphere/dart_edge/tree/main/packages/dart_edge_sql_codegen
 
@@ -21,7 +21,7 @@ dependencies:
   dart_style: ^3.1.9
   json_schema:
     hosted: https://pub.hippolabs.org
-    version: ^0.1.1
+    version: ^0.1.2
 
 dev_dependencies:
   build_test: ^3.5.15

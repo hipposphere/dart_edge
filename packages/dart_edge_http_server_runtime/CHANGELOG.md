@@ -1,3 +1,7 @@
+## 0.3.29
+
+- Require `json_schema` 0.1.2.
+
 ## 0.3.26
 
 - Require `json_schema` 0.1.1 and import JSON Schema contracts directly from

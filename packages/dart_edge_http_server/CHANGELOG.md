@@ -1,3 +1,7 @@
+## 0.3.19
+
+- Require `json_schema` 0.1.2.
+
 ## 0.3.18
 
 - Require `json_schema` 0.1.1 for direct application-facing schema imports.

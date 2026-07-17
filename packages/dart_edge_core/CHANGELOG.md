@@ -1,3 +1,7 @@
+## 0.3.35
+
+- Require `json_schema` 0.1.2.
+
 ## 0.3.34
 
 - Depend on `json_schema` 0.1.1 and remove the legacy JSON Schema and

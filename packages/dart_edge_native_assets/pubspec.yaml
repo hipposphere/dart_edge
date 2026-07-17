@@ -1,6 +1,6 @@
 name: dart_edge_native_assets
 description: Shared native asset build hook helpers for Dart Edge packages.
-version: 0.1.4
+version: 0.1.5
 publish_to: "https://registry.hippolabs.org/pub/internal-pub/"
 repository: https://github.com/hipposphere/dart_edge/tree/main/packages/dart_edge_native_assets
 
@@ -12,5 +12,5 @@ resolution: workspace
 dependencies:
   code_assets: ^1.2.1
   crypto: ^3.0.7
-  hooks: ^2.1.0
+  hooks: ^2.0.2
   native_toolchain_rust: ^1.0.4+0

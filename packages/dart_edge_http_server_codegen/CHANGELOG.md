@@ -1,3 +1,7 @@
+## 0.3.39
+
+- Require `json_schema` 0.1.2.
+
 ## 0.3.38
 
 - Require `json_schema` 0.1.1 and import JSON contracts directly in generated

@@ -1,6 +1,6 @@
 name: dart_edge_better_auth
 description: Pure Dart Better Auth-compatible authentication routes for Dart Edge.
-version: 0.1.4
+version: 0.1.5
 # publish_to: "https://registry.hippolabs.org/pub/internal-pub/"
 publish_to: none
 repository: https://github.com/hipposphere/dart_edge/tree/main/packages/dart_edge_better_auth
@@ -23,7 +23,7 @@ dependencies:
     version: ^0.3.17
   json_schema:
     hosted: https://pub.hippolabs.org
-    version: ^0.1.1
+    version: ^0.1.2
   pointycastle: ^4.0.0
 
 dev_dependencies:

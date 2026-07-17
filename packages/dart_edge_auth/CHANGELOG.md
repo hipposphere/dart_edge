@@ -1,3 +1,7 @@
+## 0.3.40
+
+- Require `json_schema` 0.1.2.
+
 ## 0.3.37
 
 - Require `json_schema` 0.1.1 and import `JsonEncodable` directly from its

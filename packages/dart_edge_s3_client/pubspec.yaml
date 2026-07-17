@@ -1,6 +1,6 @@
 name: dart_edge_s3_client
 description: Native-backed S3 client for Dart Edge.
-version: 0.3.12
+version: 0.3.13
 publish_to: "https://registry.hippolabs.org/pub/internal-pub/"
 repository: https://github.com/hipposphere/dart_edge/tree/main/packages/dart_edge_s3_client
 
@@ -26,7 +26,7 @@ dependencies:
     hosted: "https://registry.hippolabs.org/pub/internal-pub/"
     version: ^0.1.3
   ffi: ^2.2.0
-  hooks: ^2.1.0
+  hooks: ^2.0.2
   native_toolchain_rust: ^1.0.4+0
 
 dev_dependencies:

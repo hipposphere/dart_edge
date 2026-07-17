@@ -1,6 +1,6 @@
 name: dart_edge_http_server
 description: App-facing HTTP server package for the Dart Edge monorepo.
-version: 0.3.18
+version: 0.3.19
 publish_to: "https://registry.hippolabs.org/pub/internal-pub/"
 repository: https://github.com/hipposphere/dart_edge/tree/main/packages/dart_edge_http_server
 
@@ -15,7 +15,7 @@ dependencies:
     version: ^0.3.22
   json_schema:
     hosted: https://pub.hippolabs.org
-    version: ^0.1.1
+    version: ^0.1.2
 
 dev_dependencies:
   test: ^1.30.0
