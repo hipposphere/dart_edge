@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
 
+import '../core/native_sql_value.dart';
 import '../core/sql_decimal.dart';
 import '../core/sql_result.dart';
 import '../core/sql_row.dart';
@@ -176,6 +177,7 @@ Pointer<Char> _encodeStatement(SqlStatement statement) {
 
 Map<String, Object?> _encodeValue(Object? value) => switch (value) {
   null => {'kind': 'null'},
+  final NativeSqlNull value => {'kind': 'typedNull', 'value': value.kind.name},
   final int value => {'kind': 'integer', 'value': value},
   final double value => {'kind': 'double', 'value': value},
   final bool value => {'kind': 'boolean', 'value': value},

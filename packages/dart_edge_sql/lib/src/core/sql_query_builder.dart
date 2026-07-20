@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'native_sql_value.dart';
 import 'postgres_type_mapping.dart';
 import 'sql_decimal.dart';
 import 'sql_dialect.dart';

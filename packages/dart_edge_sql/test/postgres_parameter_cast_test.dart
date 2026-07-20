@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:dart_edge_sql/dart_edge_sql.dart';
+import 'package:dart_edge_sql/src/core/native_sql_value.dart';
 import 'package:dart_edge_sql/src/drivers/shared/compiled_sql_statement.dart';
 import 'package:test/test.dart';
 
@@ -44,7 +45,9 @@ void main() {
         .execute();
 
     expect(db.statement.sql, contains('@p1::bool'));
-    expect(db.statement.namedParameters, {'p1': null});
+    expect(db.statement.namedParameters, {
+      'p1': const NativeSqlNull(NativeSqlValueKind.boolean),
+    });
   });
 
   test('casts generated nullable scalar values in postgres inserts', () async {
@@ -61,11 +64,11 @@ void main() {
     expect(db.statement.sql, contains('@p4::money'));
     expect(db.statement.sql, contains('@p5::bytea'));
     expect(db.statement.namedParameters, {
-      'p1': null,
-      'p2': null,
-      'p3': null,
-      'p4': null,
-      'p5': null,
+      'p1': const NativeSqlNull(NativeSqlValueKind.double),
+      'p2': const NativeSqlNull(NativeSqlValueKind.double),
+      'p3': const NativeSqlNull(NativeSqlValueKind.string),
+      'p4': const NativeSqlNull(NativeSqlValueKind.string),
+      'p5': const NativeSqlNull(NativeSqlValueKind.bytes),
     });
   });
 
@@ -110,6 +113,28 @@ void main() {
 
     expect(statement.sql, r'SELECT $1::jsonb');
     expect(statement.positionalParameters, ['{"name":"seeded"}']);
+  });
+
+  test('retains native types for null PostgreSQL parameters', () {
+    final explicit = compileSqlStatement(
+      SqlDialect.postgres,
+      SqlStatement.positional('SELECT \$1::timestamptz', [
+        SqlParam.timestamptz<DateTime?>(null),
+      ]),
+    );
+    final cast = compileSqlStatement(
+      SqlDialect.postgres,
+      SqlStatement.named('SELECT @value::int4', {'value': null}),
+    );
+
+    expect(
+      explicit.positionalParameters.single,
+      const NativeSqlNull(NativeSqlValueKind.dateTime),
+    );
+    expect(
+      cast.positionalParameters.single,
+      const NativeSqlNull(NativeSqlValueKind.integer),
+    );
   });
 
   test('rejects absent sql values in compiled statements', () {
@@ -309,11 +334,11 @@ void main() {
     expect(db.statement.sql, contains('@p3::numeric'));
     expect(db.statement.sql, contains('@p4::money'));
     expect(db.statement.namedParameters, {
-      'p1': null,
-      'p2': null,
+      'p1': const NativeSqlNull(NativeSqlValueKind.double),
+      'p2': const NativeSqlNull(NativeSqlValueKind.double),
       'p3': '123.45',
       'p4': '9.99',
-      'p5': null,
+      'p5': const NativeSqlNull(NativeSqlValueKind.bytes),
     });
   });
 

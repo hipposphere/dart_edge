@@ -1,3 +1,10 @@
+## 0.3.33
+
+- Preserve native PostgreSQL parameter types for null generated-column and
+  explicitly cast values so cached statements remain valid when later calls
+  provide timestamps, numbers, booleans, or bytes.
+- Bump the native artifact version to 0.1.9 for typed null parameter binding.
+
 ## 0.3.31
 
 - Add PostgreSQL GIN-index and ranked `tsvector` full-text search helpers.

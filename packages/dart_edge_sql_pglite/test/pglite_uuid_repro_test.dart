@@ -68,6 +68,52 @@ VALUES (@name, @payload) RETURNING *
     expect(typedInserted, isNotNull);
     expect(typedInserted!.payload, decodedJson);
   });
+
+  test('reuses prepared updates across null and typed values', () async {
+    final pool = PgliteDatabase.temporary().asPostgresPool();
+    addTearDown(pool.close);
+
+    await pool.execute(
+      sql('''
+CREATE TABLE phone_call_repro (
+  id int4 PRIMARY KEY,
+  ended_at timestamptz,
+  duration_seconds int4
+)
+'''),
+    );
+    await pool.execute(sql('INSERT INTO phone_call_repro (id) VALUES (1)'));
+
+    const updateSql = '''
+UPDATE phone_call_repro
+SET ended_at = @ended_at::timestamptz,
+    duration_seconds = @duration_seconds::int4
+WHERE id = 1
+''';
+    await pool.execute(
+      SqlStatement.named(updateSql, {
+        'ended_at': null,
+        'duration_seconds': null,
+      }),
+    );
+    final endedAt = DateTime.utc(2026, 7, 20, 17, 7, 43);
+    await pool.execute(
+      SqlStatement.named(updateSql, {
+        'ended_at': endedAt,
+        'duration_seconds': 21,
+      }),
+    );
+
+    final result = await pool.execute(
+      sql('''
+SELECT ended_at, duration_seconds
+FROM phone_call_repro
+WHERE id = 1
+'''),
+    );
+    expect(result.single.read<DateTime>('ended_at'), endedAt);
+    expect(result.single.read<int>('duration_seconds'), 21);
+  });
 }
 
 final class ReproRow {

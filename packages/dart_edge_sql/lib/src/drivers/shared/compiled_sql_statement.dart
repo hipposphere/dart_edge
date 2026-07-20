@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import '../../core/native_sql_value.dart';
 import '../../core/postgres_type_mapping.dart';
 import '../../core/sql_decimal.dart';
 import '../../core/sql_dialect.dart';
@@ -128,9 +129,12 @@ SqlStatement compileSqlStatement(SqlDialect dialect, SqlStatement statement) {
       null => _unwrapSqlParameterValue(rawValue),
     };
     final castIndex = placeholder.endIndex + 1;
+    final castType = _castTypeAt(statement.sql, castIndex);
 
     positionalParameters.add(switch (dialect) {
       SqlDialect.postgres when explicitParameter != null => value,
+      SqlDialect.postgres when value == null && castType != null =>
+        postgresTypedNull(castType),
       SqlDialect.postgres when _hasArrayCast(statement.sql, castIndex) =>
         _encodePostgresArrayTextParameter(value),
       SqlDialect.postgres when _hasDecimalCast(statement.sql, castIndex) =>
@@ -146,7 +150,7 @@ SqlStatement compileSqlStatement(SqlDialect dialect, SqlStatement statement) {
       SqlDialect.sqlite => '?',
     });
     if (explicitParameter?.cast(dialect) case final cast?
-        when _castTypeAt(statement.sql, castIndex) == null) {
+        when castType == null) {
       buffer.write('::$cast');
     }
     index = placeholder.endIndex;

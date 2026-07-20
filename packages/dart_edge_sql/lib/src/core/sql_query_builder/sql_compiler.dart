@@ -232,9 +232,12 @@ final class _SqlCompiler {
     final parameterName = 'p${++_parameterIndex}';
     final value = parameters[name];
     final explicitParameter = value is SqlParameter<dynamic> ? value : null;
+    final castType = _castTypeAt(sql, end);
     _parameters[parameterName] = switch (explicitParameter) {
       final parameter? => parameter.encode(dialect),
       null => switch (dialect) {
+        SqlDialect.postgres when value == null && castType != null =>
+          postgresTypedNull(castType),
         SqlDialect.postgres when _hasArrayCast(sql, end) =>
           _encodePostgresArrayTextParameter(value),
         SqlDialect.postgres when _hasDecimalCast(sql, end) =>
@@ -251,7 +254,7 @@ final class _SqlCompiler {
       SqlDialect.postgres => '@$parameterName',
     });
     if (explicitParameter?.cast(dialect) case final cast?
-        when _castTypeAt(sql, end) == null) {
+        when castType == null) {
       write('::$cast');
     }
     return end;
@@ -314,6 +317,12 @@ bool _isIdentifierPart(String? char) {
 }
 
 Object? _encodePostgresParameterValue(Object? value, SqlColumnBase? column) {
+  if (value == null) {
+    final databaseType = column?.databaseType;
+    if (databaseType != null) {
+      return postgresTypedNull(databaseType);
+    }
+  }
   if (PostgresTypeMapping.usesArrayTextParameter(column?.databaseType)) {
     return _encodePostgresArrayTextParameter(value);
   }

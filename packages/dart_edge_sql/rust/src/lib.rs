@@ -5,9 +5,9 @@ use std::sync::atomic::{AtomicI64, Ordering};
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
-use dart_edge_sql_core::{SqlColumn, SqlResult, SqlRow, SqlStatement, SqlValue};
+use dart_edge_sql_core::{SqlColumn, SqlResult, SqlRow, SqlValue};
 use once_cell::sync::Lazy;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sqlx::pool::PoolConnection;
 use sqlx::postgres::{PgPool, PgPoolOptions, PgRow};
 use sqlx::sqlite::{SqlitePool, SqlitePoolOptions, SqliteRow};
@@ -16,7 +16,7 @@ use sqlx::types::{Decimal, Uuid};
 use sqlx::{Column, Postgres, Row, Sqlite, TypeInfo, ValueRef};
 use tokio::runtime::{Builder, Runtime};
 
-const DART_EDGE_SQL_NATIVE_ABI_VERSION: i32 = 1;
+const DART_EDGE_SQL_NATIVE_ABI_VERSION: i32 = 2;
 
 static NEXT_HANDLE: AtomicI64 = AtomicI64::new(1);
 static RUNTIME: Lazy<Runtime> = Lazy::new(|| {
@@ -34,6 +34,62 @@ static LAST_ERROR: Lazy<Mutex<Option<CString>>> = Lazy::new(|| Mutex::new(None))
 enum NativePool {
     Postgres(PgPool),
     Sqlite(SqlitePool),
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SqlStatement {
+    sql: String,
+    #[serde(default)]
+    parameters: Vec<SqlParameterValue>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum SqlParameterValue {
+    TypedNull {
+        #[serde(rename = "kind")]
+        _kind: TypedNullKind,
+        value: SqlParameterKind,
+    },
+    Value(SqlValue),
+}
+
+#[derive(Clone, Copy, Debug, Deserialize)]
+enum TypedNullKind {
+    #[serde(rename = "typedNull")]
+    TypedNull,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+enum SqlParameterKind {
+    Integer,
+    Double,
+    Boolean,
+    String,
+    Bytes,
+    DateTime,
+}
+
+#[cfg(test)]
+impl SqlStatement {
+    fn with_parameters(sql: impl Into<String>, parameters: Vec<SqlValue>) -> Self {
+        Self {
+            sql: sql.into(),
+            parameters: parameters
+                .into_iter()
+                .map(SqlParameterValue::from)
+                .collect(),
+        }
+    }
+}
+
+#[cfg(test)]
+impl From<SqlValue> for SqlParameterValue {
+    fn from(value: SqlValue) -> Self {
+        Self::Value(value)
+    }
 }
 
 enum NativeTransaction {
@@ -541,26 +597,36 @@ async fn execute_sqlite_connection(
 
 fn bind_postgres_value<'q>(
     query: sqlx::query::Query<'q, Postgres, sqlx::postgres::PgArguments>,
-    value: &SqlValue,
+    value: &SqlParameterValue,
 ) -> sqlx::query::Query<'q, Postgres, sqlx::postgres::PgArguments> {
     match value {
-        SqlValue::Null => query.bind(Option::<String>::None),
-        SqlValue::Integer(value) => query.bind(*value),
-        SqlValue::Double(value) => query.bind(*value),
-        SqlValue::Boolean(value) => query.bind(*value),
-        SqlValue::String(value) => query.bind(value.clone()),
-        SqlValue::Decimal(value) => query.bind(
-            value
-                .parse::<Decimal>()
-                .expect("PostgreSQL decimal values are validated before binding"),
-        ),
-        SqlValue::Bytes(value) => query.bind(BASE64.decode(value).unwrap_or_default()),
-        SqlValue::DateTime(value) => match parse_datetime_value(value) {
-            Some(value) => query.bind(value),
-            None => query.bind(value.clone()),
+        SqlParameterValue::TypedNull { value: kind, .. } => match kind {
+            SqlParameterKind::Integer => query.bind(Option::<i64>::None),
+            SqlParameterKind::Double => query.bind(Option::<f64>::None),
+            SqlParameterKind::Boolean => query.bind(Option::<bool>::None),
+            SqlParameterKind::String => query.bind(Option::<String>::None),
+            SqlParameterKind::Bytes => query.bind(Option::<Vec<u8>>::None),
+            SqlParameterKind::DateTime => query.bind(Option::<DateTime<Utc>>::None),
         },
-        SqlValue::Json(value) => query.bind(sqlx::types::Json(value.clone())),
-        SqlValue::Vector(value) => query.bind(format_postgres_vector(value)),
+        SqlParameterValue::Value(value) => match value {
+            SqlValue::Null => query.bind(Option::<String>::None),
+            SqlValue::Integer(value) => query.bind(*value),
+            SqlValue::Double(value) => query.bind(*value),
+            SqlValue::Boolean(value) => query.bind(*value),
+            SqlValue::String(value) => query.bind(value.clone()),
+            SqlValue::Decimal(value) => query.bind(
+                value
+                    .parse::<Decimal>()
+                    .expect("PostgreSQL decimal values are validated before binding"),
+            ),
+            SqlValue::Bytes(value) => query.bind(BASE64.decode(value).unwrap_or_default()),
+            SqlValue::DateTime(value) => match parse_datetime_value(value) {
+                Some(value) => query.bind(value),
+                None => query.bind(value.clone()),
+            },
+            SqlValue::Json(value) => query.bind(sqlx::types::Json(value.clone())),
+            SqlValue::Vector(value) => query.bind(format_postgres_vector(value)),
+        },
     }
 }
 
@@ -571,14 +637,18 @@ fn validate_postgres_statement(statement: &SqlStatement) -> Result<(), String> {
     Ok(())
 }
 
-fn validate_postgres_value(value: &SqlValue, location: &str) -> Result<(), String> {
+fn validate_postgres_value(value: &SqlParameterValue, location: &str) -> Result<(), String> {
     match value {
-        SqlValue::String(value) | SqlValue::DateTime(value) => {
+        SqlParameterValue::Value(SqlValue::String(value) | SqlValue::DateTime(value)) => {
             validate_postgres_text(value, location)
         }
-        SqlValue::Decimal(value) => validate_postgres_decimal(value, location),
-        SqlValue::Json(value) => validate_postgres_json(value, location),
-        SqlValue::Vector(value) => validate_postgres_vector(value, location),
+        SqlParameterValue::Value(SqlValue::Decimal(value)) => {
+            validate_postgres_decimal(value, location)
+        }
+        SqlParameterValue::Value(SqlValue::Json(value)) => validate_postgres_json(value, location),
+        SqlParameterValue::Value(SqlValue::Vector(value)) => {
+            validate_postgres_vector(value, location)
+        }
         _ => Ok(()),
     }
 }
@@ -638,19 +708,22 @@ fn parse_datetime_value(value: &str) -> Option<DateTime<Utc>> {
 
 fn bind_sqlite_value<'q>(
     query: sqlx::query::Query<'q, Sqlite, sqlx::sqlite::SqliteArguments<'q>>,
-    value: &SqlValue,
+    value: &SqlParameterValue,
 ) -> sqlx::query::Query<'q, Sqlite, sqlx::sqlite::SqliteArguments<'q>> {
     match value {
-        SqlValue::Null => query.bind(Option::<String>::None),
-        SqlValue::Integer(value) => query.bind(*value),
-        SqlValue::Double(value) => query.bind(*value),
-        SqlValue::Boolean(value) => query.bind(*value),
-        SqlValue::String(value) => query.bind(value.clone()),
-        SqlValue::Decimal(value) => query.bind(value.clone()),
-        SqlValue::Bytes(value) => query.bind(BASE64.decode(value).unwrap_or_default()),
-        SqlValue::DateTime(value) => query.bind(value.clone()),
-        SqlValue::Json(value) => query.bind(serde_json::to_string(value).unwrap_or_default()),
-        SqlValue::Vector(value) => query.bind(format_postgres_vector(value)),
+        SqlParameterValue::TypedNull { .. } => query.bind(Option::<String>::None),
+        SqlParameterValue::Value(value) => match value {
+            SqlValue::Null => query.bind(Option::<String>::None),
+            SqlValue::Integer(value) => query.bind(*value),
+            SqlValue::Double(value) => query.bind(*value),
+            SqlValue::Boolean(value) => query.bind(*value),
+            SqlValue::String(value) => query.bind(value.clone()),
+            SqlValue::Decimal(value) => query.bind(value.clone()),
+            SqlValue::Bytes(value) => query.bind(BASE64.decode(value).unwrap_or_default()),
+            SqlValue::DateTime(value) => query.bind(value.clone()),
+            SqlValue::Json(value) => query.bind(serde_json::to_string(value).unwrap_or_default()),
+            SqlValue::Vector(value) => query.bind(format_postgres_vector(value)),
+        },
     }
 }
 
@@ -1116,6 +1189,22 @@ fn clear_last_error() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parses_typed_null_parameter_values() {
+        let statement = parse_statement(
+            r#"{"sql":"UPDATE calls SET ended_at = $1::timestamptz","parameters":[{"kind":"typedNull","value":"dateTime"}]}"#,
+        )
+        .expect("typed null statement");
+
+        assert!(matches!(
+            statement.parameters.as_slice(),
+            [SqlParameterValue::TypedNull {
+                _kind: TypedNullKind::TypedNull,
+                value: SqlParameterKind::DateTime,
+            }]
+        ));
+    }
 
     #[test]
     fn parses_rfc3339_datetime_values_for_postgres_binding() {
