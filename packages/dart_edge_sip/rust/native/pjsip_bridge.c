@@ -145,6 +145,9 @@ static pj_bool_t registrar_on_rx_request(pjsip_rx_data* rdata);
 static void maybe_bridge_related_calls(
     dart_edge_sip_bridge_runtime* runtime,
     pjsua_call_id call_id);
+static dart_edge_sip_bridge_trunk_entry* find_trunk_by_account_id(
+    dart_edge_sip_bridge_runtime* runtime,
+    pjsua_acc_id account_id);
 
 static pjsip_module dart_edge_sip_registrar_module = {
     .name = {"dart_edge_sip_registrar", 23},
@@ -465,6 +468,12 @@ static void fill_call_event(
 
   if (slot != NULL && slot->media_app_id[0] != '\0') {
     copy_text(event->media_app_id, sizeof(event->media_app_id), slot->media_app_id);
+  }
+
+  dart_edge_sip_bridge_trunk_entry* trunk =
+      find_trunk_by_account_id(runtime, info.acc_id);
+  if (trunk != NULL) {
+    copy_text(event->trunk_id, sizeof(event->trunk_id), trunk->id);
   }
 }
 
@@ -835,6 +844,21 @@ static dart_edge_sip_bridge_trunk_entry* find_trunk(
   for (size_t index = 0; index < runtime->trunk_count; index += 1) {
     if (runtime->trunks[index].id != NULL &&
         strcmp(runtime->trunks[index].id, trunk_id) == 0) {
+      return &runtime->trunks[index];
+    }
+  }
+  return NULL;
+}
+
+static dart_edge_sip_bridge_trunk_entry* find_trunk_by_account_id(
+    dart_edge_sip_bridge_runtime* runtime,
+    pjsua_acc_id account_id) {
+  if (runtime == NULL || account_id == PJSUA_INVALID_ID) {
+    return NULL;
+  }
+
+  for (size_t index = 0; index < runtime->trunk_count; index += 1) {
+    if (runtime->trunks[index].acc_id == account_id) {
       return &runtime->trunks[index];
     }
   }
@@ -1264,11 +1288,6 @@ static bool add_trunk_account(
     store_error(error, error_len, "Missing trunk runtime.");
     return false;
   }
-  if (trunk->username == NULL || trunk->username[0] == '\0') {
-    trunk->acc_id = PJSUA_INVALID_ID;
-    return true;
-  }
-
   char host[128];
   host[0] = '\0';
   if (trunk->realm != NULL && trunk->realm[0] != '\0') {

@@ -2006,6 +2006,7 @@ fn bridge_event_to_json(event: &dart_edge_sip_bridge_event) -> Value {
             maybe_insert_string(&mut json, "fromUri", &event.from_uri);
             maybe_insert_string(&mut json, "toUri", &event.to_uri);
             maybe_insert_string(&mut json, "relatedCallId", &event.related_call_id);
+            maybe_insert_string(&mut json, "trunkId", &event.trunk_id);
             maybe_insert_string(&mut json, "mediaAppId", &event.media_app_id);
             Value::Object(json)
         }

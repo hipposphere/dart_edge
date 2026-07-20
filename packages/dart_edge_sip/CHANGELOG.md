@@ -1,3 +1,10 @@
+## 0.4.14
+
+- Expose the associated SIP trunk ID on call events and inbound dialplan
+  invites, including for trunks that do not register with credentials.
+- Bump the native SIP artifact to 0.1.6 for the PJSIP account-to-trunk event
+  mapping change.
+
 ## 0.4.9
 
 - Build SIP native artifacts against PJSIP 2.17 headers.

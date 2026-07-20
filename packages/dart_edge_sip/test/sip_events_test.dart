@@ -12,6 +12,7 @@ void main() {
               'fromUri': 'sip:1000\u0000@pbx.example.com',
               'toUri': 'sip:2000@pbx.example.com\u0000',
               'relatedCallId': 'call-2\u0000',
+              'trunkId': 'carrier-a\u0000',
               'mediaAppId': 'assistant\u0000',
             })
             as SipCallEvent;
@@ -20,6 +21,7 @@ void main() {
     expect(event.fromUri, 'sip:1000@pbx.example.com');
     expect(event.toUri, 'sip:2000@pbx.example.com');
     expect(event.relatedCallId, 'call-2');
+    expect(event.trunkId, 'carrier-a');
     expect(event.mediaAppId, 'assistant');
   });
 

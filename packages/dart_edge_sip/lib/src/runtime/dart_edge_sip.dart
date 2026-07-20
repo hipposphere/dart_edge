@@ -424,6 +424,7 @@ final class DartEdgeSip {
           callId: event.callId,
           fromUri: event.fromUri ?? '',
           toUri: event.toUri ?? '',
+          trunkId: event.trunkId,
           domain: _domainFromUri(event.toUri),
           metadata: Map<String, Object?>.unmodifiable(event.metadata),
         ),

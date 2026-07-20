@@ -157,6 +157,11 @@ The top-level package exports these main concepts:
 - `SipCallEvent`, `SipRegistrationEvent`, `SipTrunkEvent`,
   `SipRecordingEvent`, `SipVoicemailEvent`: event categories
 
+Inbound `SipCallEvent` values and `SipInboundInvite` dialplan requests expose
+the matched `trunkId` when the call arrived through a configured trunk. Each
+trunk owns a PJSIP account even when it does not register with credentials, so
+applications can route calls by trunk without relying on rewritten SIP URIs.
+
 ## Example
 
 ```dart

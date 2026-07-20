@@ -5,6 +5,7 @@ final class SipInboundInvite {
     required this.callId,
     required this.fromUri,
     required this.toUri,
+    this.trunkId,
     this.domain,
     this.headers = const <String, String>{},
     this.metadata = const <String, Object?>{},
@@ -13,6 +14,7 @@ final class SipInboundInvite {
   final String callId;
   final String fromUri;
   final String toUri;
+  final String? trunkId;
   final String? domain;
   final Map<String, String> headers;
   final Map<String, Object?> metadata;

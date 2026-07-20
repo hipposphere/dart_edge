@@ -113,6 +113,7 @@ final class SipCallEvent extends SipEvent {
     this.fromUri,
     this.toUri,
     this.relatedCallId,
+    this.trunkId,
     this.mediaAppId,
     super.metadata,
   });
@@ -123,6 +124,7 @@ final class SipCallEvent extends SipEvent {
   final String? fromUri;
   final String? toUri;
   final String? relatedCallId;
+  final String? trunkId;
   final String? mediaAppId;
 
   factory SipCallEvent.fromJson(Map<String, Object?> json) {
@@ -134,6 +136,7 @@ final class SipCallEvent extends SipEvent {
       fromUri: _readOptionalText(json, 'fromUri'),
       toUri: _readOptionalText(json, 'toUri'),
       relatedCallId: _readOptionalText(json, 'relatedCallId'),
+      trunkId: _readOptionalText(json, 'trunkId'),
       mediaAppId: _readOptionalText(json, 'mediaAppId'),
       metadata: _readMetadata(json),
     );
@@ -142,7 +145,8 @@ final class SipCallEvent extends SipEvent {
   @override
   String toString() =>
       'SipCallEvent(callId: $callId, direction: $direction, state: $state, '
-      'fromUri: $fromUri, toUri: $toUri, mediaAppId: $mediaAppId)';
+      'fromUri: $fromUri, toUri: $toUri, trunkId: $trunkId, '
+      'mediaAppId: $mediaAppId)';
 }
 
 final class SipRegistrationEvent extends SipEvent {
