@@ -1,3 +1,8 @@
+## 0.2.6
+
+- Emit generated docs manifests with preferred Dart quote styles and safely
+  escape interpolation markers and other string contents.
+
 ## 0.2.2
 
 - Forward Jaspr static file and handler base-path options from

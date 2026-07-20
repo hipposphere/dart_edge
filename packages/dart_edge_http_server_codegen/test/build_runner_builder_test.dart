@@ -11,8 +11,14 @@ void main() {
       await testBuilder(
         builder,
         const <String, String>{
+          'test_app|lib/referenced_user.dart': r'''
+final class _$ReferencedUser {}
+typedef ReferencedUser = _$ReferencedUser;
+''',
           'test_app|lib/models.dart': r'''
 // ignore_for_file: undefined_class
+
+import 'referenced_user.dart';
 
 part 'models.g.dart';
 
@@ -473,7 +479,10 @@ const publishStatusSchema = JsonSchema.string(
 @FromHttpSchema(
   createUserInputSchema,
   registry: userSchemas,
-  refs: [SchemaRefModel(FriendDto)],
+  refs: [
+    SchemaRefModel(FriendDto),
+    SchemaRefModel(ReferencedUser, schemaId: 'UserDto'),
+  ],
 )
 typedef CreateUserInput = _$CreateUserInput;
 
@@ -552,6 +561,7 @@ typedef PublishStatus = _$PublishStatus;
               contains('final DateTime? archivedAt;'),
               contains('final FriendDto? bestFriend;'),
               contains('final UserDto? manager;'),
+              isNot(contains('final _\$ReferencedUser? manager;')),
               contains('@override'),
               contains('"name": name'),
               contains('"created_at": createdAt.toIso8601String()'),

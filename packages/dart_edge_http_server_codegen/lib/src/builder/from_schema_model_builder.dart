@@ -1478,15 +1478,20 @@ SchemaRefModelSpec _schemaRefModelFromDartObject(
   required Element element,
 }) {
   final type = _field(object, 'type')?.toTypeValue();
-  final typeName = type?.element?.name;
+  final resolvedTypeName = type?.element?.name;
+  final schemaIdOverride = _stringField(object, 'schemaId');
+  final typeName = resolvedTypeName == null || resolvedTypeName.isEmpty
+      ? schemaIdOverride
+      : _publicSchemaRefTypeName(resolvedTypeName);
   if (typeName == null || typeName.isEmpty) {
     throw InvalidGenerationSourceError(
-      '@FromSchema refs entries must be const SchemaRefModel(Type) values.',
+      '@FromSchema refs entries must be const SchemaRefModel(Type) values. '
+      'Generated typedefs imported from another library must provide schemaId.',
       element: element,
     );
   }
 
-  final schemaId = _stringField(object, 'schemaId') ?? typeName;
+  final schemaId = schemaIdOverride ?? typeName;
   if (schemaId.isEmpty) {
     throw InvalidGenerationSourceError(
       '@FromSchema refs entries must use non-empty schema ids.',
@@ -1503,6 +1508,13 @@ SchemaRefModelSpec _schemaRefModelFromDartObject(
   }
 
   return SchemaRefModelSpec(schemaId: schemaId, typeName: typeName);
+}
+
+String _publicSchemaRefTypeName(String typeName) {
+  if (typeName.startsWith(r'_$') && typeName.length > 2) {
+    return typeName.substring(2);
+  }
+  return typeName;
 }
 
 JsonSchema _resolveRootSchema(
