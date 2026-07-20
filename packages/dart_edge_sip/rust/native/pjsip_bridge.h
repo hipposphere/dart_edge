@@ -325,6 +325,12 @@ bool dart_edge_sip_bridge_attach_media_app(
     dart_edge_sip_bridge_runtime* runtime,
     const char* session_id,
     const char* media_app_id,
+    uint32_t capture_sample_rate_hz,
+    uint32_t capture_channels,
+    uint32_t capture_frame_duration_ms,
+    uint32_t playback_sample_rate_hz,
+    uint32_t playback_channels,
+    uint32_t playback_frame_duration_ms,
     char* error,
     size_t error_len);
 

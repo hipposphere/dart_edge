@@ -1,3 +1,11 @@
+## 0.4.15
+
+- Let each SIP media app select independent PCM16 mono capture and playback
+  formats, including provider-native 16 kHz and 24 kHz rates.
+- Delegate conversion between media-app formats and negotiated call codecs to
+  the PJSIP conference bridge.
+- Bump the native SIP artifact to 0.1.7 for configurable media ports.
+
 ## 0.4.14
 
 - Expose the associated SIP trunk ID on call events and inbound dialplan

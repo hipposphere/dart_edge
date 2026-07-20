@@ -307,8 +307,14 @@ assistant and IVR style features:
 - play synthesized PCM16 clips back into the call with
   `session.media.playAudioBytes(...)`
 
-The normalized assistant format is currently `16 kHz`, mono, `20 ms` PCM16LE
-frames exposed through `SipAudioFormat.voiceAssistant()`.
+Each `SipMediaApp` selects its capture and playback formats through
+`audioFormats(...)`. Both directions use PCM16LE mono audio, but may use
+different sample rates and frame durations. This supports asymmetric providers
+such as a service that consumes 16 kHz input and produces 24 kHz output.
+
+The selected formats are exposed as `session.media.captureFormat` and
+`session.media.playbackFormat`. PJSIP's conference bridge converts between
+these media-app-native formats and the codec negotiated for the phone call.
 
 Media apps now use long-lived conference ports for both directions:
 
@@ -317,8 +323,8 @@ Media apps now use long-lived conference ports for both directions:
 - outbound PCM bytes are queued directly into a native playback ring buffer and
   streamed into the call without staging temporary media files
 
-The realtime media path currently assumes normalized `16 kHz` mono PCM16 for
-assistant playback.
+For symmetric 16 kHz media apps, use
+`SipMediaFormats.symmetric(SipAudioFormat.voiceAssistant())`.
 
 See [CONCEPT.md](CONCEPT.md) for the fuller package concept and phased
 implementation direction.

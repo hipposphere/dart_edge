@@ -90,14 +90,16 @@ final class SipRealtimeMediaSession {
   SipRealtimeMediaSession.internal({
     required this.callId,
     required this.mediaAppId,
-    required this.format,
+    required this.captureFormat,
+    required this.playbackFormat,
     required this._handle,
     required this._detach,
   });
 
   final String callId;
   final String mediaAppId;
-  final SipAudioFormat format;
+  final SipAudioFormat captureFormat;
+  final SipAudioFormat playbackFormat;
   final int _handle;
   final Future<void> Function() _detach;
   final Completer<void> _closedCompleter = Completer<void>();
@@ -155,7 +157,7 @@ final class SipRealtimeMediaSession {
         handle: _handle,
         sessionId: callId,
         bytes: bytes,
-        format: format ?? this.format,
+        format: format ?? playbackFormat,
       );
     } on StateError catch (error) {
       if (_markClosedIfNativeMediaDetached(error)) {
@@ -175,7 +177,7 @@ final class SipRealtimeMediaSession {
         handle: _handle,
         sessionId: callId,
         bytes: bytes,
-        format: format ?? this.format,
+        format: format ?? playbackFormat,
       );
     } on StateError catch (error) {
       if (_markClosedIfNativeMediaDetached(error)) {

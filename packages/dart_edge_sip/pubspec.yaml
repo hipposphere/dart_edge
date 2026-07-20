@@ -1,6 +1,6 @@
 name: dart_edge_sip
 description: Standalone native SIP runtime and PBX-style call control concepts for Dart Edge.
-version: 0.4.14
+version: 0.4.15
 publish_to: "https://registry.hippolabs.org/pub/internal-pub/"
 repository: https://github.com/hipposphere/dart_edge/tree/main/packages/dart_edge_sip
 

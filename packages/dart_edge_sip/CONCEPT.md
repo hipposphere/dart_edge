@@ -108,8 +108,9 @@ The current implementation now includes:
 - call control for answer, reject, hold, resume, transfer, bridge, and hangup
 - conference-bridge prompt playback
 - WAV recording and voicemail recording via the PJSUA conference bridge
-- media-app attachment plus normalized PCM16 media-session access for assistant
-  flows, backed by native streaming conference ports for bidirectional audio
+- media-app attachment plus provider-native PCM16 media-session access for
+  assistant flows, with independently configurable capture and playback ports
+  backed by PJSIP conference-bridge conversion to negotiated call codecs
 
 The package is still not a complete PBX. The remaining registrar work is
 advanced policy such as multi-contact selection, distributed registration

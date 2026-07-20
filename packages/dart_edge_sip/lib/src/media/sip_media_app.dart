@@ -1,10 +1,16 @@
 import 'dart:async';
 
 import '../runtime/sip_call_session.dart';
+import 'sip_audio.dart';
 import 'sip_realtime_media_session.dart';
 
 abstract interface class SipMediaApp {
   String get id;
+
+  FutureOr<SipMediaFormats> audioFormats({
+    required SipCallSession call,
+    required Map<String, Object?> metadata,
+  });
 
   FutureOr<void> run(SipMediaAppSession session);
 }

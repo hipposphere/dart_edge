@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:dart_edge_sip/dart_edge_sip.dart';
 import 'package:test/test.dart';
@@ -74,7 +75,23 @@ void main() {
           ),
         ],
       ),
-      mediaApps: [_TestMediaApp(runSession)],
+      mediaApps: [
+        _TestMediaApp(
+          runSession,
+          formats: const SipMediaFormats(
+            capture: SipAudioFormat(
+              sampleRateHz: 16000,
+              channels: 1,
+              frameDurationMs: 20,
+            ),
+            playback: SipAudioFormat(
+              sampleRateHz: 24000,
+              channels: 1,
+              frameDurationMs: 20,
+            ),
+          ),
+        ),
+      ],
     );
     addTearDown(sip.dispose);
 
@@ -103,9 +120,18 @@ void main() {
     expect(appSession.media.callId, call.id);
     expect(appSession.media.mediaAppId, 'assistant');
     expect(mediaSession.callId, call.id);
-    expect(mediaSession.format, const SipAudioFormat.voiceAssistant());
+    expect(mediaSession.captureFormat, const SipAudioFormat.voiceAssistant());
+    expect(
+      mediaSession.playbackFormat,
+      const SipAudioFormat(
+        sampleRateHz: 24000,
+        channels: 1,
+        frameDurationMs: 20,
+      ),
+    );
     expect(attachedEvent.mediaAppId, 'assistant');
 
+    await mediaSession.playAudioBytes(Uint8List(960));
     await mediaSession.clearPlaybackQueue();
 
     await call.hangup();
@@ -117,7 +143,8 @@ void main() {
     final session = SipRealtimeMediaSession.internal(
       callId: 'call-1',
       mediaAppId: 'assistant',
-      format: const SipAudioFormat.voiceAssistant(),
+      captureFormat: const SipAudioFormat.voiceAssistant(),
+      playbackFormat: const SipAudioFormat.voiceAssistant(),
       handle: 0,
       detach: () async {},
     );
@@ -182,12 +209,19 @@ void main() {
 }
 
 final class _TestMediaApp implements SipMediaApp {
-  const _TestMediaApp(this.runSession);
+  const _TestMediaApp(this.runSession, {required this.formats});
 
   final Completer<SipMediaAppSession> runSession;
+  final SipMediaFormats formats;
 
   @override
   String get id => 'assistant';
+
+  @override
+  SipMediaFormats audioFormats({
+    required SipCallSession call,
+    required Map<String, Object?> metadata,
+  }) => formats;
 
   @override
   Future<void> run(SipMediaAppSession session) async {

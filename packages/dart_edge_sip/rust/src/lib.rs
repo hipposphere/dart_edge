@@ -134,6 +134,12 @@ struct NativeVoicemailPayload {
 #[serde(rename_all = "camelCase")]
 struct NativeMediaAppPayload {
     media_app_id: String,
+    capture_sample_rate_hz: u32,
+    capture_channels: u32,
+    capture_frame_duration_ms: u32,
+    playback_sample_rate_hz: u32,
+    playback_channels: u32,
+    playback_frame_duration_ms: u32,
 }
 
 #[derive(Deserialize)]
@@ -922,6 +928,12 @@ impl PjsipRuntime {
                 self.raw.as_ptr(),
                 session_id.as_ptr(),
                 media_app_id.as_ptr(),
+                payload.capture_sample_rate_hz,
+                payload.capture_channels,
+                payload.capture_frame_duration_ms,
+                payload.playback_sample_rate_hz,
+                payload.playback_channels,
+                payload.playback_frame_duration_ms,
                 error.as_mut_ptr(),
                 error.len(),
             )
@@ -2454,6 +2466,12 @@ unsafe extern "C" {
         runtime: *mut dart_edge_sip_bridge_runtime,
         session_id: *const c_char,
         media_app_id: *const c_char,
+        capture_sample_rate_hz: u32,
+        capture_channels: u32,
+        capture_frame_duration_ms: u32,
+        playback_sample_rate_hz: u32,
+        playback_channels: u32,
+        playback_frame_duration_ms: u32,
         error: *mut c_char,
         error_len: usize,
     ) -> bool;

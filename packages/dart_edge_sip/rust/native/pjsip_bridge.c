@@ -15,6 +15,7 @@
 #define DART_EDGE_SIP_MEDIA_CHANNELS 1
 #define DART_EDGE_SIP_MEDIA_FRAME_DURATION_MS 20
 #define DART_EDGE_SIP_MEDIA_BITS_PER_SAMPLE 16
+#define DART_EDGE_SIP_MEDIA_MAX_FRAME_BYTES 4096
 #define DART_EDGE_SIP_MEDIA_CAPTURE_BUFFER_BYTES 160000
 #define DART_EDGE_SIP_MEDIA_PLAYBACK_BUFFER_BYTES 960000
 
@@ -95,6 +96,12 @@ typedef struct {
 typedef struct {
   bool ports_registered;
   bool ports_connected;
+  uint32_t capture_sample_rate_hz;
+  uint32_t capture_channels;
+  uint32_t capture_frame_duration_ms;
+  uint32_t playback_sample_rate_hz;
+  uint32_t playback_channels;
+  uint32_t playback_frame_duration_ms;
   pjsua_conf_port_id call_port_id;
   pjsua_conf_port_id inbound_port_id;
   pjsua_conf_port_id outbound_port_id;
@@ -1416,13 +1423,19 @@ static bool create_recording_path(
   return true;
 }
 
-static size_t media_bytes_per_frame(uint32_t sample_rate_hz, uint32_t channels) {
-  return (size_t)((sample_rate_hz * DART_EDGE_SIP_MEDIA_FRAME_DURATION_MS) / 1000) *
+static size_t media_bytes_per_frame(
+    uint32_t sample_rate_hz,
+    uint32_t channels,
+    uint32_t frame_duration_ms) {
+  return (size_t)((sample_rate_hz * frame_duration_ms) / 1000) *
       channels * (DART_EDGE_SIP_MEDIA_BITS_PER_SAMPLE / 8);
 }
 
-static size_t media_samples_per_frame(uint32_t sample_rate_hz, uint32_t channels) {
-  return (size_t)((sample_rate_hz * DART_EDGE_SIP_MEDIA_FRAME_DURATION_MS) / 1000) * channels;
+static size_t media_samples_per_frame(
+    uint32_t sample_rate_hz,
+    uint32_t channels,
+    uint32_t frame_duration_ms) {
+  return (size_t)((sample_rate_hz * frame_duration_ms) / 1000) * channels;
 }
 
 static bool audio_ring_init(dart_edge_sip_audio_ring* ring, size_t capacity) {
@@ -1624,6 +1637,9 @@ static dart_edge_sip_stream_port* create_stream_port(
     unsigned signature,
     bool capture,
     bool* active,
+    uint32_t sample_rate_hz,
+    uint32_t channels,
+    uint32_t frame_duration_ms,
     size_t ring_capacity,
     char* error,
     size_t error_len) {
@@ -1644,12 +1660,13 @@ static dart_edge_sip_stream_port* create_stream_port(
       &port->base.info,
       &port_name,
       signature,
-      DART_EDGE_SIP_MEDIA_SAMPLE_RATE_HZ,
-      DART_EDGE_SIP_MEDIA_CHANNELS,
+      sample_rate_hz,
+      channels,
       DART_EDGE_SIP_MEDIA_BITS_PER_SAMPLE,
       (unsigned)media_samples_per_frame(
-          DART_EDGE_SIP_MEDIA_SAMPLE_RATE_HZ,
-          DART_EDGE_SIP_MEDIA_CHANNELS));
+          sample_rate_hz,
+          channels,
+          frame_duration_ms));
   if (status != PJ_SUCCESS) {
     audio_ring_destroy(&port->ring);
     free(port);
@@ -1708,6 +1725,26 @@ static void destroy_media_slots(dart_edge_sip_bridge_runtime* runtime) {
   }
 }
 
+static void remove_media_ports(
+    dart_edge_sip_bridge_runtime* runtime,
+    dart_edge_sip_bridge_media_slot* media_slot) {
+  if (runtime == NULL || media_slot == NULL) {
+    return;
+  }
+  clear_media_streams(media_slot);
+  if (media_slot->ports_registered) {
+    if (media_slot->inbound_port_id != PJSUA_INVALID_ID) {
+      pjsua_conf_remove_port(media_slot->inbound_port_id);
+    }
+    if (media_slot->outbound_port_id != PJSUA_INVALID_ID) {
+      pjsua_conf_remove_port(media_slot->outbound_port_id);
+    }
+  }
+  destroy_stream_port(media_slot->inbound_port);
+  destroy_stream_port(media_slot->outbound_port);
+  reset_media_slot(media_slot);
+}
+
 static bool ensure_media_ports_registered(
     dart_edge_sip_bridge_runtime* runtime,
     pjsua_call_id call_id,
@@ -1737,6 +1774,9 @@ static bool ensure_media_ports_registered(
       PJMEDIA_SIGNATURE('D', 'E', 'C', 'P'),
       true,
       &slot->media_session_active,
+      media_slot->capture_sample_rate_hz,
+      media_slot->capture_channels,
+      media_slot->capture_frame_duration_ms,
       DART_EDGE_SIP_MEDIA_CAPTURE_BUFFER_BYTES,
       error,
       error_len);
@@ -1749,6 +1789,9 @@ static bool ensure_media_ports_registered(
       PJMEDIA_SIGNATURE('D', 'E', 'P', 'B'),
       false,
       &slot->media_session_active,
+      media_slot->playback_sample_rate_hz,
+      media_slot->playback_channels,
+      media_slot->playback_frame_duration_ms,
       DART_EDGE_SIP_MEDIA_PLAYBACK_BUFFER_BYTES,
       error,
       error_len);
@@ -3214,6 +3257,12 @@ bool dart_edge_sip_bridge_attach_media_app(
     dart_edge_sip_bridge_runtime* runtime,
     const char* session_id,
     const char* media_app_id,
+    uint32_t capture_sample_rate_hz,
+    uint32_t capture_channels,
+    uint32_t capture_frame_duration_ms,
+    uint32_t playback_sample_rate_hz,
+    uint32_t playback_channels,
+    uint32_t playback_frame_duration_ms,
     char* error,
     size_t error_len) {
   if (runtime == NULL) {
@@ -3222,6 +3271,35 @@ bool dart_edge_sip_bridge_attach_media_app(
   }
   if (media_app_id == NULL || media_app_id[0] == '\0') {
     store_error(error, error_len, "attachMediaApp requires a mediaAppId.");
+    return false;
+  }
+  if (capture_sample_rate_hz == 0 || capture_sample_rate_hz > 192000 ||
+      capture_channels != 1 || capture_frame_duration_ms == 0 ||
+      capture_frame_duration_ms > 1000 || playback_sample_rate_hz == 0 ||
+      playback_sample_rate_hz > 192000 || playback_channels != 1 ||
+      playback_frame_duration_ms == 0 || playback_frame_duration_ms > 1000) {
+    store_error(
+        error,
+        error_len,
+        "attachMediaApp requires positive PCM16 mono media frames no larger than 4096 bytes.");
+    return false;
+  }
+  size_t capture_frame_bytes = media_bytes_per_frame(
+      capture_sample_rate_hz,
+      capture_channels,
+      capture_frame_duration_ms);
+  size_t playback_frame_bytes = media_bytes_per_frame(
+      playback_sample_rate_hz,
+      playback_channels,
+      playback_frame_duration_ms);
+  if (capture_frame_bytes == 0 ||
+      capture_frame_bytes > DART_EDGE_SIP_MEDIA_MAX_FRAME_BYTES ||
+      playback_frame_bytes == 0 ||
+      playback_frame_bytes > DART_EDGE_SIP_MEDIA_MAX_FRAME_BYTES) {
+    store_error(
+        error,
+        error_len,
+        "attachMediaApp requires positive PCM16 mono media frames no larger than 4096 bytes.");
     return false;
   }
 
@@ -3246,7 +3324,23 @@ bool dart_edge_sip_bridge_attach_media_app(
 
   dart_edge_sip_bridge_media_slot* media_slot = media_slot_for_call(runtime, call_id);
   if (media_slot != NULL) {
-    clear_media_streams(media_slot);
+    if (media_slot->ports_registered &&
+        (media_slot->capture_sample_rate_hz != capture_sample_rate_hz ||
+         media_slot->capture_channels != capture_channels ||
+         media_slot->capture_frame_duration_ms != capture_frame_duration_ms ||
+         media_slot->playback_sample_rate_hz != playback_sample_rate_hz ||
+         media_slot->playback_channels != playback_channels ||
+         media_slot->playback_frame_duration_ms != playback_frame_duration_ms)) {
+      remove_media_ports(runtime, media_slot);
+    } else {
+      clear_media_streams(media_slot);
+    }
+    media_slot->capture_sample_rate_hz = capture_sample_rate_hz;
+    media_slot->capture_channels = capture_channels;
+    media_slot->capture_frame_duration_ms = capture_frame_duration_ms;
+    media_slot->playback_sample_rate_hz = playback_sample_rate_hz;
+    media_slot->playback_channels = playback_channels;
+    media_slot->playback_frame_duration_ms = playback_frame_duration_ms;
   }
   if (!ensure_media_ports_connected(runtime, call_id, slot, error, error_len)) {
     return false;
@@ -3313,13 +3407,13 @@ bool dart_edge_sip_bridge_read_media_frame(
     *bytes_written = 0;
   }
   if (sample_rate_hz != NULL) {
-    *sample_rate_hz = DART_EDGE_SIP_MEDIA_SAMPLE_RATE_HZ;
+    *sample_rate_hz = 0;
   }
   if (channels != NULL) {
-    *channels = DART_EDGE_SIP_MEDIA_CHANNELS;
+    *channels = 0;
   }
   if (frame_duration_ms != NULL) {
-    *frame_duration_ms = DART_EDGE_SIP_MEDIA_FRAME_DURATION_MS;
+    *frame_duration_ms = 0;
   }
   if (sequence != NULL) {
     *sequence = 0;
@@ -3349,20 +3443,31 @@ bool dart_edge_sip_bridge_read_media_frame(
     return false;
   }
 
-  size_t frame_bytes =
-      media_bytes_per_frame(DART_EDGE_SIP_MEDIA_SAMPLE_RATE_HZ, DART_EDGE_SIP_MEDIA_CHANNELS);
-  if (buffer_len < frame_bytes) {
-    store_error(error, error_len, "SIP media frame buffer is too small.");
-    return false;
-  }
-
   dart_edge_sip_bridge_media_slot* media_slot = media_slot_for_call(runtime, call_id);
   if (media_slot == NULL || media_slot->inbound_port == NULL) {
     store_error(error, error_len, "SIP media capture port is not initialized.");
     return false;
   }
+  size_t frame_bytes = media_bytes_per_frame(
+      media_slot->capture_sample_rate_hz,
+      media_slot->capture_channels,
+      media_slot->capture_frame_duration_ms);
+  if (buffer_len < frame_bytes) {
+    store_error(error, error_len, "SIP media frame buffer is too small.");
+    return false;
+  }
   if (!audio_ring_read_exact(&media_slot->inbound_port->ring, buffer, frame_bytes)) {
     return true;
+  }
+
+  if (sample_rate_hz != NULL) {
+    *sample_rate_hz = media_slot->capture_sample_rate_hz;
+  }
+  if (channels != NULL) {
+    *channels = media_slot->capture_channels;
+  }
+  if (frame_duration_ms != NULL) {
+    *frame_duration_ms = media_slot->capture_frame_duration_ms;
   }
 
   slot->media_frame_sequence += 1;
@@ -3385,7 +3490,6 @@ bool dart_edge_sip_bridge_play_raw_audio(
     uint32_t frame_duration_ms,
     char* error,
     size_t error_len) {
-  (void)frame_duration_ms;
   if (runtime == NULL) {
     store_error(error, error_len, "Missing PJSIP runtime.");
     return false;
@@ -3410,18 +3514,18 @@ bool dart_edge_sip_bridge_play_raw_audio(
     return false;
   }
 
-  if (sample_rate_hz != DART_EDGE_SIP_MEDIA_SAMPLE_RATE_HZ ||
-      channels != DART_EDGE_SIP_MEDIA_CHANNELS) {
-    store_error(
-        error,
-        error_len,
-        "Realtime SIP media playback currently requires 16 kHz mono PCM16 audio.");
-    return false;
-  }
-
   dart_edge_sip_bridge_media_slot* media_slot = media_slot_for_call(runtime, call_id);
   if (media_slot == NULL || media_slot->outbound_port == NULL) {
     store_error(error, error_len, "SIP media playback port is not initialized.");
+    return false;
+  }
+  if (sample_rate_hz != media_slot->playback_sample_rate_hz ||
+      channels != media_slot->playback_channels ||
+      frame_duration_ms != media_slot->playback_frame_duration_ms) {
+    store_error(
+        error,
+        error_len,
+        "Realtime SIP media playback format must match the attached media app format.");
     return false;
   }
   if (!ensure_media_ports_connected(runtime, call_id, slot, error, error_len)) {

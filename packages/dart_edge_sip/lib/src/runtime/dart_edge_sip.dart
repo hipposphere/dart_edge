@@ -310,10 +310,18 @@ final class DartEdgeSip {
     if (mediaApp == null) {
       throw StateError("Unknown SIP media app '$mediaAppId'.");
     }
+    final formats = await mediaApp.audioFormats(
+      call: call,
+      metadata: Map<String, Object?>.unmodifiable(metadata),
+    );
+    _validateMediaAppFormat(formats.capture, direction: 'capture');
+    _validateMediaAppFormat(formats.playback, direction: 'playback');
 
     final existing = _mediaSessions[call.id];
     if (existing != null && !existing.isClosed) {
-      if (existing.mediaAppId == mediaAppId) {
+      if (existing.mediaAppId == mediaAppId &&
+          existing.captureFormat == formats.capture &&
+          existing.playbackFormat == formats.playback) {
         return existing;
       }
       await _detachMediaApp(call.id);
@@ -322,13 +330,22 @@ final class DartEdgeSip {
     DartEdgeSipNative.issueCommand(_handle!, {
       'kind': 'attachMediaApp',
       'sessionId': call.id,
-      'payload': {'mediaAppId': mediaAppId},
+      'payload': {
+        'mediaAppId': mediaAppId,
+        'captureSampleRateHz': formats.capture.sampleRateHz,
+        'captureChannels': formats.capture.channels,
+        'captureFrameDurationMs': formats.capture.frameDurationMs,
+        'playbackSampleRateHz': formats.playback.sampleRateHz,
+        'playbackChannels': formats.playback.channels,
+        'playbackFrameDurationMs': formats.playback.frameDurationMs,
+      },
     });
 
     final session = SipRealtimeMediaSession.internal(
       callId: call.id,
       mediaAppId: mediaAppId,
-      format: const SipAudioFormat.voiceAssistant(),
+      captureFormat: formats.capture,
+      playbackFormat: formats.playback,
       handle: _handle!,
       detach: () => _detachMediaApp(call.id),
     );
@@ -576,5 +593,41 @@ final class DartEdgeSip {
     if (!_started || _handle == null) {
       throw StateError('DartEdgeSip is not started.');
     }
+  }
+}
+
+void _validateMediaAppFormat(
+  SipAudioFormat format, {
+  required String direction,
+}) {
+  if (format.encoding != SipAudioEncoding.pcm16le) {
+    throw ArgumentError.value(
+      format.encoding,
+      '$direction.encoding',
+      'SIP media apps currently require PCM16LE audio.',
+    );
+  }
+  if (format.sampleRateHz <= 0 || format.sampleRateHz > 192000) {
+    throw ArgumentError.value(
+      format.sampleRateHz,
+      '$direction.sampleRateHz',
+      'SIP media app sample rate must be between 1 and 192000 Hz.',
+    );
+  }
+  if (format.channels != 1) {
+    throw ArgumentError.value(
+      format.channels,
+      '$direction.channels',
+      'SIP media apps currently require mono audio.',
+    );
+  }
+  if (format.frameDurationMs <= 0 ||
+      format.frameDurationMs > 1000 ||
+      format.bytesPerFrame > 4096) {
+    throw ArgumentError.value(
+      format.frameDurationMs,
+      '$direction.frameDurationMs',
+      'SIP media app frames must be positive and no larger than 4096 bytes.',
+    );
   }
 }
