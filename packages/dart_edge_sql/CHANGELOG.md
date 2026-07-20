@@ -1,4 +1,4 @@
-## 0.3.33
+## 0.3.34
 
 - Preserve native PostgreSQL parameter types for null generated-column and
   explicitly cast values so cached statements remain valid when later calls
