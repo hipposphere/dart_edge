@@ -190,6 +190,25 @@ void main() {
     });
   });
 
+  test(
+    'preserves generated nullable jsonb parameters during native compilation',
+    () async {
+      final db = _RecordingExecutor(SqlDialect.postgres);
+
+      await db.typed
+          .insertInto(BlueprintsTable.table)
+          .values(const BlueprintInsert(definition: null))
+          .execute();
+
+      final statement = compileSqlStatement(SqlDialect.postgres, db.statement);
+
+      expect(statement.sql, contains(r'$1::jsonb'));
+      expect(statement.positionalParameters, [
+        const NativeSqlNull(NativeSqlValueKind.string),
+      ]);
+    },
+  );
+
   test('encodes explicitly cast raw jsonb parameters as JSON text', () {
     final statement = compileSqlStatement(
       SqlDialect.postgres,
@@ -503,7 +522,7 @@ final class DocumentsTable
 final class BlueprintInsert {
   const BlueprintInsert({required this.definition});
 
-  final Map<String, Object?> definition;
+  final Map<String, Object?>? definition;
 
   Map<String, Object?> toColumns() => <String, Object?>{
     'definition': definition,
@@ -529,6 +548,7 @@ final class BlueprintsTable
   static const definition = SqlColumn<Map<String, Object?>>(
     table: table,
     name: 'definition',
+    nullable: true,
     databaseType: 'jsonb',
   );
 

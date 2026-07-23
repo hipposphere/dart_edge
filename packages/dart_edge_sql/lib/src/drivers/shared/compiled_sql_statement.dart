@@ -133,6 +133,7 @@ SqlStatement compileSqlStatement(SqlDialect dialect, SqlStatement statement) {
 
     positionalParameters.add(switch (dialect) {
       SqlDialect.postgres when explicitParameter != null => value,
+      SqlDialect.postgres when value is NativeSqlNull => value,
       SqlDialect.postgres when value == null && castType != null =>
         postgresTypedNull(castType),
       SqlDialect.postgres when _hasArrayCast(statement.sql, castIndex) =>

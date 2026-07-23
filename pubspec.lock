@@ -325,10 +325,10 @@ packages:
     dependency: transitive
     description:
       name: hippobase_auth_models
-      sha256: eaeed3bd1cd9fd3009a72049feaa6be9050be9abe0fd6b32859779f76a9906fb
+      sha256: "86aef39cf8d901fda68adf39ee8e829dd81f1d8d3fb362ba746c756355317f54"
       url: "https://pub.hippolabs.org"
     source: hosted
-    version: "0.1.7"
+    version: "0.1.9"
   hooks:
     dependency: transitive
     description:
@@ -445,10 +445,10 @@ packages:
     dependency: transitive
     description:
       name: json_schema
-      sha256: e271f334b7feb2f16d33a70d9ff5833f9aa13f744a552ef12a32a70bb601ce51
+      sha256: ea97de334403ac210704f32685f62d969eabd9a75f3af65b4b66a904476cb531
       url: "https://pub.hippolabs.org"
     source: hosted
-    version: "0.1.2"
+    version: "0.1.4"
   lints:
     dependency: "direct dev"
     description:
