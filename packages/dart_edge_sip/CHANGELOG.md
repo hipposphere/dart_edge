@@ -1,3 +1,13 @@
+## 0.4.17
+
+- Replace polling-based call-state waits with per-call event waiters and a
+  configurable transition timeout.
+- Send `180 Ringing` immediately for inbound calls while the Dart dialplan and
+  media app prepare.
+- Register media-app ports before the final answer, connect them only after the
+  call is confirmed, and roll them back if answering fails.
+- Bump the native SIP artifact to 0.1.9.
+
 ## 0.4.16
 
 - Add pre-answer media-app preparation with `prepareMediaApp` and

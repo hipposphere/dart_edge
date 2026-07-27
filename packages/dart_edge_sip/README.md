@@ -141,10 +141,15 @@ await prepared.answerAndAttach();
 ```
 
 Inbound dialplan routes to media apps use this lifecycle automatically. The
-runtime sends the successful SIP answer only after `prepare` completes, closes
-unused preparations when the caller disconnects, and rejects the call with a
-server error if preparation fails. Legacy `SipMediaApp` implementations remain
-supported and are adapted to the same attachment flow.
+runtime registers the native media ports after `prepare` completes, sends the
+successful SIP answer, and connects those ports when PJSIP confirms the call.
+It closes unused preparations when the caller disconnects and rejects the call
+with a server error if preparation fails. Legacy `SipMediaApp`
+implementations remain supported and are adapted to the same attachment flow.
+
+`answerAndAttach` waits for the established state through per-call event
+notifications rather than polling. Configure its upper bound with
+`DartEdgeSip(callStateTransitionTimeout: ...)`.
 
 ## V1 Intent
 

@@ -756,11 +756,13 @@ static void on_call_media_state(pjsua_call_id call_id) {
   dart_edge_sip_bridge_call_slot* slot = slot_for_call(runtime, call_id);
   if (slot != NULL && slot->occupied && slot->media_session_active) {
     dart_edge_sip_bridge_media_slot* media_slot = media_slot_for_call(runtime, call_id);
-    if (call_has_active_audio_media(&info)) {
-      char ignored_error[256];
-      ensure_media_ports_connected(runtime, call_id, slot, ignored_error, sizeof(ignored_error));
-    } else if (media_slot != NULL) {
-      clear_media_streams(media_slot);
+    if (info.state == PJSIP_INV_STATE_CONFIRMED) {
+      if (call_has_active_audio_media(&info)) {
+        char ignored_error[256];
+        ensure_media_ports_connected(runtime, call_id, slot, ignored_error, sizeof(ignored_error));
+      } else if (media_slot != NULL) {
+        clear_media_streams(media_slot);
+      }
     }
   }
 
@@ -810,7 +812,10 @@ static void on_incoming_call(
     }
   }
 
+  // Preserve the initial INVITE event so Dart can start its dialplan before
+  // PJSIP transitions the call into the early/ringing state.
   emit_call_state(runtime, call_id);
+  pjsua_call_answer(call_id, PJSIP_SC_RINGING, NULL, NULL);
 }
 
 static void on_reg_state2(pjsua_acc_id acc_id, pjsua_reg_info* info) {
@@ -3499,7 +3504,23 @@ bool dart_edge_sip_bridge_attach_media_app(
     media_slot->capture_buffer_duration_ms = capture_buffer_duration_ms;
     media_slot->playback_buffer_duration_ms = playback_buffer_duration_ms;
   }
-  if (!ensure_media_ports_connected(runtime, call_id, slot, error, error_len)) {
+  if (!ensure_media_ports_registered(runtime, call_id, slot, error, error_len)) {
+    slot->media_session_active = false;
+    slot->media_app_id[0] = '\0';
+    if (media_slot != NULL) {
+      remove_media_ports(runtime, media_slot);
+    }
+    return false;
+  }
+  pjsua_call_info call_info;
+  if (pjsua_call_get_info(call_id, &call_info) == PJ_SUCCESS &&
+      call_info.state == PJSIP_INV_STATE_CONFIRMED &&
+      !ensure_media_ports_connected(runtime, call_id, slot, error, error_len)) {
+    slot->media_session_active = false;
+    slot->media_app_id[0] = '\0';
+    if (media_slot != NULL) {
+      remove_media_ports(runtime, media_slot);
+    }
     return false;
   }
 
