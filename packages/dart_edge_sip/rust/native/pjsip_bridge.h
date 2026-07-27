@@ -80,6 +80,11 @@ typedef struct {
   bool enable_dtmf_detection;
   const char* user_agent;
   const char* external_address;
+  const char* stun_servers;
+  const char* turn_server;
+  const char* turn_username;
+  const char* turn_password;
+  const char* turn_realm;
   const char* recording_directory;
   const char* voicemail_directory;
   const char* default_greeting_uri;
@@ -91,6 +96,11 @@ typedef struct {
   uint32_t port;
   const char* public_address;
   const char* tls_profile;
+  const char* tls_certificate_path;
+  const char* tls_private_key_path;
+  const char* tls_private_key_password;
+  const char* tls_ca_path;
+  bool tls_verify_server;
 } dart_edge_sip_bridge_transport_config;
 
 typedef struct {
@@ -131,6 +141,21 @@ typedef struct {
   uint64_t playback_underrun_count;
   uint64_t playback_dropped_bytes;
 } dart_edge_sip_bridge_media_queue_stats;
+
+typedef struct {
+  char codec_id[64];
+  uint32_t clock_rate_hz;
+  uint32_t channels;
+  uint64_t rx_packets;
+  uint64_t rx_packets_lost;
+  uint64_t tx_packets;
+  uint64_t tx_packets_lost;
+  uint64_t jitter_mean_us;
+  uint64_t round_trip_mean_us;
+  uint64_t jitter_buffer_lost_frames;
+  uint64_t jitter_buffer_discarded_frames;
+  uint64_t jitter_buffer_empty_reads;
+} dart_edge_sip_bridge_media_stats;
 
 typedef struct {
   int32_t kind;
@@ -403,6 +428,13 @@ bool dart_edge_sip_bridge_get_media_queue_stats(
     dart_edge_sip_bridge_runtime* runtime,
     const char* session_id,
     dart_edge_sip_bridge_media_queue_stats* stats_out,
+    char* error,
+    size_t error_len);
+
+bool dart_edge_sip_bridge_get_media_stats(
+    dart_edge_sip_bridge_runtime* runtime,
+    const char* session_id,
+    dart_edge_sip_bridge_media_stats* stats_out,
     char* error,
     size_t error_len);
 

@@ -9,10 +9,18 @@ Future<void> main(List<String> args) async {
     }
 
     final packageName = input.packageName;
+    final pkgConfigPath = input.userDefines.path('pkg_config_path');
+    if (pkgConfigPath != null) {
+      output.dependencies.add(pkgConfigPath);
+    }
 
     await DartEdgePrebuiltRustBuilder(
       assetName: '$packageName.dart',
       cratePath: 'rust',
+      extraCargoEnvironmentVariables: {
+        if (pkgConfigPath != null)
+          'PKG_CONFIG_PATH': pkgConfigPath.toFilePath(),
+      },
     ).run(input: input, output: output);
   });
 }

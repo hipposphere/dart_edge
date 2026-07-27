@@ -11,11 +11,7 @@ import '../native/dart_edge_sip_native.dart';
 import '../registrar/sip_registrar.dart';
 import 'sip_call_session.dart';
 
-enum SipMediaAppFailurePolicy {
-  reportOnly,
-  detach,
-  hangup,
-}
+enum SipMediaAppFailurePolicy { reportOnly, detach, hangup }
 
 final class DartEdgeSip {
   DartEdgeSip({
@@ -84,8 +80,9 @@ final class DartEdgeSip {
       .where((event) => event is SipVoicemailEvent)
       .cast<SipVoicemailEvent>();
 
-  Stream<SipDtmfEvent> get dtmfEvents =>
-      _events.stream.where((event) => event is SipDtmfEvent).cast<SipDtmfEvent>();
+  Stream<SipDtmfEvent> get dtmfEvents => _events.stream
+      .where((event) => event is SipDtmfEvent)
+      .cast<SipDtmfEvent>();
 
   Future<void> addTrunk(SipTrunkConfig trunk) async {
     _ensureStarted();
@@ -365,34 +362,51 @@ final class DartEdgeSip {
             metadata: immutableMetadata,
           )
         : _LegacySipMediaAppPreparation(mediaApp);
+    final callStateAfterPreparation = _callStates[call.id];
+    if (callStateAfterPreparation == SipCallState.terminated ||
+        callStateAfterPreparation == SipCallState.rejected) {
+      await preparation.close();
+      throw StateError(
+        'SIP call ${call.id} ended while its media app was being prepared.',
+      );
+    }
     late final SipPreparedMediaApp prepared;
-    prepared = SipPreparedMediaApp.internal(
+    prepared = SipPreparedMediaApp._(
       call: call,
       mediaAppId: mediaAppId,
       formats: formats,
       attach: ({required bool answer, required int answerStatus}) async {
-        if (answer) {
-          await _issueCallCommand(
-            call.id,
-            'answer',
-            payload: {'status': answerStatus},
-          );
-          await _waitForCallState(call.id, SipCallState.established);
-          if (_callStates[call.id] != SipCallState.established) {
-            throw StateError(
-              'SIP call ${call.id} did not become established before media attachment.',
+        var answerRequested = false;
+        try {
+          if (answer) {
+            answerRequested = true;
+            await _issueCallCommand(
+              call.id,
+              'answer',
+              payload: {'status': answerStatus},
             );
+            await _waitForCallState(call.id, SipCallState.established);
+            if (_callStates[call.id] != SipCallState.established) {
+              throw StateError(
+                'SIP call ${call.id} did not become established before media attachment.',
+              );
+            }
           }
+          final session = await _attachPreparedMediaApp(
+            call,
+            mediaAppId: mediaAppId,
+            formats: formats,
+            metadata: immutableMetadata,
+            preparation: preparation,
+          );
+          _forgetPreparedMediaApp(prepared);
+          return session;
+        } catch (error, stackTrace) {
+          if (answerRequested) {
+            await _hangupAfterPreparedAttachFailure(call);
+          }
+          Error.throwWithStackTrace(error, stackTrace);
         }
-        final session = await _attachPreparedMediaApp(
-          call,
-          mediaAppId: mediaAppId,
-          formats: formats,
-          metadata: immutableMetadata,
-          preparation: preparation,
-        );
-        _forgetPreparedMediaApp(prepared);
-        return session;
       },
       closePreparation: () async {
         _forgetPreparedMediaApp(prepared);
@@ -403,6 +417,23 @@ final class DartEdgeSip {
         .putIfAbsent(call.id, () => <SipPreparedMediaApp>{})
         .add(prepared);
     return prepared;
+  }
+
+  Future<void> _hangupAfterPreparedAttachFailure(SipCallSession call) async {
+    try {
+      await _issueCallCommand(
+        call.id,
+        'hangup',
+        payload: const {
+          'status': 500,
+          'reason': 'Prepared SIP media attachment failed.',
+        },
+      );
+    } catch (error, stackTrace) {
+      if (!_events.isClosed) {
+        _events.addError(error, stackTrace);
+      }
+    }
   }
 
   Future<SipRealtimeMediaSession> _attachPreparedMediaApp(
@@ -550,7 +581,24 @@ final class DartEdgeSip {
       );
       await _applyInboundDialplanDecision(_session(event.callId), decision);
     } catch (error, stackTrace) {
-      _events.addError(error, stackTrace);
+      try {
+        await _issueCallCommand(
+          event.callId,
+          'reject',
+          payload: const {
+            'status': 500,
+            'reason': 'SIP media preparation failed.',
+          },
+          drain: false,
+        );
+      } catch (rejectError, rejectStackTrace) {
+        if (!_events.isClosed) {
+          _events.addError(rejectError, rejectStackTrace);
+        }
+      }
+      if (!_events.isClosed) {
+        _events.addError(error, stackTrace);
+      }
     }
   }
 
@@ -626,11 +674,7 @@ final class DartEdgeSip {
       }
     } finally {
       if (!session.isClosed) {
-        await _handleMediaAppTermination(
-          call,
-          session,
-          failed: failed,
-        );
+        await _handleMediaAppTermination(call, session, failed: failed);
       }
       try {
         await preparation.close();
@@ -774,7 +818,7 @@ final class DartEdgeSip {
   }
 }
 
-typedef _AttachPreparedMediaApp =
+typedef SipPreparedMediaAppAttach =
     Future<SipRealtimeMediaSession> Function({
       required bool answer,
       required int answerStatus,
@@ -782,25 +826,25 @@ typedef _AttachPreparedMediaApp =
 
 /// A media app whose external resources are ready before SIP answer.
 final class SipPreparedMediaApp {
-  SipPreparedMediaApp.internal({
+  SipPreparedMediaApp._({
     required this.call,
     required this.mediaAppId,
     required this.formats,
-    required _AttachPreparedMediaApp attach,
-    required Future<void> Function() closePreparation,
-  }) : _attach = attach,
-       _closePreparation = closePreparation;
+    required this._attach,
+    required this._closePreparation,
+  });
 
   final SipCallSession call;
   final String mediaAppId;
   final SipMediaFormats formats;
-  final _AttachPreparedMediaApp _attach;
+  final SipPreparedMediaAppAttach _attach;
   final Future<void> Function() _closePreparation;
 
   Future<SipRealtimeMediaSession>? _attachment;
+  var _attached = false;
   var _closed = false;
 
-  bool get isAttached => _attachment != null;
+  bool get isAttached => _attached;
 
   bool get isClosed => _closed;
 
@@ -843,17 +887,23 @@ final class SipPreparedMediaApp {
     required int answerStatus,
   }) async {
     try {
-      return await _attach(answer: answer, answerStatus: answerStatus);
-    } catch (_) {
+      final session = await _attach(answer: answer, answerStatus: answerStatus);
+      _attached = true;
+      return session;
+    } catch (error, stackTrace) {
       _attachment = null;
       _closed = true;
-      await _closePreparation();
-      rethrow;
+      try {
+        await _closePreparation();
+      } catch (_) {
+        // Preserve the attachment failure, which is the actionable cause.
+      }
+      Error.throwWithStackTrace(error, stackTrace);
     }
   }
 
   Future<void> close() async {
-    if (_closed || isAttached) {
+    if (_closed || _attachment != null) {
       return;
     }
     _closed = true;

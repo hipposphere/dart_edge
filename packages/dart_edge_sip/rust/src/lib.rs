@@ -9,7 +9,7 @@ use once_cell::sync::Lazy;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-const DART_EDGE_SIP_NATIVE_ABI_VERSION: i32 = 3;
+const DART_EDGE_SIP_NATIVE_ABI_VERSION: i32 = 4;
 const ERROR_BUFFER_LEN: usize = 1024;
 const SESSION_BUFFER_LEN: usize = 128;
 const STORAGE_BUFFER_LEN: usize = 1024;
@@ -177,6 +177,7 @@ struct NativeSipServerConfig {
     server_name: String,
     engine: NativeSipEngineConfig,
     transports: Vec<NativeSipTransportBinding>,
+    tls_profiles: Vec<NativeSipTlsProfile>,
     realms: Vec<NativeSipRealmConfig>,
     endpoints: Vec<NativeSipEndpointConfig>,
     trunks: Vec<NativeSipTrunkConfig>,
@@ -184,6 +185,17 @@ struct NativeSipServerConfig {
     recordings: NativeSipStorageConfig,
     voicemail: NativeSipVoicemailStorageConfig,
     features: NativeSipFeatureFlags,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct NativeSipTlsProfile {
+    id: String,
+    certificate_path: String,
+    private_key_path: String,
+    private_key_password: Option<String>,
+    ca_path: Option<String>,
+    verify_server: bool,
 }
 
 #[derive(Deserialize)]
@@ -261,6 +273,22 @@ struct NativeSipMediaConfig {
     enable_srtp: bool,
     require_srtp: bool,
     enable_dtmf_detection: bool,
+    nat: NativeSipNatConfig,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct NativeSipNatConfig {
+    stun_servers: Vec<String>,
+    turn_server: Option<NativeSipTurnServer>,
+}
+
+#[derive(Deserialize)]
+struct NativeSipTurnServer {
+    server: String,
+    username: String,
+    password: String,
+    realm: String,
 }
 
 #[derive(Deserialize)]
@@ -303,6 +331,40 @@ impl PjsipRuntime {
 
         let user_agent = c_string(&config.engine.user_agent)?;
         let external_address = optional_c_string(config.media.external_address.as_deref())?;
+        let stun_servers_value = config.media.nat.stun_servers.join(",");
+        let stun_servers = optional_c_string(Some(stun_servers_value.as_str()))?;
+        let turn_server = optional_c_string(
+            config
+                .media
+                .nat
+                .turn_server
+                .as_ref()
+                .map(|turn| turn.server.as_str()),
+        )?;
+        let turn_username = optional_c_string(
+            config
+                .media
+                .nat
+                .turn_server
+                .as_ref()
+                .map(|turn| turn.username.as_str()),
+        )?;
+        let turn_password = optional_c_string(
+            config
+                .media
+                .nat
+                .turn_server
+                .as_ref()
+                .map(|turn| turn.password.as_str()),
+        )?;
+        let turn_realm = optional_c_string(
+            config
+                .media
+                .nat
+                .turn_server
+                .as_ref()
+                .map(|turn| turn.realm.as_str()),
+        )?;
         let recording_directory = if config.recordings.enabled {
             optional_c_string(config.recordings.directory.as_deref())?
         } else {
@@ -335,6 +397,21 @@ impl PjsipRuntime {
             external_address: external_address
                 .as_ref()
                 .map_or(std::ptr::null(), |value| value.as_ptr()),
+            stun_servers: stun_servers
+                .as_ref()
+                .map_or(std::ptr::null(), |value| value.as_ptr()),
+            turn_server: turn_server
+                .as_ref()
+                .map_or(std::ptr::null(), |value| value.as_ptr()),
+            turn_username: turn_username
+                .as_ref()
+                .map_or(std::ptr::null(), |value| value.as_ptr()),
+            turn_password: turn_password
+                .as_ref()
+                .map_or(std::ptr::null(), |value| value.as_ptr()),
+            turn_realm: turn_realm
+                .as_ref()
+                .map_or(std::ptr::null(), |value| value.as_ptr()),
             recording_directory: recording_directory
                 .as_ref()
                 .map_or(std::ptr::null(), |value| value.as_ptr()),
@@ -354,7 +431,22 @@ impl PjsipRuntime {
         let mut runtime = Self { raw };
 
         for transport in &config.transports {
-            runtime.add_transport(transport, config.media.external_address.as_deref())?;
+            let tls_profile = transport
+                .tls_profile
+                .as_deref()
+                .map(|id| {
+                    config
+                        .tls_profiles
+                        .iter()
+                        .find(|profile| profile.id == id)
+                        .ok_or_else(|| format!("Unknown SIP TLS profile '{id}'."))
+                })
+                .transpose()?;
+            runtime.add_transport(
+                transport,
+                config.media.external_address.as_deref(),
+                tls_profile,
+            )?;
         }
         for endpoint in &config.endpoints {
             runtime.add_endpoint(endpoint, config)?;
@@ -377,10 +469,20 @@ impl PjsipRuntime {
         &mut self,
         transport: &NativeSipTransportBinding,
         external_address: Option<&str>,
+        tls_profile: Option<&NativeSipTlsProfile>,
     ) -> Result<(), String> {
         let host = c_string(&transport.host)?;
         let public_address = optional_c_string(external_address)?;
-        let tls_profile = optional_c_string(transport.tls_profile.as_deref())?;
+        let tls_profile_id = optional_c_string(transport.tls_profile.as_deref())?;
+        let tls_certificate_path =
+            optional_c_string(tls_profile.map(|profile| profile.certificate_path.as_str()))?;
+        let tls_private_key_path =
+            optional_c_string(tls_profile.map(|profile| profile.private_key_path.as_str()))?;
+        let tls_private_key_password = optional_c_string(
+            tls_profile.and_then(|profile| profile.private_key_password.as_deref()),
+        )?;
+        let tls_ca_path =
+            optional_c_string(tls_profile.and_then(|profile| profile.ca_path.as_deref()))?;
         let mut error = ErrorBuffer::new();
         let binding = dart_edge_sip_bridge_transport_config {
             protocol: match transport.protocol.as_str() {
@@ -394,9 +496,22 @@ impl PjsipRuntime {
             public_address: public_address
                 .as_ref()
                 .map_or(std::ptr::null(), |value| value.as_ptr()),
-            tls_profile: tls_profile
+            tls_profile: tls_profile_id
                 .as_ref()
                 .map_or(std::ptr::null(), |value| value.as_ptr()),
+            tls_certificate_path: tls_certificate_path
+                .as_ref()
+                .map_or(std::ptr::null(), |value| value.as_ptr()),
+            tls_private_key_path: tls_private_key_path
+                .as_ref()
+                .map_or(std::ptr::null(), |value| value.as_ptr()),
+            tls_private_key_password: tls_private_key_password
+                .as_ref()
+                .map_or(std::ptr::null(), |value| value.as_ptr()),
+            tls_ca_path: tls_ca_path
+                .as_ref()
+                .map_or(std::ptr::null(), |value| value.as_ptr()),
+            tls_verify_server: tls_profile.is_some_and(|profile| profile.verify_server),
         };
 
         let ok = unsafe {
@@ -1101,6 +1216,39 @@ impl PjsipRuntime {
         Ok(stats.into())
     }
 
+    fn media_stats(&mut self, session_id: &str) -> Result<Value, String> {
+        let session_id = c_string(session_id)?;
+        let mut stats = dart_edge_sip_bridge_media_stats::default();
+        let mut error = ErrorBuffer::new();
+        let ok = unsafe {
+            dart_edge_sip_bridge_get_media_stats(
+                self.raw.as_ptr(),
+                session_id.as_ptr(),
+                &mut stats,
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if !ok {
+            return Err(error.message("Failed to read SIP media stats."));
+        }
+        Ok(json!({
+            "ok": true,
+            "codecId": read_fixed_c_string(&stats.codec_id).unwrap_or_default(),
+            "clockRateHz": stats.clock_rate_hz,
+            "channels": stats.channels,
+            "receivedPackets": stats.rx_packets,
+            "receivedPacketsLost": stats.rx_packets_lost,
+            "sentPackets": stats.tx_packets,
+            "sentPacketsLost": stats.tx_packets_lost,
+            "meanJitterUs": stats.jitter_mean_us,
+            "meanRoundTripUs": stats.round_trip_mean_us,
+            "jitterBufferLostFrames": stats.jitter_buffer_lost_frames,
+            "jitterBufferDiscardedFrames": stats.jitter_buffer_discarded_frames,
+            "jitterBufferEmptyReads": stats.jitter_buffer_empty_reads,
+        }))
+    }
+
     fn poll_event(&mut self) -> Option<Value> {
         let mut event = dart_edge_sip_bridge_event::default();
         let has_event = unsafe { dart_edge_sip_bridge_poll_event(self.raw.as_ptr(), &mut event) };
@@ -1532,6 +1680,9 @@ pub extern "C" fn dart_edge_sip_issue_command(
         "detachMediaApp" => required_session_id(session_id)
             .and_then(|session_id| runtime.detach_media_app(session_id))
             .map(|()| json!({ "ok": true })),
+        "mediaStats" => {
+            required_session_id(session_id).and_then(|session_id| runtime.media_stats(session_id))
+        }
         "hangup" => parse_payload::<NativeStatusPayload>(payload)
             .and_then(|payload| runtime.hangup_call(required_session_id(session_id)?, &payload))
             .map(|()| json!({ "ok": true })),
@@ -1841,6 +1992,26 @@ fn validate_config(config: &NativeSipServerConfig) -> Result<(), String> {
     if config.media.require_srtp && !config.media.enable_srtp {
         return Err("media.requireSrtp requires media.enableSrtp.".to_string());
     }
+    if config.media.nat.stun_servers.len() > 8
+        || config
+            .media
+            .nat
+            .stun_servers
+            .iter()
+            .any(|server| server.is_empty() || server.contains(','))
+    {
+        return Err("media.nat supports one to eight non-empty STUN server addresses.".to_string());
+    }
+    if let Some(turn) = &config.media.nat.turn_server {
+        if !config.engine.enable_turn {
+            return Err("A TURN server requires engine.enableTurn.".to_string());
+        }
+        if turn.server.is_empty() || turn.username.is_empty() || turn.password.is_empty() {
+            return Err(
+                "TURN configuration requires non-empty server, username, and password.".to_string(),
+            );
+        }
+    }
     if config.transports.is_empty() {
         return Err("At least one SIP transport binding is required.".to_string());
     }
@@ -1870,6 +2041,35 @@ fn validate_config(config: &NativeSipServerConfig) -> Result<(), String> {
         return Err(
             "Voicemail storage is enabled but no voicemail directory was configured.".to_string(),
         );
+    }
+
+    let mut tls_profile_ids = HashSet::new();
+    for profile in &config.tls_profiles {
+        if profile.id.is_empty()
+            || profile.certificate_path.is_empty()
+            || profile.private_key_path.is_empty()
+        {
+            return Err(
+                "SIP TLS profiles require non-empty id, certificatePath, and privateKeyPath."
+                    .to_string(),
+            );
+        }
+        if !tls_profile_ids.insert(profile.id.as_str()) {
+            return Err(format!("Duplicate SIP TLS profile ID '{}'.", profile.id));
+        }
+    }
+    for transport in &config.transports {
+        if let Some(profile_id) = transport.tls_profile.as_deref() {
+            if transport.protocol != "tls" {
+                return Err(format!(
+                    "SIP transport {}:{} assigns TLS profile '{}' to a non-TLS transport.",
+                    transport.host, transport.port, profile_id
+                ));
+            }
+            if !tls_profile_ids.contains(profile_id) {
+                return Err(format!("Unknown SIP TLS profile '{profile_id}'."));
+            }
+        }
     }
 
     let mut trunk_ids = HashSet::new();
@@ -2313,6 +2513,11 @@ struct dart_edge_sip_bridge_config {
     enable_dtmf_detection: bool,
     user_agent: *const c_char,
     external_address: *const c_char,
+    stun_servers: *const c_char,
+    turn_server: *const c_char,
+    turn_username: *const c_char,
+    turn_password: *const c_char,
+    turn_realm: *const c_char,
     recording_directory: *const c_char,
     voicemail_directory: *const c_char,
     default_greeting_uri: *const c_char,
@@ -2325,6 +2530,11 @@ struct dart_edge_sip_bridge_transport_config {
     port: u32,
     public_address: *const c_char,
     tls_profile: *const c_char,
+    tls_certificate_path: *const c_char,
+    tls_private_key_path: *const c_char,
+    tls_private_key_password: *const c_char,
+    tls_ca_path: *const c_char,
+    tls_verify_server: bool,
 }
 
 #[repr(C)]
@@ -2405,6 +2615,29 @@ struct dart_edge_sip_bridge_media_queue_stats {
     playback_overrun_count: u64,
     playback_underrun_count: u64,
     playback_dropped_bytes: u64,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct dart_edge_sip_bridge_media_stats {
+    codec_id: [c_char; 64],
+    clock_rate_hz: u32,
+    channels: u32,
+    rx_packets: u64,
+    rx_packets_lost: u64,
+    tx_packets: u64,
+    tx_packets_lost: u64,
+    jitter_mean_us: u64,
+    round_trip_mean_us: u64,
+    jitter_buffer_lost_frames: u64,
+    jitter_buffer_discarded_frames: u64,
+    jitter_buffer_empty_reads: u64,
+}
+
+impl Default for dart_edge_sip_bridge_media_stats {
+    fn default() -> Self {
+        unsafe { std::mem::zeroed() }
+    }
 }
 
 impl From<dart_edge_sip_bridge_media_queue_stats> for dart_edge_sip_media_queue_stats {
@@ -2705,6 +2938,14 @@ unsafe extern "C" {
         runtime: *mut dart_edge_sip_bridge_runtime,
         session_id: *const c_char,
         stats_out: *mut dart_edge_sip_bridge_media_queue_stats,
+        error: *mut c_char,
+        error_len: usize,
+    ) -> bool;
+
+    fn dart_edge_sip_bridge_get_media_stats(
+        runtime: *mut dart_edge_sip_bridge_runtime,
+        session_id: *const c_char,
+        stats_out: *mut dart_edge_sip_bridge_media_stats,
         error: *mut c_char,
         error_len: usize,
     ) -> bool;

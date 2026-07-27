@@ -144,14 +144,56 @@ final class SipAudioQueueStats {
   final SipAudioQueueDirectionStats playback;
 }
 
-final class SipAudioWriteResult {
-  const SipAudioWriteResult({
-    required this.acceptedBytes,
-    required this.droppedBytes,
-    required this.queuedDuration,
+final class SipMediaStats {
+  const SipMediaStats({
+    required this.codecId,
+    required this.clockRateHz,
+    required this.channels,
+    required this.receivedPackets,
+    required this.receivedPacketsLost,
+    required this.sentPackets,
+    required this.sentPacketsLost,
+    required this.meanJitter,
+    required this.meanRoundTrip,
+    required this.jitterBufferLostFrames,
+    required this.jitterBufferDiscardedFrames,
+    required this.jitterBufferEmptyReads,
   });
 
-  final int acceptedBytes;
-  final int droppedBytes;
-  final Duration queuedDuration;
+  factory SipMediaStats.fromJson(Map<String, Object?> json) {
+    int readInt(String key) => (json[key] as num?)?.toInt() ?? 0;
+
+    return SipMediaStats(
+      codecId: json['codecId'] as String? ?? '',
+      clockRateHz: readInt('clockRateHz'),
+      channels: readInt('channels'),
+      receivedPackets: readInt('receivedPackets'),
+      receivedPacketsLost: readInt('receivedPacketsLost'),
+      sentPackets: readInt('sentPackets'),
+      sentPacketsLost: readInt('sentPacketsLost'),
+      meanJitter: Duration(microseconds: readInt('meanJitterUs')),
+      meanRoundTrip: Duration(microseconds: readInt('meanRoundTripUs')),
+      jitterBufferLostFrames: readInt('jitterBufferLostFrames'),
+      jitterBufferDiscardedFrames: readInt('jitterBufferDiscardedFrames'),
+      jitterBufferEmptyReads: readInt('jitterBufferEmptyReads'),
+    );
+  }
+
+  final String codecId;
+  final int clockRateHz;
+  final int channels;
+  final int receivedPackets;
+  final int receivedPacketsLost;
+  final int sentPackets;
+  final int sentPacketsLost;
+  final Duration meanJitter;
+  final Duration meanRoundTrip;
+  final int jitterBufferLostFrames;
+  final int jitterBufferDiscardedFrames;
+  final int jitterBufferEmptyReads;
+
+  double get receivedPacketLossPercent {
+    final total = receivedPackets + receivedPacketsLost;
+    return total == 0 ? 0 : receivedPacketsLost * 100 / total;
+  }
 }

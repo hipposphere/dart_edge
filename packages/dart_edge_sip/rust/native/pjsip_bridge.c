@@ -22,6 +22,11 @@ typedef struct {
   uint32_t port;
   char* public_address;
   char* tls_profile;
+  char* tls_certificate_path;
+  char* tls_private_key_path;
+  char* tls_private_key_password;
+  char* tls_ca_path;
+  bool tls_verify_server;
   pjsua_transport_id transport_id;
 } dart_edge_sip_bridge_transport_entry;
 
@@ -1305,6 +1310,26 @@ static void prepare_transport_config(
              runtime->config.external_address[0] != '\0') {
     transport_config->public_addr = pj_const_string(runtime->config.external_address);
   }
+  if (transport->protocol == DART_EDGE_SIP_BRIDGE_TRANSPORT_TLS) {
+    if (transport->tls_certificate_path != NULL) {
+      transport_config->tls_setting.cert_file =
+          pj_const_string(transport->tls_certificate_path);
+    }
+    if (transport->tls_private_key_path != NULL) {
+      transport_config->tls_setting.privkey_file =
+          pj_const_string(transport->tls_private_key_path);
+    }
+    if (transport->tls_private_key_password != NULL) {
+      transport_config->tls_setting.password =
+          pj_const_string(transport->tls_private_key_password);
+    }
+    if (transport->tls_ca_path != NULL) {
+      transport_config->tls_setting.ca_list_file =
+          pj_const_string(transport->tls_ca_path);
+    }
+    transport_config->tls_setting.verify_server =
+        transport->tls_verify_server ? PJ_TRUE : PJ_FALSE;
+  }
 }
 
 static bool add_trunk_account(
@@ -1950,18 +1975,6 @@ dart_edge_sip_bridge_runtime* dart_edge_sip_bridge_runtime_create(
     store_error(error, error_len, "Missing PJSIP bridge config.");
     return NULL;
   }
-  if (config->max_calls > PJSUA_MAX_CALLS) {
-    char message[192];
-    snprintf(
-        message,
-        sizeof(message),
-        "Configured maxCalls %u exceeds this PJPROJECT build capacity %u.",
-        config->max_calls,
-        (unsigned)PJSUA_MAX_CALLS);
-    store_error(error, error_len, message);
-    return NULL;
-  }
-
   dart_edge_sip_bridge_runtime* runtime =
       (dart_edge_sip_bridge_runtime*)calloc(1, sizeof(*runtime));
   if (runtime == NULL) {
@@ -1972,6 +1985,11 @@ dart_edge_sip_bridge_runtime* dart_edge_sip_bridge_runtime_create(
   runtime->config = *config;
   runtime->config.user_agent = duplicate_string(config->user_agent);
   runtime->config.external_address = duplicate_string(config->external_address);
+  runtime->config.stun_servers = duplicate_string(config->stun_servers);
+  runtime->config.turn_server = duplicate_string(config->turn_server);
+  runtime->config.turn_username = duplicate_string(config->turn_username);
+  runtime->config.turn_password = duplicate_string(config->turn_password);
+  runtime->config.turn_realm = duplicate_string(config->turn_realm);
   runtime->config.recording_directory = duplicate_string(config->recording_directory);
   runtime->config.voicemail_directory = duplicate_string(config->voicemail_directory);
   runtime->config.default_greeting_uri = duplicate_string(config->default_greeting_uri);
@@ -2018,6 +2036,11 @@ void dart_edge_sip_bridge_runtime_destroy(dart_edge_sip_bridge_runtime* runtime)
 
   free((void*)runtime->config.user_agent);
   free((void*)runtime->config.external_address);
+  free((void*)runtime->config.stun_servers);
+  free((void*)runtime->config.turn_server);
+  free((void*)runtime->config.turn_username);
+  free((void*)runtime->config.turn_password);
+  free((void*)runtime->config.turn_realm);
   free((void*)runtime->config.recording_directory);
   free((void*)runtime->config.voicemail_directory);
   free((void*)runtime->config.default_greeting_uri);
@@ -2026,6 +2049,10 @@ void dart_edge_sip_bridge_runtime_destroy(dart_edge_sip_bridge_runtime* runtime)
     free(runtime->transports[index].host);
     free(runtime->transports[index].public_address);
     free(runtime->transports[index].tls_profile);
+    free(runtime->transports[index].tls_certificate_path);
+    free(runtime->transports[index].tls_private_key_path);
+    free(runtime->transports[index].tls_private_key_password);
+    free(runtime->transports[index].tls_ca_path);
   }
   for (size_t index = 0; index < runtime->trunk_count; index += 1) {
     free_trunk_entry(&runtime->trunks[index]);
@@ -2077,6 +2104,12 @@ bool dart_edge_sip_bridge_add_transport(
   entry->host = duplicate_string(transport->host);
   entry->public_address = duplicate_string(transport->public_address);
   entry->tls_profile = duplicate_string(transport->tls_profile);
+  entry->tls_certificate_path = duplicate_string(transport->tls_certificate_path);
+  entry->tls_private_key_path = duplicate_string(transport->tls_private_key_path);
+  entry->tls_private_key_password =
+      duplicate_string(transport->tls_private_key_password);
+  entry->tls_ca_path = duplicate_string(transport->tls_ca_path);
+  entry->tls_verify_server = transport->tls_verify_server;
   entry->transport_id = PJSUA_INVALID_ID;
   runtime->transport_count += 1;
   return true;
@@ -2316,6 +2349,16 @@ bool dart_edge_sip_bridge_start(
   ua_config.cb.on_incoming_call = &on_incoming_call;
   ua_config.cb.on_reg_state2 = &on_reg_state2;
   ua_config.cb.on_dtmf_digit2 = &on_dtmf_digit2;
+  if (runtime->config.stun_servers != NULL &&
+      runtime->config.stun_servers[0] != '\0') {
+    char* save = NULL;
+    char* server = strtok_r((char*)runtime->config.stun_servers, ",", &save);
+    while (server != NULL &&
+           ua_config.stun_srv_cnt < PJ_ARRAY_SIZE(ua_config.stun_srv)) {
+      ua_config.stun_srv[ua_config.stun_srv_cnt++] = pj_str(server);
+      server = strtok_r(NULL, ",", &save);
+    }
+  }
   if (runtime->config.user_agent != NULL && runtime->config.user_agent[0] != '\0') {
     ua_config.user_agent = pj_str((char*)runtime->config.user_agent);
   }
@@ -2327,6 +2370,21 @@ bool dart_edge_sip_bridge_start(
   media_config.max_media_ports = runtime->config.max_media_ports;
   media_config.enable_ice = runtime->config.enable_ice ? PJ_TRUE : PJ_FALSE;
   media_config.enable_turn = runtime->config.enable_turn ? PJ_TRUE : PJ_FALSE;
+  if (runtime->config.turn_server != NULL &&
+      runtime->config.turn_server[0] != '\0') {
+    media_config.turn_server = pj_const_string(runtime->config.turn_server);
+    media_config.turn_auth_cred.type = PJ_STUN_AUTH_CRED_STATIC;
+    media_config.turn_auth_cred.data.static_cred.username =
+        pj_const_string(runtime->config.turn_username);
+    media_config.turn_auth_cred.data.static_cred.data_type =
+        PJ_STUN_PASSWD_PLAIN;
+    media_config.turn_auth_cred.data.static_cred.data =
+        pj_const_string(runtime->config.turn_password);
+    if (runtime->config.turn_realm != NULL) {
+      media_config.turn_auth_cred.data.static_cred.realm =
+          pj_const_string(runtime->config.turn_realm);
+    }
+  }
   media_config.clock_rate = runtime->config.media_clock_rate_hz;
   media_config.channel_count = DART_EDGE_SIP_MEDIA_CHANNELS;
   media_config.audio_frame_ptime = DART_EDGE_SIP_MEDIA_FRAME_DURATION_MS;
@@ -3720,6 +3778,69 @@ bool dart_edge_sip_bridge_get_media_queue_stats(
       &stats_out->playback_overrun_count,
       &stats_out->playback_underrun_count,
       &stats_out->playback_dropped_bytes);
+  return true;
+}
+
+bool dart_edge_sip_bridge_get_media_stats(
+    dart_edge_sip_bridge_runtime* runtime,
+    const char* session_id,
+    dart_edge_sip_bridge_media_stats* stats_out,
+    char* error,
+    size_t error_len) {
+  if (runtime == NULL || stats_out == NULL) {
+    store_error(error, error_len, "Missing SIP media stats output.");
+    return false;
+  }
+  pjsua_call_id call_id;
+  if (!session_id_to_call_id(session_id, &call_id)) {
+    store_error(error, error_len, "Invalid SIP call session ID.");
+    return false;
+  }
+  pjsua_call_info call_info;
+  if (pjsua_call_get_info(call_id, &call_info) != PJ_SUCCESS) {
+    store_error(error, error_len, "Unknown SIP call session.");
+    return false;
+  }
+  unsigned media_index = call_info.media_cnt;
+  for (unsigned index = 0; index < call_info.media_cnt; index += 1) {
+    if (call_info.media[index].type == PJMEDIA_TYPE_AUDIO) {
+      media_index = index;
+      break;
+    }
+  }
+  if (media_index == call_info.media_cnt) {
+    store_error(error, error_len, "SIP call has no negotiated audio stream.");
+    return false;
+  }
+  pjsua_stream_info stream_info;
+  pjsua_stream_stat stream_stats;
+  pj_status_t status =
+      pjsua_call_get_stream_info(call_id, media_index, &stream_info);
+  if (status == PJ_SUCCESS) {
+    status = pjsua_call_get_stream_stat(call_id, media_index, &stream_stats);
+  }
+  if (status != PJ_SUCCESS) {
+    store_status_error(error, error_len, "Failed to read SIP media statistics", status);
+    return false;
+  }
+  memset(stats_out, 0, sizeof(*stats_out));
+  copy_pj_str(
+      stats_out->codec_id,
+      sizeof(stats_out->codec_id),
+      stream_info.info.aud.fmt.encoding_name);
+  stats_out->clock_rate_hz = stream_info.info.aud.fmt.clock_rate;
+  stats_out->channels = stream_info.info.aud.fmt.channel_cnt;
+  stats_out->rx_packets = stream_stats.rtcp.rx.pkt;
+  stats_out->rx_packets_lost = stream_stats.rtcp.rx.loss;
+  stats_out->tx_packets = stream_stats.rtcp.tx.pkt;
+  stats_out->tx_packets_lost = stream_stats.rtcp.tx.loss;
+  stats_out->jitter_mean_us =
+      stream_stats.rtcp.rx.jitter.mean > 0 ? stream_stats.rtcp.rx.jitter.mean : 0;
+  stats_out->round_trip_mean_us =
+      stream_stats.rtcp.rtt.mean > 0 ? stream_stats.rtcp.rtt.mean : 0;
+  stats_out->jitter_buffer_lost_frames = stream_stats.jbuf.lost;
+  stats_out->jitter_buffer_discarded_frames = stream_stats.jbuf.discard;
+  stats_out->jitter_buffer_empty_reads = stream_stats.jbuf.empty;
   return true;
 }
 

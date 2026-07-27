@@ -6,7 +6,7 @@ import 'package:test/test.dart';
 
 void main() {
   test('loads the bundled dart_edge_sip native asset', () {
-    expect(DartEdgeSip.nativeAbiVersion, 3);
+    expect(DartEdgeSip.nativeAbiVersion, 4);
   });
 
   test(
@@ -147,9 +147,7 @@ void main() {
     final runSession = Completer<SipMediaAppSession>();
     final sip = DartEdgeSip(
       config: const SipServerConfig(
-        transports: [
-          SipTransportBinding.udp(host: '127.0.0.1', port: 5163),
-        ],
+        transports: [SipTransportBinding.udp(host: '127.0.0.1', port: 5163)],
         trunks: [
           SipTrunkConfig(
             id: 'carrier-a',
@@ -158,9 +156,7 @@ void main() {
           ),
         ],
       ),
-      mediaApps: [
-        _PreparableTestMediaApp(preparedCall, runSession),
-      ],
+      mediaApps: [_PreparableTestMediaApp(preparedCall, runSession)],
     );
     addTearDown(sip.dispose);
     await sip.start();
@@ -272,6 +268,7 @@ final class _TestMediaApp implements SipMediaApp {
     if (!runSession.isCompleted) {
       runSession.complete(session);
     }
+    await session.media.closed;
   }
 }
 
@@ -316,7 +313,8 @@ final class _TestMediaAppPreparation implements SipMediaAppPreparation {
   void close() {}
 
   @override
-  void run(SipMediaAppSession session) {
+  Future<void> run(SipMediaAppSession session) async {
     runSession.complete(session);
+    await session.media.closed;
   }
 }

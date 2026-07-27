@@ -6,6 +6,7 @@ import 'package:dart_edge_native_bridge/dart_edge_native_bridge.dart'
     as core_ffi;
 import 'package:ffi/ffi.dart';
 
+import '../native/dart_edge_sip_native.dart';
 import '../native/dart_edge_sip_native_media.dart';
 import 'sip_audio.dart';
 
@@ -195,6 +196,36 @@ final class SipRealtimeMediaSession {
         format: playbackFormat,
       ),
     );
+  }
+
+  Future<SipMediaStats> get mediaStats async {
+    _ensureOpen();
+    try {
+      final result = DartEdgeSipNative.issueCommand(_handle, {
+        'kind': 'mediaStats',
+        'sessionId': callId,
+      });
+      return SipMediaStats.fromJson(result);
+    } on StateError catch (error) {
+      _markClosedIfNativeMediaDetached(error);
+      rethrow;
+    }
+  }
+
+  Stream<SipMediaStats> mediaStatsUpdates({
+    Duration interval = const Duration(seconds: 1),
+  }) async* {
+    if (interval <= Duration.zero) {
+      throw ArgumentError.value(
+        interval,
+        'interval',
+        'Media stats interval must be positive.',
+      );
+    }
+    while (!_closed) {
+      yield await mediaStats;
+      await Future.any<void>([Future<void>.delayed(interval), closed]);
+    }
   }
 
   Future<void> playAudioBytes(Uint8List bytes, {SipAudioFormat? format}) async {

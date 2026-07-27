@@ -112,9 +112,39 @@ directory containing `libpjproject.pc`. For example:
 export PKG_CONFIG_PATH="/opt/homebrew/opt/pjproject/lib/pkgconfig:$PKG_CONFIG_PATH"
 ```
 
+For Dart native-asset source builds, configure the same directory through the
+root package's hook user-defines (hook subprocesses do not inherit arbitrary
+environment variables):
+
+```yaml
+hooks:
+  user_defines:
+    dart_edge_sip:
+      pkg_config_path: /opt/homebrew/opt/pjproject/lib/pkgconfig
+```
+
 `dart_edge_sip` artifacts intentionally do not bundle or directly link PJSIP.
 If the runtime loader cannot find shared PJSIP libraries, provide them through
 `DART_EDGE_SIP_PJPROJECT_LIBRARIES`.
+
+## Prepare Before Answer
+
+Media apps that implement `SipPreparableMediaApp` can establish an AI or other
+external media session while an inbound SIP call is still ringing:
+
+```dart
+final prepared = await sip.prepareMediaApp(
+  call,
+  mediaAppId: 'assistant',
+);
+await prepared.answerAndAttach();
+```
+
+Inbound dialplan routes to media apps use this lifecycle automatically. The
+runtime sends the successful SIP answer only after `prepare` completes, closes
+unused preparations when the caller disconnects, and rejects the call with a
+server error if preparation fails. Legacy `SipMediaApp` implementations remain
+supported and are adapted to the same attachment flow.
 
 ## V1 Intent
 

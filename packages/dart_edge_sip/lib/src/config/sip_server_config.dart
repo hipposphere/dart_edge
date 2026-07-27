@@ -105,6 +105,7 @@ final class SipMediaConfig {
     this.enableSrtp = false,
     this.requireSrtp = false,
     this.enableDtmfDetection = true,
+    this.nat = const SipNatConfig(),
   });
 
   final int rtpStartPort;
@@ -113,6 +114,7 @@ final class SipMediaConfig {
   final bool enableSrtp;
   final bool requireSrtp;
   final bool enableDtmfDetection;
+  final SipNatConfig nat;
 
   Map<String, Object?> toJson() => {
     'rtpStartPort': rtpStartPort,
@@ -121,6 +123,40 @@ final class SipMediaConfig {
     'enableSrtp': enableSrtp,
     'requireSrtp': requireSrtp,
     'enableDtmfDetection': enableDtmfDetection,
+    'nat': nat.toJson(),
+  };
+}
+
+final class SipTurnServer {
+  const SipTurnServer({
+    required this.server,
+    required this.username,
+    required this.password,
+    this.realm = '',
+  });
+
+  final String server;
+  final String username;
+  final String password;
+  final String realm;
+
+  Map<String, Object?> toJson() => {
+    'server': server,
+    'username': username,
+    'password': password,
+    'realm': realm,
+  };
+}
+
+final class SipNatConfig {
+  const SipNatConfig({this.stunServers = const <String>[], this.turnServer});
+
+  final List<String> stunServers;
+  final SipTurnServer? turnServer;
+
+  Map<String, Object?> toJson() => {
+    'stunServers': stunServers,
+    'turnServer': turnServer?.toJson(),
   };
 }
 

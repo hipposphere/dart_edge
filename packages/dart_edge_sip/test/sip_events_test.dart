@@ -52,4 +52,21 @@ void main() {
       ],
     });
   });
+
+  test('parses received DTMF details', () {
+    final event =
+        SipEvent.fromJson({
+              'category': 'dtmf',
+              'callId': 'call-1',
+              'digit': '#',
+              'durationMs': 120,
+              'method': 'rfc2833',
+            })
+            as SipDtmfEvent;
+
+    expect(event.callId, 'call-1');
+    expect(event.digit, '#');
+    expect(event.duration, const Duration(milliseconds: 120));
+    expect(event.method, SipDtmfMethod.rfc2833);
+  });
 }

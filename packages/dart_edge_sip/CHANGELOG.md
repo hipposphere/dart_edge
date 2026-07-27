@@ -1,3 +1,15 @@
+## 0.4.16
+
+- Add pre-answer media-app preparation with `prepareMediaApp` and
+  `SipPreparedMediaApp.answerAndAttach`.
+- Close prepared resources when calls terminate, attachment fails, or the
+  runtime stops, and apply a deterministic media-app termination policy.
+- Add bounded capture/playback queues with queue statistics.
+- Expose negotiated codec, RTP/RTCP statistics, DTMF events, codec preferences,
+  media clock configuration, TLS profiles, SRTP requirements, and NAT settings.
+- Validate native PJSIP call capacity and bump the native SIP artifact to
+  0.1.8 for the extended media and event ABI.
+
 ## 0.4.15
 
 - Let each SIP media app select independent PCM16 mono capture and playback

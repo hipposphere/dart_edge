@@ -56,6 +56,8 @@ void main() {
         'maxRegistrations': 12000,
         'maxConferencePorts': 32,
         'workerThreads': 4,
+        'mediaClockRateHz': 16000,
+        'codecPolicy': {'preferred': <String>[], 'disabled': <String>[]},
         'enableIce': true,
         'enableTurn': false,
         'enableTls': true,
@@ -72,6 +74,7 @@ void main() {
           'tlsProfile': 'default',
         },
       ],
+      'tlsProfiles': <Object?>[],
       'realms': [
         {
           'domain': 'pbx.example.com',
@@ -100,7 +103,9 @@ void main() {
         'rtpStartPort': 40000,
         'rtpEndPort': 40100,
         'enableSrtp': false,
+        'requireSrtp': false,
         'enableDtmfDetection': true,
+        'nat': {'stunServers': <String>[], 'turnServer': null},
       },
       'recordings': {
         'enabled': true,
@@ -120,6 +125,71 @@ void main() {
         'ivr': true,
         'recording': true,
         'voicemail': true,
+      },
+    });
+  });
+
+  test('serializes codec, TLS, SRTP, STUN, and TURN configuration', () {
+    const config = SipServerConfig(
+      engine: PjsipEngineConfig(
+        mediaClockRateHz: 48000,
+        codecPolicy: SipCodecPolicy(
+          preferred: ['opus/48000/2', 'PCMU/8000/1'],
+          disabled: ['GSM/8000/1'],
+        ),
+        enableTurn: true,
+      ),
+      transports: [
+        SipTransportBinding.tls(
+          host: '0.0.0.0',
+          port: 5061,
+          tlsProfile: 'clinic',
+        ),
+      ],
+      tlsProfiles: [
+        SipTlsProfile(
+          id: 'clinic',
+          certificatePath: '/certs/clinic.pem',
+          privateKeyPath: '/certs/clinic.key',
+          caPath: '/certs/ca.pem',
+        ),
+      ],
+      media: SipMediaConfig(
+        enableSrtp: true,
+        requireSrtp: true,
+        nat: SipNatConfig(
+          stunServers: ['stun1.example.com:3478'],
+          turnServer: SipTurnServer(
+            server: 'turn.example.com:3478',
+            username: 'callo',
+            password: 'secret',
+          ),
+        ),
+      ),
+    );
+
+    final json = config.toJson();
+    expect((json['engine']! as Map<String, Object?>)['codecPolicy'], {
+      'preferred': ['opus/48000/2', 'PCMU/8000/1'],
+      'disabled': ['GSM/8000/1'],
+    });
+    expect(json['tlsProfiles'], [
+      {
+        'id': 'clinic',
+        'certificatePath': '/certs/clinic.pem',
+        'privateKeyPath': '/certs/clinic.key',
+        'caPath': '/certs/ca.pem',
+        'verifyServer': true,
+      },
+    ]);
+    expect(json['media'], containsPair('requireSrtp', true));
+    expect((json['media']! as Map<String, Object?>)['nat'], {
+      'stunServers': ['stun1.example.com:3478'],
+      'turnServer': {
+        'server': 'turn.example.com:3478',
+        'username': 'callo',
+        'password': 'secret',
+        'realm': '',
       },
     });
   });
