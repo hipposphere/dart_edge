@@ -38,6 +38,29 @@ final class DartEdgeSipNativeAudioFrame extends ffi.Struct {
   external int sequence;
 }
 
+final class DartEdgeSipNativeMediaQueueStats extends ffi.Struct {
+  @ffi.Uint64()
+  external int captureQueuedBytes;
+  @ffi.Uint64()
+  external int captureCapacityBytes;
+  @ffi.Uint64()
+  external int captureOverrunCount;
+  @ffi.Uint64()
+  external int captureUnderrunCount;
+  @ffi.Uint64()
+  external int captureDroppedBytes;
+  @ffi.Uint64()
+  external int playbackQueuedBytes;
+  @ffi.Uint64()
+  external int playbackCapacityBytes;
+  @ffi.Uint64()
+  external int playbackOverrunCount;
+  @ffi.Uint64()
+  external int playbackUnderrunCount;
+  @ffi.Uint64()
+  external int playbackDroppedBytes;
+}
+
 @ffi.Native<ffi.Void Function(core_ffi.NativeOwnedBytes)>(
   symbol: 'dart_edge_sip_free_owned_bytes',
 )
@@ -102,6 +125,19 @@ external bool _dartEdgeSipPlayMediaOwned(
 external bool _dartEdgeSipClearMediaPlayback(
   int handle,
   ffi.Pointer<ffi.Char> sessionId,
+);
+
+@ffi.Native<
+  ffi.Bool Function(
+    ffi.Int64,
+    ffi.Pointer<ffi.Char>,
+    ffi.Pointer<DartEdgeSipNativeMediaQueueStats>,
+  )
+>(symbol: 'dart_edge_sip_get_media_queue_stats')
+external bool _dartEdgeSipGetMediaQueueStats(
+  int handle,
+  ffi.Pointer<ffi.Char> sessionId,
+  ffi.Pointer<DartEdgeSipNativeMediaQueueStats> statsOut,
 );
 
 abstract final class DartEdgeSipNativeMedia {
@@ -232,4 +268,51 @@ abstract final class DartEdgeSipNativeMedia {
       calloc.free(sessionIdPtr);
     }
   }
+
+  static DartEdgeSipNativeMediaQueueStatsData mediaQueueStats({
+    required int handle,
+    required String sessionId,
+  }) {
+    final sessionIdPtr = sessionId.toNativeUtf8();
+    final statsPtr = calloc<DartEdgeSipNativeMediaQueueStats>();
+    try {
+      final ok = _dartEdgeSipGetMediaQueueStats(
+        handle,
+        sessionIdPtr.cast<ffi.Char>(),
+        statsPtr,
+      );
+      if (!ok) {
+        throw StateError(DartEdgeSipNative.takeLastError());
+      }
+      final stats = statsPtr.ref;
+      return (
+        captureQueuedBytes: stats.captureQueuedBytes,
+        captureCapacityBytes: stats.captureCapacityBytes,
+        captureOverrunCount: stats.captureOverrunCount,
+        captureUnderrunCount: stats.captureUnderrunCount,
+        captureDroppedBytes: stats.captureDroppedBytes,
+        playbackQueuedBytes: stats.playbackQueuedBytes,
+        playbackCapacityBytes: stats.playbackCapacityBytes,
+        playbackOverrunCount: stats.playbackOverrunCount,
+        playbackUnderrunCount: stats.playbackUnderrunCount,
+        playbackDroppedBytes: stats.playbackDroppedBytes,
+      );
+    } finally {
+      calloc.free(statsPtr);
+      calloc.free(sessionIdPtr);
+    }
+  }
 }
+
+typedef DartEdgeSipNativeMediaQueueStatsData = ({
+  int captureQueuedBytes,
+  int captureCapacityBytes,
+  int captureOverrunCount,
+  int captureUnderrunCount,
+  int captureDroppedBytes,
+  int playbackQueuedBytes,
+  int playbackCapacityBytes,
+  int playbackOverrunCount,
+  int playbackUnderrunCount,
+  int playbackDroppedBytes,
+});

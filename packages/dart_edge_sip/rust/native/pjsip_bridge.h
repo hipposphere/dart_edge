@@ -20,6 +20,7 @@ enum {
   DART_EDGE_SIP_BRIDGE_EVENT_TRUNK = 3,
   DART_EDGE_SIP_BRIDGE_EVENT_RECORDING = 4,
   DART_EDGE_SIP_BRIDGE_EVENT_VOICEMAIL = 5,
+  DART_EDGE_SIP_BRIDGE_EVENT_DTMF = 6,
 };
 
 enum {
@@ -66,14 +67,17 @@ typedef struct {
   uint32_t max_calls;
   uint32_t worker_threads;
   uint32_t max_media_ports;
+  uint32_t media_clock_rate_hz;
   uint32_t rtp_start_port;
   uint32_t rtp_end_port;
   bool enable_ice;
   bool enable_turn;
   bool enable_tls;
   bool enable_srtp;
+  bool require_srtp;
   bool enable_rport;
   bool enable_registrar;
+  bool enable_dtmf_detection;
   const char* user_agent;
   const char* external_address;
   const char* recording_directory;
@@ -116,6 +120,19 @@ typedef struct {
 } dart_edge_sip_bridge_registered_endpoint;
 
 typedef struct {
+  uint64_t capture_queued_bytes;
+  uint64_t capture_capacity_bytes;
+  uint64_t capture_overrun_count;
+  uint64_t capture_underrun_count;
+  uint64_t capture_dropped_bytes;
+  uint64_t playback_queued_bytes;
+  uint64_t playback_capacity_bytes;
+  uint64_t playback_overrun_count;
+  uint64_t playback_underrun_count;
+  uint64_t playback_dropped_bytes;
+} dart_edge_sip_bridge_media_queue_stats;
+
+typedef struct {
   int32_t kind;
   int32_t call_direction;
   int32_t call_state;
@@ -124,6 +141,8 @@ typedef struct {
   int32_t recording_state;
   int32_t voicemail_state;
   int32_t status_code;
+  int32_t dtmf_method;
+  uint32_t dtmf_duration_ms;
   uint64_t expires_at_epoch_seconds;
   char call_id[64];
   char related_call_id[64];
@@ -138,6 +157,7 @@ typedef struct {
   char media_app_id[128];
   char storage_uri[1024];
   char details[256];
+  char dtmf_digit[2];
 } dart_edge_sip_bridge_event;
 
 dart_edge_sip_bridge_runtime* dart_edge_sip_bridge_runtime_create(
@@ -187,6 +207,13 @@ bool dart_edge_sip_bridge_add_endpoint(
 
 bool dart_edge_sip_bridge_start(
     dart_edge_sip_bridge_runtime* runtime,
+    char* error,
+    size_t error_len);
+
+bool dart_edge_sip_bridge_set_codec_priority(
+    dart_edge_sip_bridge_runtime* runtime,
+    const char* codec_id,
+    uint8_t priority,
     char* error,
     size_t error_len);
 
@@ -331,6 +358,8 @@ bool dart_edge_sip_bridge_attach_media_app(
     uint32_t playback_sample_rate_hz,
     uint32_t playback_channels,
     uint32_t playback_frame_duration_ms,
+    uint32_t capture_buffer_duration_ms,
+    uint32_t playback_buffer_duration_ms,
     char* error,
     size_t error_len);
 
@@ -367,6 +396,13 @@ bool dart_edge_sip_bridge_play_raw_audio(
 bool dart_edge_sip_bridge_clear_raw_audio(
     dart_edge_sip_bridge_runtime* runtime,
     const char* session_id,
+    char* error,
+    size_t error_len);
+
+bool dart_edge_sip_bridge_get_media_queue_stats(
+    dart_edge_sip_bridge_runtime* runtime,
+    const char* session_id,
+    dart_edge_sip_bridge_media_queue_stats* stats_out,
     char* error,
     size_t error_len);
 

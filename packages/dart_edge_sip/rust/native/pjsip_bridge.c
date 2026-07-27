@@ -11,13 +11,10 @@
 #include <pjsua-lib/pjsua.h>
 
 #define DART_EDGE_SIP_BRIDGE_MAX_EVENTS 256
-#define DART_EDGE_SIP_MEDIA_SAMPLE_RATE_HZ 16000
 #define DART_EDGE_SIP_MEDIA_CHANNELS 1
 #define DART_EDGE_SIP_MEDIA_FRAME_DURATION_MS 20
 #define DART_EDGE_SIP_MEDIA_BITS_PER_SAMPLE 16
 #define DART_EDGE_SIP_MEDIA_MAX_FRAME_BYTES 4096
-#define DART_EDGE_SIP_MEDIA_CAPTURE_BUFFER_BYTES 160000
-#define DART_EDGE_SIP_MEDIA_PLAYBACK_BUFFER_BYTES 960000
 
 typedef struct {
   int32_t protocol;
@@ -84,6 +81,9 @@ typedef struct {
   size_t capacity;
   size_t start;
   size_t length;
+  uint64_t overrun_count;
+  uint64_t underrun_count;
+  uint64_t dropped_bytes;
 } dart_edge_sip_audio_ring;
 
 typedef struct {
@@ -102,6 +102,8 @@ typedef struct {
   uint32_t playback_sample_rate_hz;
   uint32_t playback_channels;
   uint32_t playback_frame_duration_ms;
+  uint32_t capture_buffer_duration_ms;
+  uint32_t playback_buffer_duration_ms;
   pjsua_conf_port_id call_port_id;
   pjsua_conf_port_id inbound_port_id;
   pjsua_conf_port_id outbound_port_id;
@@ -761,6 +763,25 @@ static void on_call_media_state(pjsua_call_id call_id) {
   emit_call_state(runtime, call_id);
 }
 
+static void on_dtmf_digit2(
+    pjsua_call_id call_id,
+    const pjsua_dtmf_info* info) {
+  dart_edge_sip_bridge_runtime* runtime = g_active_runtime;
+  if (runtime == NULL || info == NULL || !runtime->config.enable_dtmf_detection) {
+    return;
+  }
+  dart_edge_sip_bridge_event event;
+  clear_event(&event);
+  event.kind = DART_EDGE_SIP_BRIDGE_EVENT_DTMF;
+  event.dtmf_method = info->method;
+  event.dtmf_duration_ms =
+      info->duration == PJSUA_UNKNOWN_DTMF_DURATION ? 0 : info->duration;
+  event.dtmf_digit[0] = (char)info->digit;
+  event.dtmf_digit[1] = '\0';
+  call_id_to_session_id(call_id, event.call_id, sizeof(event.call_id));
+  push_event(runtime, &event);
+}
+
 static void on_incoming_call(
     pjsua_acc_id acc_id,
     pjsua_call_id call_id,
@@ -1356,6 +1377,11 @@ static bool add_trunk_account(
       runtime->config.rtp_end_port > runtime->config.rtp_start_port
           ? runtime->config.rtp_end_port - runtime->config.rtp_start_port
           : 0;
+  acc_config.use_srtp = runtime->config.require_srtp
+                            ? PJMEDIA_SRTP_MANDATORY
+                            : (runtime->config.enable_srtp
+                                   ? PJMEDIA_SRTP_OPTIONAL
+                                   : PJMEDIA_SRTP_DISABLED);
   if (runtime->config.external_address != NULL &&
       runtime->config.external_address[0] != '\0') {
     acc_config.rtp_cfg.public_addr = pj_const_string(runtime->config.external_address);
@@ -1393,6 +1419,11 @@ static bool configure_default_account_media(
         runtime->config.rtp_end_port > runtime->config.rtp_start_port
             ? runtime->config.rtp_end_port - runtime->config.rtp_start_port
             : 0;
+    acc_config.use_srtp = runtime->config.require_srtp
+                              ? PJMEDIA_SRTP_MANDATORY
+                              : (runtime->config.enable_srtp
+                                     ? PJMEDIA_SRTP_OPTIONAL
+                                     : PJMEDIA_SRTP_DISABLED);
     if (runtime->config.external_address != NULL &&
         runtime->config.external_address[0] != '\0') {
       acc_config.rtp_cfg.public_addr = pj_const_string(runtime->config.external_address);
@@ -1521,7 +1552,9 @@ static size_t audio_ring_write(
   }
   pthread_mutex_lock(&ring->mutex);
 
+  size_t dropped = 0;
   if (bytes_len >= ring->capacity) {
+    dropped = ring->length + bytes_len - ring->capacity;
     bytes += bytes_len - ring->capacity;
     bytes_len = ring->capacity;
     ring->start = 0;
@@ -1531,8 +1564,13 @@ static size_t audio_ring_write(
   size_t available = ring->capacity - ring->length;
   if (available < bytes_len) {
     size_t to_drop = bytes_len - available;
+    dropped += to_drop;
     ring->start = (ring->start + to_drop) % ring->capacity;
     ring->length -= to_drop;
+  }
+  if (dropped > 0) {
+    ring->overrun_count += 1;
+    ring->dropped_bytes += dropped;
   }
 
   size_t write_offset = (ring->start + ring->length) % ring->capacity;
@@ -1553,6 +1591,7 @@ static bool audio_ring_read_exact(
 
   pthread_mutex_lock(&ring->mutex);
   if (ring->length < bytes_len) {
+    ring->underrun_count += 1;
     pthread_mutex_unlock(&ring->mutex);
     return false;
   }
@@ -1578,6 +1617,9 @@ static size_t audio_ring_read_padded(
     copy_from_ring(ring, ring->start, destination, count);
     ring->start = (ring->start + count) % ring->capacity;
     ring->length -= count;
+  }
+  if (count < bytes_len) {
+    ring->underrun_count += 1;
   }
   pthread_mutex_unlock(&ring->mutex);
 
@@ -1777,7 +1819,10 @@ static bool ensure_media_ports_registered(
       media_slot->capture_sample_rate_hz,
       media_slot->capture_channels,
       media_slot->capture_frame_duration_ms,
-      DART_EDGE_SIP_MEDIA_CAPTURE_BUFFER_BYTES,
+      media_bytes_per_frame(
+          media_slot->capture_sample_rate_hz,
+          media_slot->capture_channels,
+          media_slot->capture_buffer_duration_ms),
       error,
       error_len);
   if (media_slot->inbound_port == NULL) {
@@ -1792,7 +1837,10 @@ static bool ensure_media_ports_registered(
       media_slot->playback_sample_rate_hz,
       media_slot->playback_channels,
       media_slot->playback_frame_duration_ms,
-      DART_EDGE_SIP_MEDIA_PLAYBACK_BUFFER_BYTES,
+      media_bytes_per_frame(
+          media_slot->playback_sample_rate_hz,
+          media_slot->playback_channels,
+          media_slot->playback_buffer_duration_ms),
       error,
       error_len);
   if (media_slot->outbound_port == NULL) {
@@ -1900,6 +1948,17 @@ dart_edge_sip_bridge_runtime* dart_edge_sip_bridge_runtime_create(
     size_t error_len) {
   if (config == NULL) {
     store_error(error, error_len, "Missing PJSIP bridge config.");
+    return NULL;
+  }
+  if (config->max_calls > PJSUA_MAX_CALLS) {
+    char message[192];
+    snprintf(
+        message,
+        sizeof(message),
+        "Configured maxCalls %u exceeds this PJPROJECT build capacity %u.",
+        config->max_calls,
+        (unsigned)PJSUA_MAX_CALLS);
+    store_error(error, error_len, message);
     return NULL;
   }
 
@@ -2256,6 +2315,7 @@ bool dart_edge_sip_bridge_start(
   ua_config.cb.on_call_media_state = &on_call_media_state;
   ua_config.cb.on_incoming_call = &on_incoming_call;
   ua_config.cb.on_reg_state2 = &on_reg_state2;
+  ua_config.cb.on_dtmf_digit2 = &on_dtmf_digit2;
   if (runtime->config.user_agent != NULL && runtime->config.user_agent[0] != '\0') {
     ua_config.user_agent = pj_str((char*)runtime->config.user_agent);
   }
@@ -2267,7 +2327,7 @@ bool dart_edge_sip_bridge_start(
   media_config.max_media_ports = runtime->config.max_media_ports;
   media_config.enable_ice = runtime->config.enable_ice ? PJ_TRUE : PJ_FALSE;
   media_config.enable_turn = runtime->config.enable_turn ? PJ_TRUE : PJ_FALSE;
-  media_config.clock_rate = DART_EDGE_SIP_MEDIA_SAMPLE_RATE_HZ;
+  media_config.clock_rate = runtime->config.media_clock_rate_hz;
   media_config.channel_count = DART_EDGE_SIP_MEDIA_CHANNELS;
   media_config.audio_frame_ptime = DART_EDGE_SIP_MEDIA_FRAME_DURATION_MS;
   media_config.thread_cnt = 1;
@@ -2350,6 +2410,29 @@ bool dart_edge_sip_bridge_start(
   runtime->started = true;
   runtime->shutting_down = false;
   g_active_runtime = runtime;
+  return true;
+}
+
+bool dart_edge_sip_bridge_set_codec_priority(
+    dart_edge_sip_bridge_runtime* runtime,
+    const char* codec_id,
+    uint8_t priority,
+    char* error,
+    size_t error_len) {
+  if (runtime == NULL || !runtime->started) {
+    store_error(error, error_len, "SIP runtime must be started before configuring codecs.");
+    return false;
+  }
+  if (codec_id == NULL || codec_id[0] == '\0') {
+    store_error(error, error_len, "SIP codec ID must not be empty.");
+    return false;
+  }
+  pj_str_t codec = pj_str((char*)codec_id);
+  pj_status_t status = pjsua_codec_set_priority(&codec, priority);
+  if (status != PJ_SUCCESS) {
+    store_status_error(error, error_len, "Failed to configure SIP codec priority", status);
+    return false;
+  }
   return true;
 }
 
@@ -3263,6 +3346,8 @@ bool dart_edge_sip_bridge_attach_media_app(
     uint32_t playback_sample_rate_hz,
     uint32_t playback_channels,
     uint32_t playback_frame_duration_ms,
+    uint32_t capture_buffer_duration_ms,
+    uint32_t playback_buffer_duration_ms,
     char* error,
     size_t error_len) {
   if (runtime == NULL) {
@@ -3282,6 +3367,16 @@ bool dart_edge_sip_bridge_attach_media_app(
         error,
         error_len,
         "attachMediaApp requires positive PCM16 mono media frames no larger than 4096 bytes.");
+    return false;
+  }
+  if (capture_buffer_duration_ms < capture_frame_duration_ms ||
+      capture_buffer_duration_ms > 60000 ||
+      playback_buffer_duration_ms < playback_frame_duration_ms ||
+      playback_buffer_duration_ms > 60000) {
+    store_error(
+        error,
+        error_len,
+        "attachMediaApp buffer durations must contain at least one frame and not exceed 60 seconds.");
     return false;
   }
   size_t capture_frame_bytes = media_bytes_per_frame(
@@ -3330,7 +3425,9 @@ bool dart_edge_sip_bridge_attach_media_app(
          media_slot->capture_frame_duration_ms != capture_frame_duration_ms ||
          media_slot->playback_sample_rate_hz != playback_sample_rate_hz ||
          media_slot->playback_channels != playback_channels ||
-         media_slot->playback_frame_duration_ms != playback_frame_duration_ms)) {
+         media_slot->playback_frame_duration_ms != playback_frame_duration_ms ||
+         media_slot->capture_buffer_duration_ms != capture_buffer_duration_ms ||
+         media_slot->playback_buffer_duration_ms != playback_buffer_duration_ms)) {
       remove_media_ports(runtime, media_slot);
     } else {
       clear_media_streams(media_slot);
@@ -3341,6 +3438,8 @@ bool dart_edge_sip_bridge_attach_media_app(
     media_slot->playback_sample_rate_hz = playback_sample_rate_hz;
     media_slot->playback_channels = playback_channels;
     media_slot->playback_frame_duration_ms = playback_frame_duration_ms;
+    media_slot->capture_buffer_duration_ms = capture_buffer_duration_ms;
+    media_slot->playback_buffer_duration_ms = playback_buffer_duration_ms;
   }
   if (!ensure_media_ports_connected(runtime, call_id, slot, error, error_len)) {
     return false;
@@ -3565,6 +3664,62 @@ bool dart_edge_sip_bridge_clear_raw_audio(
   }
 
   audio_ring_clear(&media_slot->outbound_port->ring);
+  return true;
+}
+
+static void copy_audio_ring_stats(
+    dart_edge_sip_audio_ring* ring,
+    uint64_t* queued_bytes,
+    uint64_t* capacity_bytes,
+    uint64_t* overrun_count,
+    uint64_t* underrun_count,
+    uint64_t* dropped_bytes) {
+  pthread_mutex_lock(&ring->mutex);
+  *queued_bytes = ring->length;
+  *capacity_bytes = ring->capacity;
+  *overrun_count = ring->overrun_count;
+  *underrun_count = ring->underrun_count;
+  *dropped_bytes = ring->dropped_bytes;
+  pthread_mutex_unlock(&ring->mutex);
+}
+
+bool dart_edge_sip_bridge_get_media_queue_stats(
+    dart_edge_sip_bridge_runtime* runtime,
+    const char* session_id,
+    dart_edge_sip_bridge_media_queue_stats* stats_out,
+    char* error,
+    size_t error_len) {
+  if (runtime == NULL || stats_out == NULL) {
+    store_error(error, error_len, "Missing SIP media queue stats output.");
+    return false;
+  }
+  pjsua_call_id call_id;
+  if (!session_id_to_call_id(session_id, &call_id)) {
+    store_error(error, error_len, "Invalid SIP call session ID.");
+    return false;
+  }
+  dart_edge_sip_bridge_call_slot* slot = slot_for_call(runtime, call_id);
+  dart_edge_sip_bridge_media_slot* media_slot = media_slot_for_call(runtime, call_id);
+  if (slot == NULL || !slot->media_session_active || media_slot == NULL ||
+      media_slot->inbound_port == NULL || media_slot->outbound_port == NULL) {
+    store_error(error, error_len, "No SIP media app is attached to this call.");
+    return false;
+  }
+  memset(stats_out, 0, sizeof(*stats_out));
+  copy_audio_ring_stats(
+      &media_slot->inbound_port->ring,
+      &stats_out->capture_queued_bytes,
+      &stats_out->capture_capacity_bytes,
+      &stats_out->capture_overrun_count,
+      &stats_out->capture_underrun_count,
+      &stats_out->capture_dropped_bytes);
+  copy_audio_ring_stats(
+      &media_slot->outbound_port->ring,
+      &stats_out->playback_queued_bytes,
+      &stats_out->playback_capacity_bytes,
+      &stats_out->playback_overrun_count,
+      &stats_out->playback_underrun_count,
+      &stats_out->playback_dropped_bytes);
   return true;
 }
 

@@ -52,6 +52,33 @@ final class SipTransportBinding {
   };
 }
 
+final class SipTlsProfile {
+  const SipTlsProfile({
+    required this.id,
+    required this.certificatePath,
+    required this.privateKeyPath,
+    this.privateKeyPassword,
+    this.caPath,
+    this.verifyServer = true,
+  });
+
+  final String id;
+  final String certificatePath;
+  final String privateKeyPath;
+  final String? privateKeyPassword;
+  final String? caPath;
+  final bool verifyServer;
+
+  Map<String, Object?> toJson() => {
+    'id': id,
+    'certificatePath': certificatePath,
+    'privateKeyPath': privateKeyPath,
+    'privateKeyPassword': ?privateKeyPassword,
+    'caPath': ?caPath,
+    'verifyServer': verifyServer,
+  };
+}
+
 final class SipRealmConfig {
   const SipRealmConfig({
     required this.domain,
@@ -76,6 +103,7 @@ final class SipMediaConfig {
     this.rtpEndPort = 40100,
     this.externalAddress,
     this.enableSrtp = false,
+    this.requireSrtp = false,
     this.enableDtmfDetection = true,
   });
 
@@ -83,6 +111,7 @@ final class SipMediaConfig {
   final int rtpEndPort;
   final String? externalAddress;
   final bool enableSrtp;
+  final bool requireSrtp;
   final bool enableDtmfDetection;
 
   Map<String, Object?> toJson() => {
@@ -90,6 +119,7 @@ final class SipMediaConfig {
     'rtpEndPort': rtpEndPort,
     'externalAddress': ?externalAddress,
     'enableSrtp': enableSrtp,
+    'requireSrtp': requireSrtp,
     'enableDtmfDetection': enableDtmfDetection,
   };
 }
@@ -185,6 +215,7 @@ final class SipServerConfig {
     this.transports = const <SipTransportBinding>[
       SipTransportBinding.udp(host: '0.0.0.0', port: 5060),
     ],
+    this.tlsProfiles = const <SipTlsProfile>[],
     this.realms = const <SipRealmConfig>[],
     this.endpoints = const <SipEndpointConfig>[],
     this.trunks = const <SipTrunkConfig>[],
@@ -197,6 +228,7 @@ final class SipServerConfig {
   final String serverName;
   final PjsipEngineConfig engine;
   final List<SipTransportBinding> transports;
+  final List<SipTlsProfile> tlsProfiles;
   final List<SipRealmConfig> realms;
   final List<SipEndpointConfig> endpoints;
   final List<SipTrunkConfig> trunks;
@@ -209,6 +241,7 @@ final class SipServerConfig {
     'serverName': serverName,
     'engine': engine.toJson(),
     'transports': transports.map((binding) => binding.toJson()).toList(),
+    'tlsProfiles': tlsProfiles.map((profile) => profile.toJson()).toList(),
     'realms': realms.map((realm) => realm.toJson()).toList(),
     'endpoints': endpoints.map((endpoint) => endpoint.toJson()).toList(),
     'trunks': trunks.map((trunk) => trunk.toJson()).toList(),

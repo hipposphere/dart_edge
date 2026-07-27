@@ -15,6 +15,26 @@ abstract interface class SipMediaApp {
   FutureOr<void> run(SipMediaAppSession session);
 }
 
+/// Optional capability for media apps that can establish external resources
+/// before a SIP call is answered.
+abstract interface class SipPreparableMediaApp implements SipMediaApp {
+  FutureOr<SipMediaAppPreparation> prepare({
+    required SipCallSession call,
+    required SipMediaFormats formats,
+    required Map<String, Object?> metadata,
+  });
+}
+
+/// One prepared media-app instance owned by a single SIP call.
+///
+/// Implementations may hold provider connections or other resources between
+/// [SipPreparableMediaApp.prepare] and attachment. [close] must be idempotent.
+abstract interface class SipMediaAppPreparation {
+  FutureOr<void> run(SipMediaAppSession session);
+
+  FutureOr<void> close();
+}
+
 final class SipMediaAppSession {
   const SipMediaAppSession({
     required this.appId,

@@ -132,11 +132,55 @@ void main() {
     expect(attachedEvent.mediaAppId, 'assistant');
 
     await mediaSession.playAudioBytes(Uint8List(960));
+    final queueStats = mediaSession.audioQueueStats;
+    expect(queueStats.capture.capacityDuration, const Duration(seconds: 5));
+    expect(queueStats.playback.capacityDuration, const Duration(seconds: 2));
     await mediaSession.clearPlaybackQueue();
 
     await call.hangup();
     await mediaSession.closed.timeout(const Duration(seconds: 2));
     expect(mediaSession.isClosed, isTrue);
+  });
+
+  test('prepares a capable media app before attachment', () async {
+    final preparedCall = Completer<String>();
+    final runSession = Completer<SipMediaAppSession>();
+    final sip = DartEdgeSip(
+      config: const SipServerConfig(
+        transports: [
+          SipTransportBinding.udp(host: '127.0.0.1', port: 5163),
+        ],
+        trunks: [
+          SipTrunkConfig(
+            id: 'carrier-a',
+            direction: SipTrunkDirection.bidirectional,
+            serverUri: 'sip:example.com',
+          ),
+        ],
+      ),
+      mediaApps: [
+        _PreparableTestMediaApp(preparedCall, runSession),
+      ],
+    );
+    addTearDown(sip.dispose);
+    await sip.start();
+    final call = await sip.originateCall(
+      const SipOutboundCallRequest(
+        trunkId: 'carrier-a',
+        fromUri: 'sip:1000@pbx.example.com',
+        toUri: 'sip:2000@example.com',
+      ),
+    );
+
+    final prepared = await sip.prepareMediaApp(
+      call,
+      mediaAppId: 'prepared-assistant',
+    );
+
+    expect(await preparedCall.future, call.id);
+    expect(runSession.isCompleted, isFalse);
+    final media = await prepared.attach();
+    expect((await runSession.future).media, same(media));
   });
 
   test('media session close signal completes when runtime closes it', () async {
@@ -228,5 +272,51 @@ final class _TestMediaApp implements SipMediaApp {
     if (!runSession.isCompleted) {
       runSession.complete(session);
     }
+  }
+}
+
+final class _PreparableTestMediaApp
+    implements SipMediaApp, SipPreparableMediaApp {
+  const _PreparableTestMediaApp(this.preparedCall, this.runSession);
+
+  final Completer<String> preparedCall;
+  final Completer<SipMediaAppSession> runSession;
+
+  @override
+  String get id => 'prepared-assistant';
+
+  @override
+  SipMediaFormats audioFormats({
+    required SipCallSession call,
+    required Map<String, Object?> metadata,
+  }) => const SipMediaFormats.symmetric(SipAudioFormat.voiceAssistant());
+
+  @override
+  SipMediaAppPreparation prepare({
+    required SipCallSession call,
+    required SipMediaFormats formats,
+    required Map<String, Object?> metadata,
+  }) {
+    preparedCall.complete(call.id);
+    return _TestMediaAppPreparation(runSession);
+  }
+
+  @override
+  Never run(SipMediaAppSession session) {
+    throw StateError('Prepared media apps must run their prepared instance.');
+  }
+}
+
+final class _TestMediaAppPreparation implements SipMediaAppPreparation {
+  const _TestMediaAppPreparation(this.runSession);
+
+  final Completer<SipMediaAppSession> runSession;
+
+  @override
+  void close() {}
+
+  @override
+  void run(SipMediaAppSession session) {
+    runSession.complete(session);
   }
 }

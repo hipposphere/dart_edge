@@ -97,10 +97,55 @@ sealed class SipEvent {
       'trunk' => SipTrunkEvent.fromJson(json),
       'recording' => SipRecordingEvent.fromJson(json),
       'voicemail' => SipVoicemailEvent.fromJson(json),
+      'dtmf' => SipDtmfEvent.fromJson(json),
       final Object? value => throw StateError(
         'Unsupported SIP event category: $value',
       ),
     };
+  }
+}
+
+enum SipDtmfMethod {
+  rfc2833,
+  sipInfo,
+  unknown;
+
+  static SipDtmfMethod parse(Object? value) => switch (value) {
+    'rfc2833' => rfc2833,
+    'sipInfo' => sipInfo,
+    _ => unknown,
+  };
+}
+
+final class SipDtmfEvent extends SipEvent {
+  const SipDtmfEvent({
+    required this.callId,
+    required this.digit,
+    required this.duration,
+    required this.method,
+    required super.timestamp,
+    super.metadata,
+  });
+
+  final String callId;
+  final String digit;
+  final Duration duration;
+  final SipDtmfMethod method;
+
+  factory SipDtmfEvent.fromJson(Map<String, Object?> json) {
+    return SipDtmfEvent(
+      callId: _readRequiredText(json, 'callId'),
+      digit: _readRequiredText(json, 'digit'),
+      duration: Duration(
+        milliseconds: switch (json['durationMs']) {
+          final int value => value,
+          _ => 0,
+        },
+      ),
+      method: SipDtmfMethod.parse(json['method']),
+      timestamp: _readTimestamp(json),
+      metadata: _readMetadata(json),
+    );
   }
 }
 

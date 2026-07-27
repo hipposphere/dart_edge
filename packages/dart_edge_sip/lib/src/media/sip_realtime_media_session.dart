@@ -150,6 +150,53 @@ final class SipRealtimeMediaSession {
     }
   }
 
+  Future<List<SipOwnedAudioFrame>> pollIncomingFrames({
+    int maxFrames = 5,
+  }) async {
+    if (maxFrames <= 0) {
+      throw ArgumentError.value(
+        maxFrames,
+        'maxFrames',
+        'Maximum frame count must be positive.',
+      );
+    }
+    final frames = <SipOwnedAudioFrame>[];
+    while (frames.length < maxFrames) {
+      final frame = await pollIncomingFrame();
+      if (frame == null) {
+        break;
+      }
+      frames.add(frame);
+    }
+    return frames;
+  }
+
+  SipAudioQueueStats get audioQueueStats {
+    _ensureOpen();
+    final stats = DartEdgeSipNativeMedia.mediaQueueStats(
+      handle: _handle,
+      sessionId: callId,
+    );
+    return SipAudioQueueStats(
+      capture: _queueDirectionStats(
+        queuedBytes: stats.captureQueuedBytes,
+        capacityBytes: stats.captureCapacityBytes,
+        overrunCount: stats.captureOverrunCount,
+        underrunCount: stats.captureUnderrunCount,
+        droppedBytes: stats.captureDroppedBytes,
+        format: captureFormat,
+      ),
+      playback: _queueDirectionStats(
+        queuedBytes: stats.playbackQueuedBytes,
+        capacityBytes: stats.playbackCapacityBytes,
+        overrunCount: stats.playbackOverrunCount,
+        underrunCount: stats.playbackUnderrunCount,
+        droppedBytes: stats.playbackDroppedBytes,
+        format: playbackFormat,
+      ),
+    );
+  }
+
   Future<void> playAudioBytes(Uint8List bytes, {SipAudioFormat? format}) async {
     _ensureOpen();
     try {
@@ -237,4 +284,23 @@ final class SipRealtimeMediaSession {
     _markClosed();
     return true;
   }
+}
+
+SipAudioQueueDirectionStats _queueDirectionStats({
+  required int queuedBytes,
+  required int capacityBytes,
+  required int overrunCount,
+  required int underrunCount,
+  required int droppedBytes,
+  required SipAudioFormat format,
+}) {
+  return SipAudioQueueDirectionStats(
+    queuedBytes: queuedBytes,
+    capacityBytes: capacityBytes,
+    overrunCount: overrunCount,
+    underrunCount: underrunCount,
+    droppedBytes: droppedBytes,
+    queuedDuration: format.durationForBytes(queuedBytes),
+    capacityDuration: format.durationForBytes(capacityBytes),
+  );
 }

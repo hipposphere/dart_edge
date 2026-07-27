@@ -16,6 +16,21 @@ enum SipRuntimeLicenseMode {
   };
 }
 
+final class SipCodecPolicy {
+  const SipCodecPolicy({
+    this.preferred = const <String>[],
+    this.disabled = const <String>[],
+  });
+
+  final List<String> preferred;
+  final List<String> disabled;
+
+  Map<String, Object?> toJson() => {
+    'preferred': preferred,
+    'disabled': disabled,
+  };
+}
+
 final class PjsipEngineConfig {
   const PjsipEngineConfig({
     this.licenseMode = SipRuntimeLicenseMode.gpl,
@@ -23,6 +38,8 @@ final class PjsipEngineConfig {
     this.maxRegistrations = 5000,
     this.maxConferencePorts = 32,
     this.workerThreads = 2,
+    this.mediaClockRateHz = 16000,
+    this.codecPolicy = const SipCodecPolicy(),
     this.enableIce = true,
     this.enableTurn = false,
     this.enableTls = true,
@@ -36,6 +53,8 @@ final class PjsipEngineConfig {
   final int maxRegistrations;
   final int maxConferencePorts;
   final int workerThreads;
+  final int mediaClockRateHz;
+  final SipCodecPolicy codecPolicy;
   final bool enableIce;
   final bool enableTurn;
   final bool enableTls;
@@ -50,6 +69,8 @@ final class PjsipEngineConfig {
     'maxRegistrations': maxRegistrations,
     'maxConferencePorts': maxConferencePorts,
     'workerThreads': workerThreads,
+    'mediaClockRateHz': mediaClockRateHz,
+    'codecPolicy': codecPolicy.toJson(),
     'enableIce': enableIce,
     'enableTurn': enableTurn,
     'enableTls': enableTls,

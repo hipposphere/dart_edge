@@ -15,6 +15,19 @@ typedef struct dart_edge_sip_audio_frame {
   uint64_t sequence;
 } dart_edge_sip_audio_frame;
 
+typedef struct dart_edge_sip_media_queue_stats {
+  uint64_t capture_queued_bytes;
+  uint64_t capture_capacity_bytes;
+  uint64_t capture_overrun_count;
+  uint64_t capture_underrun_count;
+  uint64_t capture_dropped_bytes;
+  uint64_t playback_queued_bytes;
+  uint64_t playback_capacity_bytes;
+  uint64_t playback_overrun_count;
+  uint64_t playback_underrun_count;
+  uint64_t playback_dropped_bytes;
+} dart_edge_sip_media_queue_stats;
+
 int32_t dart_edge_sip_native_abi_version(void);
 
 int64_t dart_edge_sip_create(const char* config_json);
@@ -56,6 +69,11 @@ bool dart_edge_sip_play_media_owned(
     uint32_t frame_duration_ms);
 
 bool dart_edge_sip_clear_media_playback(int64_t handle, const char* session_id);
+
+bool dart_edge_sip_get_media_queue_stats(
+    int64_t handle,
+    const char* session_id,
+    dart_edge_sip_media_queue_stats* stats_out);
 
 void dart_edge_sip_free_owned_bytes(NativeOwnedBytes value);
 

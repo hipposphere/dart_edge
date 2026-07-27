@@ -18,6 +18,7 @@ const BRIDGE_EVENT_REGISTRATION: i32 = 2;
 const BRIDGE_EVENT_TRUNK: i32 = 3;
 const BRIDGE_EVENT_RECORDING: i32 = 4;
 const BRIDGE_EVENT_VOICEMAIL: i32 = 5;
+const BRIDGE_EVENT_DTMF: i32 = 6;
 const BRIDGE_DIRECTION_INBOUND: i32 = 0;
 const BRIDGE_CALL_INVITING: i32 = 0;
 const BRIDGE_CALL_RINGING: i32 = 1;
@@ -140,6 +141,8 @@ struct NativeMediaAppPayload {
     playback_sample_rate_hz: u32,
     playback_channels: u32,
     playback_frame_duration_ms: u32,
+    capture_buffer_duration_ms: u32,
+    playback_buffer_duration_ms: u32,
 }
 
 #[derive(Deserialize)]
@@ -192,12 +195,21 @@ struct NativeSipEngineConfig {
     max_registrations: u32,
     max_conference_ports: u32,
     worker_threads: u32,
+    media_clock_rate_hz: u32,
+    codec_policy: NativeSipCodecPolicy,
     enable_ice: bool,
     enable_turn: bool,
     enable_tls: bool,
     enable_srtp: bool,
     enable_rport: bool,
     user_agent: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct NativeSipCodecPolicy {
+    preferred: Vec<String>,
+    disabled: Vec<String>,
 }
 
 #[derive(Deserialize)]
@@ -247,6 +259,7 @@ struct NativeSipMediaConfig {
     rtp_end_port: u16,
     external_address: Option<String>,
     enable_srtp: bool,
+    require_srtp: bool,
     enable_dtmf_detection: bool,
 }
 
@@ -307,14 +320,17 @@ impl PjsipRuntime {
             max_calls: config.engine.max_calls,
             worker_threads: config.engine.worker_threads,
             max_media_ports: config.engine.max_conference_ports,
+            media_clock_rate_hz: config.engine.media_clock_rate_hz,
             rtp_start_port: u32::from(config.media.rtp_start_port),
             rtp_end_port: u32::from(config.media.rtp_end_port),
             enable_ice: config.engine.enable_ice,
             enable_turn: config.engine.enable_turn,
             enable_tls: config.engine.enable_tls,
             enable_srtp: config.engine.enable_srtp && config.media.enable_srtp,
+            require_srtp: config.media.require_srtp,
             enable_rport: config.engine.enable_rport,
             enable_registrar: config.features.registrar,
+            enable_dtmf_detection: config.media.enable_dtmf_detection,
             user_agent: user_agent.as_ptr(),
             external_address: external_address
                 .as_ref()
@@ -348,6 +364,12 @@ impl PjsipRuntime {
         }
 
         runtime.start()?;
+        for codec in &config.engine.codec_policy.disabled {
+            runtime.set_codec_priority(codec, 0)?;
+        }
+        for (index, codec) in config.engine.codec_policy.preferred.iter().enumerate() {
+            runtime.set_codec_priority(codec, 255_u8.saturating_sub(index.min(254) as u8))?;
+        }
         Ok(runtime)
     }
 
@@ -389,6 +411,25 @@ impl PjsipRuntime {
             Ok(())
         } else {
             Err(error.message("Failed to add SIP transport."))
+        }
+    }
+
+    fn set_codec_priority(&mut self, codec_id: &str, priority: u8) -> Result<(), String> {
+        let codec_id = c_string(codec_id)?;
+        let mut error = ErrorBuffer::new();
+        let ok = unsafe {
+            dart_edge_sip_bridge_set_codec_priority(
+                self.raw.as_ptr(),
+                codec_id.as_ptr(),
+                priority,
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if ok {
+            Ok(())
+        } else {
+            Err(error.message("Failed to configure SIP codec priority."))
         }
     }
 
@@ -934,6 +975,8 @@ impl PjsipRuntime {
                 payload.playback_sample_rate_hz,
                 payload.playback_channels,
                 payload.playback_frame_duration_ms,
+                payload.capture_buffer_duration_ms,
+                payload.playback_buffer_duration_ms,
                 error.as_mut_ptr(),
                 error.len(),
             )
@@ -1034,6 +1077,28 @@ impl PjsipRuntime {
             dart_edge_sip_bridge_clear_raw_audio,
             "Failed to clear SIP media playback.",
         )
+    }
+
+    fn media_queue_stats(
+        &mut self,
+        session_id: &str,
+    ) -> Result<dart_edge_sip_media_queue_stats, String> {
+        let session_id = c_string(session_id)?;
+        let mut stats = dart_edge_sip_bridge_media_queue_stats::default();
+        let mut error = ErrorBuffer::new();
+        let ok = unsafe {
+            dart_edge_sip_bridge_get_media_queue_stats(
+                self.raw.as_ptr(),
+                session_id.as_ptr(),
+                &mut stats,
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if !ok {
+            return Err(error.message("Failed to read SIP media queue stats."));
+        }
+        Ok(stats.into())
     }
 
     fn poll_event(&mut self) -> Option<Value> {
@@ -1701,6 +1766,44 @@ pub extern "C" fn dart_edge_sip_clear_media_playback(
 }
 
 #[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_sip_get_media_queue_stats(
+    handle: i64,
+    session_id: *const c_char,
+    stats_out: *mut dart_edge_sip_media_queue_stats,
+) -> bool {
+    if stats_out.is_null() {
+        set_last_error("Missing dart_edge_sip media queue stats output.");
+        return false;
+    }
+    let Some(session_id) = (unsafe { read_c_string(session_id) }) else {
+        set_last_error("Missing SIP media session ID.");
+        return false;
+    };
+    let mut servers = SERVERS.lock().unwrap();
+    let Some(server) = servers.get_mut(&handle) else {
+        set_last_error("Unknown dart_edge_sip handle.");
+        return false;
+    };
+    let Some(runtime) = server.runtime.as_mut() else {
+        set_last_error("dart_edge_sip is not started.");
+        return false;
+    };
+    match runtime.media_queue_stats(&session_id) {
+        Ok(stats) => {
+            unsafe {
+                *stats_out = stats;
+            }
+            clear_last_error();
+            true
+        }
+        Err(error) => {
+            set_last_error(error);
+            false
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
 pub extern "C" fn dart_edge_sip_free_owned_bytes(value: NativeOwnedBytes) {
     unsafe {
         free_owned_bytes(value);
@@ -1731,6 +1834,12 @@ fn validate_config(config: &NativeSipServerConfig) -> Result<(), String> {
     }
     if config.engine.max_conference_ports == 0 {
         return Err("PJSIP maxConferencePorts must be greater than zero.".to_string());
+    }
+    if config.engine.media_clock_rate_hz < 8000 || config.engine.media_clock_rate_hz > 192000 {
+        return Err("PJSIP mediaClockRateHz must be between 8000 and 192000.".to_string());
+    }
+    if config.media.require_srtp && !config.media.enable_srtp {
+        return Err("media.requireSrtp requires media.enableSrtp.".to_string());
     }
     if config.transports.is_empty() {
         return Err("At least one SIP transport binding is required.".to_string());
@@ -1983,6 +2092,19 @@ fn bridge_event_to_json(event: &dart_edge_sip_bridge_event) -> Value {
             maybe_insert_string(&mut json, "storageUri", &event.storage_uri);
             Value::Object(json)
         }
+        BRIDGE_EVENT_DTMF => {
+            json!({
+                "category": "dtmf",
+                "callId": string_or_empty(&event.call_id),
+                "digit": string_or_empty(&event.dtmf_digit),
+                "durationMs": event.dtmf_duration_ms,
+                "method": match event.dtmf_method {
+                    0 => "rfc2833",
+                    1 => "sipInfo",
+                    _ => "unknown",
+                },
+            })
+        }
         _ => {
             let mut json = serde_json::Map::new();
             json.insert("category".to_string(), Value::String("call".to_string()));
@@ -2140,6 +2262,21 @@ pub struct dart_edge_sip_audio_frame {
     pub sequence: u64,
 }
 
+#[repr(C)]
+#[derive(Clone, Copy, Default)]
+pub struct dart_edge_sip_media_queue_stats {
+    pub capture_queued_bytes: u64,
+    pub capture_capacity_bytes: u64,
+    pub capture_overrun_count: u64,
+    pub capture_underrun_count: u64,
+    pub capture_dropped_bytes: u64,
+    pub playback_queued_bytes: u64,
+    pub playback_capacity_bytes: u64,
+    pub playback_overrun_count: u64,
+    pub playback_underrun_count: u64,
+    pub playback_dropped_bytes: u64,
+}
+
 impl Default for dart_edge_sip_audio_frame {
     fn default() -> Self {
         Self {
@@ -2163,14 +2300,17 @@ struct dart_edge_sip_bridge_config {
     max_calls: u32,
     worker_threads: u32,
     max_media_ports: u32,
+    media_clock_rate_hz: u32,
     rtp_start_port: u32,
     rtp_end_port: u32,
     enable_ice: bool,
     enable_turn: bool,
     enable_tls: bool,
     enable_srtp: bool,
+    require_srtp: bool,
     enable_rport: bool,
     enable_registrar: bool,
+    enable_dtmf_detection: bool,
     user_agent: *const c_char,
     external_address: *const c_char,
     recording_directory: *const c_char,
@@ -2233,6 +2373,8 @@ struct dart_edge_sip_bridge_event {
     recording_state: i32,
     voicemail_state: i32,
     status_code: i32,
+    dtmf_method: i32,
+    dtmf_duration_ms: u32,
     expires_at_epoch_seconds: u64,
     call_id: [c_char; 64],
     related_call_id: [c_char; 64],
@@ -2247,6 +2389,39 @@ struct dart_edge_sip_bridge_event {
     media_app_id: [c_char; 128],
     storage_uri: [c_char; 1024],
     details: [c_char; 256],
+    dtmf_digit: [c_char; 2],
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Default)]
+struct dart_edge_sip_bridge_media_queue_stats {
+    capture_queued_bytes: u64,
+    capture_capacity_bytes: u64,
+    capture_overrun_count: u64,
+    capture_underrun_count: u64,
+    capture_dropped_bytes: u64,
+    playback_queued_bytes: u64,
+    playback_capacity_bytes: u64,
+    playback_overrun_count: u64,
+    playback_underrun_count: u64,
+    playback_dropped_bytes: u64,
+}
+
+impl From<dart_edge_sip_bridge_media_queue_stats> for dart_edge_sip_media_queue_stats {
+    fn from(value: dart_edge_sip_bridge_media_queue_stats) -> Self {
+        Self {
+            capture_queued_bytes: value.capture_queued_bytes,
+            capture_capacity_bytes: value.capture_capacity_bytes,
+            capture_overrun_count: value.capture_overrun_count,
+            capture_underrun_count: value.capture_underrun_count,
+            capture_dropped_bytes: value.capture_dropped_bytes,
+            playback_queued_bytes: value.playback_queued_bytes,
+            playback_capacity_bytes: value.playback_capacity_bytes,
+            playback_overrun_count: value.playback_overrun_count,
+            playback_underrun_count: value.playback_underrun_count,
+            playback_dropped_bytes: value.playback_dropped_bytes,
+        }
+    }
 }
 
 impl Default for dart_edge_sip_bridge_event {
@@ -2310,6 +2485,14 @@ unsafe extern "C" {
 
     fn dart_edge_sip_bridge_start(
         runtime: *mut dart_edge_sip_bridge_runtime,
+        error: *mut c_char,
+        error_len: usize,
+    ) -> bool;
+
+    fn dart_edge_sip_bridge_set_codec_priority(
+        runtime: *mut dart_edge_sip_bridge_runtime,
+        codec_id: *const c_char,
+        priority: u8,
         error: *mut c_char,
         error_len: usize,
     ) -> bool;
@@ -2472,6 +2655,8 @@ unsafe extern "C" {
         playback_sample_rate_hz: u32,
         playback_channels: u32,
         playback_frame_duration_ms: u32,
+        capture_buffer_duration_ms: u32,
+        playback_buffer_duration_ms: u32,
         error: *mut c_char,
         error_len: usize,
     ) -> bool;
@@ -2512,6 +2697,14 @@ unsafe extern "C" {
     fn dart_edge_sip_bridge_clear_raw_audio(
         runtime: *mut dart_edge_sip_bridge_runtime,
         session_id: *const c_char,
+        error: *mut c_char,
+        error_len: usize,
+    ) -> bool;
+
+    fn dart_edge_sip_bridge_get_media_queue_stats(
+        runtime: *mut dart_edge_sip_bridge_runtime,
+        session_id: *const c_char,
+        stats_out: *mut dart_edge_sip_bridge_media_queue_stats,
         error: *mut c_char,
         error_len: usize,
     ) -> bool;
