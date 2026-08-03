@@ -1,6 +1,6 @@
 [package]
 name = "dart_edge_sql_pglite"
-version = "0.1.6"
+version = "0.1.7"
 edition = "2024"
 publish = false
 
@@ -9,7 +9,24 @@ crate-type = ["staticlib", "cdylib"]
 
 [dependencies]
 once_cell = "1.21"
-pglite-oxide = "0.5"
+pglite-oxide = "=0.5.0"
+# PGlite 0.5.0 was released against this coherent Wasmer prerelease family.
+# Exact pins are required because this published native crate intentionally has
+# no Cargo.lock, while Cargo's prerelease caret resolution can otherwise mix
+# incompatible alpha and stable Wasmer packages during consumer/CI builds.
+virtual-fs = "=0.702.0-alpha.2"
+virtual-mio = "=0.702.0-alpha.2"
+virtual-net = "=0.702.0-alpha.2"
+wasmer = { version = "=7.2.0-alpha.2", default-features = false }
+wasmer-compiler = "=7.2.0-alpha.2"
+wasmer-config = "=0.702.0-alpha.2"
+wasmer-journal = "=0.702.0-alpha.2"
+wasmer-package = "=0.702.0-alpha.2"
+wasmer-types = "=7.2.0-alpha.2"
+wasmer-vm = "=7.2.0-alpha.2"
+wasmer-wasix = { version = "=0.702.0-alpha.2", default-features = false }
+wasmer-wasix-types = "=0.702.0-alpha.2"
+webc = "=11.0.0"
 
 [profile.dev]
 panic = "abort"

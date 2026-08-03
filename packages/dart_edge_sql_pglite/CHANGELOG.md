@@ -1,7 +1,8 @@
 ## 0.1.17
 
 - Add process-wide PGlite endpoint cleanup for Flutter hot-restart recovery.
-- Bump the native artifact version to 0.1.6 for the cleanup ABI.
+- Bump the native artifact version to 0.1.7 for the cleanup ABI and pin the
+  tested PGlite dependency graph for reproducible native builds.
 - Require `dart_edge_sql` 0.3.36 for native pool cleanup.
 
 ## 0.1.14
