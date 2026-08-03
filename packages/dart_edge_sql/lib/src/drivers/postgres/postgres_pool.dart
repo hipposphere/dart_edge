@@ -5,6 +5,7 @@ import '../../core/sql_executor.dart';
 import '../../core/sql_result.dart';
 import '../../core/sql_statement.dart';
 import '../shared/native_sql_pool_delegate.dart';
+import 'managed_postgres_endpoint.dart';
 import 'pglite_endpoint.dart';
 
 /// PostgreSQL-backed [SqlPool] implementation.
@@ -29,18 +30,21 @@ final class PostgresPool implements SqlPool {
     );
   }
 
-  /// Opens a single-session PostgreSQL pool backed by a PGlite server.
+  /// Opens a PostgreSQL pool backed by a locally managed server endpoint.
   ///
   /// This constructor takes ownership of [endpoint]. Closing the pool also
   /// closes the endpoint.
-  factory PostgresPool.pglite(PgliteEndpoint endpoint) {
+  factory PostgresPool.managed(
+    ManagedPostgresEndpoint endpoint, {
+    int maxSessions = 10,
+  }) {
     final connectionString = endpoint.connectionString;
     try {
       return PostgresPool._(
         connectionString: connectionString,
         delegate: NativeSqlPoolDelegate.openPostgres(
           connectionString,
-          maxSessions: 1,
+          maxSessions: maxSessions,
         ),
         closeEndpoint: endpoint.close,
       );
@@ -48,6 +52,14 @@ final class PostgresPool implements SqlPool {
       unawaited(endpoint.close().catchError((_) {}));
       rethrow;
     }
+  }
+
+  /// Opens a single-session PostgreSQL pool backed by a PGlite server.
+  ///
+  /// This constructor takes ownership of [endpoint]. Closing the pool also
+  /// closes the endpoint.
+  factory PostgresPool.pglite(PgliteEndpoint endpoint) {
+    return PostgresPool.managed(endpoint, maxSessions: 1);
   }
 
   /// Connection string used to open the native PostgreSQL pool.

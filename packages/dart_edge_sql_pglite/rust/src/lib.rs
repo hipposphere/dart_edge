@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicI64, Ordering};
 use once_cell::sync::Lazy;
 use pglite_oxide::{PgliteServer, PgliteServerBuilder, extensions};
 
-const DART_EDGE_SQL_PGLITE_NATIVE_ABI_VERSION: i32 = 2;
+const DART_EDGE_SQL_PGLITE_NATIVE_ABI_VERSION: i32 = 3;
 
 static NEXT_HANDLE: AtomicI64 = AtomicI64::new(1);
 static SERVERS: Lazy<Mutex<HashMap<i64, PgliteServer>>> = Lazy::new(|| Mutex::new(HashMap::new()));
@@ -86,6 +86,32 @@ pub extern "C" fn dart_edge_sql_pglite_close(handle: i64) -> bool {
             set_last_error(format!("Failed to close PGlite database: {error}"));
             false
         }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_sql_pglite_close_all() -> bool {
+    let servers = {
+        let mut servers = SERVERS.lock().unwrap();
+        std::mem::take(&mut *servers)
+    };
+    let mut errors = Vec::new();
+
+    for (handle, server) in servers {
+        if let Err(error) = server.shutdown() {
+            errors.push(format!("handle {handle}: {error}"));
+        }
+    }
+
+    if errors.is_empty() {
+        clear_last_error();
+        true
+    } else {
+        set_last_error(format!(
+            "Failed to close PGlite databases: {}",
+            errors.join("; ")
+        ));
+        false
     }
 }
 

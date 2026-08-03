@@ -1,8 +1,41 @@
+import 'dart:io';
+
 import 'package:dart_edge_sql/dart_edge_sql.dart';
 import 'package:dart_edge_sql_pglite/dart_edge_sql_pglite.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test('closes orphaned endpoints before an embedder restart', () async {
+    final directory = await Directory.systemTemp.createTemp('pglite-restart-');
+    final firstPool = PgliteDatabase.open(directory.path).asPostgresPool();
+
+    try {
+      await firstPool.execute(
+        sql('CREATE TABLE restart_test (value TEXT NOT NULL)'),
+      );
+      await firstPool.execute(
+        sql("INSERT INTO restart_test (value) VALUES ('persisted')"),
+      );
+
+      await PgliteDatabase.closeAll();
+
+      final restartedPool = PgliteDatabase.open(
+        directory.path,
+      ).asPostgresPool();
+      try {
+        final result = await restartedPool.execute(
+          sql('SELECT value FROM restart_test'),
+        );
+        expect(result.single.read<String>('value'), 'persisted');
+      } finally {
+        await restartedPool.close();
+      }
+    } finally {
+      await firstPool.close();
+      await directory.delete(recursive: true);
+    }
+  });
+
   test(
     'opens a temporary PGlite database through PostgresPool.pglite',
     () async {

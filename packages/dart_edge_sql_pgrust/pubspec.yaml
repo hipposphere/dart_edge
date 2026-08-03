@@ -1,0 +1,18 @@
+name: dart_edge_sql_pgrust
+description: Managed experimental pgrust PostgreSQL endpoint for dart_edge_sql.
+version: 0.1.0
+publish_to: "https://registry.hippolabs.org/pub/internal-pub/"
+repository: https://github.com/hipposphere/dart_edge/tree/main/packages/dart_edge_sql_pgrust
+
+environment:
+  sdk: ">=3.12.0 <4.0.0"
+
+resolution: workspace
+
+dependencies:
+  dart_edge_sql:
+    hosted: "https://registry.hippolabs.org/pub/internal-pub/"
+    version: ^0.3.36
+
+dev_dependencies:
+  test: ^1.30.0

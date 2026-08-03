@@ -106,6 +106,11 @@ app.websocket('/audio', onConnect: (socket) async {
   integration for Dart Edge apps
 - [`packages/dart_edge_sql`](packages/dart_edge_sql): native-backed typed SQL
   pools and query builders
+- [`packages/dart_edge_sql_pglite`](packages/dart_edge_sql_pglite): embedded
+  PGlite PostgreSQL endpoint for local servers and tests
+- [`packages/dart_edge_sql_pgrust`](packages/dart_edge_sql_pgrust): managed
+  experimental pgrust endpoint for disposable compatibility and performance
+  experiments
 - [`packages/dart_edge_sql_codegen`](packages/dart_edge_sql_codegen): database
   introspection and Dart descriptor generation
 - [`packages/dart_edge_sql_migrator`](packages/dart_edge_sql_migrator): SQL

@@ -14,6 +14,7 @@ int64_t dart_edge_sql_pglite_open_persistent_with_extensions(
     const char *extensions);
 char *dart_edge_sql_pglite_connection_string(int64_t handle);
 bool dart_edge_sql_pglite_close(int64_t handle);
+bool dart_edge_sql_pglite_close_all(void);
 
 char *dart_edge_sql_pglite_take_last_error(void);
 void dart_edge_sql_pglite_free_string(char *value);

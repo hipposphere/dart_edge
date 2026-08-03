@@ -41,6 +41,17 @@ final class PgliteDatabase implements PgliteEndpoint {
     );
   }
 
+  /// Closes every PGlite endpoint still registered in this process.
+  ///
+  /// This is intended for embedded runtimes such as Flutter debug builds,
+  /// where hot restart replaces the Dart isolate without first disposing its
+  /// native resources. Do not call it while another live isolate is expected
+  /// to keep using a PGlite endpoint.
+  static Future<void> closeAll() async {
+    await NativeSqlRuntime.closeAllPools();
+    DartEdgeSqlPgliteNative.closeAll();
+  }
+
   /// Native `dart_edge_sql_pglite` handle for this endpoint.
   int get nativeHandle => _handle;
 

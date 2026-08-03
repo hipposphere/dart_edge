@@ -73,6 +73,10 @@ abstract final class DartEdgeSqlNative {
     gen.dart_edge_sql_close_pool(handle);
   }
 
+  static void closeAllPools() {
+    gen.dart_edge_sql_close_all_pools();
+  }
+
   static SqlResult executePool(int handle, SqlStatement statement) {
     final statementPtr = _encodeStatement(statement);
     try {

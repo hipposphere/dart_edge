@@ -1,6 +1,6 @@
 name: dart_edge_sql_pglite
 description: PGlite-backed PostgreSQL endpoint for dart_edge_sql.
-version: 0.1.16
+version: 0.1.17
 publish_to: "https://registry.hippolabs.org/pub/internal-pub/"
 repository: https://github.com/hipposphere/dart_edge/tree/main/packages/dart_edge_sql_pglite
 
@@ -13,7 +13,7 @@ dependencies:
   code_assets: ^1.2.1
   dart_edge_sql:
     hosted: "https://registry.hippolabs.org/pub/internal-pub/"
-    version: ^0.3.31
+    version: ^0.3.36
   dart_edge_native_assets:
     hosted: "https://registry.hippolabs.org/pub/internal-pub/"
     version: ^0.1.3

@@ -12,6 +12,9 @@ import 'dart:ffi' as ffi;
 @ffi.Native<ffi.Bool Function(ffi.Int64)>()
 external bool dart_edge_sql_pglite_close(int handle);
 
+@ffi.Native<ffi.Bool Function()>()
+external bool dart_edge_sql_pglite_close_all();
+
 @ffi.Native<ffi.Pointer<ffi.Char> Function(ffi.Int64)>()
 external ffi.Pointer<ffi.Char> dart_edge_sql_pglite_connection_string(
   int handle,

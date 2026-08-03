@@ -62,6 +62,13 @@ abstract final class DartEdgeSqlPgliteNative {
       throw StateError(_takeLastError());
     }
   }
+
+  static void closeAll() {
+    final closed = gen.dart_edge_sql_pglite_close_all();
+    if (!closed) {
+      throw StateError(_takeLastError());
+    }
+  }
 }
 
 Pointer<Utf8> _extensionsToNativeUtf8(Iterable<String> extensions) {

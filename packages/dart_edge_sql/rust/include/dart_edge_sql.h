@@ -13,6 +13,7 @@ int64_t dart_edge_sql_open_postgres_pool_with_max_sessions(
 int64_t dart_edge_sql_open_sqlite_pool(const char *path, int32_t max_sessions);
 int64_t dart_edge_sql_open_sqlite_in_memory_pool(int32_t max_sessions);
 void dart_edge_sql_close_pool(int64_t handle);
+void dart_edge_sql_close_all_pools(void);
 
 char *dart_edge_sql_execute_pool(int64_t handle, const char *statement_json);
 

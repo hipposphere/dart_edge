@@ -2,6 +2,21 @@ import 'package:dart_edge_sql/dart_edge_sql.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test('closes pools orphaned by an embedder restart', () async {
+    final orphanedPool = SqliteDatabase.inMemory();
+    await orphanedPool.execute(
+      sql('CREATE TABLE orphaned (id INTEGER PRIMARY KEY)'),
+    );
+
+    await NativeSqlRuntime.closeAllPools();
+    await orphanedPool.close();
+
+    final restartedPool = SqliteDatabase.inMemory();
+    addTearDown(restartedPool.close);
+    final result = await restartedPool.execute(sql('SELECT 1 AS value'));
+    expect(result.single.read<int>('value'), 1);
+  });
+
   test('sqlite pool executes reads and writes', () async {
     final pool = SqliteDatabase.inMemory();
     addTearDown(pool.close);

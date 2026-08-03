@@ -1,3 +1,11 @@
+## 0.3.36
+
+- Add process-wide native SQL pool cleanup for embedder hot-restart recovery.
+- Bump the native artifact version to 0.1.10 for the cleanup ABI.
+- Add `ManagedPostgresEndpoint` and `PostgresPool.managed` for locally managed
+  PostgreSQL-compatible servers.
+- Preserve `PostgresPool.pglite` as the single-session PGlite convenience API.
+
 ## 0.3.34
 
 - Preserve native PostgreSQL parameter types for null generated-column and

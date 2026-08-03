@@ -16,7 +16,7 @@ use sqlx::types::{Decimal, Uuid};
 use sqlx::{Column, Postgres, Row, Sqlite, TypeInfo, ValueRef};
 use tokio::runtime::{Builder, Runtime};
 
-const DART_EDGE_SQL_NATIVE_ABI_VERSION: i32 = 2;
+const DART_EDGE_SQL_NATIVE_ABI_VERSION: i32 = 3;
 
 static NEXT_HANDLE: AtomicI64 = AtomicI64::new(1);
 static RUNTIME: Lazy<Runtime> = Lazy::new(|| {
@@ -213,6 +213,24 @@ pub extern "C" fn dart_edge_sql_close_pool(handle: i64) {
             }
         });
     }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_sql_close_all_pools() {
+    TRANSACTIONS.lock().unwrap().clear();
+    let pools = {
+        let mut pools = POOLS.lock().unwrap();
+        std::mem::take(&mut *pools)
+    };
+
+    RUNTIME.block_on(async move {
+        for pool in pools.into_values() {
+            match pool {
+                NativePool::Postgres(pool) => pool.close().await,
+                NativePool::Sqlite(pool) => pool.close().await,
+            }
+        }
+    });
 }
 
 #[unsafe(no_mangle)]

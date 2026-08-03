@@ -12,6 +12,9 @@ import 'dart:ffi' as ffi;
 @ffi.Native<ffi.Int64 Function(ffi.Int64)>()
 external int dart_edge_sql_begin_transaction(int pool_handle);
 
+@ffi.Native<ffi.Void Function()>()
+external void dart_edge_sql_close_all_pools();
+
 @ffi.Native<ffi.Void Function(ffi.Int64)>(isLeaf: true)
 external void dart_edge_sql_close_pool(int handle);
 
