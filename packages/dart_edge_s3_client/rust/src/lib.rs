@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ffi::{CStr, CString, c_char};
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicI64, Ordering};
@@ -13,12 +13,17 @@ use dart_edge_core::{NativeOwnedBytes, free_owned_bytes, into_native_owned_bytes
 use once_cell::sync::Lazy;
 use tokio::runtime::{Builder, Runtime};
 
-const DART_EDGE_S3_CLIENT_NATIVE_ABI_VERSION: i32 = 3;
+const DART_EDGE_S3_CLIENT_NATIVE_ABI_VERSION: i32 = 4;
 
 static NEXT_HANDLE: AtomicI64 = AtomicI64::new(1);
 static NEXT_DOWNLOAD_HANDLE: AtomicI64 = AtomicI64::new(1);
+static DOWNLOADS_STARTED: AtomicI64 = AtomicI64::new(0);
+static DOWNLOADS_COMPLETED: AtomicI64 = AtomicI64::new(0);
+static DOWNLOADS_CANCELED: AtomicI64 = AtomicI64::new(0);
+static DOWNLOADS_FAILED: AtomicI64 = AtomicI64::new(0);
 static CLIENTS: Lazy<Mutex<HashMap<i64, Client>>> = Lazy::new(|| Mutex::new(HashMap::new()));
-static DOWNLOADS: Lazy<Mutex<HashMap<i64, ByteStream>>> = Lazy::new(|| Mutex::new(HashMap::new()));
+static DOWNLOADS: Lazy<Mutex<DownloadRegistry>> =
+    Lazy::new(|| Mutex::new(DownloadRegistry::default()));
 static RUNTIME: Lazy<Runtime> = Lazy::new(|| {
     Builder::new_multi_thread()
         .enable_all()
@@ -136,6 +141,18 @@ struct S3ClientConfig {
     allow_http: bool,
 }
 
+struct ActiveDownload {
+    client_handle: i64,
+    body: ByteStream,
+}
+
+#[derive(Default)]
+struct DownloadRegistry {
+    available: HashMap<i64, ActiveDownload>,
+    in_flight: HashMap<i64, i64>,
+    canceled_in_flight: HashSet<i64>,
+}
+
 struct ObjectRef {
     bucket: String,
     key: String,
@@ -211,6 +228,61 @@ pub extern "C" fn dart_edge_s3_client_create(
 #[unsafe(no_mangle)]
 pub extern "C" fn dart_edge_s3_client_dispose(handle: i64) {
     CLIENTS.lock().unwrap().remove(&handle);
+    let canceled = {
+        let mut downloads = DOWNLOADS.lock().unwrap();
+        let handles = downloads
+            .available
+            .iter()
+            .filter_map(|(download_handle, download)| {
+                (download.client_handle == handle).then_some(*download_handle)
+            })
+            .collect::<Vec<_>>();
+        let canceled = handles.len() as i64;
+        for download_handle in handles {
+            downloads.available.remove(&download_handle);
+        }
+        let in_flight = downloads
+            .in_flight
+            .iter()
+            .filter_map(|(download_handle, client_handle)| {
+                (*client_handle == handle).then_some(*download_handle)
+            })
+            .collect::<Vec<_>>();
+        let mut newly_canceled_in_flight = 0;
+        for download_handle in in_flight {
+            if downloads.canceled_in_flight.insert(download_handle) {
+                newly_canceled_in_flight += 1;
+            }
+        }
+        canceled + newly_canceled_in_flight
+    };
+    DOWNLOADS_CANCELED.fetch_add(canceled, Ordering::Relaxed);
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_s3_client_active_download_count() -> i64 {
+    let downloads = DOWNLOADS.lock().unwrap();
+    (downloads.available.len() + downloads.in_flight.len()) as i64
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_s3_client_downloads_started_count() -> i64 {
+    DOWNLOADS_STARTED.load(Ordering::Relaxed)
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_s3_client_downloads_completed_count() -> i64 {
+    DOWNLOADS_COMPLETED.load(Ordering::Relaxed)
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_s3_client_downloads_canceled_count() -> i64 {
+    DOWNLOADS_CANCELED.load(Ordering::Relaxed)
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_s3_client_downloads_failed_count() -> i64 {
+    DOWNLOADS_FAILED.load(Ordering::Relaxed)
 }
 
 #[unsafe(no_mangle)]
@@ -270,7 +342,14 @@ pub extern "C" fn dart_edge_s3_client_start_get_object_stream(
             Ok(request) => match RUNTIME.block_on(start_get_object_stream(client, request)) {
                 Ok((body, metadata)) => {
                     let download_handle = NEXT_DOWNLOAD_HANDLE.fetch_add(1, Ordering::Relaxed);
-                    DOWNLOADS.lock().unwrap().insert(download_handle, body);
+                    DOWNLOADS.lock().unwrap().available.insert(
+                        download_handle,
+                        ActiveDownload {
+                            client_handle: handle,
+                            body,
+                        },
+                    );
+                    DOWNLOADS_STARTED.fetch_add(1, Ordering::Relaxed);
                     NativeS3StreamStartResult {
                         download_handle,
                         metadata: native_object_metadata(metadata),
@@ -291,29 +370,58 @@ pub extern "C" fn dart_edge_s3_client_start_get_object_stream(
 pub extern "C" fn dart_edge_s3_client_next_get_object_stream_chunk(
     download_handle: i64,
 ) -> *mut NativeS3StreamChunkResult {
-    let Some(mut body) = DOWNLOADS.lock().unwrap().remove(&download_handle) else {
-        return Box::into_raw(Box::new(stream_chunk_result_error(
-            "Unknown S3 download stream handle.",
-        )));
+    let mut download = {
+        let mut downloads = DOWNLOADS.lock().unwrap();
+        let Some(download) = downloads.available.remove(&download_handle) else {
+            return Box::into_raw(Box::new(stream_chunk_result_error(
+                "Unknown S3 download stream handle.",
+            )));
+        };
+        downloads
+            .in_flight
+            .insert(download_handle, download.client_handle);
+        download
     };
 
-    let result = match RUNTIME.block_on(body.next()) {
-        Some(Ok(bytes)) => {
-            DOWNLOADS.lock().unwrap().insert(download_handle, body);
-            NativeS3StreamChunkResult {
-                bytes: into_native_owned_bytes(bytes.to_vec()),
-                done: false,
-                error: std::ptr::null_mut(),
-            }
-        }
-        Some(Err(error)) => {
-            stream_chunk_result_error(format!("Failed to read S3 object stream: {error}"))
-        }
-        None => NativeS3StreamChunkResult {
+    let next = RUNTIME.block_on(download.body.next());
+    let canceled = {
+        let mut downloads = DOWNLOADS.lock().unwrap();
+        downloads.in_flight.remove(&download_handle);
+        downloads.canceled_in_flight.remove(&download_handle)
+    };
+    let result = if canceled {
+        NativeS3StreamChunkResult {
             bytes: into_native_owned_bytes(Vec::new()),
             done: true,
             error: std::ptr::null_mut(),
-        },
+        }
+    } else {
+        match next {
+            Some(Ok(bytes)) => {
+                DOWNLOADS
+                    .lock()
+                    .unwrap()
+                    .available
+                    .insert(download_handle, download);
+                NativeS3StreamChunkResult {
+                    bytes: into_native_owned_bytes(bytes.to_vec()),
+                    done: false,
+                    error: std::ptr::null_mut(),
+                }
+            }
+            Some(Err(error)) => {
+                DOWNLOADS_FAILED.fetch_add(1, Ordering::Relaxed);
+                stream_chunk_result_error(format!("Failed to read S3 object stream: {error}"))
+            }
+            None => {
+                DOWNLOADS_COMPLETED.fetch_add(1, Ordering::Relaxed);
+                NativeS3StreamChunkResult {
+                    bytes: into_native_owned_bytes(Vec::new()),
+                    done: true,
+                    error: std::ptr::null_mut(),
+                }
+            }
+        }
     };
 
     Box::into_raw(Box::new(result))
@@ -321,7 +429,19 @@ pub extern "C" fn dart_edge_s3_client_next_get_object_stream_chunk(
 
 #[unsafe(no_mangle)]
 pub extern "C" fn dart_edge_s3_client_cancel_get_object_stream(download_handle: i64) {
-    DOWNLOADS.lock().unwrap().remove(&download_handle);
+    let canceled = {
+        let mut downloads = DOWNLOADS.lock().unwrap();
+        if downloads.available.remove(&download_handle).is_some() {
+            true
+        } else if downloads.in_flight.contains_key(&download_handle) {
+            downloads.canceled_in_flight.insert(download_handle)
+        } else {
+            false
+        }
+    };
+    if canceled {
+        DOWNLOADS_CANCELED.fetch_add(1, Ordering::Relaxed);
+    }
 }
 
 #[unsafe(no_mangle)]

@@ -688,25 +688,32 @@ class DartEdge<TServices> extends Router<TServices> {
     int requestId,
     BinaryStreamResponse response,
   ) async {
-    final started = DartEdgeNative.startBinaryStreamResponse(
-      requestId,
-      status: response.status,
-      contentType: response.contentType,
-      contentLength: response.contentLength,
-      headers: response.headers,
-    );
-    if (!started) {
-      return;
-    }
-
+    var started = false;
     try {
+      started = DartEdgeNative.startBinaryStreamResponse(
+        requestId,
+        status: response.status,
+        contentType: response.contentType,
+        contentLength: response.contentLength,
+        headers: response.headers,
+      );
+      if (!started) {
+        return;
+      }
+
       await for (final chunk in response.body) {
         if (!DartEdgeNative.sendBinaryStreamChunk(requestId, chunk)) {
           break;
         }
       }
     } finally {
-      DartEdgeNative.finishBinaryStreamResponse(requestId);
+      try {
+        if (started) {
+          DartEdgeNative.finishBinaryStreamResponse(requestId);
+        }
+      } finally {
+        await response.dispose();
+      }
     }
   }
 

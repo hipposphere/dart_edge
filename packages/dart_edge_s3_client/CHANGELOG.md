@@ -1,3 +1,10 @@
+## 0.3.15
+
+- Add idempotent explicit close support for download streams.
+- Cancel all owned streams when a client is disposed and expose native stream
+  lifecycle counters.
+- Bump the native artifact version to 0.1.9 for the lifecycle counter ABI.
+
 ## 0.3.14
 
 - Add a backpressured `getObjectStream` API that reads one native S3 body

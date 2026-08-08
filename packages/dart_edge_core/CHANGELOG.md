@@ -1,3 +1,8 @@
+## 0.3.38
+
+- Let binary stream responses release pre-acquired resources on every runtime
+  exit path.
+
 ## 0.3.37
 
 - Add `BinaryStreamResponse` and `ResponseBuilder.binaryStream` for encoded

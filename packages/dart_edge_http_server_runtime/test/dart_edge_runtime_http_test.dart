@@ -229,6 +229,7 @@ void main() {
 
   test('streams binary responses in order with a content length', () async {
     final app = DartEdge<void>(services: () {});
+    var disposeCount = 0;
     final chunks = <List<int>>[
       [0, 255],
       [1, 2, 128],
@@ -250,6 +251,9 @@ void main() {
         headers: const [
           HttpHeader('Content-Disposition', 'attachment; filename="tone.wav"'),
         ],
+        onDispose: () {
+          disposeCount += 1;
+        },
       ),
     );
 
@@ -277,6 +281,7 @@ void main() {
       ),
       [0, 255, 1, 2, 128, 3],
     );
+    expect(disposeCount, 1);
   });
 
   test('handles CORS preflight and adds CORS headers to responses', () async {

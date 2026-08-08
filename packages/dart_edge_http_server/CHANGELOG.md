@@ -1,3 +1,8 @@
+## 0.3.23
+
+- Require `dart_edge_http_server_runtime` 0.3.33 for deterministic binary
+  stream disposal.
+
 ## 0.3.22
 
 - Require `dart_edge_http_server_runtime` 0.3.32 for backpressured binary

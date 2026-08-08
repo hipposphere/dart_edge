@@ -1,3 +1,9 @@
+## 0.3.33
+
+- Dispose binary streaming response resources after completion, cancellation,
+  failure, and native response startup failure.
+- Require `dart_edge_core` 0.3.38.
+
 ## 0.3.32
 
 - Stream binary response bodies through a backpressured native transport path.

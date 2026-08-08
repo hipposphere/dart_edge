@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import '../http/binary_stream_response.dart';
 import '../http/raw_response.dart';
 import '../http/sse_event.dart';
@@ -159,6 +161,7 @@ final class ResponseBuilder {
     required Stream<List<int>> body,
     int? contentLength,
     List<HttpHeader> headers = const <HttpHeader>[],
+    FutureOr<void> Function()? onDispose,
   }) {
     final response = BinaryStreamResponse(
       body: body,
@@ -166,6 +169,7 @@ final class ResponseBuilder {
       status: _status ?? 200,
       contentLength: contentLength,
       headers: [..._headers, ...headers],
+      onDispose: onDispose,
     );
     _contentType = contentType;
     _hasExplicitContentType = true;

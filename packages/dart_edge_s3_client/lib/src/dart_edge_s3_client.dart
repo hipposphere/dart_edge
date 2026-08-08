@@ -9,6 +9,7 @@ import 'package:dart_edge_native_bridge/dart_edge_native_bridge.dart'
 import 'native/dart_edge_s3_client_native.dart';
 import 's3_client_config.dart';
 import 's3_delete_object_result.dart';
+import 's3_download_stream_counters.dart';
 import 's3_get_object_bytes_result.dart';
 import 's3_get_object_file_result.dart';
 import 's3_get_object_stream_result.dart';
@@ -25,6 +26,10 @@ final class DartEdgeS3Client {
   final S3ClientConfig config;
   final int _nativeHandle;
   var _disposed = false;
+
+  /// Process-wide lifecycle counters for native download streams.
+  static S3DownloadStreamCounters get downloadStreamCounters =>
+      DartEdgeS3ClientNative.downloadStreamCounters;
 
   /// Opens one reusable S3 client instance.
   static Future<DartEdgeS3Client> open(S3ClientConfig config) async {
@@ -152,14 +157,26 @@ final class DartEdgeS3Client {
     final start = await Isolate.run(
       () => DartEdgeS3ClientNative.startGetObjectStream(_nativeHandle, object),
     );
+    Future<void>? closeFuture;
+    Future<void> close() {
+      return closeFuture ??= Isolate.run(
+        () => DartEdgeS3ClientNative.cancelGetObjectStream(
+          start.downloadHandle,
+        ),
+      );
+    }
 
     return S3GetObjectStreamResult(
       metadata: start.metadata,
-      body: _readObjectStream(start.downloadHandle),
+      body: _readObjectStream(start.downloadHandle, onClose: close),
+      onClose: close,
     );
   }
 
-  Stream<Uint8List> _readObjectStream(int downloadHandle) async* {
+  Stream<Uint8List> _readObjectStream(
+    int downloadHandle, {
+    required Future<void> Function() onClose,
+  }) async* {
     try {
       while (true) {
         final payload = await Isolate.run(() {
@@ -177,9 +194,7 @@ final class DartEdgeS3Client {
         yield payload.bytes.materialize().asUint8List();
       }
     } finally {
-      await Isolate.run(
-        () => DartEdgeS3ClientNative.cancelGetObjectStream(downloadHandle),
-      );
+      await onClose();
     }
   }
 

@@ -10,6 +10,9 @@ library;
 import 'dart:ffi' as ffi;
 import 'package:dart_edge_native_bridge/dart_edge_native_bridge.dart' as imp$1;
 
+@ffi.Native<ffi.Int64 Function()>()
+external int dart_edge_s3_client_active_download_count();
+
 @ffi.Native<ffi.Void Function(ffi.Int64)>()
 external void dart_edge_s3_client_cancel_get_object_stream(int download_handle);
 
@@ -34,6 +37,18 @@ dart_edge_s3_client_delete_object(
 
 @ffi.Native<ffi.Void Function(ffi.Int64)>(isLeaf: true)
 external void dart_edge_s3_client_dispose(int handle);
+
+@ffi.Native<ffi.Int64 Function()>()
+external int dart_edge_s3_client_downloads_canceled_count();
+
+@ffi.Native<ffi.Int64 Function()>()
+external int dart_edge_s3_client_downloads_completed_count();
+
+@ffi.Native<ffi.Int64 Function()>()
+external int dart_edge_s3_client_downloads_failed_count();
+
+@ffi.Native<ffi.Int64 Function()>()
+external int dart_edge_s3_client_downloads_started_count();
 
 @ffi.Native<ffi.Void Function(ffi.Pointer<NativeS3BytesResult>)>(isLeaf: true)
 external void dart_edge_s3_client_free_bytes_result(

@@ -7,6 +7,7 @@ import 'package:ffi/ffi.dart';
 
 import '../s3_client_config.dart';
 import '../s3_delete_object_result.dart';
+import '../s3_download_stream_counters.dart';
 import '../s3_object_metadata.dart';
 import '../s3_object_ref.dart';
 import '../s3_put_object_result.dart';
@@ -38,6 +39,15 @@ final class NativeS3StreamChunkResponse {
 
 abstract final class DartEdgeS3ClientNative {
   static int get abiVersion => gen.dart_edge_s3_client_native_abi_version();
+
+  static S3DownloadStreamCounters get downloadStreamCounters =>
+      S3DownloadStreamCounters(
+        active: gen.dart_edge_s3_client_active_download_count(),
+        started: gen.dart_edge_s3_client_downloads_started_count(),
+        completed: gen.dart_edge_s3_client_downloads_completed_count(),
+        canceled: gen.dart_edge_s3_client_downloads_canceled_count(),
+        failed: gen.dart_edge_s3_client_downloads_failed_count(),
+      );
 
   static int create(S3ClientConfig config) {
     final allocations = core_ffi.NativeAllocations();
