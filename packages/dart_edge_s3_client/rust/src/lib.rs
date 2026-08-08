@@ -18,8 +18,7 @@ const DART_EDGE_S3_CLIENT_NATIVE_ABI_VERSION: i32 = 3;
 static NEXT_HANDLE: AtomicI64 = AtomicI64::new(1);
 static NEXT_DOWNLOAD_HANDLE: AtomicI64 = AtomicI64::new(1);
 static CLIENTS: Lazy<Mutex<HashMap<i64, Client>>> = Lazy::new(|| Mutex::new(HashMap::new()));
-static DOWNLOADS: Lazy<Mutex<HashMap<i64, ByteStream>>> =
-    Lazy::new(|| Mutex::new(HashMap::new()));
+static DOWNLOADS: Lazy<Mutex<HashMap<i64, ByteStream>>> = Lazy::new(|| Mutex::new(HashMap::new()));
 static RUNTIME: Lazy<Runtime> = Lazy::new(|| {
     Builder::new_multi_thread()
         .enable_all()
@@ -307,9 +306,9 @@ pub extern "C" fn dart_edge_s3_client_next_get_object_stream_chunk(
                 error: std::ptr::null_mut(),
             }
         }
-        Some(Err(error)) => stream_chunk_result_error(format!(
-            "Failed to read S3 object stream: {error}"
-        )),
+        Some(Err(error)) => {
+            stream_chunk_result_error(format!("Failed to read S3 object stream: {error}"))
+        }
         None => NativeS3StreamChunkResult {
             bytes: into_native_owned_bytes(Vec::new()),
             done: true,
@@ -590,7 +589,10 @@ async fn start_get_object_stream(
 ) -> Result<(ByteStream, ObjectMetadata), String> {
     let bucket = request.bucket.clone();
     let key = request.key.clone();
-    let mut operation = client.get_object().bucket(&request.bucket).key(&request.key);
+    let mut operation = client
+        .get_object()
+        .bucket(&request.bucket)
+        .key(&request.key);
     if let Some(version_id) = request.version_id.as_ref() {
         operation = operation.version_id(version_id);
     }
