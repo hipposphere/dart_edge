@@ -1289,13 +1289,15 @@ typedef StringIdParams = _$StringIdParams;
       );
     });
 
-    test('resolves registries composed from imported const schema lists', () async {
-      final builder = dartEdgeHttpServerBuilder(BuilderOptions.empty);
+    test(
+      'resolves registries composed from imported const schema lists',
+      () async {
+        final builder = dartEdgeHttpServerBuilder(BuilderOptions.empty);
 
-      await testBuilder(
-        builder,
-        const <String, String>{
-          'test_app|lib/schema_support.dart': r'''
+        await testBuilder(
+          builder,
+          const <String, String>{
+            'test_app|lib/schema_support.dart': r'''
 sealed class JsonSchema {
   const JsonSchema._({this.id, this.nullable = false});
 
@@ -1357,7 +1359,7 @@ final class SchemaRefModel {
   final String? schemaId;
 }
 ''',
-          'test_app|lib/imported_schemas.dart': r'''
+            'test_app|lib/imported_schemas.dart': r'''
 import 'schema_support.dart';
 
 final class ImportedSchemas {
@@ -1368,7 +1370,7 @@ final class ImportedSchemas {
   ];
 }
 ''',
-          'test_app|lib/models.dart': r'''
+            'test_app|lib/models.dart': r'''
 import 'imported_schemas.dart';
 import 'schema_support.dart';
 
@@ -1392,17 +1394,18 @@ const requestSchema = JsonSchema.object(
 )
 typedef Request = _$Request;
 ''',
-        },
-        generateFor: const {'test_app|lib/models.dart'},
-        outputs: {
-          'test_app|lib/models.dart_edge_http_server.g.part': decodedMatches(
-            allOf([
-              contains('final class _\$Request'),
-              contains('final ImportedChild child;'),
-            ]),
-          ),
-        },
-      );
-    });
+          },
+          generateFor: const {'test_app|lib/models.dart'},
+          outputs: {
+            'test_app|lib/models.dart_edge_http_server.g.part': decodedMatches(
+              allOf([
+                contains('final class _\$Request'),
+                contains('final ImportedChild child;'),
+              ]),
+            ),
+          },
+        );
+      },
+    );
   });
 }
