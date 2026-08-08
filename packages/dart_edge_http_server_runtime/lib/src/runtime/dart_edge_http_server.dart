@@ -305,6 +305,14 @@ class DartEdge<TServices> extends Router<TServices> {
 
       final bodyResult = compiledRoute.route.handle(ctx);
       final body = bodyResult is Future ? await bodyResult : bodyResult;
+      final binaryStreamResponse = _resolveBinaryStreamResponse(body, ctx.res);
+      if (binaryStreamResponse != null) {
+        await _streamBinaryResponse(requestId, binaryStreamResponse);
+        return HttpRequestObservationResult(
+          statusCode: binaryStreamResponse.status,
+          responseBodySize: binaryStreamResponse.contentLength,
+        );
+      }
       final sseResponse = _resolveSseResponse(body, ctx.res);
       if (sseResponse != null) {
         await _streamSseResponse(requestId, sseResponse);
@@ -662,6 +670,44 @@ class DartEdge<TServices> extends Router<TServices> {
 
     final override = response.hasBodyOverride ? response.bodyOverride : null;
     return override is SseResponse ? override : null;
+  }
+
+  BinaryStreamResponse? _resolveBinaryStreamResponse(
+    Object? body,
+    ResponseBuilder response,
+  ) {
+    if (body case final BinaryStreamResponse response) {
+      return response;
+    }
+
+    final override = response.hasBodyOverride ? response.bodyOverride : null;
+    return override is BinaryStreamResponse ? override : null;
+  }
+
+  Future<void> _streamBinaryResponse(
+    int requestId,
+    BinaryStreamResponse response,
+  ) async {
+    final started = DartEdgeNative.startBinaryStreamResponse(
+      requestId,
+      status: response.status,
+      contentType: response.contentType,
+      contentLength: response.contentLength,
+      headers: response.headers,
+    );
+    if (!started) {
+      return;
+    }
+
+    try {
+      await for (final chunk in response.body) {
+        if (!DartEdgeNative.sendBinaryStreamChunk(requestId, chunk)) {
+          break;
+        }
+      }
+    } finally {
+      DartEdgeNative.finishBinaryStreamResponse(requestId);
+    }
   }
 
   Future<void> _streamSseResponse(int requestId, SseResponse response) async {

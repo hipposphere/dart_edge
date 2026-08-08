@@ -10,6 +10,9 @@ library;
 import 'dart:ffi' as ffi;
 import 'package:dart_edge_native_bridge/dart_edge_native_bridge.dart' as imp$1;
 
+@ffi.Native<ffi.Void Function(ffi.Int64)>()
+external void dart_edge_s3_client_cancel_get_object_stream(int download_handle);
+
 @ffi.Native<
   ffi.Pointer<NativeS3CreateResult> Function(ffi.Pointer<NativeS3ClientConfig>)
 >()
@@ -63,6 +66,16 @@ external void dart_edge_s3_client_free_put_object_result(
   ffi.Pointer<NativeS3PutObjectResult> value,
 );
 
+@ffi.Native<ffi.Void Function(ffi.Pointer<NativeS3StreamChunkResult>)>()
+external void dart_edge_s3_client_free_stream_chunk_result(
+  ffi.Pointer<NativeS3StreamChunkResult> value,
+);
+
+@ffi.Native<ffi.Void Function(ffi.Pointer<NativeS3StreamStartResult>)>()
+external void dart_edge_s3_client_free_stream_start_result(
+  ffi.Pointer<NativeS3StreamStartResult> value,
+);
+
 @ffi.Native<
   ffi.Pointer<NativeS3BytesResult> Function(
     ffi.Int64,
@@ -88,6 +101,10 @@ external ffi.Pointer<NativeS3ObjectMetadata> dart_edge_s3_client_head_object(
 @ffi.Native<ffi.Int32 Function()>(isLeaf: true)
 external int dart_edge_s3_client_native_abi_version();
 
+@ffi.Native<ffi.Pointer<NativeS3StreamChunkResult> Function(ffi.Int64)>()
+external ffi.Pointer<NativeS3StreamChunkResult>
+dart_edge_s3_client_next_get_object_stream_chunk(int download_handle);
+
 @ffi.Native<
   ffi.Pointer<NativeS3PutObjectResult> Function(
     ffi.Int64,
@@ -102,6 +119,18 @@ dart_edge_s3_client_put_object_bytes(
   ffi.Pointer<NativeS3PutObjectRequest> request,
   ffi.Pointer<ffi.Uint8> bytes_ptr,
   int bytes_len,
+);
+
+@ffi.Native<
+  ffi.Pointer<NativeS3StreamStartResult> Function(
+    ffi.Int64,
+    ffi.Pointer<NativeS3ObjectRef>,
+  )
+>()
+external ffi.Pointer<NativeS3StreamStartResult>
+dart_edge_s3_client_start_get_object_stream(
+  int handle,
+  ffi.Pointer<NativeS3ObjectRef> request,
 );
 
 final class NativeS3BytesResult extends ffi.Struct {
@@ -220,6 +249,24 @@ final class NativeS3PutObjectResult extends ffi.Struct {
   external ffi.Pointer<ffi.Char> e_tag;
 
   external ffi.Pointer<ffi.Char> version_id;
+
+  external ffi.Pointer<ffi.Char> error;
+}
+
+final class NativeS3StreamChunkResult extends ffi.Struct {
+  external imp$1.NativeOwnedBytes bytes;
+
+  @ffi.Bool()
+  external bool done;
+
+  external ffi.Pointer<ffi.Char> error;
+}
+
+final class NativeS3StreamStartResult extends ffi.Struct {
+  @ffi.Int64()
+  external int download_handle;
+
+  external NativeS3ObjectMetadata metadata;
 
   external ffi.Pointer<ffi.Char> error;
 }

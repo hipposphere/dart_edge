@@ -227,6 +227,58 @@ void main() {
     expect(body, bytes);
   });
 
+  test('streams binary responses in order with a content length', () async {
+    final app = DartEdge<void>(services: () {});
+    final chunks = <List<int>>[
+      [0, 255],
+      [1, 2, 128],
+      [3],
+    ];
+    app.get(
+      '/stream.wav',
+      options: const RouteOptions(
+        operationId: 'streamTone',
+        success: ResponseSpec.binary(contentType: 'audio/wav'),
+      ),
+      handler: (_) => BinaryStreamResponse(
+        body: Stream<List<int>>.fromIterable(chunks),
+        contentType: 'audio/wav',
+        contentLength: chunks.fold<int>(
+          0,
+          (length, chunk) => length + chunk.length,
+        ),
+        headers: const [
+          HttpHeader('Content-Disposition', 'attachment; filename="tone.wav"'),
+        ],
+      ),
+    );
+
+    final server = await app.listen(port: 0);
+    final client = HttpClient();
+
+    addTearDown(() async {
+      client.close(force: true);
+      await server.close();
+    });
+
+    final response = await (await client.getUrl(
+      Uri.http('127.0.0.1:${server.port}', '/stream.wav'),
+    )).close();
+    expect(response.statusCode, HttpStatus.ok);
+    expect(response.contentLength, 6);
+    expect(
+      response.headers.value('content-disposition'),
+      'attachment; filename="tone.wav"',
+    );
+    expect(
+      await response.fold<List<int>>(
+        <int>[],
+        (buffer, chunk) => buffer..addAll(chunk),
+      ),
+      [0, 255, 1, 2, 128, 3],
+    );
+  });
+
   test('handles CORS preflight and adds CORS headers to responses', () async {
     final app = DartEdge<void>(
       services: () {},

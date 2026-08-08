@@ -4,7 +4,7 @@ import 'package:test/test.dart';
 
 void main() {
   test('loads the native bundled asset', () {
-    expect(DartEdgeS3ClientNative.abiVersion, greaterThanOrEqualTo(2));
+    expect(DartEdgeS3ClientNative.abiVersion, greaterThanOrEqualTo(3));
   });
 
   test('serializes config and object references', () {

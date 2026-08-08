@@ -1,3 +1,4 @@
+export 'http/binary_stream_response.dart';
 export 'http/error_response.dart';
 export 'http/http_method.dart';
 export 'http/json_decoding.dart';

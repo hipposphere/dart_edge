@@ -223,6 +223,63 @@ abstract final class DartEdgeNative {
     return gen.dart_edge_http_server_runtime_finish_sse_response(requestId);
   }
 
+  /// Starts a backpressured binary stream for a previously taken request.
+  static bool startBinaryStreamResponse(
+    int requestId, {
+    required int status,
+    required String contentType,
+    int? contentLength,
+    List<HttpHeader> headers = const <HttpHeader>[],
+  }) {
+    final contentTypePtr = contentType.toNativeUtf8();
+    try {
+      return _withNativeHeaders(
+        headers,
+        (headerStorage, headerCount) =>
+            gen.dart_edge_http_server_runtime_start_binary_stream_response(
+              requestId,
+              status,
+              contentTypePtr.cast<Char>(),
+              contentLength ?? -1,
+              headerCount,
+              headerStorage,
+            ),
+      );
+    } finally {
+      calloc.free(contentTypePtr);
+    }
+  }
+
+  /// Sends one binary chunk and returns after the native body stream accepts it.
+  static bool sendBinaryStreamChunk(int requestId, List<int> chunk) {
+    if (chunk.isEmpty) {
+      return true;
+    }
+    final bytes = chunk is Uint8List ? chunk : Uint8List.fromList(chunk);
+    final bodyPtr = calloc<Uint8>(bytes.length);
+    final nativeBytesPtr = calloc<core_ffi.NativeBytes>();
+    try {
+      bodyPtr.asTypedList(bytes.length).setAll(0, bytes);
+      nativeBytesPtr.ref
+        ..ptr = bodyPtr
+        ..len = bytes.length;
+      return gen.dart_edge_http_server_runtime_send_binary_stream_chunk(
+        requestId,
+        nativeBytesPtr.ref,
+      );
+    } finally {
+      calloc.free(nativeBytesPtr);
+      calloc.free(bodyPtr);
+    }
+  }
+
+  /// Finishes an active binary streaming response.
+  static bool finishBinaryStreamResponse(int requestId) {
+    return gen.dart_edge_http_server_runtime_finish_binary_stream_response(
+      requestId,
+    );
+  }
+
   /// Reads one queued WebSocket connection open event from the native runtime.
   static NativeWebSocketConnection? takeWebSocketConnection(int sessionId) {
     final connectionPtr = gen

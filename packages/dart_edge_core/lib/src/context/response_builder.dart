@@ -1,3 +1,4 @@
+import '../http/binary_stream_response.dart';
 import '../http/raw_response.dart';
 import '../http/sse_event.dart';
 import '../http/sse_response.dart';
@@ -150,6 +151,27 @@ final class ResponseBuilder {
       body: body,
       isEncodedBody: true,
     );
+  }
+
+  /// Streams an encoded binary body with transport-level backpressure.
+  BinaryStreamResponse binaryStream({
+    required String contentType,
+    required Stream<List<int>> body,
+    int? contentLength,
+    List<HttpHeader> headers = const <HttpHeader>[],
+  }) {
+    final response = BinaryStreamResponse(
+      body: body,
+      contentType: contentType,
+      status: _status ?? 200,
+      contentLength: contentLength,
+      headers: [..._headers, ...headers],
+    );
+    _contentType = contentType;
+    _hasExplicitContentType = true;
+    _isEncodedBody = true;
+    _setBody(response);
+    return response;
   }
 
   /// Sends a server-sent events response.

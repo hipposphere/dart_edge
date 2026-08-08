@@ -1,6 +1,7 @@
 import 'dart:ffi';
 import 'dart:io';
 import 'dart:isolate';
+import 'dart:typed_data';
 
 import 'package:dart_edge_native_bridge/dart_edge_native_bridge.dart'
     as core_ffi;
@@ -10,6 +11,7 @@ import 's3_client_config.dart';
 import 's3_delete_object_result.dart';
 import 's3_get_object_bytes_result.dart';
 import 's3_get_object_file_result.dart';
+import 's3_get_object_stream_result.dart';
 import 's3_object_metadata.dart';
 import 's3_object_ref.dart';
 import 's3_put_object_bytes_request.dart';
@@ -141,6 +143,44 @@ final class DartEdgeS3Client {
           .materialize()
           .asUint8List(),
     );
+  }
+
+  /// Opens a demand-driven object body stream without buffering the full body.
+  Future<S3GetObjectStreamResult> getObjectStream(S3ObjectRef object) async {
+    _ensureActive();
+    _validateObjectRef(object);
+    final start = await Isolate.run(
+      () => DartEdgeS3ClientNative.startGetObjectStream(_nativeHandle, object),
+    );
+
+    return S3GetObjectStreamResult(
+      metadata: start.metadata,
+      body: _readObjectStream(start.downloadHandle),
+    );
+  }
+
+  Stream<Uint8List> _readObjectStream(int downloadHandle) async* {
+    try {
+      while (true) {
+        final payload = await Isolate.run(() {
+          final chunk = DartEdgeS3ClientNative.nextGetObjectStreamChunk(
+            downloadHandle,
+          );
+          return (
+            done: chunk.done,
+            bytes: TransferableTypedData.fromList([chunk.bytes]),
+          );
+        });
+        if (payload.done) {
+          return;
+        }
+        yield payload.bytes.materialize().asUint8List();
+      }
+    } finally {
+      await Isolate.run(
+        () => DartEdgeS3ClientNative.cancelGetObjectStream(downloadHandle),
+      );
+    }
   }
 
   /// Downloads one object to [outputPath].

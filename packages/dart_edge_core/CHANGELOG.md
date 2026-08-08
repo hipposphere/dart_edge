@@ -1,3 +1,8 @@
+## 0.3.37
+
+- Add `BinaryStreamResponse` and `ResponseBuilder.binaryStream` for encoded
+  response bodies with transport-level backpressure.
+
 ## 0.3.36
 
 - Describe `ResponseSpec.binary()` payloads with an OpenAPI-compatible

@@ -9,6 +9,7 @@ export 'src/s3_client_config.dart';
 export 'src/s3_delete_object_result.dart';
 export 'src/s3_get_object_bytes_result.dart';
 export 'src/s3_get_object_file_result.dart';
+export 'src/s3_get_object_stream_result.dart';
 export 'src/s3_object_metadata.dart';
 export 'src/s3_object_ref.dart';
 export 'src/s3_put_object_bytes_request.dart';

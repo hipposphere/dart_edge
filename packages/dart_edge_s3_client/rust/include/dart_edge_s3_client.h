@@ -83,6 +83,18 @@ typedef struct NativeS3BytesResult {
   char* error;
 } NativeS3BytesResult;
 
+typedef struct NativeS3StreamStartResult {
+  int64_t download_handle;
+  NativeS3ObjectMetadata metadata;
+  char* error;
+} NativeS3StreamStartResult;
+
+typedef struct NativeS3StreamChunkResult {
+  NativeOwnedBytes bytes;
+  bool done;
+  char* error;
+} NativeS3StreamChunkResult;
+
 int32_t dart_edge_s3_client_native_abi_version(void);
 
 NativeS3CreateResult* dart_edge_s3_client_create(
@@ -99,6 +111,15 @@ NativeS3PutObjectResult* dart_edge_s3_client_put_object_bytes(
 NativeS3BytesResult* dart_edge_s3_client_get_object_bytes(
     int64_t handle,
     const NativeS3ObjectRef* request);
+
+NativeS3StreamStartResult* dart_edge_s3_client_start_get_object_stream(
+    int64_t handle,
+    const NativeS3ObjectRef* request);
+
+NativeS3StreamChunkResult* dart_edge_s3_client_next_get_object_stream_chunk(
+    int64_t download_handle);
+
+void dart_edge_s3_client_cancel_get_object_stream(int64_t download_handle);
 
 NativeS3ObjectMetadata* dart_edge_s3_client_head_object(
     int64_t handle,
@@ -118,5 +139,11 @@ void dart_edge_s3_client_free_delete_object_result(
 void dart_edge_s3_client_free_object_metadata(NativeS3ObjectMetadata* value);
 
 void dart_edge_s3_client_free_bytes_result(NativeS3BytesResult* value);
+
+void dart_edge_s3_client_free_stream_start_result(
+    NativeS3StreamStartResult* value);
+
+void dart_edge_s3_client_free_stream_chunk_result(
+    NativeS3StreamChunkResult* value);
 
 #endif  // DART_EDGE_S3_CLIENT_H_

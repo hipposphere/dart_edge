@@ -1,3 +1,9 @@
+## 0.3.14
+
+- Add a backpressured `getObjectStream` API that reads one native S3 body
+  chunk at a time without materializing the complete object.
+- Bump the native artifact version to 0.1.8 for the streaming download ABI.
+
 ## 0.3.9
 
 - Bump the native artifact version to 0.1.3 for Rust 1.95 and dependency

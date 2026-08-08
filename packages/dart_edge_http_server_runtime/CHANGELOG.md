@@ -1,3 +1,9 @@
+## 0.3.32
+
+- Stream binary response bodies through a backpressured native transport path.
+- Require `dart_edge_core` 0.3.37.
+- Bump the native artifact version to 0.1.17 for the streaming response ABI.
+
 ## 0.3.31
 
 - Document binary response media types with an OpenAPI `string/binary` schema.

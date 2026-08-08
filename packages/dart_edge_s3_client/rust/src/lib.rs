@@ -13,10 +13,13 @@ use dart_edge_core::{NativeOwnedBytes, free_owned_bytes, into_native_owned_bytes
 use once_cell::sync::Lazy;
 use tokio::runtime::{Builder, Runtime};
 
-const DART_EDGE_S3_CLIENT_NATIVE_ABI_VERSION: i32 = 2;
+const DART_EDGE_S3_CLIENT_NATIVE_ABI_VERSION: i32 = 3;
 
 static NEXT_HANDLE: AtomicI64 = AtomicI64::new(1);
+static NEXT_DOWNLOAD_HANDLE: AtomicI64 = AtomicI64::new(1);
 static CLIENTS: Lazy<Mutex<HashMap<i64, Client>>> = Lazy::new(|| Mutex::new(HashMap::new()));
+static DOWNLOADS: Lazy<Mutex<HashMap<i64, ByteStream>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
 static RUNTIME: Lazy<Runtime> = Lazy::new(|| {
     Builder::new_multi_thread()
         .enable_all()
@@ -107,6 +110,20 @@ pub struct NativeS3ObjectMetadata {
 pub struct NativeS3BytesResult {
     bytes: NativeOwnedBytes,
     metadata: NativeS3ObjectMetadata,
+    error: *mut c_char,
+}
+
+#[repr(C)]
+pub struct NativeS3StreamStartResult {
+    download_handle: i64,
+    metadata: NativeS3ObjectMetadata,
+    error: *mut c_char,
+}
+
+#[repr(C)]
+pub struct NativeS3StreamChunkResult {
+    bytes: NativeOwnedBytes,
+    done: bool,
     error: *mut c_char,
 }
 
@@ -245,6 +262,70 @@ pub extern "C" fn dart_edge_s3_client_get_object_bytes(
 }
 
 #[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_s3_client_start_get_object_stream(
+    handle: i64,
+    request: *const NativeS3ObjectRef,
+) -> *mut NativeS3StreamStartResult {
+    let result = match client_for_handle(handle) {
+        Some(client) => match unsafe { read_object_ref(request) } {
+            Ok(request) => match RUNTIME.block_on(start_get_object_stream(client, request)) {
+                Ok((body, metadata)) => {
+                    let download_handle = NEXT_DOWNLOAD_HANDLE.fetch_add(1, Ordering::Relaxed);
+                    DOWNLOADS.lock().unwrap().insert(download_handle, body);
+                    NativeS3StreamStartResult {
+                        download_handle,
+                        metadata: native_object_metadata(metadata),
+                        error: std::ptr::null_mut(),
+                    }
+                }
+                Err(error) => stream_start_result_error(error),
+            },
+            Err(error) => stream_start_result_error(error),
+        },
+        None => stream_start_result_error("Unknown dart_edge_s3_client handle."),
+    };
+
+    Box::into_raw(Box::new(result))
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_s3_client_next_get_object_stream_chunk(
+    download_handle: i64,
+) -> *mut NativeS3StreamChunkResult {
+    let Some(mut body) = DOWNLOADS.lock().unwrap().remove(&download_handle) else {
+        return Box::into_raw(Box::new(stream_chunk_result_error(
+            "Unknown S3 download stream handle.",
+        )));
+    };
+
+    let result = match RUNTIME.block_on(body.next()) {
+        Some(Ok(bytes)) => {
+            DOWNLOADS.lock().unwrap().insert(download_handle, body);
+            NativeS3StreamChunkResult {
+                bytes: into_native_owned_bytes(bytes.to_vec()),
+                done: false,
+                error: std::ptr::null_mut(),
+            }
+        }
+        Some(Err(error)) => stream_chunk_result_error(format!(
+            "Failed to read S3 object stream: {error}"
+        )),
+        None => NativeS3StreamChunkResult {
+            bytes: into_native_owned_bytes(Vec::new()),
+            done: true,
+            error: std::ptr::null_mut(),
+        },
+    };
+
+    Box::into_raw(Box::new(result))
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_s3_client_cancel_get_object_stream(download_handle: i64) {
+    DOWNLOADS.lock().unwrap().remove(&download_handle);
+}
+
+#[unsafe(no_mangle)]
 pub extern "C" fn dart_edge_s3_client_head_object(
     handle: i64,
     request: *const NativeS3ObjectRef,
@@ -349,6 +430,34 @@ pub extern "C" fn dart_edge_s3_client_free_bytes_result(value: *mut NativeS3Byte
         let mut value = Box::from_raw(value);
         free_owned_bytes(value.bytes);
         free_object_metadata_fields(&mut value.metadata);
+        free_c_string(value.error);
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_s3_client_free_stream_start_result(
+    value: *mut NativeS3StreamStartResult,
+) {
+    if value.is_null() {
+        return;
+    }
+    unsafe {
+        let mut value = Box::from_raw(value);
+        free_object_metadata_fields(&mut value.metadata);
+        free_c_string(value.error);
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_s3_client_free_stream_chunk_result(
+    value: *mut NativeS3StreamChunkResult,
+) {
+    if value.is_null() {
+        return;
+    }
+    unsafe {
+        let value = Box::from_raw(value);
+        free_owned_bytes(value.bytes);
         free_c_string(value.error);
     }
 }
@@ -473,6 +582,36 @@ async fn get_object_bytes(
     let bytes = collected.into_bytes().to_vec();
 
     Ok((bytes, metadata))
+}
+
+async fn start_get_object_stream(
+    client: Client,
+    request: ObjectRef,
+) -> Result<(ByteStream, ObjectMetadata), String> {
+    let bucket = request.bucket.clone();
+    let key = request.key.clone();
+    let mut operation = client.get_object().bucket(&request.bucket).key(&request.key);
+    if let Some(version_id) = request.version_id.as_ref() {
+        operation = operation.version_id(version_id);
+    }
+    let response = operation
+        .send()
+        .await
+        .map_err(|error| format!("Failed to get S3 object '{bucket}/{key}': {error}"))?;
+    let metadata = ObjectMetadata {
+        bucket,
+        key,
+        version_id: response.version_id().map(ToOwned::to_owned),
+        e_tag: response.e_tag().map(ToOwned::to_owned),
+        content_type: response.content_type().map(ToOwned::to_owned),
+        content_length: response.content_length().unwrap_or(0),
+        cache_control: response.cache_control().map(ToOwned::to_owned),
+        content_disposition: response.content_disposition().map(ToOwned::to_owned),
+        content_encoding: response.content_encoding().map(ToOwned::to_owned),
+        content_language: response.content_language().map(ToOwned::to_owned),
+        metadata: response.metadata().cloned().unwrap_or_default(),
+    };
+    Ok((response.body, metadata))
 }
 
 async fn head_object(client: Client, request: ObjectRef) -> Result<ObjectMetadata, String> {
@@ -749,6 +888,25 @@ fn bytes_result_error(error: impl Into<String>) -> NativeS3BytesResult {
             len: 0,
         },
         metadata: empty_object_metadata(),
+        error: c_string_ptr(error),
+    }
+}
+
+fn stream_start_result_error(error: impl Into<String>) -> NativeS3StreamStartResult {
+    NativeS3StreamStartResult {
+        download_handle: 0,
+        metadata: empty_object_metadata(),
+        error: c_string_ptr(error),
+    }
+}
+
+fn stream_chunk_result_error(error: impl Into<String>) -> NativeS3StreamChunkResult {
+    NativeS3StreamChunkResult {
+        bytes: NativeOwnedBytes {
+            ptr: std::ptr::null_mut(),
+            len: 0,
+        },
+        done: true,
         error: c_string_ptr(error),
     }
 }

@@ -2,6 +2,7 @@ use std::collections::{HashMap, VecDeque};
 use std::ffi::{CStr, CString, c_char};
 use std::net::{IpAddr, SocketAddr};
 use std::sync::atomic::{AtomicI64, Ordering};
+use std::sync::mpsc as std_mpsc;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
@@ -34,7 +35,7 @@ use wtransport::{
     ServerConfig as WebTransportServerConfig, VarInt,
 };
 
-const DART_EDGE_HTTP_SERVER_RUNTIME_NATIVE_ABI_VERSION: i32 = 13;
+const DART_EDGE_HTTP_SERVER_RUNTIME_NATIVE_ABI_VERSION: i32 = 14;
 const SCHEMA_REGISTRY_URI: &str = "urn:dart-edge:schema-registry";
 
 type TransportEventCallback = extern "C" fn(i32, i64);
@@ -258,6 +259,16 @@ enum PendingResponseMessage {
         headers: Vec<(String, String)>,
     },
     SseChunk(String),
+    BinaryStart {
+        status: u16,
+        content_type: String,
+        content_length: Option<u64>,
+        headers: Vec<(String, String)>,
+    },
+    BinaryChunk {
+        bytes: Vec<u8>,
+        consumed_tx: std_mpsc::SyncSender<()>,
+    },
     WebSocketAccept {
         headers: Vec<(String, String)>,
     },
@@ -861,6 +872,60 @@ pub extern "C" fn dart_edge_http_server_runtime_finish_sse_response(request_id: 
 }
 
 #[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_http_server_runtime_start_binary_stream_response(
+    request_id: i64,
+    status: i32,
+    content_type: *const c_char,
+    content_length: i64,
+    header_count: isize,
+    headers: *const NativePair,
+) -> bool {
+    let Some(content_type) = (unsafe { read_c_string(content_type) }) else {
+        return false;
+    };
+    let headers = unsafe { read_pairs_vec(headers, header_count) };
+    send_pending_response_message(
+        request_id,
+        PendingResponseMessage::BinaryStart {
+            status: status as u16,
+            content_type,
+            content_length: u64::try_from(content_length).ok(),
+            headers,
+        },
+        false,
+    )
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_http_server_runtime_send_binary_stream_chunk(
+    request_id: i64,
+    chunk: NativeBytes,
+) -> bool {
+    let Some(chunk) = (unsafe { read_native_bytes(chunk) }) else {
+        return false;
+    };
+    let (consumed_tx, consumed_rx) = std_mpsc::sync_channel(0);
+    if !send_pending_response_message(
+        request_id,
+        PendingResponseMessage::BinaryChunk {
+            bytes: chunk.to_vec(),
+            consumed_tx,
+        },
+        false,
+    ) {
+        return false;
+    }
+    consumed_rx.recv().is_ok()
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_http_server_runtime_finish_binary_stream_response(
+    request_id: i64,
+) -> bool {
+    send_pending_response_message(request_id, PendingResponseMessage::Close, true)
+}
+
+#[unsafe(no_mangle)]
 pub extern "C" fn dart_edge_http_server_runtime_parse_multipart(
     request: *mut NativeTransportRequest,
     content_type: *const c_char,
@@ -1454,6 +1519,8 @@ async fn handle_http_request(
                         PendingResponseMessage::Close => break,
                         PendingResponseMessage::Http(_)
                         | PendingResponseMessage::SseStart { .. }
+                        | PendingResponseMessage::BinaryStart { .. }
+                        | PendingResponseMessage::BinaryChunk { .. }
                         | PendingResponseMessage::WebSocketAccept { .. } => break,
                     }
                 }
@@ -1462,6 +1529,42 @@ async fn handle_http_request(
             response_body_with_headers(
                 StatusCode::from_u16(status).unwrap_or(StatusCode::OK),
                 "text/event-stream; charset=utf-8",
+                &headers,
+                Body::from_stream(stream),
+            )
+        }
+        Some(PendingResponseMessage::BinaryStart {
+            status,
+            content_type,
+            content_length,
+            mut headers,
+        }) => {
+            if let Some(content_length) = content_length {
+                headers.push((
+                    header::CONTENT_LENGTH.as_str().to_string(),
+                    content_length.to_string(),
+                ));
+            }
+            let stream = async_stream::stream! {
+                while let Some(message) = response_rx.recv().await {
+                    match message {
+                        PendingResponseMessage::BinaryChunk { bytes, consumed_tx } => {
+                            let _ = consumed_tx.send(());
+                            yield Ok::<Bytes, std::convert::Infallible>(Bytes::from(bytes));
+                        }
+                        PendingResponseMessage::Close => break,
+                        PendingResponseMessage::Http(_)
+                        | PendingResponseMessage::SseStart { .. }
+                        | PendingResponseMessage::SseChunk(_)
+                        | PendingResponseMessage::BinaryStart { .. }
+                        | PendingResponseMessage::WebSocketAccept { .. } => break,
+                    }
+                }
+            };
+
+            response_body_with_headers(
+                StatusCode::from_u16(status).unwrap_or(StatusCode::OK),
+                &content_type,
                 &headers,
                 Body::from_stream(stream),
             )
@@ -1475,6 +1578,11 @@ async fn handle_http_request(
             StatusCode::INTERNAL_SERVER_ERROR,
             "text/plain; charset=utf-8",
             "Unexpected SSE chunk before SSE start".to_string(),
+        ),
+        Some(PendingResponseMessage::BinaryChunk { .. }) => response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "text/plain; charset=utf-8",
+            "Unexpected binary chunk before binary stream start".to_string(),
         ),
         Some(PendingResponseMessage::WebSocketAccept { .. }) => response(
             StatusCode::INTERNAL_SERVER_ERROR,

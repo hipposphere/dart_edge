@@ -19,6 +19,23 @@ final class NativeS3BytesResponse {
   final Uint8List bytes;
 }
 
+final class NativeS3StreamStartResponse {
+  const NativeS3StreamStartResponse({
+    required this.downloadHandle,
+    required this.metadata,
+  });
+
+  final int downloadHandle;
+  final S3ObjectMetadata metadata;
+}
+
+final class NativeS3StreamChunkResponse {
+  const NativeS3StreamChunkResponse({required this.bytes, required this.done});
+
+  final Uint8List bytes;
+  final bool done;
+}
+
 abstract final class DartEdgeS3ClientNative {
   static int get abiVersion => gen.dart_edge_s3_client_native_abi_version();
 
@@ -193,6 +210,71 @@ abstract final class DartEdgeS3ClientNative {
       calloc.free(requestPtr);
       allocations.free();
     }
+  }
+
+  static NativeS3StreamStartResponse startGetObjectStream(
+    int handle,
+    S3ObjectRef object,
+  ) {
+    final allocations = core_ffi.NativeAllocations();
+    final requestPtr = calloc<gen.NativeS3ObjectRef>();
+    try {
+      _writeObjectRef(requestPtr.ref, object, allocations);
+      final resultPtr = gen.dart_edge_s3_client_start_get_object_stream(
+        handle,
+        requestPtr,
+      );
+      if (resultPtr == nullptr) {
+        throw StateError(
+          'dart_edge_s3_client startGetObjectStream returned null.',
+        );
+      }
+      try {
+        final result = resultPtr.ref;
+        _throwIfError(result.error);
+        if (result.download_handle <= 0) {
+          throw StateError(
+            'dart_edge_s3_client returned no download stream handle.',
+          );
+        }
+        return NativeS3StreamStartResponse(
+          downloadHandle: result.download_handle,
+          metadata: _readObjectMetadata(result.metadata),
+        );
+      } finally {
+        gen.dart_edge_s3_client_free_stream_start_result(resultPtr);
+      }
+    } finally {
+      calloc.free(requestPtr);
+      allocations.free();
+    }
+  }
+
+  static NativeS3StreamChunkResponse nextGetObjectStreamChunk(
+    int downloadHandle,
+  ) {
+    final resultPtr = gen.dart_edge_s3_client_next_get_object_stream_chunk(
+      downloadHandle,
+    );
+    if (resultPtr == nullptr) {
+      throw StateError(
+        'dart_edge_s3_client nextGetObjectStreamChunk returned null.',
+      );
+    }
+    try {
+      final result = resultPtr.ref;
+      _throwIfError(result.error);
+      return NativeS3StreamChunkResponse(
+        bytes: core_ffi.copyNativeOwnedBytes(result.bytes),
+        done: result.done,
+      );
+    } finally {
+      gen.dart_edge_s3_client_free_stream_chunk_result(resultPtr);
+    }
+  }
+
+  static void cancelGetObjectStream(int downloadHandle) {
+    gen.dart_edge_s3_client_cancel_get_object_stream(downloadHandle);
   }
 
   static S3ObjectMetadata headObject(int handle, S3ObjectRef object) {

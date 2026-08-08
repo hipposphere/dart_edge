@@ -31,6 +31,11 @@ external bool dart_edge_http_server_runtime_accept_web_transport(
 );
 
 @ffi.Native<ffi.Bool Function(ffi.Int64)>()
+external bool dart_edge_http_server_runtime_finish_binary_stream_response(
+  int request_id,
+);
+
+@ffi.Native<ffi.Bool Function(ffi.Int64)>()
 external bool dart_edge_http_server_runtime_finish_sse_response(int request_id);
 
 @ffi.Native<ffi.Void Function(ffi.Pointer<NativeMultipartForm>)>(isLeaf: true)
@@ -94,6 +99,12 @@ dart_edge_http_server_runtime_parse_multipart(
   ffi.Pointer<ffi.Char> content_type,
 );
 
+@ffi.Native<ffi.Bool Function(ffi.Int64, imp$1.NativeBytes)>()
+external bool dart_edge_http_server_runtime_send_binary_stream_chunk(
+  int request_id,
+  imp$1.NativeBytes chunk,
+);
+
 @ffi.Native<
   ffi.Bool Function(
     ffi.Int64,
@@ -117,6 +128,25 @@ external bool dart_edge_http_server_runtime_send_response(
 external bool dart_edge_http_server_runtime_send_sse_chunk(
   int request_id,
   ffi.Pointer<ffi.Char> chunk,
+);
+
+@ffi.Native<
+  ffi.Bool Function(
+    ffi.Int64,
+    ffi.Int32,
+    ffi.Pointer<ffi.Char>,
+    ffi.Int64,
+    ffi.IntPtr,
+    ffi.Pointer<imp$1.NativePair>,
+  )
+>()
+external bool dart_edge_http_server_runtime_start_binary_stream_response(
+  int request_id,
+  int status,
+  ffi.Pointer<ffi.Char> content_type,
+  int content_length,
+  int header_count,
+  ffi.Pointer<imp$1.NativePair> headers,
 );
 
 @ffi.Native<
