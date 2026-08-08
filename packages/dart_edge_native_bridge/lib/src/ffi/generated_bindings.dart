@@ -6,6 +6,57 @@
 // ignore_for_file: type=lint, unused_import
 import 'dart:ffi' as ffi;
 
+final class NativeByteStream extends ffi.Struct {
+  @ffi.Uint32()
+  external int abi_version;
+
+  @ffi.Size()
+  external int struct_size;
+
+  external ffi.Pointer<ffi.Void> context;
+
+  external NativeByteStreamNext next;
+
+  external NativeByteStreamCancel cancel;
+
+  external NativeByteStreamFreeRead free_read;
+
+  external NativeByteStreamRelease release;
+}
+
+typedef NativeByteStreamCancel =
+    ffi.Pointer<
+      ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void> context)>
+    >;
+typedef NativeByteStreamFreeRead =
+    ffi.Pointer<
+      ffi.NativeFunction<
+        ffi.Void Function(ffi.Pointer<NativeByteStreamRead> value)
+      >
+    >;
+typedef NativeByteStreamNext =
+    ffi.Pointer<
+      ffi.NativeFunction<
+        ffi.Pointer<NativeByteStreamRead> Function(
+          ffi.Pointer<ffi.Void> context,
+        )
+      >
+    >;
+
+final class NativeByteStreamRead extends ffi.Struct {
+  @ffi.Int32()
+  external int status;
+
+  external NativeOwnedBytes bytes;
+
+  external NativeBytes error;
+}
+
+typedef NativeByteStreamRelease =
+    ffi.Pointer<
+      ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void> context)>
+    >;
+
 final class NativeBytes extends ffi.Struct {
   external ffi.Pointer<ffi.Uint8> ptr;
 

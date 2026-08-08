@@ -89,6 +89,12 @@ typedef struct NativeS3StreamStartResult {
   char* error;
 } NativeS3StreamStartResult;
 
+typedef struct NativeS3NativeStreamStartResult {
+  NativeByteStream stream;
+  NativeS3ObjectMetadata metadata;
+  char* error;
+} NativeS3NativeStreamStartResult;
+
 typedef struct NativeS3StreamChunkResult {
   NativeOwnedBytes bytes;
   bool done;
@@ -126,6 +132,10 @@ NativeS3StreamStartResult* dart_edge_s3_client_start_get_object_stream(
     int64_t handle,
     const NativeS3ObjectRef* request);
 
+NativeS3NativeStreamStartResult* dart_edge_s3_client_start_get_object_native_stream(
+    int64_t handle,
+    const NativeS3ObjectRef* request);
+
 NativeS3StreamChunkResult* dart_edge_s3_client_next_get_object_stream_chunk(
     int64_t download_handle);
 
@@ -152,6 +162,9 @@ void dart_edge_s3_client_free_bytes_result(NativeS3BytesResult* value);
 
 void dart_edge_s3_client_free_stream_start_result(
     NativeS3StreamStartResult* value);
+
+void dart_edge_s3_client_free_native_stream_start_result(
+    NativeS3NativeStreamStartResult* value);
 
 void dart_edge_s3_client_free_stream_chunk_result(
     NativeS3StreamChunkResult* value);

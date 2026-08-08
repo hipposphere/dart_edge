@@ -1,3 +1,11 @@
+## 0.3.16
+
+- Add a dual-use native object stream that can expose Dart chunks or transfer
+  directly into a compatible native consumer.
+- Retain AWS-owned stream chunks through native HTTP delivery instead of
+  copying each chunk into an intermediate Rust allocation.
+- Bump the native artifact version to 0.1.11 for zero-copy native chunks.
+
 ## 0.3.15
 
 - Add idempotent explicit close support for download streams.

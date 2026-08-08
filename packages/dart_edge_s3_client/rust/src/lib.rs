@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
-use std::ffi::{CStr, CString, c_char};
+use std::ffi::{CStr, CString, c_char, c_void};
+use std::mem::size_of;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicI64, Ordering};
 
@@ -9,11 +10,16 @@ use aws_sdk_s3::Client;
 use aws_sdk_s3::config::Builder as S3ConfigBuilder;
 use aws_sdk_s3::primitives::ByteStream;
 use aws_types::region::Region;
-use dart_edge_core::{NativeOwnedBytes, free_owned_bytes, into_native_owned_bytes};
+use bytes::Bytes;
+use dart_edge_core::{
+    NATIVE_BYTE_STREAM_ABI_VERSION, NATIVE_BYTE_STREAM_READ_CHUNK, NATIVE_BYTE_STREAM_READ_DONE,
+    NATIVE_BYTE_STREAM_READ_ERROR, NativeByteStream, NativeByteStreamRead, NativeBytes,
+    NativeOwnedBytes, free_owned_bytes, into_native_owned_bytes,
+};
 use once_cell::sync::Lazy;
 use tokio::runtime::{Builder, Runtime};
 
-const DART_EDGE_S3_CLIENT_NATIVE_ABI_VERSION: i32 = 4;
+const DART_EDGE_S3_CLIENT_NATIVE_ABI_VERSION: i32 = 5;
 
 static NEXT_HANDLE: AtomicI64 = AtomicI64::new(1);
 static NEXT_DOWNLOAD_HANDLE: AtomicI64 = AtomicI64::new(1);
@@ -125,6 +131,13 @@ pub struct NativeS3StreamStartResult {
 }
 
 #[repr(C)]
+pub struct NativeS3NativeStreamStartResult {
+    stream: NativeByteStream,
+    metadata: NativeS3ObjectMetadata,
+    error: *mut c_char,
+}
+
+#[repr(C)]
 pub struct NativeS3StreamChunkResult {
     bytes: NativeOwnedBytes,
     done: bool,
@@ -144,6 +157,73 @@ struct S3ClientConfig {
 struct ActiveDownload {
     client_handle: i64,
     body: ByteStream,
+}
+
+enum DownloadRead {
+    Chunk(Bytes),
+    Done,
+}
+
+/// Producer-owned stream read whose C-compatible prefix is shared with the
+/// HTTP runtime. `_chunk` keeps the original AWS allocation alive until the
+/// consumer invokes `free_read`; only its pointer and length cross the ABI.
+#[repr(C)]
+struct S3NativeByteStreamRead {
+    read: NativeByteStreamRead,
+    _chunk: Option<Bytes>,
+    _error: Option<CString>,
+}
+
+impl S3NativeByteStreamRead {
+    fn chunk(chunk: Bytes) -> Self {
+        let bytes = NativeOwnedBytes {
+            ptr: chunk.as_ptr().cast_mut(),
+            len: chunk.len() as isize,
+        };
+        Self {
+            read: NativeByteStreamRead {
+                status: NATIVE_BYTE_STREAM_READ_CHUNK,
+                bytes,
+                error: NativeBytes::empty(),
+            },
+            _chunk: Some(chunk),
+            _error: None,
+        }
+    }
+
+    fn done() -> Self {
+        Self {
+            read: NativeByteStreamRead {
+                status: NATIVE_BYTE_STREAM_READ_DONE,
+                bytes: NativeOwnedBytes::empty(),
+                error: NativeBytes::empty(),
+            },
+            _chunk: None,
+            _error: None,
+        }
+    }
+
+    fn error(error: impl Into<String>) -> Self {
+        let error = CString::new(error.into().replace('\0', "\\0"))
+            .expect("sanitized S3 stream error should not contain NUL");
+        let error_bytes = NativeBytes {
+            ptr: error.as_ptr().cast::<u8>(),
+            len: error.as_bytes().len() as isize,
+        };
+        Self {
+            read: NativeByteStreamRead {
+                status: NATIVE_BYTE_STREAM_READ_ERROR,
+                bytes: NativeOwnedBytes::empty(),
+                error: error_bytes,
+            },
+            _chunk: None,
+            _error: Some(error),
+        }
+    }
+
+    fn into_raw(self) -> *mut NativeByteStreamRead {
+        Box::into_raw(Box::new(self)).cast::<NativeByteStreamRead>()
+    }
 }
 
 #[derive(Default)]
@@ -367,15 +447,101 @@ pub extern "C" fn dart_edge_s3_client_start_get_object_stream(
 }
 
 #[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_s3_client_start_get_object_native_stream(
+    handle: i64,
+    request: *const NativeS3ObjectRef,
+) -> *mut NativeS3NativeStreamStartResult {
+    let start_ptr = dart_edge_s3_client_start_get_object_stream(handle, request);
+    if start_ptr.is_null() {
+        return Box::into_raw(Box::new(native_stream_start_result_error(
+            "Failed to start S3 native stream.",
+        )));
+    }
+    let start = unsafe { Box::from_raw(start_ptr) };
+    if !start.error.is_null() {
+        return Box::into_raw(Box::new(NativeS3NativeStreamStartResult {
+            stream: empty_native_byte_stream(),
+            metadata: start.metadata,
+            error: start.error,
+        }));
+    }
+
+    let context = start.download_handle as isize as *mut c_void;
+    Box::into_raw(Box::new(NativeS3NativeStreamStartResult {
+        stream: NativeByteStream {
+            abi_version: NATIVE_BYTE_STREAM_ABI_VERSION,
+            struct_size: size_of::<NativeByteStream>(),
+            context,
+            next: Some(s3_native_stream_next),
+            cancel: Some(s3_native_stream_cancel),
+            free_read: Some(s3_native_stream_free_read),
+            release: Some(s3_native_stream_release),
+        },
+        metadata: start.metadata,
+        error: std::ptr::null_mut(),
+    }))
+}
+
+unsafe extern "C" fn s3_native_stream_next(context: *mut c_void) -> *mut NativeByteStreamRead {
+    let handle = context as isize as i64;
+    match next_get_object_stream_chunk(handle) {
+        Ok(DownloadRead::Chunk(chunk)) => S3NativeByteStreamRead::chunk(chunk).into_raw(),
+        Ok(DownloadRead::Done) => S3NativeByteStreamRead::done().into_raw(),
+        Err(error) => S3NativeByteStreamRead::error(error).into_raw(),
+    }
+}
+
+unsafe extern "C" fn s3_native_stream_cancel(context: *mut c_void) {
+    dart_edge_s3_client_cancel_get_object_stream(context as isize as i64);
+}
+
+unsafe extern "C" fn s3_native_stream_free_read(value: *mut NativeByteStreamRead) {
+    if value.is_null() {
+        return;
+    }
+    unsafe { drop(Box::from_raw(value.cast::<S3NativeByteStreamRead>())) };
+}
+
+unsafe extern "C" fn s3_native_stream_release(context: *mut c_void) {
+    let download_handle = context as isize as i64;
+    let completed = DOWNLOADS
+        .lock()
+        .unwrap()
+        .available
+        .remove(&download_handle)
+        .is_some();
+    if completed {
+        DOWNLOADS_COMPLETED.fetch_add(1, Ordering::Relaxed);
+    }
+}
+
+#[unsafe(no_mangle)]
 pub extern "C" fn dart_edge_s3_client_next_get_object_stream_chunk(
     download_handle: i64,
 ) -> *mut NativeS3StreamChunkResult {
+    let result = match next_get_object_stream_chunk(download_handle) {
+        // The Dart-facing stream materializes this allocation into a
+        // TransferableTypedData. Native HTTP delivery bypasses this branch.
+        Ok(DownloadRead::Chunk(bytes)) => NativeS3StreamChunkResult {
+            bytes: into_native_owned_bytes(bytes.to_vec()),
+            done: false,
+            error: std::ptr::null_mut(),
+        },
+        Ok(DownloadRead::Done) => NativeS3StreamChunkResult {
+            bytes: NativeOwnedBytes::empty(),
+            done: true,
+            error: std::ptr::null_mut(),
+        },
+        Err(error) => stream_chunk_result_error(error),
+    };
+    Box::into_raw(Box::new(result))
+}
+
+fn next_get_object_stream_chunk(download_handle: i64) -> Result<DownloadRead, String> {
     let mut download = {
         let mut downloads = DOWNLOADS.lock().unwrap();
         let Some(download) = downloads.available.remove(&download_handle) else {
-            return Box::into_raw(Box::new(stream_chunk_result_error(
-                "Unknown S3 download stream handle.",
-            )));
+            return Err("Unknown S3 download stream handle.".to_string());
         };
         downloads
             .in_flight
@@ -389,12 +555,8 @@ pub extern "C" fn dart_edge_s3_client_next_get_object_stream_chunk(
         downloads.in_flight.remove(&download_handle);
         downloads.canceled_in_flight.remove(&download_handle)
     };
-    let result = if canceled {
-        NativeS3StreamChunkResult {
-            bytes: into_native_owned_bytes(Vec::new()),
-            done: true,
-            error: std::ptr::null_mut(),
-        }
+    if canceled {
+        Ok(DownloadRead::Done)
     } else {
         match next {
             Some(Ok(bytes)) => {
@@ -403,28 +565,18 @@ pub extern "C" fn dart_edge_s3_client_next_get_object_stream_chunk(
                     .unwrap()
                     .available
                     .insert(download_handle, download);
-                NativeS3StreamChunkResult {
-                    bytes: into_native_owned_bytes(bytes.to_vec()),
-                    done: false,
-                    error: std::ptr::null_mut(),
-                }
+                Ok(DownloadRead::Chunk(bytes))
             }
             Some(Err(error)) => {
                 DOWNLOADS_FAILED.fetch_add(1, Ordering::Relaxed);
-                stream_chunk_result_error(format!("Failed to read S3 object stream: {error}"))
+                Err(format!("Failed to read S3 object stream: {error}"))
             }
             None => {
                 DOWNLOADS_COMPLETED.fetch_add(1, Ordering::Relaxed);
-                NativeS3StreamChunkResult {
-                    bytes: into_native_owned_bytes(Vec::new()),
-                    done: true,
-                    error: std::ptr::null_mut(),
-                }
+                Ok(DownloadRead::Done)
             }
         }
-    };
-
-    Box::into_raw(Box::new(result))
+    }
 }
 
 #[unsafe(no_mangle)]
@@ -556,6 +708,20 @@ pub extern "C" fn dart_edge_s3_client_free_bytes_result(value: *mut NativeS3Byte
 #[unsafe(no_mangle)]
 pub extern "C" fn dart_edge_s3_client_free_stream_start_result(
     value: *mut NativeS3StreamStartResult,
+) {
+    if value.is_null() {
+        return;
+    }
+    unsafe {
+        let mut value = Box::from_raw(value);
+        free_object_metadata_fields(&mut value.metadata);
+        free_c_string(value.error);
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_s3_client_free_native_stream_start_result(
+    value: *mut NativeS3NativeStreamStartResult,
 ) {
     if value.is_null() {
         return;
@@ -1022,6 +1188,26 @@ fn stream_start_result_error(error: impl Into<String>) -> NativeS3StreamStartRes
     }
 }
 
+fn native_stream_start_result_error(error: impl Into<String>) -> NativeS3NativeStreamStartResult {
+    NativeS3NativeStreamStartResult {
+        stream: empty_native_byte_stream(),
+        metadata: empty_object_metadata(),
+        error: c_string_ptr(error),
+    }
+}
+
+fn empty_native_byte_stream() -> NativeByteStream {
+    NativeByteStream {
+        abi_version: NATIVE_BYTE_STREAM_ABI_VERSION,
+        struct_size: size_of::<NativeByteStream>(),
+        context: std::ptr::null_mut(),
+        next: None,
+        cancel: None,
+        free_read: None,
+        release: None,
+    }
+}
+
 fn stream_chunk_result_error(error: impl Into<String>) -> NativeS3StreamChunkResult {
     NativeS3StreamChunkResult {
         bytes: NativeOwnedBytes {
@@ -1162,5 +1348,69 @@ unsafe fn free_c_string(value: *mut c_char) {
 
     unsafe {
         let _ = CString::from_raw(value);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    use super::*;
+
+    struct TrackingBytes {
+        bytes: Vec<u8>,
+        dropped: Arc<AtomicBool>,
+    }
+
+    impl AsRef<[u8]> for TrackingBytes {
+        fn as_ref(&self) -> &[u8] {
+            &self.bytes
+        }
+    }
+
+    impl Drop for TrackingBytes {
+        fn drop(&mut self) {
+            self.dropped.store(true, Ordering::SeqCst);
+        }
+    }
+
+    #[test]
+    fn native_stream_read_borrows_and_releases_the_original_bytes() {
+        let dropped = Arc::new(AtomicBool::new(false));
+        let chunk = Bytes::from_owner(TrackingBytes {
+            bytes: b"native zero copy".to_vec(),
+            dropped: Arc::clone(&dropped),
+        });
+        let original_ptr = chunk.as_ptr();
+        let read = S3NativeByteStreamRead::chunk(chunk).into_raw();
+
+        unsafe {
+            assert_eq!((*read).status, NATIVE_BYTE_STREAM_READ_CHUNK);
+            assert_eq!((*read).bytes.ptr.cast_const(), original_ptr);
+            assert_eq!((*read).bytes.len, 16);
+            assert_eq!(
+                std::slice::from_raw_parts((*read).bytes.ptr, (*read).bytes.len as usize),
+                b"native zero copy"
+            );
+            assert!(!dropped.load(Ordering::SeqCst));
+            s3_native_stream_free_read(read);
+        }
+
+        assert!(dropped.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn native_stream_error_stays_valid_until_free_read() {
+        let read = S3NativeByteStreamRead::error("stream failed").into_raw();
+
+        unsafe {
+            assert_eq!((*read).status, NATIVE_BYTE_STREAM_READ_ERROR);
+            assert_eq!(
+                std::slice::from_raw_parts((*read).error.ptr, (*read).error.len as usize),
+                b"stream failed"
+            );
+            s3_native_stream_free_read(read);
+        }
     }
 }

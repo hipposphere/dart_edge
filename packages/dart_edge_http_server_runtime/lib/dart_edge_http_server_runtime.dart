@@ -11,6 +11,7 @@ export 'src/native/dart_edge_native.dart';
 export 'src/runtime/dart_edge_codec.dart';
 export 'src/runtime/dart_edge_http_server.dart';
 export 'src/runtime/dart_edge_server.dart';
+export 'src/runtime/native_binary_stream_response.dart';
 export 'src/runtime/native_request.dart'
     show
         NativeMultipartField,

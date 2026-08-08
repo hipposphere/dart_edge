@@ -1,3 +1,7 @@
+## 0.1.4
+
+- Add the shared `NativeByteStreamHandle` ownership and transfer contract.
+
 ## 0.1.2
 
 - Add `NativeCompletionPort` for reusable native job completion notifications

@@ -53,6 +53,36 @@ Future<void> main() async {
 - `S3ObjectRef` identifies one object for `get`, `head`, and `delete`
 - `S3ObjectMetadata` describes object metadata returned by `head` and `get`
 
+## Native streaming bodies
+
+`getObjectNativeStream` returns a single-owner native body. Application code
+may either read copied Dart chunks with `body.openRead()` or transfer the body
+directly to the Dart Edge HTTP runtime:
+
+```dart
+final object = await client.getObjectNativeStream(
+  const S3ObjectRef(bucket: 'recordings', key: 'recording.wav'),
+);
+
+return NativeBinaryStreamResponse(
+  body: object.body,
+  contentType: object.metadata.contentType ?? 'application/octet-stream',
+  contentLength: object.metadata.contentLength,
+);
+```
+
+The two consumption modes are mutually exclusive. Call `object.close()` when
+neither mode adopts the body. When transferred to the native HTTP runtime, the
+original AWS-owned chunk allocation stays alive until Hyper finishes sending
+it; only its pointer and length cross the native ABI.
+
+For a separate-process comparison of the Dart and native HTTP paths, run:
+
+```sh
+dart run tool/s3_http_stream_benchmark.dart dart
+dart run tool/s3_http_stream_benchmark.dart native
+```
+
 ## Native Bindings
 
 The low-level Dart FFI layer is generated with `package:ffigen`, not written by

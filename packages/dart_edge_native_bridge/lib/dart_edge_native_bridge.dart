@@ -2,7 +2,12 @@
 library;
 
 export 'src/ffi/generated_bindings.dart'
-    show NativeBytes, NativeOwnedBytes, NativePair;
+    show
+        NativeByteStream,
+        NativeByteStreamRead,
+        NativeBytes,
+        NativeOwnedBytes,
+        NativePair;
 export 'src/ffi/native_value_helpers.dart'
     show
         NativeAllocations,
@@ -14,4 +19,10 @@ export 'src/ffi/native_value_helpers.dart'
         maybeCopyNativeBytes,
         optionalNativeString,
         requiredNativeString;
+export 'src/native_byte_stream_handle.dart'
+    show
+        NativeByteStreamDescriptor,
+        NativeByteStreamDescriptorData,
+        NativeByteStreamHandle,
+        NativeByteStreamLease;
 export 'src/native_completion_port.dart' show NativeCompletionPort;

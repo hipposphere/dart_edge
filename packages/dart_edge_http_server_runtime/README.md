@@ -142,6 +142,14 @@ See [example/native_probe.dart](example/native_probe.dart) for the native asset
 probe and [../dart_edge_http_server/example/simple_http_server.dart](../dart_edge_http_server/example/simple_http_server.dart)
 for a larger application example that uses this runtime surface.
 
+## Native binary responses
+
+`NativeBinaryStreamResponse` transfers a `NativeByteStreamHandle` from another
+native package directly into the Rust HTTP runtime. The runtime pulls one chunk
+at a time on its blocking worker pool, propagates disconnect cancellation, and
+never copies body chunks through Dart-managed memory. Use
+`BinaryStreamResponse` when the producer is a normal Dart stream.
+
 ## Native Bindings
 
 The low-level Dart FFI layer is generated with `package:ffigen`, not written by

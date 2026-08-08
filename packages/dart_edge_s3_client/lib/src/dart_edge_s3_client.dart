@@ -12,6 +12,7 @@ import 's3_delete_object_result.dart';
 import 's3_download_stream_counters.dart';
 import 's3_get_object_bytes_result.dart';
 import 's3_get_object_file_result.dart';
+import 's3_get_object_native_stream_result.dart';
 import 's3_get_object_stream_result.dart';
 import 's3_object_metadata.dart';
 import 's3_object_ref.dart';
@@ -160,9 +161,8 @@ final class DartEdgeS3Client {
     Future<void>? closeFuture;
     Future<void> close() {
       return closeFuture ??= Isolate.run(
-        () => DartEdgeS3ClientNative.cancelGetObjectStream(
-          start.downloadHandle,
-        ),
+        () =>
+            DartEdgeS3ClientNative.cancelGetObjectStream(start.downloadHandle),
       );
     }
 
@@ -170,6 +170,25 @@ final class DartEdgeS3Client {
       metadata: start.metadata,
       body: _readObjectStream(start.downloadHandle, onClose: close),
       onClose: close,
+    );
+  }
+
+  /// Opens an object body that can be read by Dart or moved directly into a
+  /// compatible native consumer such as the Dart Edge HTTP runtime.
+  Future<S3GetObjectNativeStreamResult> getObjectNativeStream(
+    S3ObjectRef object,
+  ) async {
+    _ensureActive();
+    _validateObjectRef(object);
+    final start = await Isolate.run(
+      () => DartEdgeS3ClientNative.startGetObjectNativeStream(
+        _nativeHandle,
+        object,
+      ),
+    );
+    return S3GetObjectNativeStreamResult(
+      metadata: start.metadata,
+      body: core_ffi.NativeByteStreamHandle.fromAddresses(start.descriptor),
     );
   }
 

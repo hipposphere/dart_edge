@@ -19,6 +19,7 @@ functions:
       - dart_edge_s3_client_free_create_result
       - dart_edge_s3_client_free_delete_object_result
       - dart_edge_s3_client_free_object_metadata
+      - dart_edge_s3_client_free_native_stream_start_result
       - dart_edge_s3_client_free_put_object_result
       - dart_edge_s3_client_native_abi_version
 structs:
@@ -28,6 +29,7 @@ structs:
     - NativeS3BytesResult
     - NativeS3DeleteObjectResult
     - NativeS3ObjectMetadata
+    - NativeS3NativeStreamStartResult
     - NativeS3ObjectRef
     - NativeS3PutObjectRequest
     - NativeS3PutObjectResult

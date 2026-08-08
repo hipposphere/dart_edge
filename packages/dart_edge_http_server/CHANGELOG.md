@@ -1,3 +1,8 @@
+## 0.3.24
+
+- Require `dart_edge_http_server_runtime` 0.3.34 for native producer-to-HTTP
+  streaming responses.
+
 ## 0.3.23
 
 - Require `dart_edge_http_server_runtime` 0.3.33 for deterministic binary

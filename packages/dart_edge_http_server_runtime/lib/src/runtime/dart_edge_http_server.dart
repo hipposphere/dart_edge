@@ -14,6 +14,7 @@ import 'compiled_route_table.dart';
 import 'dart_edge_codec.dart';
 import 'dart_edge_server.dart';
 import 'json_schema_route_id.dart';
+import 'native_binary_stream_response.dart';
 import 'open_api_document.dart';
 import 'request_decoder.dart';
 import 'response_writer.dart';
@@ -305,6 +306,17 @@ class DartEdge<TServices> extends Router<TServices> {
 
       final bodyResult = compiledRoute.route.handle(ctx);
       final body = bodyResult is Future ? await bodyResult : bodyResult;
+      final nativeBinaryStreamResponse = _resolveNativeBinaryStreamResponse(
+        body,
+        ctx.res,
+      );
+      if (nativeBinaryStreamResponse != null) {
+        _streamNativeBinaryResponse(requestId, nativeBinaryStreamResponse);
+        return HttpRequestObservationResult(
+          statusCode: nativeBinaryStreamResponse.status,
+          responseBodySize: nativeBinaryStreamResponse.contentLength,
+        );
+      }
       final binaryStreamResponse = _resolveBinaryStreamResponse(body, ctx.res);
       if (binaryStreamResponse != null) {
         await _streamBinaryResponse(requestId, binaryStreamResponse);
@@ -682,6 +694,33 @@ class DartEdge<TServices> extends Router<TServices> {
 
     final override = response.hasBodyOverride ? response.bodyOverride : null;
     return override is BinaryStreamResponse ? override : null;
+  }
+
+  NativeBinaryStreamResponse? _resolveNativeBinaryStreamResponse(
+    Object? body,
+    ResponseBuilder response,
+  ) {
+    if (body case final NativeBinaryStreamResponse response) {
+      return response;
+    }
+
+    final override = response.hasBodyOverride ? response.bodyOverride : null;
+    return override is NativeBinaryStreamResponse ? override : null;
+  }
+
+  void _streamNativeBinaryResponse(
+    int requestId,
+    NativeBinaryStreamResponse response,
+  ) {
+    final lease = response.body.takeDescriptor();
+    DartEdgeNative.startNativeBinaryStreamResponse(
+      requestId,
+      status: response.status,
+      contentType: response.contentType,
+      contentLength: response.contentLength,
+      headers: response.headers,
+      body: lease,
+    );
   }
 
   Future<void> _streamBinaryResponse(

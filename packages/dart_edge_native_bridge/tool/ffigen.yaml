@@ -11,10 +11,18 @@ headers:
 structs:
   include:
     - NativeBytes
+    - NativeByteStream
+    - NativeByteStreamRead
     - NativeOwnedBytes
     - NativeString
     - NativePair
     - NativeResult
+typedefs:
+  include:
+    - NativeByteStreamCancel
+    - NativeByteStreamFreeRead
+    - NativeByteStreamNext
+    - NativeByteStreamRelease
 exclude-all-by-default: true
 sort: true
 use-supported-typedefs: true

@@ -4,6 +4,10 @@ files:
     used-config:
       ffi-native: false
     symbols:
+      c:@S@NativeByteStream:
+        name: NativeByteStream
+      c:@S@NativeByteStreamRead:
+        name: NativeByteStreamRead
       c:@S@NativeBytes:
         name: NativeBytes
       c:@S@NativeOwnedBytes:
@@ -14,3 +18,11 @@ files:
         name: NativeResult
       c:@S@NativeString:
         name: NativeString
+      c:dart_edge_core_ffi.h@T@NativeByteStreamCancel:
+        name: NativeByteStreamCancel
+      c:dart_edge_core_ffi.h@T@NativeByteStreamFreeRead:
+        name: NativeByteStreamFreeRead
+      c:dart_edge_core_ffi.h@T@NativeByteStreamNext:
+        name: NativeByteStreamNext
+      c:dart_edge_core_ffi.h@T@NativeByteStreamRelease:
+        name: NativeByteStreamRelease

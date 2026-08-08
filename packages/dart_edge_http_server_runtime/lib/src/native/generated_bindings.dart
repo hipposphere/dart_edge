@@ -150,6 +150,27 @@ external bool dart_edge_http_server_runtime_start_binary_stream_response(
 );
 
 @ffi.Native<
+  ffi.Bool Function(
+    ffi.Int64,
+    ffi.Int32,
+    ffi.Pointer<ffi.Char>,
+    ffi.Int64,
+    ffi.IntPtr,
+    ffi.Pointer<imp$1.NativePair>,
+    ffi.Pointer<imp$1.NativeByteStream>,
+  )
+>()
+external bool dart_edge_http_server_runtime_start_native_binary_stream_response(
+  int request_id,
+  int status,
+  ffi.Pointer<ffi.Char> content_type,
+  int content_length,
+  int header_count,
+  ffi.Pointer<imp$1.NativePair> headers,
+  ffi.Pointer<imp$1.NativeByteStream> stream,
+);
+
+@ffi.Native<
   ffi.Int64 Function(
     ffi.Pointer<ffi.Char>,
     ffi.Int64,

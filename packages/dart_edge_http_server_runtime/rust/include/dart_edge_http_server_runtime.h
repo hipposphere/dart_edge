@@ -139,6 +139,15 @@ bool dart_edge_http_server_runtime_send_binary_stream_chunk(
 bool dart_edge_http_server_runtime_finish_binary_stream_response(
     int64_t request_id);
 
+bool dart_edge_http_server_runtime_start_native_binary_stream_response(
+    int64_t request_id,
+    int32_t status,
+    const char* content_type,
+    int64_t content_length,
+    intptr_t header_count,
+    const NativePair* headers,
+    const NativeByteStream* stream);
+
 NativeMultipartForm* dart_edge_http_server_runtime_parse_multipart(
     NativeTransportRequest* request,
     const char* content_type);

@@ -1,3 +1,9 @@
+## 0.3.34
+
+- Add `NativeBinaryStreamResponse` for native producer-to-HTTP streaming
+  without routing body chunks through Dart.
+- Bump the native artifact version to 0.1.18 for native stream consumption.
+
 ## 0.3.33
 
 - Dispose binary streaming response resources after completion, cancellation,

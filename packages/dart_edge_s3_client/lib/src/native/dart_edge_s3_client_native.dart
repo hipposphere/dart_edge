@@ -30,6 +30,16 @@ final class NativeS3StreamStartResponse {
   final S3ObjectMetadata metadata;
 }
 
+final class NativeS3NativeStreamStartResponse {
+  const NativeS3NativeStreamStartResponse({
+    required this.descriptor,
+    required this.metadata,
+  });
+
+  final core_ffi.NativeByteStreamDescriptorData descriptor;
+  final S3ObjectMetadata metadata;
+}
+
 final class NativeS3StreamChunkResponse {
   const NativeS3StreamChunkResponse({required this.bytes, required this.done});
 
@@ -253,6 +263,41 @@ abstract final class DartEdgeS3ClientNative {
         );
       } finally {
         gen.dart_edge_s3_client_free_stream_start_result(resultPtr);
+      }
+    } finally {
+      calloc.free(requestPtr);
+      allocations.free();
+    }
+  }
+
+  static NativeS3NativeStreamStartResponse startGetObjectNativeStream(
+    int handle,
+    S3ObjectRef object,
+  ) {
+    final allocations = core_ffi.NativeAllocations();
+    final requestPtr = calloc<gen.NativeS3ObjectRef>();
+    try {
+      _writeObjectRef(requestPtr.ref, object, allocations);
+      final resultPtr = gen.dart_edge_s3_client_start_get_object_native_stream(
+        handle,
+        requestPtr,
+      );
+      if (resultPtr == nullptr) {
+        throw StateError(
+          'dart_edge_s3_client startGetObjectNativeStream returned null.',
+        );
+      }
+      try {
+        final result = resultPtr.ref;
+        _throwIfError(result.error);
+        return NativeS3NativeStreamStartResponse(
+          descriptor: core_ffi.NativeByteStreamDescriptorData.fromDescriptor(
+            result.stream,
+          ),
+          metadata: _readObjectMetadata(result.metadata),
+        );
+      } finally {
+        gen.dart_edge_s3_client_free_native_stream_start_result(resultPtr);
       }
     } finally {
       calloc.free(requestPtr);

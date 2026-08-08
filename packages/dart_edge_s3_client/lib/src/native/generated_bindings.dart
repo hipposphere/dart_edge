@@ -67,6 +67,13 @@ external void dart_edge_s3_client_free_delete_object_result(
   ffi.Pointer<NativeS3DeleteObjectResult> value,
 );
 
+@ffi.Native<ffi.Void Function(ffi.Pointer<NativeS3NativeStreamStartResult>)>(
+  isLeaf: true,
+)
+external void dart_edge_s3_client_free_native_stream_start_result(
+  ffi.Pointer<NativeS3NativeStreamStartResult> value,
+);
+
 @ffi.Native<ffi.Void Function(ffi.Pointer<NativeS3ObjectMetadata>)>(
   isLeaf: true,
 )
@@ -137,6 +144,18 @@ dart_edge_s3_client_put_object_bytes(
 );
 
 @ffi.Native<
+  ffi.Pointer<NativeS3NativeStreamStartResult> Function(
+    ffi.Int64,
+    ffi.Pointer<NativeS3ObjectRef>,
+  )
+>()
+external ffi.Pointer<NativeS3NativeStreamStartResult>
+dart_edge_s3_client_start_get_object_native_stream(
+  int handle,
+  ffi.Pointer<NativeS3ObjectRef> request,
+);
+
+@ffi.Native<
   ffi.Pointer<NativeS3StreamStartResult> Function(
     ffi.Int64,
     ffi.Pointer<NativeS3ObjectRef>,
@@ -193,6 +212,14 @@ final class NativeS3DeleteObjectResult extends ffi.Struct {
   external bool delete_marker;
 
   external ffi.Pointer<ffi.Char> version_id;
+
+  external ffi.Pointer<ffi.Char> error;
+}
+
+final class NativeS3NativeStreamStartResult extends ffi.Struct {
+  external imp$1.NativeByteStream stream;
+
+  external NativeS3ObjectMetadata metadata;
 
   external ffi.Pointer<ffi.Char> error;
 }

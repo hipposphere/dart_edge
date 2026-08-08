@@ -17,8 +17,11 @@ use axum::middleware::{self, Next};
 use axum::response::IntoResponse;
 use axum::routing::any;
 use dart_edge_core::{
-    NativeBytes, NativePair, OwnedBytes, OwnedPair, boxed_pairs_ptr, native_pairs_from_owned,
-    owned_pairs_from_map, read_native_bytes, read_native_string, read_pairs_vec,
+    NATIVE_BYTE_STREAM_READ_CANCELED, NATIVE_BYTE_STREAM_READ_CHUNK, NATIVE_BYTE_STREAM_READ_DONE,
+    NATIVE_BYTE_STREAM_READ_ERROR, NativeByteStream, NativeByteStreamFreeRead,
+    NativeByteStreamRead, NativeBytes, NativePair, OwnedBytes, OwnedPair, boxed_pairs_ptr,
+    native_pairs_from_owned, owned_pairs_from_map, read_native_bytes, read_native_string,
+    read_pairs_vec,
 };
 use dart_edge_http_server_core::{
     NativeHttpFreeResponse, NativeHttpHandler, NativeHttpMethod, NativeHttpRequest,
@@ -35,7 +38,7 @@ use wtransport::{
     ServerConfig as WebTransportServerConfig, VarInt,
 };
 
-const DART_EDGE_HTTP_SERVER_RUNTIME_NATIVE_ABI_VERSION: i32 = 14;
+const DART_EDGE_HTTP_SERVER_RUNTIME_NATIVE_ABI_VERSION: i32 = 15;
 const SCHEMA_REGISTRY_URI: &str = "urn:dart-edge:schema-registry";
 
 type TransportEventCallback = extern "C" fn(i32, i64);
@@ -269,10 +272,143 @@ enum PendingResponseMessage {
         bytes: Vec<u8>,
         consumed_tx: std_mpsc::SyncSender<()>,
     },
+    NativeBinaryStart {
+        status: u16,
+        content_type: String,
+        content_length: Option<u64>,
+        headers: Vec<(String, String)>,
+        stream: OwnedNativeByteStream,
+    },
     WebSocketAccept {
         headers: Vec<(String, String)>,
     },
     Close,
+}
+
+struct OwnedNativeByteStream {
+    descriptor: NativeByteStream,
+    completed: bool,
+}
+
+impl OwnedNativeByteStream {
+    fn new(descriptor: NativeByteStream) -> Self {
+        Self {
+            descriptor,
+            completed: false,
+        }
+    }
+
+    fn mark_completed(&mut self) {
+        self.completed = true;
+    }
+}
+
+impl Drop for OwnedNativeByteStream {
+    fn drop(&mut self) {
+        unsafe {
+            if !self.completed
+                && let Some(cancel) = self.descriptor.cancel
+            {
+                cancel(self.descriptor.context);
+            }
+            if let Some(release) = self.descriptor.release {
+                release(self.descriptor.context);
+            }
+        }
+    }
+}
+
+unsafe impl Send for OwnedNativeByteStream {}
+
+enum NativeByteStreamReadOutcome {
+    Chunk(Bytes),
+    Done,
+}
+
+struct NativeByteStreamChunkOwner {
+    read: *mut NativeByteStreamRead,
+    free_read: NativeByteStreamFreeRead,
+}
+
+impl AsRef<[u8]> for NativeByteStreamChunkOwner {
+    fn as_ref(&self) -> &[u8] {
+        let read = unsafe { &*self.read };
+        unsafe {
+            read_native_bytes(NativeBytes {
+                ptr: read.bytes.ptr,
+                len: read.bytes.len,
+            })
+            .unwrap_or_default()
+        }
+    }
+}
+
+impl Drop for NativeByteStreamChunkOwner {
+    fn drop(&mut self) {
+        unsafe {
+            (self.free_read)(self.read);
+        }
+    }
+}
+
+unsafe impl Send for NativeByteStreamChunkOwner {}
+unsafe impl Sync for NativeByteStreamChunkOwner {}
+
+fn read_native_byte_stream(
+    descriptor: NativeByteStream,
+) -> Result<NativeByteStreamReadOutcome, String> {
+    let next = descriptor
+        .next
+        .ok_or_else(|| "Native byte stream has no next callback.".to_string())?;
+    let free_read = descriptor
+        .free_read
+        .ok_or_else(|| "Native byte stream has no result release callback.".to_string())?;
+    let read_ptr = unsafe { next(descriptor.context) };
+    if read_ptr.is_null() {
+        return Err("Native byte stream returned a null read result.".to_string());
+    }
+
+    unsafe {
+        let read = &*read_ptr;
+        match read.status {
+            NATIVE_BYTE_STREAM_READ_CHUNK => {
+                let bytes = NativeBytes {
+                    ptr: read.bytes.ptr,
+                    len: read.bytes.len,
+                };
+                if bytes.is_invalid() {
+                    free_read(read_ptr);
+                    return Err("Native byte stream returned invalid chunk bytes.".to_string());
+                }
+                if bytes.is_empty() {
+                    free_read(read_ptr);
+                    return Ok(NativeByteStreamReadOutcome::Chunk(Bytes::new()));
+                }
+                Ok(NativeByteStreamReadOutcome::Chunk(Bytes::from_owner(
+                    NativeByteStreamChunkOwner {
+                        read: read_ptr,
+                        free_read,
+                    },
+                )))
+            }
+            NATIVE_BYTE_STREAM_READ_DONE | NATIVE_BYTE_STREAM_READ_CANCELED => {
+                free_read(read_ptr);
+                Ok(NativeByteStreamReadOutcome::Done)
+            }
+            NATIVE_BYTE_STREAM_READ_ERROR => {
+                let error = read_native_string(read.error)
+                    .unwrap_or_else(|| "Native byte stream read failed.".to_string());
+                free_read(read_ptr);
+                Err(error)
+            }
+            status => {
+                free_read(read_ptr);
+                Err(format!(
+                    "Native byte stream returned unknown status {status}."
+                ))
+            }
+        }
+    }
 }
 
 struct WebSocketSessionState {
@@ -926,6 +1062,47 @@ pub extern "C" fn dart_edge_http_server_runtime_finish_binary_stream_response(
 }
 
 #[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_http_server_runtime_start_native_binary_stream_response(
+    request_id: i64,
+    status: i32,
+    content_type: *const c_char,
+    content_length: i64,
+    header_count: isize,
+    headers: *const NativePair,
+    stream: *const NativeByteStream,
+) -> bool {
+    let Some(content_type) = (unsafe { read_c_string(content_type) }) else {
+        return false;
+    };
+    let Some(stream) = (unsafe { stream.as_ref() }).copied() else {
+        return false;
+    };
+    if !stream.is_valid() {
+        unsafe {
+            if let Some(cancel) = stream.cancel {
+                cancel(stream.context);
+            }
+            if let Some(release) = stream.release {
+                release(stream.context);
+            }
+        }
+        return false;
+    }
+    let headers = unsafe { read_pairs_vec(headers, header_count) };
+    send_pending_response_message(
+        request_id,
+        PendingResponseMessage::NativeBinaryStart {
+            status: status as u16,
+            content_type,
+            content_length: u64::try_from(content_length).ok(),
+            headers,
+            stream: OwnedNativeByteStream::new(stream),
+        },
+        true,
+    )
+}
+
+#[unsafe(no_mangle)]
 pub extern "C" fn dart_edge_http_server_runtime_parse_multipart(
     request: *mut NativeTransportRequest,
     content_type: *const c_char,
@@ -1521,6 +1698,7 @@ async fn handle_http_request(
                         | PendingResponseMessage::SseStart { .. }
                         | PendingResponseMessage::BinaryStart { .. }
                         | PendingResponseMessage::BinaryChunk { .. }
+                        | PendingResponseMessage::NativeBinaryStart { .. }
                         | PendingResponseMessage::WebSocketAccept { .. } => break,
                     }
                 }
@@ -1557,7 +1735,69 @@ async fn handle_http_request(
                         | PendingResponseMessage::SseStart { .. }
                         | PendingResponseMessage::SseChunk(_)
                         | PendingResponseMessage::BinaryStart { .. }
+                        | PendingResponseMessage::NativeBinaryStart { .. }
                         | PendingResponseMessage::WebSocketAccept { .. } => break,
+                    }
+                }
+            };
+
+            response_body_with_headers(
+                StatusCode::from_u16(status).unwrap_or(StatusCode::OK),
+                &content_type,
+                &headers,
+                Body::from_stream(stream),
+            )
+        }
+        Some(PendingResponseMessage::NativeBinaryStart {
+            status,
+            content_type,
+            content_length,
+            mut headers,
+            stream,
+        }) => {
+            if let Some(content_length) = content_length {
+                headers.push((
+                    header::CONTENT_LENGTH.as_str().to_string(),
+                    content_length.to_string(),
+                ));
+            }
+            let stream = async_stream::stream! {
+                let mut stream = stream;
+                let mut emitted_bytes = 0_u64;
+                loop {
+                    let descriptor = stream.descriptor;
+                    let read = tokio::task::spawn_blocking(move || {
+                        read_native_byte_stream(descriptor)
+                    }).await;
+                    match read {
+                        Ok(Ok(NativeByteStreamReadOutcome::Chunk(bytes))) => {
+                            emitted_bytes = emitted_bytes.saturating_add(bytes.len() as u64);
+                            let reached_content_length = content_length
+                                .is_some_and(|length| emitted_bytes >= length);
+                            if reached_content_length {
+                                stream.mark_completed();
+                            }
+                            if !bytes.is_empty() {
+                                yield Ok::<Bytes, std::io::Error>(bytes);
+                            }
+                            if reached_content_length {
+                                break;
+                            }
+                        }
+                        Ok(Ok(NativeByteStreamReadOutcome::Done)) => {
+                            stream.mark_completed();
+                            break;
+                        }
+                        Ok(Err(error)) => {
+                            yield Err(std::io::Error::other(error));
+                            break;
+                        }
+                        Err(error) => {
+                            yield Err(std::io::Error::other(format!(
+                                "Native byte-stream worker failed: {error}"
+                            )));
+                            break;
+                        }
                     }
                 }
             };

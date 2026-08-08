@@ -10,6 +10,7 @@ export 'src/s3_delete_object_result.dart';
 export 'src/s3_download_stream_counters.dart';
 export 'src/s3_get_object_bytes_result.dart';
 export 'src/s3_get_object_file_result.dart';
+export 'src/s3_get_object_native_stream_result.dart';
 export 'src/s3_get_object_stream_result.dart';
 export 'src/s3_object_metadata.dart';
 export 'src/s3_object_ref.dart';

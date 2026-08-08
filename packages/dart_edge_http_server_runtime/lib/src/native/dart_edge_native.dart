@@ -280,6 +280,38 @@ abstract final class DartEdgeNative {
     );
   }
 
+  /// Transfers a native producer directly into the native HTTP body.
+  static bool startNativeBinaryStreamResponse(
+    int requestId, {
+    required int status,
+    required String contentType,
+    required core_ffi.NativeByteStreamLease body,
+    int? contentLength,
+    List<HttpHeader> headers = const <HttpHeader>[],
+  }) {
+    final contentTypePtr = contentType.toNativeUtf8();
+    try {
+      return _withNativeHeaders(
+        headers,
+        (headerStorage, headerCount) => gen
+            .dart_edge_http_server_runtime_start_native_binary_stream_response(
+              requestId,
+              status,
+              contentTypePtr.cast<Char>(),
+              contentLength ?? -1,
+              headerCount,
+              headerStorage,
+              body.descriptor,
+            ),
+      );
+    } finally {
+      calloc.free(contentTypePtr);
+      // A valid descriptor is consumed by the runtime even when the pending
+      // HTTP request disappeared before adoption completed.
+      body.markTransferred();
+    }
+  }
+
   /// Reads one queued WebSocket connection open event from the native runtime.
   static NativeWebSocketConnection? takeWebSocketConnection(int sessionId) {
     final connectionPtr = gen
