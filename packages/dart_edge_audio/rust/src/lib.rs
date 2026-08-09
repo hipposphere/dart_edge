@@ -1,11 +1,11 @@
 use std::collections::BTreeMap;
 use std::ffi::{CStr, CString, c_char};
-use std::fs::{self, File};
-use std::io::{Cursor, Read, Seek, SeekFrom, Write};
+use std::fs;
+use std::io::{Cursor, Seek, Write};
 use std::os::raw::c_void;
 use std::path::Path;
 use std::sync::{
-    Mutex,
+    Arc, Mutex,
     atomic::{AtomicBool, Ordering},
 };
 
@@ -36,13 +36,14 @@ use symphonia::core::meta::{MetadataOptions, MetadataRevision, StandardTag, Tag}
 use symphonia::core::units::Timestamp;
 use symphonia::default::{get_codecs, get_probe};
 
-const DART_EDGE_AUDIO_NATIVE_ABI_VERSION: i32 = 1;
+const DART_EDGE_AUDIO_NATIVE_ABI_VERSION: i32 = 2;
 
 static LAST_ERROR: Lazy<Mutex<Option<CString>>> = Lazy::new(|| Mutex::new(None));
 
 #[repr(C)]
 pub struct NativeAudioBytesResult {
     bytes: NativeOwnedBytes,
+    waveform: NativeOwnedBytes,
     result_json: *mut c_char,
 }
 
@@ -91,6 +92,7 @@ enum NativeAudioPoolResult {
     ProbeJson(String),
     ConvertedBytes {
         bytes: Vec<u8>,
+        waveform: Vec<u8>,
         result_json: String,
     },
     ConvertedStream {
@@ -190,6 +192,16 @@ struct NativeBytesConversionRequest {
     target_sample_rate: Option<u32>,
     #[serde(default)]
     channel_layout: NativeAudioChannelLayout,
+    waveform: Option<NativeWaveformSpec>,
+    #[serde(default)]
+    waveform_only: bool,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct NativeWaveformSpec {
+    base_interval_micros: u64,
+    level_factors: Vec<u32>,
 }
 
 #[derive(Deserialize)]
@@ -268,6 +280,24 @@ struct NativeFileConversionResult {
 struct NativeBytesConversionResultJson {
     mime_type: String,
     metadata: NativeAudioMetadata,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    waveform: Option<NativeWaveformResultJson>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct NativeWaveformResultJson {
+    base_interval_micros: u64,
+    levels: Vec<NativeWaveformLevelJson>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct NativeWaveformLevelJson {
+    factor: u32,
+    interval_micros: u64,
+    byte_offset: usize,
+    byte_length: usize,
 }
 
 struct DecodedAudio {
@@ -649,18 +679,20 @@ pub extern "C" fn dart_edge_audio_pool_take_convert_result(
         return std::ptr::null_mut();
     };
     match result {
-        NativeAudioPoolResult::ConvertedBytes { bytes, result_json } => {
-            match encode_bytes_result_json(bytes, result_json) {
-                Ok(value) => {
-                    clear_last_error();
-                    value
-                }
-                Err(error) => {
-                    set_last_error(error);
-                    std::ptr::null_mut()
-                }
+        NativeAudioPoolResult::ConvertedBytes {
+            bytes,
+            waveform,
+            result_json,
+        } => match encode_bytes_result_json(bytes, waveform, result_json) {
+            Ok(value) => {
+                clear_last_error();
+                value
             }
-        }
+            Err(error) => {
+                set_last_error(error);
+                std::ptr::null_mut()
+            }
+        },
         NativeAudioPoolResult::FileJson(_)
         | NativeAudioPoolResult::ProbeJson(_)
         | NativeAudioPoolResult::ConvertedStream { .. } => {
@@ -757,6 +789,7 @@ pub extern "C" fn dart_edge_audio_free_bytes_result(value: *mut NativeAudioBytes
     unsafe {
         let value = Box::from_raw(value);
         free_owned_bytes(value.bytes);
+        free_owned_bytes(value.waveform);
         if !value.result_json.is_null() {
             let _ = CString::from_raw(value.result_json);
         }
@@ -938,9 +971,11 @@ fn convert_bytes(
 ) -> Result<*mut NativeAudioBytesResult, String> {
     let result = convert_bytes_payload(bytes, request)?;
     match result {
-        NativeAudioPoolResult::ConvertedBytes { bytes, result_json } => {
-            encode_bytes_result_json(bytes, result_json)
-        }
+        NativeAudioPoolResult::ConvertedBytes {
+            bytes,
+            waveform,
+            result_json,
+        } => encode_bytes_result_json(bytes, waveform, result_json),
         NativeAudioPoolResult::FileJson(_)
         | NativeAudioPoolResult::ProbeJson(_)
         | NativeAudioPoolResult::ConvertedStream { .. } => {
@@ -966,16 +1001,33 @@ fn convert_bytes_payload(
         request.channel_layout,
         request.target_format,
     )?;
-    let wav_bytes = encode_wav(&converted)?;
+    let (wav_bytes, waveform_bytes, waveform) = match request.waveform {
+        Some(spec) => {
+            validate_waveform_spec(&spec)?;
+            if request.waveform_only {
+                let waveform = generate_waveform(&converted, &spec)?;
+                (Vec::new(), waveform.bytes, Some(waveform.json))
+            } else {
+                let (wav, waveform) = encode_wav_with_waveform(&converted, &spec)?;
+                (wav, waveform.bytes, Some(waveform.json))
+            }
+        }
+        None if request.waveform_only => {
+            return Err("waveform is required when waveformOnly is true.".to_string());
+        }
+        None => (encode_wav(&converted)?, Vec::new(), None),
+    };
     let result_json = NativeBytesConversionResultJson {
         mime_type: "audio/wav".to_string(),
         metadata: converted.metadata(),
+        waveform,
     };
     let result_json = serde_json::to_string(&result_json)
         .map_err(|error| format!("Failed to encode JSON payload: {error}"))?;
 
     Ok(NativeAudioPoolResult::ConvertedBytes {
         bytes: wav_bytes,
+        waveform: waveform_bytes,
         result_json,
     })
 }
@@ -1003,8 +1055,7 @@ fn concatenate_audio_streams(
     let sample_rate = first.sample_rate;
     let channel_count = first.samples.len();
     let mut total_frame_count = first.samples.first().map_or(0usize, Vec::len);
-    let mut output = tempfile::tempfile()
-        .map_err(|error| format!("Failed to create temporary WAV output: {error}"))?;
+    let mut output = Cursor::new(Vec::new());
     let spec = WavSpec {
         channels: channel_count as u16,
         sample_rate,
@@ -1045,13 +1096,7 @@ fn concatenate_audio_streams(
             .map_err(|error| format!("Failed to finalize WAV stream output: {error}"))?;
     }
 
-    let content_length = output
-        .metadata()
-        .map_err(|error| format!("Failed to inspect temporary WAV output: {error}"))?
-        .len();
-    output
-        .seek(SeekFrom::Start(0))
-        .map_err(|error| format!("Failed to rewind temporary WAV output: {error}"))?;
+    let content_length = output.get_ref().len() as u64;
     let bit_depth = request.target_format.bit_depth() as u32;
     let bit_rate = (sample_rate as u64)
         .saturating_mul(channel_count as u64)
@@ -1070,11 +1115,12 @@ fn concatenate_audio_streams(
             bit_depth: Some(bit_depth),
             tags: BTreeMap::new(),
         },
+        waveform: None,
     })
     .map_err(|error| format!("Failed to encode JSON payload: {error}"))?;
 
     Ok(NativeAudioPoolResult::ConvertedStream {
-        stream: OwnedNativeByteStream::new(native_file_byte_stream(output)),
+        stream: OwnedNativeByteStream::new(native_memory_byte_stream(output.into_inner())),
         content_length,
         result_json,
     })
@@ -1154,33 +1200,34 @@ fn read_native_stream_to_end(stream: &mut OwnedNativeByteStream) -> Result<Vec<u
     }
 }
 
-const NATIVE_FILE_STREAM_CHUNK_SIZE: usize = 64 * 1024;
+const NATIVE_MEMORY_STREAM_CHUNK_SIZE: usize = 64 * 1024;
 
-struct NativeFileStreamContext {
-    file: Mutex<File>,
+struct NativeMemoryStreamContext {
+    bytes: Arc<Vec<u8>>,
+    offset: Mutex<usize>,
     canceled: AtomicBool,
 }
 
 #[repr(C)]
-struct NativeFileStreamRead {
+struct NativeMemoryStreamRead {
     read: NativeByteStreamRead,
-    _chunk: Option<Vec<u8>>,
+    _bytes: Option<Arc<Vec<u8>>>,
     _error: Option<CString>,
 }
 
-impl NativeFileStreamRead {
-    fn chunk(mut chunk: Vec<u8>) -> Self {
-        let bytes = NativeOwnedBytes {
-            ptr: chunk.as_mut_ptr(),
-            len: chunk.len() as isize,
+impl NativeMemoryStreamRead {
+    fn chunk(owner: Arc<Vec<u8>>, start: usize, end: usize) -> Self {
+        let view = NativeOwnedBytes {
+            ptr: unsafe { owner.as_ptr().add(start) }.cast_mut(),
+            len: (end - start) as isize,
         };
         Self {
             read: NativeByteStreamRead {
                 status: NATIVE_BYTE_STREAM_READ_CHUNK,
-                bytes,
+                bytes: view,
                 error: NativeBytes::empty(),
             },
-            _chunk: Some(chunk),
+            _bytes: Some(owner),
             _error: None,
         }
     }
@@ -1192,7 +1239,7 @@ impl NativeFileStreamRead {
                 bytes: NativeOwnedBytes::empty(),
                 error: NativeBytes::empty(),
             },
-            _chunk: None,
+            _bytes: None,
             _error: None,
         }
     }
@@ -1209,7 +1256,7 @@ impl NativeFileStreamRead {
                 bytes: NativeOwnedBytes::empty(),
                 error: error_bytes,
             },
-            _chunk: None,
+            _bytes: None,
             _error: Some(error),
         }
     }
@@ -1219,65 +1266,63 @@ impl NativeFileStreamRead {
     }
 }
 
-fn native_file_byte_stream(file: File) -> NativeByteStream {
-    let context = Box::into_raw(Box::new(NativeFileStreamContext {
-        file: Mutex::new(file),
+fn native_memory_byte_stream(bytes: Vec<u8>) -> NativeByteStream {
+    let context = Box::into_raw(Box::new(NativeMemoryStreamContext {
+        bytes: Arc::new(bytes),
+        offset: Mutex::new(0),
         canceled: AtomicBool::new(false),
     }));
     NativeByteStream {
         abi_version: NATIVE_BYTE_STREAM_ABI_VERSION,
         struct_size: std::mem::size_of::<NativeByteStream>(),
         context: context.cast::<c_void>(),
-        next: Some(native_file_stream_next),
-        cancel: Some(native_file_stream_cancel),
-        free_read: Some(native_file_stream_free_read),
-        release: Some(native_file_stream_release),
+        next: Some(native_memory_stream_next),
+        cancel: Some(native_memory_stream_cancel),
+        free_read: Some(native_memory_stream_free_read),
+        release: Some(native_memory_stream_release),
     }
 }
 
-unsafe extern "C" fn native_file_stream_next(context: *mut c_void) -> *mut NativeByteStreamRead {
-    let Some(context) = (unsafe { context.cast::<NativeFileStreamContext>().as_ref() }) else {
-        return NativeFileStreamRead::error("Missing native WAV stream context.").into_raw();
+unsafe extern "C" fn native_memory_stream_next(context: *mut c_void) -> *mut NativeByteStreamRead {
+    let Some(context) = (unsafe { context.cast::<NativeMemoryStreamContext>().as_ref() }) else {
+        return NativeMemoryStreamRead::error("Missing native WAV stream context.").into_raw();
     };
     if context.canceled.load(Ordering::Acquire) {
-        return NativeFileStreamRead::terminal(NATIVE_BYTE_STREAM_READ_CANCELED).into_raw();
+        return NativeMemoryStreamRead::terminal(NATIVE_BYTE_STREAM_READ_CANCELED).into_raw();
     }
-    let mut chunk = vec![0; NATIVE_FILE_STREAM_CHUNK_SIZE];
-    let read = match context.file.lock() {
-        Ok(mut file) => file.read(&mut chunk),
+    let mut offset = match context.offset.lock() {
+        Ok(offset) => offset,
         Err(_) => {
-            return NativeFileStreamRead::error("Native WAV stream file lock was poisoned.")
+            return NativeMemoryStreamRead::error("Native WAV stream offset lock was poisoned.")
                 .into_raw();
         }
     };
-    match read {
-        Ok(0) => NativeFileStreamRead::terminal(NATIVE_BYTE_STREAM_READ_DONE).into_raw(),
-        Ok(length) => {
-            chunk.truncate(length);
-            NativeFileStreamRead::chunk(chunk).into_raw()
-        }
-        Err(error) => {
-            NativeFileStreamRead::error(format!("Failed to read temporary WAV output: {error}"))
-                .into_raw()
-        }
+    if *offset >= context.bytes.len() {
+        return NativeMemoryStreamRead::terminal(NATIVE_BYTE_STREAM_READ_DONE).into_raw();
     }
+    let start = *offset;
+    let end = start
+        .saturating_add(NATIVE_MEMORY_STREAM_CHUNK_SIZE)
+        .min(context.bytes.len());
+    *offset = end;
+    NativeMemoryStreamRead::chunk(Arc::clone(&context.bytes), start, end).into_raw()
 }
 
-unsafe extern "C" fn native_file_stream_cancel(context: *mut c_void) {
-    if let Some(context) = unsafe { context.cast::<NativeFileStreamContext>().as_ref() } {
+unsafe extern "C" fn native_memory_stream_cancel(context: *mut c_void) {
+    if let Some(context) = unsafe { context.cast::<NativeMemoryStreamContext>().as_ref() } {
         context.canceled.store(true, Ordering::Release);
     }
 }
 
-unsafe extern "C" fn native_file_stream_free_read(value: *mut NativeByteStreamRead) {
+unsafe extern "C" fn native_memory_stream_free_read(value: *mut NativeByteStreamRead) {
     if !value.is_null() {
-        unsafe { drop(Box::from_raw(value.cast::<NativeFileStreamRead>())) };
+        unsafe { drop(Box::from_raw(value.cast::<NativeMemoryStreamRead>())) };
     }
 }
 
-unsafe extern "C" fn native_file_stream_release(context: *mut c_void) {
+unsafe extern "C" fn native_memory_stream_release(context: *mut c_void) {
     if !context.is_null() {
-        unsafe { drop(Box::from_raw(context.cast::<NativeFileStreamContext>())) };
+        unsafe { drop(Box::from_raw(context.cast::<NativeMemoryStreamContext>())) };
     }
 }
 
@@ -1674,6 +1719,182 @@ fn encode_wav(audio: &ConvertedAudio) -> Result<Vec<u8>, String> {
     Ok(cursor.into_inner())
 }
 
+struct EncodedWaveform {
+    bytes: Vec<u8>,
+    json: NativeWaveformResultJson,
+}
+
+struct WaveformAccumulator {
+    sample_rate: u32,
+    interval_micros: u64,
+    frames_seen: u64,
+    bucket_index: u64,
+    current_min: i8,
+    current_max: i8,
+    has_current: bool,
+    base_peaks: Vec<i8>,
+}
+
+impl WaveformAccumulator {
+    fn new(sample_rate: u32, interval_micros: u64) -> Self {
+        Self {
+            sample_rate,
+            interval_micros,
+            frames_seen: 0,
+            bucket_index: 0,
+            current_min: 0,
+            current_max: 0,
+            has_current: false,
+            base_peaks: Vec::new(),
+        }
+    }
+
+    fn observe(&mut self, sample: f32) {
+        let peak = float_to_waveform_i8(sample);
+        if self.has_current {
+            self.current_min = self.current_min.min(peak);
+            self.current_max = self.current_max.max(peak);
+        } else {
+            self.current_min = peak;
+            self.current_max = peak;
+            self.has_current = true;
+        }
+        self.frames_seen += 1;
+        if u128::from(self.frames_seen) * 1_000_000
+            >= u128::from(self.bucket_index + 1)
+                * u128::from(self.sample_rate)
+                * u128::from(self.interval_micros)
+        {
+            self.flush();
+        }
+    }
+
+    fn flush(&mut self) {
+        if !self.has_current {
+            return;
+        }
+        self.base_peaks.push(self.current_min);
+        self.base_peaks.push(self.current_max);
+        self.bucket_index += 1;
+        self.has_current = false;
+    }
+
+    fn finish(mut self, spec: &NativeWaveformSpec) -> Result<EncodedWaveform, String> {
+        self.flush();
+        let mut bytes = Vec::new();
+        let mut levels = Vec::with_capacity(spec.level_factors.len());
+        for &factor in &spec.level_factors {
+            let level = aggregate_waveform(&self.base_peaks, factor as usize);
+            let byte_offset = bytes.len();
+            bytes.extend(level.into_iter().map(|value| value as u8));
+            let byte_length = bytes.len() - byte_offset;
+            levels.push(NativeWaveformLevelJson {
+                factor,
+                interval_micros: spec
+                    .base_interval_micros
+                    .checked_mul(u64::from(factor))
+                    .ok_or_else(|| "waveform interval is too large.".to_string())?,
+                byte_offset,
+                byte_length,
+            });
+        }
+        Ok(EncodedWaveform {
+            bytes,
+            json: NativeWaveformResultJson {
+                base_interval_micros: spec.base_interval_micros,
+                levels,
+            },
+        })
+    }
+}
+
+fn encode_wav_with_waveform(
+    audio: &ConvertedAudio,
+    waveform_spec: &NativeWaveformSpec,
+) -> Result<(Vec<u8>, EncodedWaveform), String> {
+    if audio.samples.is_empty() || audio.samples[0].is_empty() {
+        return Err("Audio conversion did not produce any output samples.".to_string());
+    }
+    let frame_count = audio.samples[0].len();
+    let spec = WavSpec {
+        channels: audio.samples.len() as u16,
+        sample_rate: audio.sample_rate,
+        bits_per_sample: audio.target_format.bit_depth(),
+        sample_format: SampleFormat::Int,
+    };
+    let mut waveform =
+        WaveformAccumulator::new(audio.sample_rate, waveform_spec.base_interval_micros);
+    let mut cursor = Cursor::new(Vec::new());
+    {
+        let mut writer = WavWriter::new(&mut cursor, spec)
+            .map_err(|error| format!("Failed to create WAV writer: {error}"))?;
+        for frame_index in 0..frame_count {
+            let mut visualization_sample = 0.0f32;
+            for channel in &audio.samples {
+                let sample = channel[frame_index];
+                visualization_sample += sample;
+                match audio.target_format {
+                    NativeAudioTargetFormat::WavPcm16 => writer
+                        .write_sample(float_to_i16(sample))
+                        .map_err(|error| format!("Failed to write WAV sample: {error}"))?,
+                    NativeAudioTargetFormat::WavPcm24 => writer
+                        .write_sample(float_to_i24(sample))
+                        .map_err(|error| format!("Failed to write WAV sample: {error}"))?,
+                }
+            }
+            waveform.observe(visualization_sample / audio.samples.len() as f32);
+        }
+        writer
+            .finalize()
+            .map_err(|error| format!("Failed to finalize WAV output: {error}"))?;
+    }
+    Ok((cursor.into_inner(), waveform.finish(waveform_spec)?))
+}
+
+fn generate_waveform(
+    audio: &ConvertedAudio,
+    waveform_spec: &NativeWaveformSpec,
+) -> Result<EncodedWaveform, String> {
+    if audio.samples.is_empty() || audio.samples[0].is_empty() {
+        return Err("Audio conversion did not produce any output samples.".to_string());
+    }
+    let frame_count = audio.samples[0].len();
+    let mut waveform =
+        WaveformAccumulator::new(audio.sample_rate, waveform_spec.base_interval_micros);
+    for frame_index in 0..frame_count {
+        let visualization_sample = audio
+            .samples
+            .iter()
+            .map(|channel| channel[frame_index])
+            .sum::<f32>()
+            / audio.samples.len() as f32;
+        waveform.observe(visualization_sample);
+    }
+    waveform.finish(waveform_spec)
+}
+
+fn aggregate_waveform(base: &[i8], factor: usize) -> Vec<i8> {
+    if factor == 1 {
+        return base.to_vec();
+    }
+    let mut output = Vec::with_capacity(base.len().div_ceil(factor));
+    for pairs in base.chunks(factor * 2) {
+        let mut minimum = i8::MAX;
+        let mut maximum = i8::MIN;
+        for pair in pairs.chunks_exact(2) {
+            minimum = minimum.min(pair[0]);
+            maximum = maximum.max(pair[1]);
+        }
+        output.push(minimum);
+        output.push(maximum);
+    }
+    output
+}
+
+fn float_to_waveform_i8(sample: f32) -> i8 {
+    (sample.clamp(-1.0, 1.0) * 127.0).round() as i8
+}
+
 fn collect_tags(format: &mut dyn FormatReader) -> BTreeMap<String, String> {
     let mut metadata = format.metadata();
     let revision = metadata.skip_to_latest();
@@ -1865,6 +2086,28 @@ fn validate_sample_rate(sample_rate: Option<u32>) -> Result<(), String> {
     Ok(())
 }
 
+fn validate_waveform_spec(spec: &NativeWaveformSpec) -> Result<(), String> {
+    if spec.base_interval_micros == 0 {
+        return Err("waveform.baseIntervalMicros must be at least 1.".to_string());
+    }
+    if spec.level_factors.first() != Some(&1) {
+        return Err("waveform.levelFactors must start with 1.".to_string());
+    }
+    let mut previous = 0;
+    for &factor in &spec.level_factors {
+        if factor <= previous {
+            return Err(
+                "waveform.levelFactors must be unique, positive, and increasing.".to_string(),
+            );
+        }
+        spec.base_interval_micros
+            .checked_mul(u64::from(factor))
+            .ok_or_else(|| "waveform interval is too large.".to_string())?;
+        previous = factor;
+    }
+    Ok(())
+}
+
 fn encode_json_string<T: Serialize>(value: &T) -> Result<*mut c_char, String> {
     let json = serde_json::to_string(value)
         .map_err(|error| format!("Failed to encode JSON payload: {error}"))?;
@@ -1873,14 +2116,17 @@ fn encode_json_string<T: Serialize>(value: &T) -> Result<*mut c_char, String> {
 
 fn encode_bytes_result_json(
     bytes: Vec<u8>,
+    waveform: Vec<u8>,
     result_json: String,
 ) -> Result<*mut NativeAudioBytesResult, String> {
     let result_json =
         CString::new(result_json).map_err(|error| format!("Failed to encode C string: {error}"))?;
     let native_bytes = into_native_owned_bytes(bytes);
+    let native_waveform = into_native_owned_bytes(waveform);
 
     Ok(Box::into_raw(Box::new(NativeAudioBytesResult {
         bytes: native_bytes,
+        waveform: native_waveform,
         result_json: result_json.into_raw(),
     })))
 }
@@ -2127,17 +2373,65 @@ mod tests {
         assert!((1_200_000..=1_800_000).contains(&duration_micros));
     }
 
+    #[test]
+    fn waveform_generation_preserves_wav_bytes_and_builds_levels() {
+        let audio = ConvertedAudio {
+            samples: vec![vec![-1.0, -0.5, 0.25, 1.0, -0.25]],
+            sample_rate: 4,
+            target_format: NativeAudioTargetFormat::WavPcm16,
+        };
+        let spec = NativeWaveformSpec {
+            base_interval_micros: 500_000,
+            level_factors: vec![1, 2],
+        };
+
+        let expected_wav = encode_wav(&audio).expect("plain WAV should encode");
+        let (actual_wav, waveform) =
+            encode_wav_with_waveform(&audio, &spec).expect("waveform WAV should encode");
+
+        assert_eq!(actual_wav, expected_wav);
+        assert_eq!(
+            waveform.bytes,
+            vec![
+                (-127_i8) as u8,
+                (-64_i8) as u8,
+                32,
+                127,
+                (-32_i8) as u8,
+                (-32_i8) as u8,
+                (-127_i8) as u8,
+                127,
+                (-32_i8) as u8,
+                (-32_i8) as u8
+            ]
+        );
+        assert_eq!(waveform.json.levels[0].byte_offset, 0);
+        assert_eq!(waveform.json.levels[0].byte_length, 6);
+        assert_eq!(waveform.json.levels[1].byte_offset, 6);
+        assert_eq!(waveform.json.levels[1].byte_length, 4);
+
+        let waveform_only = generate_waveform(&audio, &spec).expect("waveform should generate");
+        assert_eq!(waveform_only.bytes, waveform.bytes);
+    }
+
+    #[test]
+    fn waveform_spec_rejects_invalid_levels() {
+        assert!(
+            validate_waveform_spec(&NativeWaveformSpec {
+                base_interval_micros: 10_000,
+                level_factors: vec![1, 4, 4],
+            })
+            .is_err()
+        );
+    }
+
     fn native_input(
         bytes: &[u8],
         file_name_hint: &str,
         mime_type_hint: &str,
     ) -> OwnedAudioStreamInput {
-        let mut file = tempfile::tempfile().expect("test input file should open");
-        file.write_all(bytes).expect("test input should write");
-        file.seek(SeekFrom::Start(0))
-            .expect("test input should rewind");
         OwnedAudioStreamInput {
-            stream: OwnedNativeByteStream::new(native_file_byte_stream(file)),
+            stream: OwnedNativeByteStream::new(native_memory_byte_stream(bytes.to_vec())),
             file_name_hint: Some(file_name_hint.to_string()),
             mime_type_hint: Some(mime_type_hint.to_string()),
         }

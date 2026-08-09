@@ -13,10 +13,12 @@ final class NativeBytesConversionResponse {
   const NativeBytesConversionResponse({
     required this.resultJson,
     required this.bytes,
+    required this.waveformBytes,
   });
 
   final String resultJson;
   final Uint8List bytes;
+  final Uint8List waveformBytes;
 }
 
 final class NativeStreamConversionResponse {
@@ -208,6 +210,7 @@ abstract final class DartEdgeAudioNative {
       try {
         final response = resultPtr.ref;
         final outputBytes = core_ffi.copyNativeOwnedBytes(response.bytes);
+        final waveformBytes = core_ffi.copyNativeOwnedBytes(response.waveform);
 
         final resultJson = response.result_json == nullptr
             ? '{}'
@@ -216,6 +219,7 @@ abstract final class DartEdgeAudioNative {
         return NativeBytesConversionResponse(
           resultJson: resultJson,
           bytes: outputBytes,
+          waveformBytes: waveformBytes,
         );
       } finally {
         gen.dart_edge_audio_free_bytes_result(resultPtr);
@@ -490,6 +494,7 @@ abstract final class DartEdgeAudioNative {
             ? '{}'
             : response.result_json.cast<Utf8>().toDartString(),
         bytes: core_ffi.copyNativeOwnedBytes(response.bytes),
+        waveformBytes: core_ffi.copyNativeOwnedBytes(response.waveform),
       );
     } finally {
       gen.dart_edge_audio_free_bytes_result(resultPtr);
