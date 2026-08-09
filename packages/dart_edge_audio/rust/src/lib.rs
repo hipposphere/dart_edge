@@ -1,15 +1,21 @@
 use std::collections::BTreeMap;
 use std::ffi::{CStr, CString, c_char};
-use std::fs;
-use std::io::Cursor;
+use std::fs::{self, File};
+use std::io::{Cursor, Read, Seek, SeekFrom, Write};
 use std::os::raw::c_void;
 use std::path::Path;
-use std::sync::Mutex;
+use std::sync::{
+    Mutex,
+    atomic::{AtomicBool, Ordering},
+};
 
 use audioadapter_buffers::direct::SequentialSliceOfVecs;
 use dart_edge_core::{
-    NativeCompletionPort, NativeJobPool, NativeJobSubmitError, NativeOwnedBytes, free_owned_bytes,
-    initialize_dart_api_dl, into_native_owned_bytes,
+    NATIVE_BYTE_STREAM_ABI_VERSION, NATIVE_BYTE_STREAM_READ_CANCELED,
+    NATIVE_BYTE_STREAM_READ_CHUNK, NATIVE_BYTE_STREAM_READ_DONE, NATIVE_BYTE_STREAM_READ_ERROR,
+    NativeByteStream, NativeByteStreamRead, NativeBytes, NativeCompletionPort, NativeJobPool,
+    NativeJobSubmitError, NativeOwnedBytes, free_owned_bytes, initialize_dart_api_dl,
+    into_native_owned_bytes, read_native_bytes, read_native_string,
 };
 use hound::{SampleFormat, WavSpec, WavWriter};
 use once_cell::sync::Lazy;
@@ -40,6 +46,21 @@ pub struct NativeAudioBytesResult {
     result_json: *mut c_char,
 }
 
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct NativeAudioStreamInput {
+    stream: NativeByteStream,
+    file_name_hint: *const c_char,
+    mime_type_hint: *const c_char,
+}
+
+#[repr(C)]
+pub struct NativeAudioStreamResult {
+    stream: NativeByteStream,
+    content_length: i64,
+    result_json: *mut c_char,
+}
+
 pub struct DartEdgeAudioPool {
     jobs: NativeJobPool<NativeAudioPoolJob, NativeAudioPoolResult, String>,
 }
@@ -59,13 +80,76 @@ enum NativeAudioPoolJob {
         request_json: String,
         input: Vec<u8>,
     },
+    ConcatenateStreams {
+        request_json: String,
+        inputs: Vec<OwnedAudioStreamInput>,
+    },
 }
 
 enum NativeAudioPoolResult {
     FileJson(String),
     ProbeJson(String),
-    ConvertedBytes { bytes: Vec<u8>, result_json: String },
+    ConvertedBytes {
+        bytes: Vec<u8>,
+        result_json: String,
+    },
+    ConvertedStream {
+        stream: OwnedNativeByteStream,
+        content_length: u64,
+        result_json: String,
+    },
 }
+
+struct OwnedAudioStreamInput {
+    stream: OwnedNativeByteStream,
+    file_name_hint: Option<String>,
+    mime_type_hint: Option<String>,
+}
+
+struct OwnedNativeByteStream {
+    descriptor: NativeByteStream,
+    completed: bool,
+    transferred: bool,
+}
+
+impl OwnedNativeByteStream {
+    fn new(descriptor: NativeByteStream) -> Self {
+        Self {
+            descriptor,
+            completed: false,
+            transferred: false,
+        }
+    }
+
+    fn mark_completed(&mut self) {
+        self.completed = true;
+    }
+
+    fn into_descriptor(mut self) -> NativeByteStream {
+        self.transferred = true;
+        self.descriptor
+    }
+}
+
+impl Drop for OwnedNativeByteStream {
+    fn drop(&mut self) {
+        if self.transferred {
+            return;
+        }
+        unsafe {
+            if !self.completed
+                && let Some(cancel) = self.descriptor.cancel
+            {
+                cancel(self.descriptor.context);
+            }
+            if let Some(release) = self.descriptor.release {
+                release(self.descriptor.context);
+            }
+        }
+    }
+}
+
+unsafe impl Send for OwnedNativeByteStream {}
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -102,6 +186,15 @@ struct NativeFileConversionRequest {
 struct NativeBytesConversionRequest {
     file_name_hint: Option<String>,
     mime_type_hint: Option<String>,
+    target_format: NativeAudioTargetFormat,
+    target_sample_rate: Option<u32>,
+    #[serde(default)]
+    channel_layout: NativeAudioChannelLayout,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct NativeStreamConcatenationRequest {
     target_format: NativeAudioTargetFormat,
     target_sample_rate: Option<u32>,
     #[serde(default)]
@@ -472,6 +565,38 @@ pub extern "C" fn dart_edge_audio_pool_submit_convert_bytes(
 }
 
 #[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_audio_pool_submit_concatenate_streams(
+    pool: *mut DartEdgeAudioPool,
+    request_json: *const c_char,
+    inputs: *const NativeAudioStreamInput,
+    input_count: isize,
+) -> i64 {
+    let inputs = match unsafe { take_audio_stream_inputs(inputs, input_count) } {
+        Ok(inputs) => inputs,
+        Err(error) => {
+            set_last_error(error);
+            return 0;
+        }
+    };
+    if pool.is_null() {
+        set_last_error("Missing audio pool.");
+        return 0;
+    }
+    let Some(request_json) = (unsafe { read_c_string(request_json) }) else {
+        set_last_error("Missing audio stream concatenation request.");
+        return 0;
+    };
+
+    submit_audio_pool_job(
+        unsafe { &*pool },
+        NativeAudioPoolJob::ConcatenateStreams {
+            request_json,
+            inputs,
+        },
+    )
+}
+
+#[unsafe(no_mangle)]
 pub extern "C" fn dart_edge_audio_pool_take_file_result(
     pool: *mut DartEdgeAudioPool,
     job_id: i64,
@@ -484,7 +609,9 @@ pub extern "C" fn dart_edge_audio_pool_take_file_result(
             clear_last_error();
             c_string(json).into_raw()
         }
-        NativeAudioPoolResult::ProbeJson(_) | NativeAudioPoolResult::ConvertedBytes { .. } => {
+        NativeAudioPoolResult::ProbeJson(_)
+        | NativeAudioPoolResult::ConvertedBytes { .. }
+        | NativeAudioPoolResult::ConvertedStream { .. } => {
             set_last_error("Audio pool job result is not a file result.");
             std::ptr::null_mut()
         }
@@ -504,7 +631,9 @@ pub extern "C" fn dart_edge_audio_pool_take_probe_result(
             clear_last_error();
             c_string(json).into_raw()
         }
-        NativeAudioPoolResult::FileJson(_) | NativeAudioPoolResult::ConvertedBytes { .. } => {
+        NativeAudioPoolResult::FileJson(_)
+        | NativeAudioPoolResult::ConvertedBytes { .. }
+        | NativeAudioPoolResult::ConvertedStream { .. } => {
             set_last_error("Audio pool job result is not a probe result.");
             std::ptr::null_mut()
         }
@@ -532,8 +661,45 @@ pub extern "C" fn dart_edge_audio_pool_take_convert_result(
                 }
             }
         }
-        NativeAudioPoolResult::FileJson(_) | NativeAudioPoolResult::ProbeJson(_) => {
+        NativeAudioPoolResult::FileJson(_)
+        | NativeAudioPoolResult::ProbeJson(_)
+        | NativeAudioPoolResult::ConvertedStream { .. } => {
             set_last_error("Audio pool job result is not a conversion result.");
+            std::ptr::null_mut()
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_audio_pool_take_stream_result(
+    pool: *mut DartEdgeAudioPool,
+    job_id: i64,
+) -> *mut NativeAudioStreamResult {
+    let Some(result) = take_audio_pool_result(pool, job_id) else {
+        return std::ptr::null_mut();
+    };
+    match result {
+        NativeAudioPoolResult::ConvertedStream {
+            stream,
+            content_length,
+            result_json,
+        } => {
+            let Ok(content_length) = i64::try_from(content_length) else {
+                set_last_error("Concatenated audio is too large for the native ABI.");
+                return std::ptr::null_mut();
+            };
+            let result_json = c_string(result_json).into_raw();
+            clear_last_error();
+            Box::into_raw(Box::new(NativeAudioStreamResult {
+                stream: stream.into_descriptor(),
+                content_length,
+                result_json,
+            }))
+        }
+        NativeAudioPoolResult::FileJson(_)
+        | NativeAudioPoolResult::ProbeJson(_)
+        | NativeAudioPoolResult::ConvertedBytes { .. } => {
+            set_last_error("Audio pool job result is not a stream result.");
             std::ptr::null_mut()
         }
     }
@@ -594,6 +760,34 @@ pub extern "C" fn dart_edge_audio_free_bytes_result(value: *mut NativeAudioBytes
         if !value.result_json.is_null() {
             let _ = CString::from_raw(value.result_json);
         }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_audio_free_stream_result(value: *mut NativeAudioStreamResult) {
+    if value.is_null() {
+        return;
+    }
+    unsafe {
+        let value = Box::from_raw(value);
+        free_c_string(value.result_json);
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_audio_dispose_stream_result(value: *mut NativeAudioStreamResult) {
+    if value.is_null() {
+        return;
+    }
+    unsafe {
+        let value = Box::from_raw(value);
+        if let Some(cancel) = value.stream.cancel {
+            cancel(value.stream.context);
+        }
+        if let Some(release) = value.stream.release {
+            release(value.stream.context);
+        }
+        free_c_string(value.result_json);
     }
 }
 
@@ -747,7 +941,9 @@ fn convert_bytes(
         NativeAudioPoolResult::ConvertedBytes { bytes, result_json } => {
             encode_bytes_result_json(bytes, result_json)
         }
-        NativeAudioPoolResult::FileJson(_) | NativeAudioPoolResult::ProbeJson(_) => {
+        NativeAudioPoolResult::FileJson(_)
+        | NativeAudioPoolResult::ProbeJson(_)
+        | NativeAudioPoolResult::ConvertedStream { .. } => {
             Err("Unexpected audio conversion result.".to_string())
         }
     }
@@ -782,6 +978,307 @@ fn convert_bytes_payload(
         bytes: wav_bytes,
         result_json,
     })
+}
+
+fn concatenate_audio_streams(
+    mut inputs: Vec<OwnedAudioStreamInput>,
+    request: NativeStreamConcatenationRequest,
+) -> Result<NativeAudioPoolResult, String> {
+    validate_sample_rate(request.target_sample_rate)?;
+    let first_input = inputs
+        .first_mut()
+        .ok_or_else(|| "At least one native audio stream is required.".to_string())?;
+    let first_bytes = read_native_stream_to_end(&mut first_input.stream)?;
+    let first_decoded = decode_audio(
+        first_bytes,
+        first_input.file_name_hint.as_deref(),
+        first_input.mime_type_hint.as_deref(),
+    )?;
+    let first = convert_audio(
+        first_decoded,
+        request.target_sample_rate,
+        request.channel_layout,
+        request.target_format,
+    )?;
+    let sample_rate = first.sample_rate;
+    let channel_count = first.samples.len();
+    let mut total_frame_count = first.samples.first().map_or(0usize, Vec::len);
+    let mut output = tempfile::tempfile()
+        .map_err(|error| format!("Failed to create temporary WAV output: {error}"))?;
+    let spec = WavSpec {
+        channels: channel_count as u16,
+        sample_rate,
+        bits_per_sample: request.target_format.bit_depth(),
+        sample_format: SampleFormat::Int,
+    };
+
+    {
+        let mut writer = WavWriter::new(&mut output, spec)
+            .map_err(|error| format!("Failed to create WAV stream output: {error}"))?;
+        write_converted_audio(&mut writer, &first)?;
+
+        for input in inputs.iter_mut().skip(1) {
+            let bytes = read_native_stream_to_end(&mut input.stream)?;
+            let decoded = decode_audio(
+                bytes,
+                input.file_name_hint.as_deref(),
+                input.mime_type_hint.as_deref(),
+            )?;
+            let converted = convert_audio(
+                decoded,
+                request.target_sample_rate,
+                request.channel_layout,
+                request.target_format,
+            )?;
+            if converted.sample_rate != sample_rate || converted.samples.len() != channel_count {
+                return Err(
+                    "Converted audio streams have incompatible sample rates or channels."
+                        .to_string(),
+                );
+            }
+            total_frame_count = total_frame_count
+                .saturating_add(converted.samples.first().map_or(0usize, Vec::len));
+            write_converted_audio(&mut writer, &converted)?;
+        }
+        writer
+            .finalize()
+            .map_err(|error| format!("Failed to finalize WAV stream output: {error}"))?;
+    }
+
+    let content_length = output
+        .metadata()
+        .map_err(|error| format!("Failed to inspect temporary WAV output: {error}"))?
+        .len();
+    output
+        .seek(SeekFrom::Start(0))
+        .map_err(|error| format!("Failed to rewind temporary WAV output: {error}"))?;
+    let bit_depth = request.target_format.bit_depth() as u32;
+    let bit_rate = (sample_rate as u64)
+        .saturating_mul(channel_count as u64)
+        .saturating_mul(bit_depth as u64)
+        .try_into()
+        .ok();
+    let result_json = serde_json::to_string(&NativeBytesConversionResultJson {
+        mime_type: "audio/wav".to_string(),
+        metadata: NativeAudioMetadata {
+            duration_micros: duration_micros(total_frame_count, sample_rate),
+            container: Some("wav".to_string()),
+            codec: Some(request.target_format.codec_name().to_string()),
+            sample_rate: Some(sample_rate),
+            channel_count: Some(channel_count as u32),
+            bit_rate,
+            bit_depth: Some(bit_depth),
+            tags: BTreeMap::new(),
+        },
+    })
+    .map_err(|error| format!("Failed to encode JSON payload: {error}"))?;
+
+    Ok(NativeAudioPoolResult::ConvertedStream {
+        stream: OwnedNativeByteStream::new(native_file_byte_stream(output)),
+        content_length,
+        result_json,
+    })
+}
+
+fn write_converted_audio<W: Write + Seek>(
+    writer: &mut WavWriter<W>,
+    audio: &ConvertedAudio,
+) -> Result<(), String> {
+    let frame_count = audio.samples.first().map_or(0usize, Vec::len);
+    for frame_index in 0..frame_count {
+        for channel in &audio.samples {
+            match audio.target_format {
+                NativeAudioTargetFormat::WavPcm16 => writer
+                    .write_sample(float_to_i16(channel[frame_index]))
+                    .map_err(|error| format!("Failed to write WAV sample: {error}"))?,
+                NativeAudioTargetFormat::WavPcm24 => writer
+                    .write_sample(float_to_i24(channel[frame_index]))
+                    .map_err(|error| format!("Failed to write WAV sample: {error}"))?,
+            }
+        }
+    }
+    Ok(())
+}
+
+fn read_native_stream_to_end(stream: &mut OwnedNativeByteStream) -> Result<Vec<u8>, String> {
+    if !stream.descriptor.is_valid() {
+        return Err("Invalid native audio input stream descriptor.".to_string());
+    }
+    let next = stream
+        .descriptor
+        .next
+        .ok_or_else(|| "Native audio input stream has no next callback.".to_string())?;
+    let free_read = stream
+        .descriptor
+        .free_read
+        .ok_or_else(|| "Native audio input stream has no result release callback.".to_string())?;
+    let mut output = Vec::new();
+
+    loop {
+        let read_ptr = unsafe { next(stream.descriptor.context) };
+        if read_ptr.is_null() {
+            return Err("Native audio input stream returned a null result.".to_string());
+        }
+        let outcome = unsafe {
+            let read = &*read_ptr;
+            match read.status {
+                NATIVE_BYTE_STREAM_READ_CHUNK => {
+                    let bytes = read_native_bytes(NativeBytes {
+                        ptr: read.bytes.ptr,
+                        len: read.bytes.len,
+                    })
+                    .ok_or_else(|| {
+                        "Native audio input stream returned invalid chunk bytes.".to_string()
+                    });
+                    bytes.map(|bytes| {
+                        output.extend_from_slice(bytes);
+                        false
+                    })
+                }
+                NATIVE_BYTE_STREAM_READ_DONE => Ok(true),
+                NATIVE_BYTE_STREAM_READ_CANCELED => {
+                    Err("Native audio input stream was canceled.".to_string())
+                }
+                NATIVE_BYTE_STREAM_READ_ERROR => Err(read_native_string(read.error)
+                    .unwrap_or_else(|| "Native audio input stream failed.".to_string())),
+                status => Err(format!(
+                    "Native audio input stream returned unknown status {status}."
+                )),
+            }
+        };
+        unsafe { free_read(read_ptr) };
+        if outcome? {
+            stream.mark_completed();
+            return Ok(output);
+        }
+    }
+}
+
+const NATIVE_FILE_STREAM_CHUNK_SIZE: usize = 64 * 1024;
+
+struct NativeFileStreamContext {
+    file: Mutex<File>,
+    canceled: AtomicBool,
+}
+
+#[repr(C)]
+struct NativeFileStreamRead {
+    read: NativeByteStreamRead,
+    _chunk: Option<Vec<u8>>,
+    _error: Option<CString>,
+}
+
+impl NativeFileStreamRead {
+    fn chunk(mut chunk: Vec<u8>) -> Self {
+        let bytes = NativeOwnedBytes {
+            ptr: chunk.as_mut_ptr(),
+            len: chunk.len() as isize,
+        };
+        Self {
+            read: NativeByteStreamRead {
+                status: NATIVE_BYTE_STREAM_READ_CHUNK,
+                bytes,
+                error: NativeBytes::empty(),
+            },
+            _chunk: Some(chunk),
+            _error: None,
+        }
+    }
+
+    fn terminal(status: i32) -> Self {
+        Self {
+            read: NativeByteStreamRead {
+                status,
+                bytes: NativeOwnedBytes::empty(),
+                error: NativeBytes::empty(),
+            },
+            _chunk: None,
+            _error: None,
+        }
+    }
+
+    fn error(error: impl Into<String>) -> Self {
+        let error = c_string(error);
+        let error_bytes = NativeBytes {
+            ptr: error.as_ptr().cast::<u8>(),
+            len: error.as_bytes().len() as isize,
+        };
+        Self {
+            read: NativeByteStreamRead {
+                status: NATIVE_BYTE_STREAM_READ_ERROR,
+                bytes: NativeOwnedBytes::empty(),
+                error: error_bytes,
+            },
+            _chunk: None,
+            _error: Some(error),
+        }
+    }
+
+    fn into_raw(self) -> *mut NativeByteStreamRead {
+        Box::into_raw(Box::new(self)).cast::<NativeByteStreamRead>()
+    }
+}
+
+fn native_file_byte_stream(file: File) -> NativeByteStream {
+    let context = Box::into_raw(Box::new(NativeFileStreamContext {
+        file: Mutex::new(file),
+        canceled: AtomicBool::new(false),
+    }));
+    NativeByteStream {
+        abi_version: NATIVE_BYTE_STREAM_ABI_VERSION,
+        struct_size: std::mem::size_of::<NativeByteStream>(),
+        context: context.cast::<c_void>(),
+        next: Some(native_file_stream_next),
+        cancel: Some(native_file_stream_cancel),
+        free_read: Some(native_file_stream_free_read),
+        release: Some(native_file_stream_release),
+    }
+}
+
+unsafe extern "C" fn native_file_stream_next(context: *mut c_void) -> *mut NativeByteStreamRead {
+    let Some(context) = (unsafe { context.cast::<NativeFileStreamContext>().as_ref() }) else {
+        return NativeFileStreamRead::error("Missing native WAV stream context.").into_raw();
+    };
+    if context.canceled.load(Ordering::Acquire) {
+        return NativeFileStreamRead::terminal(NATIVE_BYTE_STREAM_READ_CANCELED).into_raw();
+    }
+    let mut chunk = vec![0; NATIVE_FILE_STREAM_CHUNK_SIZE];
+    let read = match context.file.lock() {
+        Ok(mut file) => file.read(&mut chunk),
+        Err(_) => {
+            return NativeFileStreamRead::error("Native WAV stream file lock was poisoned.")
+                .into_raw();
+        }
+    };
+    match read {
+        Ok(0) => NativeFileStreamRead::terminal(NATIVE_BYTE_STREAM_READ_DONE).into_raw(),
+        Ok(length) => {
+            chunk.truncate(length);
+            NativeFileStreamRead::chunk(chunk).into_raw()
+        }
+        Err(error) => {
+            NativeFileStreamRead::error(format!("Failed to read temporary WAV output: {error}"))
+                .into_raw()
+        }
+    }
+}
+
+unsafe extern "C" fn native_file_stream_cancel(context: *mut c_void) {
+    if let Some(context) = unsafe { context.cast::<NativeFileStreamContext>().as_ref() } {
+        context.canceled.store(true, Ordering::Release);
+    }
+}
+
+unsafe extern "C" fn native_file_stream_free_read(value: *mut NativeByteStreamRead) {
+    if !value.is_null() {
+        unsafe { drop(Box::from_raw(value.cast::<NativeFileStreamRead>())) };
+    }
+}
+
+unsafe extern "C" fn native_file_stream_release(context: *mut c_void) {
+    if !context.is_null() {
+        unsafe { drop(Box::from_raw(context.cast::<NativeFileStreamContext>())) };
+    }
 }
 
 fn create_audio_pool_handler()
@@ -835,6 +1332,16 @@ fn create_audio_pool_handler()
             let request = serde_json::from_str::<NativeBytesConversionRequest>(&request_json)
                 .map_err(|error| format!("Invalid audio conversion request: {error}"))?;
             convert_bytes_payload(input, request)
+        }
+        NativeAudioPoolJob::ConcatenateStreams {
+            request_json,
+            inputs,
+        } => {
+            let request = serde_json::from_str::<NativeStreamConcatenationRequest>(&request_json)
+                .map_err(|error| {
+                format!("Invalid audio stream concatenation request: {error}")
+            })?;
+            concatenate_audio_streams(inputs, request)
         }
     }
 }
@@ -1385,6 +1892,12 @@ fn c_string(value: impl Into<String>) -> CString {
     })
 }
 
+unsafe fn free_c_string(value: *mut c_char) {
+    if !value.is_null() {
+        unsafe { drop(CString::from_raw(value)) };
+    }
+}
+
 fn metadata_from_track(
     track: &Track,
     codec_params: &symphonia::core::codecs::audio::AudioCodecParameters,
@@ -1514,6 +2027,34 @@ unsafe fn read_bytes(ptr: *const u8, len: isize) -> Option<Vec<u8>> {
     Some(unsafe { std::slice::from_raw_parts(ptr, len as usize) }.to_vec())
 }
 
+unsafe fn take_audio_stream_inputs(
+    inputs: *const NativeAudioStreamInput,
+    input_count: isize,
+) -> Result<Vec<OwnedAudioStreamInput>, String> {
+    if input_count <= 0 {
+        return Err("At least one native audio stream is required.".to_string());
+    }
+    if inputs.is_null() {
+        return Err("Missing native audio stream inputs.".to_string());
+    }
+    let native_inputs = unsafe { std::slice::from_raw_parts(inputs, input_count as usize) };
+    let owned_inputs = native_inputs
+        .iter()
+        .map(|input| OwnedAudioStreamInput {
+            stream: OwnedNativeByteStream::new(input.stream),
+            file_name_hint: unsafe { read_c_string(input.file_name_hint) },
+            mime_type_hint: unsafe { read_c_string(input.mime_type_hint) },
+        })
+        .collect::<Vec<_>>();
+    if owned_inputs
+        .iter()
+        .any(|input| !input.stream.descriptor.is_valid())
+    {
+        return Err("Invalid native audio stream descriptor.".to_string());
+    }
+    Ok(owned_inputs)
+}
+
 fn read_optional_json<T: for<'de> Deserialize<'de>>(
     ptr: *const c_char,
 ) -> Result<Option<T>, String> {
@@ -1537,4 +2078,68 @@ fn set_last_error(message: impl Into<String>) {
 
 fn clear_last_error() {
     *LAST_ERROR.lock().unwrap() = None;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn concatenates_native_streams_into_a_native_wav() {
+        let fixture = include_bytes!("../../test/fixtures/tone.mp3");
+        let inputs = vec![
+            native_input(fixture, "first.mp3", "audio/mpeg"),
+            native_input(fixture, "second.mp3", "audio/mpeg"),
+        ];
+        let result = concatenate_audio_streams(
+            inputs,
+            NativeStreamConcatenationRequest {
+                target_format: NativeAudioTargetFormat::WavPcm16,
+                target_sample_rate: Some(16_000),
+                channel_layout: NativeAudioChannelLayout::Mono,
+            },
+        )
+        .expect("native streams should concatenate");
+
+        let NativeAudioPoolResult::ConvertedStream {
+            stream,
+            content_length,
+            result_json,
+        } = result
+        else {
+            panic!("expected a converted native stream");
+        };
+        let mut output = OwnedNativeByteStream::new(stream.into_descriptor());
+        let bytes = read_native_stream_to_end(&mut output).expect("output stream should read");
+        assert_eq!(bytes.len() as u64, content_length);
+        assert!(bytes.starts_with(b"RIFF"));
+        assert_eq!(&bytes[8..12], b"WAVE");
+
+        let result: serde_json::Value =
+            serde_json::from_str(&result_json).expect("result metadata should decode");
+        assert_eq!(result["mimeType"], "audio/wav");
+        assert_eq!(result["metadata"]["sampleRate"], 16_000);
+        assert_eq!(result["metadata"]["channelCount"], 1);
+        assert_eq!(result["metadata"]["bitDepth"], 16);
+        let duration_micros = result["metadata"]["durationMicros"]
+            .as_u64()
+            .expect("duration should be numeric");
+        assert!((1_200_000..=1_800_000).contains(&duration_micros));
+    }
+
+    fn native_input(
+        bytes: &[u8],
+        file_name_hint: &str,
+        mime_type_hint: &str,
+    ) -> OwnedAudioStreamInput {
+        let mut file = tempfile::tempfile().expect("test input file should open");
+        file.write_all(bytes).expect("test input should write");
+        file.seek(SeekFrom::Start(0))
+            .expect("test input should rewind");
+        OwnedAudioStreamInput {
+            stream: OwnedNativeByteStream::new(native_file_byte_stream(file)),
+            file_name_hint: Some(file_name_hint.to_string()),
+            mime_type_hint: Some(mime_type_hint.to_string()),
+        }
+    }
 }

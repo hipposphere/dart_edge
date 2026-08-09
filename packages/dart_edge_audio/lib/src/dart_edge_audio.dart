@@ -13,6 +13,8 @@ import 'audio_metadata.dart';
 import 'audio_probe_mode.dart';
 import 'audio_target_format.dart';
 import 'native_audio_pool.dart';
+import 'native_audio_stream_conversion_result.dart';
+import 'native_audio_stream_input.dart';
 
 /// Stateless facade for native-backed audio probing and conversion.
 abstract final class DartEdgeAudio {
@@ -125,6 +127,30 @@ abstract final class DartEdgeAudio {
       channelLayout: channelLayout,
       fileNameHint: fileNameHint,
       mimeTypeHint: mimeTypeHint,
+    );
+  }
+
+  /// Normalizes and concatenates native input streams without moving payloads
+  /// through the Dart heap.
+  static Future<NativeAudioStreamConversionResult> concatenateStreams({
+    required List<NativeAudioStreamInput> inputs,
+    required AudioTargetFormat targetFormat,
+    int? targetSampleRate,
+    AudioChannelLayout channelLayout = AudioChannelLayout.keepSource,
+  }) async {
+    if (inputs.isEmpty) {
+      throw ArgumentError.value(
+        inputs,
+        'inputs',
+        'At least one native audio stream is required.',
+      );
+    }
+    _ensurePositiveSampleRate(targetSampleRate);
+    return (await _ensureSharedPool()).concatenateStreams(
+      inputs: inputs,
+      targetFormat: targetFormat,
+      targetSampleRate: targetSampleRate,
+      channelLayout: channelLayout,
     );
   }
 

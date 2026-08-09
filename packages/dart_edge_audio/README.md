@@ -39,6 +39,9 @@ Future<void> main() async {
 - `AudioFileConversionRequest` and `AudioBytesConversionRequest` configure WAV
   conversion
 - `AudioTargetFormat` currently supports `wavPcm16` and `wavPcm24`
+- `NativeAudioPool.concatenateStreams` normalizes single-owner native inputs
+  into an anonymous-file-backed WAV stream without materializing payloads in
+  Dart memory
 
 ## Native Bytes Fast Path
 
@@ -59,6 +62,34 @@ Future<AudioMetadata> inspectBorrowedAudio(core_ffi.NativeBytes bytes) {
   );
 }
 ```
+
+## Native Stream Concatenation
+
+Use native stream concatenation when inputs already come from a compatible
+native producer such as `dart_edge_s3_client`. Input handles are consumed when
+the job is submitted. The result can be transferred directly into a compatible
+native HTTP response.
+
+```dart
+final result = await audioPool.concatenateStreams(
+  inputs: downloads
+      .map(
+        (download) => NativeAudioStreamInput(
+          body: download.body,
+          fileNameHint: download.fileName,
+          mimeTypeHint: download.contentType,
+        ),
+      )
+      .toList(),
+  targetFormat: AudioTargetFormat.wavPcm16,
+  targetSampleRate: 16000,
+  channelLayout: AudioChannelLayout.mono,
+);
+```
+
+The completed WAV is held in anonymous OS temporary storage. Its native body
+is backpressured and automatically releases the temporary file when consumed,
+canceled, or closed.
 
 ## Native Bindings
 

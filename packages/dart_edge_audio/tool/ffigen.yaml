@@ -20,6 +20,8 @@ functions:
 structs:
   include:
     - NativeAudioBytesResult
+    - NativeAudioStreamInput
+    - NativeAudioStreamResult
 exclude-all-by-default: true
 sort: true
 use-supported-typedefs: true

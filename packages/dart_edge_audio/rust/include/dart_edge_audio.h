@@ -10,6 +10,18 @@ typedef struct NativeAudioBytesResult {
   char* result_json;
 } NativeAudioBytesResult;
 
+typedef struct NativeAudioStreamInput {
+  NativeByteStream stream;
+  const char* file_name_hint;
+  const char* mime_type_hint;
+} NativeAudioStreamInput;
+
+typedef struct NativeAudioStreamResult {
+  NativeByteStream stream;
+  int64_t content_length;
+  char* result_json;
+} NativeAudioStreamResult;
+
 typedef struct DartEdgeAudioPool DartEdgeAudioPool;
 
 int32_t dart_edge_audio_native_abi_version(void);
@@ -55,6 +67,12 @@ int64_t dart_edge_audio_pool_submit_convert_bytes(
     const uint8_t* input_ptr,
     intptr_t input_len);
 
+int64_t dart_edge_audio_pool_submit_concatenate_streams(
+    DartEdgeAudioPool* pool,
+    const char* request_json,
+    const NativeAudioStreamInput* inputs,
+    intptr_t input_count);
+
 char* dart_edge_audio_pool_take_file_result(
     DartEdgeAudioPool* pool,
     int64_t job_id);
@@ -67,11 +85,19 @@ NativeAudioBytesResult* dart_edge_audio_pool_take_convert_result(
     DartEdgeAudioPool* pool,
     int64_t job_id);
 
+NativeAudioStreamResult* dart_edge_audio_pool_take_stream_result(
+    DartEdgeAudioPool* pool,
+    int64_t job_id);
+
 char* dart_edge_audio_pool_metrics(DartEdgeAudioPool* pool);
 
 void dart_edge_audio_pool_free(DartEdgeAudioPool* pool);
 
 void dart_edge_audio_free_bytes_result(NativeAudioBytesResult* value);
+
+void dart_edge_audio_free_stream_result(NativeAudioStreamResult* value);
+
+void dart_edge_audio_dispose_stream_result(NativeAudioStreamResult* value);
 
 char* dart_edge_audio_take_last_error(void);
 

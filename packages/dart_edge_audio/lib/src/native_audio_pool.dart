@@ -16,6 +16,8 @@ import 'audio_probe_mode.dart';
 import 'audio_target_format.dart';
 import 'native/dart_edge_audio_native.dart';
 import 'native/generated_bindings.dart' as gen;
+import 'native_audio_stream_conversion_result.dart';
+import 'native_audio_stream_input.dart';
 
 final class NativeAudioPoolMetrics {
   const NativeAudioPoolMetrics({
@@ -273,6 +275,61 @@ final class NativeAudioPool {
     );
   }
 
+  /// Normalizes native audio streams and concatenates them into one native WAV.
+  ///
+  /// Input bodies are consumed when the job is submitted. The returned body is
+  /// backed by anonymous temporary storage and can be transferred directly to
+  /// a compatible native HTTP response without materializing audio in Dart.
+  Future<NativeAudioStreamConversionResult> concatenateStreams({
+    required List<NativeAudioStreamInput> inputs,
+    required AudioTargetFormat targetFormat,
+    int? targetSampleRate,
+    AudioChannelLayout channelLayout = AudioChannelLayout.keepSource,
+  }) async {
+    _ensureOpen();
+    if (inputs.isEmpty) {
+      throw ArgumentError.value(
+        inputs,
+        'inputs',
+        'At least one native audio stream is required.',
+      );
+    }
+    _ensurePositiveSampleRate(targetSampleRate);
+    final jobId = DartEdgeAudioNative.submitPoolConcatenateStreams(
+      _poolPtr,
+      jsonEncode({
+        'targetFormat': targetFormat.wireValue,
+        'targetSampleRate': targetSampleRate,
+        'channelLayout': channelLayout.wireValue,
+      }),
+      [
+        for (final input in inputs)
+          (
+            body: input.body,
+            fileNameHint: input.fileNameHint,
+            mimeTypeHint: input.mimeTypeHint,
+          ),
+      ],
+    );
+    final response = await _waitForResult<NativeStreamConversionResponse>(
+      jobId,
+      _AudioJobKind.stream,
+    );
+    final body = native_bridge.NativeByteStreamHandle.fromAddresses(
+      response.descriptor,
+    );
+    try {
+      return NativeAudioStreamConversionResult.fromJson(
+        jsonDecode(response.resultJson) as Map<String, Object?>,
+        body: body,
+        contentLength: response.contentLength,
+      );
+    } catch (_) {
+      await body.close();
+      rethrow;
+    }
+  }
+
   Future<void> close() async {
     if (_closed) {
       return;
@@ -317,6 +374,10 @@ final class NativeAudioPool {
           _poolPtr,
           jobId,
         ),
+        _AudioJobKind.stream => DartEdgeAudioNative.takePoolStreamResult(
+          _poolPtr,
+          jobId,
+        ),
       };
       job.complete(result);
     } catch (error, stackTrace) {
@@ -339,7 +400,7 @@ final class NativeAudioPool {
   }
 }
 
-enum _AudioJobKind { file, probe, convert }
+enum _AudioJobKind { file, probe, convert, stream }
 
 final class _PendingAudioJob {
   const _PendingAudioJob({required this.kind, required this.completer});

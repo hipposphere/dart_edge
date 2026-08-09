@@ -19,6 +19,18 @@ final class NativeBytesConversionResponse {
   final Uint8List bytes;
 }
 
+final class NativeStreamConversionResponse {
+  const NativeStreamConversionResponse({
+    required this.resultJson,
+    required this.descriptor,
+    required this.contentLength,
+  });
+
+  final String resultJson;
+  final core_ffi.NativeByteStreamDescriptorData descriptor;
+  final int contentLength;
+}
+
 abstract final class DartEdgeAudioNative {
   static int get abiVersion => gen.dart_edge_audio_native_abi_version();
 
@@ -381,6 +393,65 @@ abstract final class DartEdgeAudioNative {
     return jobId;
   }
 
+  /// Transfers every input stream to the native worker pool.
+  ///
+  /// The native side adopts and releases all descriptors once this FFI call
+  /// returns, including when queue submission fails.
+  static int submitPoolConcatenateStreams(
+    Pointer<gen.DartEdgeAudioPool> poolPtr,
+    String requestJson,
+    List<
+      ({
+        core_ffi.NativeByteStreamHandle body,
+        String? fileNameHint,
+        String? mimeTypeHint,
+      })
+    >
+    inputs,
+  ) {
+    final requestPtr = requestJson.toNativeUtf8();
+    final nativeInputs = calloc<gen.NativeAudioStreamInput>(inputs.length);
+    final allocations = core_ffi.NativeAllocations();
+    final leases = <core_ffi.NativeByteStreamLease>[];
+    var adopted = false;
+    try {
+      for (var index = 0; index < inputs.length; index += 1) {
+        final input = inputs[index];
+        final lease = input.body.takeDescriptor();
+        leases.add(lease);
+        final target = (nativeInputs + index).ref;
+        _copyNativeByteStream(target.stream, lease.descriptor.ref);
+        target
+          ..file_name_hint = allocations.optionalString(input.fileNameHint)
+          ..mime_type_hint = allocations.optionalString(input.mimeTypeHint);
+      }
+
+      final jobId = gen.dart_edge_audio_pool_submit_concatenate_streams(
+        poolPtr,
+        requestPtr.cast<Char>(),
+        nativeInputs,
+        inputs.length,
+      );
+      adopted = true;
+      for (final lease in leases) {
+        lease.markTransferred();
+      }
+      if (jobId == 0) {
+        throw StateError(_takeLastError());
+      }
+      return jobId;
+    } finally {
+      if (!adopted) {
+        for (final lease in leases) {
+          lease.close();
+        }
+      }
+      allocations.free();
+      calloc.free(nativeInputs);
+      calloc.free(requestPtr);
+    }
+  }
+
   static String takePoolFileResult(
     Pointer<gen.DartEdgeAudioPool> poolPtr,
     int jobId,
@@ -425,6 +496,37 @@ abstract final class DartEdgeAudioNative {
     }
   }
 
+  static NativeStreamConversionResponse takePoolStreamResult(
+    Pointer<gen.DartEdgeAudioPool> poolPtr,
+    int jobId,
+  ) {
+    final resultPtr = gen.dart_edge_audio_pool_take_stream_result(
+      poolPtr,
+      jobId,
+    );
+    if (resultPtr == nullptr) {
+      throw StateError(_takeLastError());
+    }
+
+    try {
+      final response = resultPtr.ref;
+      final result = NativeStreamConversionResponse(
+        resultJson: response.result_json == nullptr
+            ? '{}'
+            : response.result_json.cast<Utf8>().toDartString(),
+        descriptor: core_ffi.NativeByteStreamDescriptorData.fromDescriptor(
+          response.stream,
+        ),
+        contentLength: response.content_length,
+      );
+      gen.dart_edge_audio_free_stream_result(resultPtr);
+      return result;
+    } catch (_) {
+      gen.dart_edge_audio_dispose_stream_result(resultPtr);
+      rethrow;
+    }
+  }
+
   static String readPoolMetrics(Pointer<gen.DartEdgeAudioPool> poolPtr) {
     final resultPtr = gen.dart_edge_audio_pool_metrics(poolPtr);
     return _readNativeString(resultPtr);
@@ -435,6 +537,20 @@ abstract final class DartEdgeAudioNative {
       gen.dart_edge_audio_pool_free(poolPtr);
     }
   }
+}
+
+void _copyNativeByteStream(
+  core_ffi.NativeByteStream target,
+  core_ffi.NativeByteStream source,
+) {
+  target
+    ..abi_version = source.abi_version
+    ..struct_size = source.struct_size
+    ..context = source.context
+    ..next = source.next
+    ..cancel = source.cancel
+    ..free_read = source.free_read
+    ..release = source.release;
 }
 
 String _readNativeString(Pointer<Char> resultPtr) {

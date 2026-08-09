@@ -28,11 +28,21 @@ external ffi.Pointer<ffi.Char> dart_edge_audio_convert_file(
   ffi.Pointer<ffi.Char> request_json,
 );
 
+@ffi.Native<ffi.Void Function(ffi.Pointer<NativeAudioStreamResult>)>()
+external void dart_edge_audio_dispose_stream_result(
+  ffi.Pointer<NativeAudioStreamResult> value,
+);
+
 @ffi.Native<ffi.Void Function(ffi.Pointer<NativeAudioBytesResult>)>(
   isLeaf: true,
 )
 external void dart_edge_audio_free_bytes_result(
   ffi.Pointer<NativeAudioBytesResult> value,
+);
+
+@ffi.Native<ffi.Void Function(ffi.Pointer<NativeAudioStreamResult>)>()
+external void dart_edge_audio_free_stream_result(
+  ffi.Pointer<NativeAudioStreamResult> value,
 );
 
 @ffi.Native<ffi.Void Function(ffi.Pointer<ffi.Char>)>(isLeaf: true)
@@ -59,6 +69,21 @@ external void dart_edge_audio_pool_free(ffi.Pointer<DartEdgeAudioPool> pool);
 @ffi.Native<ffi.Pointer<ffi.Char> Function(ffi.Pointer<DartEdgeAudioPool>)>()
 external ffi.Pointer<ffi.Char> dart_edge_audio_pool_metrics(
   ffi.Pointer<DartEdgeAudioPool> pool,
+);
+
+@ffi.Native<
+  ffi.Int64 Function(
+    ffi.Pointer<DartEdgeAudioPool>,
+    ffi.Pointer<ffi.Char>,
+    ffi.Pointer<NativeAudioStreamInput>,
+    ffi.IntPtr,
+  )
+>()
+external int dart_edge_audio_pool_submit_concatenate_streams(
+  ffi.Pointer<DartEdgeAudioPool> pool,
+  ffi.Pointer<ffi.Char> request_json,
+  ffi.Pointer<NativeAudioStreamInput> inputs,
+  int input_count,
 );
 
 @ffi.Native<
@@ -136,6 +161,18 @@ external ffi.Pointer<ffi.Char> dart_edge_audio_pool_take_probe_result(
 );
 
 @ffi.Native<
+  ffi.Pointer<NativeAudioStreamResult> Function(
+    ffi.Pointer<DartEdgeAudioPool>,
+    ffi.Int64,
+  )
+>()
+external ffi.Pointer<NativeAudioStreamResult>
+dart_edge_audio_pool_take_stream_result(
+  ffi.Pointer<DartEdgeAudioPool> pool,
+  int job_id,
+);
+
+@ffi.Native<
   ffi.Pointer<ffi.Char> Function(
     ffi.Pointer<ffi.Char>,
     ffi.Pointer<ffi.Uint8>,
@@ -160,6 +197,23 @@ final class DartEdgeAudioPool extends ffi.Opaque {}
 
 final class NativeAudioBytesResult extends ffi.Struct {
   external imp$1.NativeOwnedBytes bytes;
+
+  external ffi.Pointer<ffi.Char> result_json;
+}
+
+final class NativeAudioStreamInput extends ffi.Struct {
+  external imp$1.NativeByteStream stream;
+
+  external ffi.Pointer<ffi.Char> file_name_hint;
+
+  external ffi.Pointer<ffi.Char> mime_type_hint;
+}
+
+final class NativeAudioStreamResult extends ffi.Struct {
+  external imp$1.NativeByteStream stream;
+
+  @ffi.Int64()
+  external int content_length;
 
   external ffi.Pointer<ffi.Char> result_json;
 }

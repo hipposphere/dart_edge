@@ -1,3 +1,9 @@
+## 0.3.12
+
+- Add native audio-stream normalization and concatenation with anonymous
+  temporary-file output and transferable native response bodies.
+- Bump the native artifact version to 0.1.8 for the stream concatenation ABI.
+
 ## 0.3.7
 
 - Add a native audio worker pool for in-memory probe and conversion jobs.

@@ -343,6 +343,16 @@ void main() {
     );
   });
 
+  test('concatenateStreams rejects empty inputs before native work', () async {
+    await expectLater(
+      () => DartEdgeAudio.concatenateStreams(
+        inputs: const [],
+        targetFormat: AudioTargetFormat.wavPcm16,
+      ),
+      throwsA(isA<ArgumentError>()),
+    );
+  });
+
   test(
     'probeNativeBytes rejects empty native inputs before native work',
     () async {

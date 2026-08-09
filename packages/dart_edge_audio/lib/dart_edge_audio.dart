@@ -14,3 +14,5 @@ export 'src/audio_probe_mode.dart';
 export 'src/audio_target_format.dart';
 export 'src/dart_edge_audio.dart';
 export 'src/native_audio_pool.dart';
+export 'src/native_audio_stream_conversion_result.dart';
+export 'src/native_audio_stream_input.dart';
