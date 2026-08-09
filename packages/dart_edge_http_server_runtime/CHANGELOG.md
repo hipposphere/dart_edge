@@ -1,3 +1,9 @@
+## 0.3.35
+
+- Add `NativeBinaryStreamResponse.partial` for native `206 Partial Content`
+  responses with standard range headers and content length.
+- Require `dart_edge_core` 0.3.40.
+
 ## 0.3.34
 
 - Add `NativeBinaryStreamResponse` for native producer-to-HTTP streaming

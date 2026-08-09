@@ -1,6 +1,7 @@
 import 'dart:ffi';
 import 'dart:typed_data';
 
+import 'package:dart_edge_core/dart_edge_core.dart';
 import 'package:dart_edge_native_bridge/dart_edge_native_bridge.dart'
     as core_ffi;
 import 'package:ffi/ffi.dart';
@@ -202,12 +203,16 @@ abstract final class DartEdgeS3ClientNative {
     }
   }
 
-  static NativeS3BytesResponse getObjectBytes(int handle, S3ObjectRef object) {
+  static NativeS3BytesResponse getObjectBytes(
+    int handle,
+    S3ObjectRef object, {
+    HttpByteRange? range,
+  }) {
     final allocations = core_ffi.NativeAllocations();
     final requestPtr = calloc<gen.NativeS3ObjectRef>();
 
     try {
-      _writeObjectRef(requestPtr.ref, object, allocations);
+      _writeObjectRef(requestPtr.ref, object, allocations, range: range);
       final resultPtr = gen.dart_edge_s3_client_get_object_bytes(
         handle,
         requestPtr,
@@ -234,12 +239,13 @@ abstract final class DartEdgeS3ClientNative {
 
   static NativeS3StreamStartResponse startGetObjectStream(
     int handle,
-    S3ObjectRef object,
-  ) {
+    S3ObjectRef object, {
+    HttpByteRange? range,
+  }) {
     final allocations = core_ffi.NativeAllocations();
     final requestPtr = calloc<gen.NativeS3ObjectRef>();
     try {
-      _writeObjectRef(requestPtr.ref, object, allocations);
+      _writeObjectRef(requestPtr.ref, object, allocations, range: range);
       final resultPtr = gen.dart_edge_s3_client_start_get_object_stream(
         handle,
         requestPtr,
@@ -272,12 +278,13 @@ abstract final class DartEdgeS3ClientNative {
 
   static NativeS3NativeStreamStartResponse startGetObjectNativeStream(
     int handle,
-    S3ObjectRef object,
-  ) {
+    S3ObjectRef object, {
+    HttpByteRange? range,
+  }) {
     final allocations = core_ffi.NativeAllocations();
     final requestPtr = calloc<gen.NativeS3ObjectRef>();
     try {
-      _writeObjectRef(requestPtr.ref, object, allocations);
+      _writeObjectRef(requestPtr.ref, object, allocations, range: range);
       final resultPtr = gen.dart_edge_s3_client_start_get_object_native_stream(
         handle,
         requestPtr,
@@ -392,11 +399,13 @@ abstract final class DartEdgeS3ClientNative {
 void _writeObjectRef(
   gen.NativeS3ObjectRef request,
   S3ObjectRef object,
-  core_ffi.NativeAllocations allocations,
-) {
+  core_ffi.NativeAllocations allocations, {
+  HttpByteRange? range,
+}) {
   request.bucket = allocations.requiredString(object.bucket);
   request.key = allocations.requiredString(object.key);
   request.version_id = allocations.optionalString(object.versionId);
+  request.range = allocations.optionalString(range?.headerValue);
 }
 
 S3ObjectMetadata _readObjectMetadata(gen.NativeS3ObjectMetadata value) {
@@ -407,6 +416,8 @@ S3ObjectMetadata _readObjectMetadata(gen.NativeS3ObjectMetadata value) {
     eTag: core_ffi.optionalNativeString(value.e_tag),
     contentType: core_ffi.optionalNativeString(value.content_type),
     contentLength: value.content_length,
+    objectLength: value.object_length,
+    contentRange: core_ffi.optionalNativeString(value.content_range),
     cacheControl: core_ffi.optionalNativeString(value.cache_control),
     contentDisposition: core_ffi.optionalNativeString(
       value.content_disposition,

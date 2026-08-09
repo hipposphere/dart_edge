@@ -19,7 +19,7 @@ use dart_edge_core::{
 use once_cell::sync::Lazy;
 use tokio::runtime::{Builder, Runtime};
 
-const DART_EDGE_S3_CLIENT_NATIVE_ABI_VERSION: i32 = 5;
+const DART_EDGE_S3_CLIENT_NATIVE_ABI_VERSION: i32 = 6;
 
 static NEXT_HANDLE: AtomicI64 = AtomicI64::new(1);
 static NEXT_DOWNLOAD_HANDLE: AtomicI64 = AtomicI64::new(1);
@@ -59,6 +59,7 @@ pub struct NativeS3ObjectRef {
     bucket: *const c_char,
     key: *const c_char,
     version_id: *const c_char,
+    range: *const c_char,
 }
 
 #[repr(C)]
@@ -107,6 +108,8 @@ pub struct NativeS3ObjectMetadata {
     e_tag: *mut c_char,
     content_type: *mut c_char,
     content_length: i64,
+    object_length: i64,
+    content_range: *mut c_char,
     cache_control: *mut c_char,
     content_disposition: *mut c_char,
     content_encoding: *mut c_char,
@@ -237,6 +240,7 @@ struct ObjectRef {
     bucket: String,
     key: String,
     version_id: Option<String>,
+    range: Option<String>,
 }
 
 struct PutObjectBytesRequest {
@@ -271,6 +275,8 @@ struct ObjectMetadata {
     e_tag: Option<String>,
     content_type: Option<String>,
     content_length: i64,
+    object_length: i64,
+    content_range: Option<String>,
     cache_control: Option<String>,
     content_disposition: Option<String>,
     content_encoding: Option<String>,
@@ -838,19 +844,26 @@ async fn get_object_bytes(
     if let Some(version_id) = request.version_id.as_ref() {
         operation = operation.version_id(version_id);
     }
+    if let Some(range) = request.range.as_ref() {
+        operation = operation.range(range);
+    }
 
     let response = operation
         .send()
         .await
         .map_err(|error| format!("Failed to get S3 object '{bucket}/{key}': {error}"))?;
 
+    let content_length = response.content_length().unwrap_or(0);
+    let content_range = response.content_range().map(ToOwned::to_owned);
     let metadata = ObjectMetadata {
         bucket,
         key,
         version_id: response.version_id().map(ToOwned::to_owned),
         e_tag: response.e_tag().map(ToOwned::to_owned),
         content_type: response.content_type().map(ToOwned::to_owned),
-        content_length: response.content_length().unwrap_or(0),
+        content_length,
+        object_length: object_length(content_range.as_deref(), content_length),
+        content_range,
         cache_control: response.cache_control().map(ToOwned::to_owned),
         content_disposition: response.content_disposition().map(ToOwned::to_owned),
         content_encoding: response.content_encoding().map(ToOwned::to_owned),
@@ -882,17 +895,24 @@ async fn start_get_object_stream(
     if let Some(version_id) = request.version_id.as_ref() {
         operation = operation.version_id(version_id);
     }
+    if let Some(range) = request.range.as_ref() {
+        operation = operation.range(range);
+    }
     let response = operation
         .send()
         .await
         .map_err(|error| format!("Failed to get S3 object '{bucket}/{key}': {error}"))?;
+    let content_length = response.content_length().unwrap_or(0);
+    let content_range = response.content_range().map(ToOwned::to_owned);
     let metadata = ObjectMetadata {
         bucket,
         key,
         version_id: response.version_id().map(ToOwned::to_owned),
         e_tag: response.e_tag().map(ToOwned::to_owned),
         content_type: response.content_type().map(ToOwned::to_owned),
-        content_length: response.content_length().unwrap_or(0),
+        content_length,
+        object_length: object_length(content_range.as_deref(), content_length),
+        content_range,
         cache_control: response.cache_control().map(ToOwned::to_owned),
         content_disposition: response.content_disposition().map(ToOwned::to_owned),
         content_encoding: response.content_encoding().map(ToOwned::to_owned),
@@ -926,6 +946,8 @@ async fn head_object(client: Client, request: ObjectRef) -> Result<ObjectMetadat
         e_tag: response.e_tag().map(ToOwned::to_owned),
         content_type: response.content_type().map(ToOwned::to_owned),
         content_length: response.content_length().unwrap_or(0),
+        object_length: response.content_length().unwrap_or(0),
+        content_range: None,
         cache_control: response.cache_control().map(ToOwned::to_owned),
         content_disposition: response.content_disposition().map(ToOwned::to_owned),
         content_encoding: response.content_encoding().map(ToOwned::to_owned),
@@ -1007,6 +1029,13 @@ fn validate_object_ref(request: &ObjectRef) -> Result<(), String> {
     Ok(())
 }
 
+fn object_length(content_range: Option<&str>, content_length: i64) -> i64 {
+    content_range
+        .and_then(|value| value.rsplit_once('/').map(|(_, total)| total))
+        .and_then(|total| total.parse::<i64>().ok())
+        .unwrap_or(content_length)
+}
+
 fn validate_put_request(request: &PutObjectBytesRequest) -> Result<(), String> {
     if request.bucket.trim().is_empty() {
         return Err("putObject bucket must not be empty.".to_string());
@@ -1046,6 +1075,7 @@ unsafe fn read_object_ref(request: *const NativeS3ObjectRef) -> Result<ObjectRef
         bucket: unsafe { read_required_c_string(request.bucket, "bucket")? },
         key: unsafe { read_required_c_string(request.key, "key")? },
         version_id: unsafe { read_optional_c_string(request.version_id)? },
+        range: unsafe { read_optional_c_string(request.range)? },
     };
     validate_object_ref(&object)?;
     Ok(object)
@@ -1254,6 +1284,8 @@ fn native_object_metadata(metadata: ObjectMetadata) -> NativeS3ObjectMetadata {
         e_tag: optional_c_string_ptr(metadata.e_tag),
         content_type: optional_c_string_ptr(metadata.content_type),
         content_length: metadata.content_length,
+        object_length: metadata.object_length,
+        content_range: optional_c_string_ptr(metadata.content_range),
         cache_control: optional_c_string_ptr(metadata.cache_control),
         content_disposition: optional_c_string_ptr(metadata.content_disposition),
         content_encoding: optional_c_string_ptr(metadata.content_encoding),
@@ -1272,6 +1304,8 @@ fn empty_object_metadata() -> NativeS3ObjectMetadata {
         e_tag: std::ptr::null_mut(),
         content_type: std::ptr::null_mut(),
         content_length: 0,
+        object_length: 0,
+        content_range: std::ptr::null_mut(),
         cache_control: std::ptr::null_mut(),
         content_disposition: std::ptr::null_mut(),
         content_encoding: std::ptr::null_mut(),
@@ -1318,6 +1352,7 @@ unsafe fn free_object_metadata_fields(value: &mut NativeS3ObjectMetadata) {
         free_c_string(value.version_id);
         free_c_string(value.e_tag);
         free_c_string(value.content_type);
+        free_c_string(value.content_range);
         free_c_string(value.cache_control);
         free_c_string(value.content_disposition);
         free_c_string(value.content_encoding);

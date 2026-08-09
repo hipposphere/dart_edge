@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:isolate';
 import 'dart:typed_data';
 
+import 'package:dart_edge_core/dart_edge_core.dart';
 import 'package:dart_edge_native_bridge/dart_edge_native_bridge.dart'
     as core_ffi;
 
@@ -128,7 +129,10 @@ final class DartEdgeS3Client {
   }
 
   /// Downloads one object into memory using the native owned-bytes result path.
-  Future<S3GetObjectBytesResult> getObjectBytes(S3ObjectRef object) async {
+  Future<S3GetObjectBytesResult> getObjectBytes(
+    S3ObjectRef object, {
+    HttpByteRange? range,
+  }) async {
     _ensureActive();
     _validateObjectRef(object);
 
@@ -136,6 +140,7 @@ final class DartEdgeS3Client {
       final result = DartEdgeS3ClientNative.getObjectBytes(
         _nativeHandle,
         object,
+        range: range,
       );
       return <String, Object>{
         'metadata': result.metadata,
@@ -152,11 +157,18 @@ final class DartEdgeS3Client {
   }
 
   /// Opens a demand-driven object body stream without buffering the full body.
-  Future<S3GetObjectStreamResult> getObjectStream(S3ObjectRef object) async {
+  Future<S3GetObjectStreamResult> getObjectStream(
+    S3ObjectRef object, {
+    HttpByteRange? range,
+  }) async {
     _ensureActive();
     _validateObjectRef(object);
     final start = await Isolate.run(
-      () => DartEdgeS3ClientNative.startGetObjectStream(_nativeHandle, object),
+      () => DartEdgeS3ClientNative.startGetObjectStream(
+        _nativeHandle,
+        object,
+        range: range,
+      ),
     );
     Future<void>? closeFuture;
     Future<void> close() {
@@ -176,14 +188,16 @@ final class DartEdgeS3Client {
   /// Opens an object body that can be read by Dart or moved directly into a
   /// compatible native consumer such as the Dart Edge HTTP runtime.
   Future<S3GetObjectNativeStreamResult> getObjectNativeStream(
-    S3ObjectRef object,
-  ) async {
+    S3ObjectRef object, {
+    HttpByteRange? range,
+  }) async {
     _ensureActive();
     _validateObjectRef(object);
     final start = await Isolate.run(
       () => DartEdgeS3ClientNative.startGetObjectNativeStream(
         _nativeHandle,
         object,
+        range: range,
       ),
     );
     return S3GetObjectNativeStreamResult(

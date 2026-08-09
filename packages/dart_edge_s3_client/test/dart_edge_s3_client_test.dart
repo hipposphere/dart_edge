@@ -8,7 +8,7 @@ import 'package:test/test.dart';
 
 void main() {
   test('loads the native bundled asset', () {
-    expect(DartEdgeS3ClientNative.abiVersion, greaterThanOrEqualTo(4));
+    expect(DartEdgeS3ClientNative.abiVersion, greaterThanOrEqualTo(6));
   });
 
   test('closes native download streams on close and client disposal', () async {
@@ -71,6 +71,48 @@ void main() {
     counters = DartEdgeS3Client.downloadStreamCounters;
     expect(counters.active, baseline.active);
     expect(counters.canceled, baseline.canceled + 2);
+  });
+
+  test('forwards byte ranges and preserves partial object metadata', () async {
+    final ranges = <String?>[];
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    server.listen((request) async {
+      ranges.add(request.headers.value(HttpHeaders.rangeHeader));
+      request.response
+        ..statusCode = HttpStatus.partialContent
+        ..contentLength = 3
+        ..headers.set(HttpHeaders.contentRangeHeader, 'bytes 2-4/10')
+        ..headers.contentType = ContentType('audio', 'wav')
+        ..add(const <int>[2, 3, 4]);
+      await request.response.close();
+    });
+    addTearDown(() => server.close(force: true));
+
+    final client = await DartEdgeS3Client.open(
+      S3ClientConfig(
+        region: 'us-east-1',
+        endpoint: 'http://127.0.0.1:${server.port}',
+        accessKeyId: 'test',
+        secretAccessKey: 'test',
+        forcePathStyle: true,
+        allowHttp: true,
+      ),
+    );
+    addTearDown(client.dispose);
+
+    final result = await client.getObjectNativeStream(
+      const S3ObjectRef(bucket: 'recordings', key: 'sample.wav'),
+      range: const HttpByteRange.closed(2, 4),
+    );
+    expect(await result.body.openRead().expand((chunk) => chunk).toList(), [
+      2,
+      3,
+      4,
+    ]);
+    expect(ranges, ['bytes=2-4']);
+    expect(result.metadata.contentLength, 3);
+    expect(result.metadata.objectLength, 10);
+    expect(result.metadata.contentRange, 'bytes 2-4/10');
   });
 
   test(

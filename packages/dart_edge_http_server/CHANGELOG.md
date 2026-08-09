@@ -1,3 +1,8 @@
+## 0.3.25
+
+- Export typed HTTP byte-range parsing and partial streaming response helpers.
+- Require `dart_edge_http_server_runtime` 0.3.35.
+
 ## 0.3.24
 
 - Require `dart_edge_http_server_runtime` 0.3.34 for native producer-to-HTTP

@@ -238,6 +238,11 @@ final class NativeS3ObjectMetadata extends ffi.Struct {
   @ffi.Int64()
   external int content_length;
 
+  @ffi.Int64()
+  external int object_length;
+
+  external ffi.Pointer<ffi.Char> content_range;
+
   external ffi.Pointer<ffi.Char> cache_control;
 
   external ffi.Pointer<ffi.Char> content_disposition;
@@ -260,6 +265,8 @@ final class NativeS3ObjectRef extends ffi.Struct {
   external ffi.Pointer<ffi.Char> key;
 
   external ffi.Pointer<ffi.Char> version_id;
+
+  external ffi.Pointer<ffi.Char> range;
 }
 
 final class NativeS3PutObjectRequest extends ffi.Struct {

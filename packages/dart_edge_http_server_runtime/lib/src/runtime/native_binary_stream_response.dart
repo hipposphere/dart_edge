@@ -11,6 +11,22 @@ final class NativeBinaryStreamResponse {
     this.headers = const <HttpHeader>[],
   }) : assert(contentLength == null || contentLength >= 0);
 
+  /// Creates a native `206 Partial Content` response for [range].
+  factory NativeBinaryStreamResponse.partial({
+    required NativeByteStreamHandle body,
+    required String contentType,
+    required HttpByteRangeSelection range,
+    List<HttpHeader> headers = const <HttpHeader>[],
+  }) {
+    return NativeBinaryStreamResponse(
+      body: body,
+      contentType: contentType,
+      status: 206,
+      contentLength: range.contentLength,
+      headers: [...headers, ...range.responseHeaders],
+    );
+  }
+
   /// Single-owner native body transferred to the HTTP runtime.
   final NativeByteStreamHandle body;
 

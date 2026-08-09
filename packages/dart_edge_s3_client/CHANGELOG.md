@@ -1,3 +1,11 @@
+## 0.3.17
+
+- Add closed, open-ended, and suffix byte ranges to in-memory, Dart-streamed,
+  and native-streamed S3 downloads.
+- Preserve selected response length, total object length, and `Content-Range`
+  metadata without routing native stream bytes through Dart.
+- Bump the native artifact version to 0.1.12 for the ranged GET ABI.
+
 ## 0.3.16
 
 - Add a dual-use native object stream that can expose Dart chunks or transfer

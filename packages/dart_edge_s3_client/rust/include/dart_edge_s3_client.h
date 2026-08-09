@@ -25,6 +25,7 @@ typedef struct NativeS3ObjectRef {
   const char* bucket;
   const char* key;
   const char* version_id;
+  const char* range;
 } NativeS3ObjectRef;
 
 typedef struct NativeS3PutObjectRequest {
@@ -68,6 +69,8 @@ typedef struct NativeS3ObjectMetadata {
   char* e_tag;
   char* content_type;
   int64_t content_length;
+  int64_t object_length;
+  char* content_range;
   char* cache_control;
   char* content_disposition;
   char* content_encoding;

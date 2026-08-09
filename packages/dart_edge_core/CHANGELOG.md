@@ -1,3 +1,9 @@
+## 0.3.40
+
+- Add typed single-byte HTTP range parsing and resolution for closed,
+  open-ended, and suffix ranges.
+- Add standard `206` streaming and `416` response metadata helpers.
+
 ## 0.3.39
 
 - Add response content-length parsing and download progress tracking for

@@ -71,6 +71,17 @@ return NativeBinaryStreamResponse(
 );
 ```
 
+All GET APIs accept a single closed, open-ended, or suffix byte range. Native
+streams keep the selected bytes outside the Dart heap and expose both the
+selected `contentLength` and total `objectLength`:
+
+```dart
+final object = await client.getObjectNativeStream(
+  const S3ObjectRef(bucket: 'recordings', key: 'long.wav'),
+  range: const HttpByteRange.closed(0, 1024 * 1024 - 1),
+);
+```
+
 The two consumption modes are mutually exclusive. Call `object.close()` when
 neither mode adopts the body. When transferred to the native HTTP runtime, the
 original AWS-owned chunk allocation stays alive until Hyper finishes sending

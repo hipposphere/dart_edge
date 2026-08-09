@@ -95,4 +95,19 @@ final class RawResponse {
       isEncodedBody: true,
     );
   }
+
+  /// Creates a `416 Range Not Satisfiable` response for a known resource size.
+  factory RawResponse.rangeNotSatisfiable({required int totalLength}) {
+    if (totalLength < 0) {
+      throw ArgumentError.value(totalLength, 'totalLength', 'Must be >= 0.');
+    }
+    return RawResponse(
+      status: 416,
+      contentType: 'text/plain; charset=utf-8',
+      headers: <HttpHeader>[
+        const HttpHeader('Accept-Ranges', 'bytes'),
+        HttpHeader('Content-Range', 'bytes */$totalLength'),
+      ],
+    );
+  }
 }

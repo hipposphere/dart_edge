@@ -284,6 +284,57 @@ void main() {
     expect(disposeCount, 1);
   });
 
+  test('serves single byte ranges with 206 and 416 metadata', () async {
+    final bytes = List<int>.generate(10, (index) => index);
+    final app = DartEdge<void>(services: () {});
+    app.get(
+      '/range.wav',
+      options: const RouteOptions(
+        operationId: 'rangeTone',
+        success: ResponseSpec.binary(contentType: 'audio/wav'),
+      ),
+      handler: (ctx) {
+        final range = HttpByteRange.parse(ctx.req.header('range')!);
+        final selection = range.resolve(bytes.length);
+        if (selection == null) {
+          return RawResponse.rangeNotSatisfiable(totalLength: bytes.length);
+        }
+        return BinaryStreamResponse.partial(
+          body: Stream.value(bytes.sublist(selection.start, selection.end + 1)),
+          contentType: 'audio/wav',
+          range: selection,
+        );
+      },
+    );
+
+    final server = await app.listen(port: 0);
+    final client = HttpClient();
+    addTearDown(() async {
+      client.close(force: true);
+      await server.close();
+    });
+
+    final partialRequest = await client.getUrl(
+      Uri.http('127.0.0.1:${server.port}', '/range.wav'),
+    );
+    partialRequest.headers.set(HttpHeaders.rangeHeader, 'bytes=2-4');
+    final partial = await partialRequest.close();
+    expect(partial.statusCode, HttpStatus.partialContent);
+    expect(partial.contentLength, 3);
+    expect(partial.headers.value('accept-ranges'), 'bytes');
+    expect(partial.headers.value('content-range'), 'bytes 2-4/10');
+    expect(await partial.expand((chunk) => chunk).toList(), [2, 3, 4]);
+
+    final invalidRequest = await client.getUrl(
+      Uri.http('127.0.0.1:${server.port}', '/range.wav'),
+    );
+    invalidRequest.headers.set(HttpHeaders.rangeHeader, 'bytes=10-');
+    final invalid = await invalidRequest.close();
+    expect(invalid.statusCode, HttpStatus.requestedRangeNotSatisfiable);
+    expect(invalid.headers.value('content-range'), 'bytes */10');
+    await invalid.drain<void>();
+  });
+
   test('handles CORS preflight and adds CORS headers to responses', () async {
     final app = DartEdge<void>(
       services: () {},

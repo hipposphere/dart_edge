@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'http_byte_range.dart';
 import 'raw_response.dart';
 
 /// Backpressured streaming response for an encoded binary HTTP body.
@@ -12,6 +13,24 @@ final class BinaryStreamResponse {
     this.headers = const <HttpHeader>[],
     this.onDispose,
   }) : assert(contentLength == null || contentLength >= 0);
+
+  /// Creates a `206 Partial Content` response for [range].
+  factory BinaryStreamResponse.partial({
+    required Stream<List<int>> body,
+    required String contentType,
+    required HttpByteRangeSelection range,
+    List<HttpHeader> headers = const <HttpHeader>[],
+    FutureOr<void> Function()? onDispose,
+  }) {
+    return BinaryStreamResponse(
+      body: body,
+      contentType: contentType,
+      status: 206,
+      contentLength: range.contentLength,
+      headers: [...headers, ...range.responseHeaders],
+      onDispose: onDispose,
+    );
+  }
 
   /// Chunks emitted in wire order.
   final Stream<List<int>> body;
