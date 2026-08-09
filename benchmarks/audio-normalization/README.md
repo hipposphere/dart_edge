@@ -2,7 +2,9 @@
 
 Measures `dart_edge_audio` probe and normalization latency plus `dart_edge_vad`
 Silero detection and WAV trimming latency for real cached audio fixtures across
-MP3, AAC, WAV, M4A, FLAC, and OGG inputs.
+MP3, AAC, WAV, M4A, FLAC, and OGG inputs. It also reports normalization with
+native waveform accumulation separately and verifies that it leaves WAV bytes
+unchanged.
 
 Prepare fixtures once:
 

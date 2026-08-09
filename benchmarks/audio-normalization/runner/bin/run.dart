@@ -48,6 +48,7 @@ Future<void> main(List<String> args) async {
         '${fixture.format.padRight(4)} '
         'probe=${result['probeLatencyMs']}ms '
         'normalize=${result['normalizeLatencyMs']}ms '
+        'waveform=${result['waveformNormalizeLatencyMs']}ms '
         'vad=${result['vadLatencyMs']}ms '
         'trim=${result['trimLatencyMs']}ms '
         'total=${result['totalLatencyMs']}ms '
@@ -107,6 +108,26 @@ Future<_FixtureRun> _measureFixture(
   );
   normalizeWatch.stop();
 
+  final waveformNormalizeWatch = Stopwatch()..start();
+  final normalizedWithWaveform = await DartEdgeAudio.convertBytes(
+    AudioBytesConversionRequest(
+      inputBytes: Uint8List.fromList(bytes),
+      targetFormat: AudioTargetFormat.wavPcm16,
+      targetSampleRate: 16000,
+      channelLayout: AudioChannelLayout.mono,
+      fileNameHint: fixture.fileName,
+      mimeTypeHint: fixture.mimeType,
+      waveform: const AudioWaveformSpec(),
+    ),
+  );
+  waveformNormalizeWatch.stop();
+  if (!_bytesEqual(normalized.bytes, normalizedWithWaveform.bytes) ||
+      normalizedWithWaveform.waveform == null) {
+    throw StateError(
+      '${fixture.fileName} waveform conversion changed the WAV output.',
+    );
+  }
+
   final wav = WavAudio.parse(normalized.bytes);
   if (wav.sampleRateHz != 16000 ||
       wav.channels != 1 ||
@@ -135,6 +156,7 @@ Future<_FixtureRun> _measureFixture(
     duration: metadata.duration,
     probeLatency: probeWatch.elapsed,
     normalizeLatency: normalizeWatch.elapsed,
+    waveformNormalizeLatency: waveformNormalizeWatch.elapsed,
     vadLatency: vadWatch.elapsed,
     trimLatency: trimWatch.elapsed,
     outputBytes: normalized.bytes.length,
@@ -167,6 +189,9 @@ Map<String, Object?> _summarize(
   final representative = runs.first;
   final probe = _median(runs.map((run) => run.probeLatency));
   final normalize = _median(runs.map((run) => run.normalizeLatency));
+  final waveformNormalize = _median(
+    runs.map((run) => run.waveformNormalizeLatency),
+  );
   final vad = _median(runs.map((run) => run.vadLatency));
   final trim = _median(runs.map((run) => run.trimLatency));
   final total = _median(runs.map((run) => run.totalLatency));
@@ -184,6 +209,7 @@ Map<String, Object?> _summarize(
     'durationMs': representative.duration.inMilliseconds,
     'probeLatencyMs': _roundMicros(probe),
     'normalizeLatencyMs': _roundMicros(normalize),
+    'waveformNormalizeLatencyMs': _roundMicros(waveformNormalize),
     'vadLatencyMs': _roundMicros(vad),
     'trimLatencyMs': _roundMicros(trim),
     'totalLatencyMs': _roundMicros(total),
@@ -193,6 +219,14 @@ Map<String, Object?> _summarize(
     'speechDurationMs': speechDuration.inMilliseconds,
     'realtimeFactor': double.parse(realtimeFactor.toStringAsFixed(3)),
   };
+}
+
+bool _bytesEqual(Uint8List left, Uint8List right) {
+  if (left.length != right.length) return false;
+  for (var index = 0; index < left.length; index += 1) {
+    if (left[index] != right[index]) return false;
+  }
+  return true;
 }
 
 Int16List _readMonoPcm16(WavAudio wav) {
@@ -222,6 +256,7 @@ final class _FixtureRun {
     required this.duration,
     required this.probeLatency,
     required this.normalizeLatency,
+    required this.waveformNormalizeLatency,
     required this.vadLatency,
     required this.trimLatency,
     required this.outputBytes,
@@ -233,6 +268,7 @@ final class _FixtureRun {
   final Duration duration;
   final Duration probeLatency;
   final Duration normalizeLatency;
+  final Duration waveformNormalizeLatency;
   final Duration vadLatency;
   final Duration trimLatency;
   final int outputBytes;

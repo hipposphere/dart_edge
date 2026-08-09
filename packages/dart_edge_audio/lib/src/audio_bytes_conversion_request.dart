@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'audio_channel_layout.dart';
 import 'audio_target_format.dart';
+import 'audio_waveform.dart';
 
 /// Request payload for converting in-memory audio bytes.
 final class AudioBytesConversionRequest {
@@ -12,6 +13,7 @@ final class AudioBytesConversionRequest {
     this.channelLayout = AudioChannelLayout.keepSource,
     this.fileNameHint,
     this.mimeTypeHint,
+    this.waveform,
   });
 
   final Uint8List inputBytes;
@@ -20,6 +22,7 @@ final class AudioBytesConversionRequest {
   final AudioChannelLayout channelLayout;
   final String? fileNameHint;
   final String? mimeTypeHint;
+  final AudioWaveformSpec? waveform;
 
   Map<String, Object?> toJson() {
     return {
@@ -28,6 +31,7 @@ final class AudioBytesConversionRequest {
       'channelLayout': channelLayout.wireValue,
       'fileNameHint': fileNameHint,
       'mimeTypeHint': mimeTypeHint,
+      'waveform': waveform?.toJson(),
     };
   }
 }

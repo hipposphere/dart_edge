@@ -240,6 +240,80 @@ void main() {
     expect(probed.bitDepth, 24);
   });
 
+  test(
+    'convertBytes optionally returns signed multi-resolution waveform',
+    () async {
+      final input = await File(_fixturePath('tone.wav')).readAsBytes();
+      final withoutWaveform = await DartEdgeAudio.convertBytes(
+        AudioBytesConversionRequest(
+          inputBytes: input,
+          targetFormat: AudioTargetFormat.wavPcm16,
+          targetSampleRate: 16000,
+          channelLayout: AudioChannelLayout.mono,
+          fileNameHint: 'tone.wav',
+        ),
+      );
+      final withWaveform = await DartEdgeAudio.convertBytes(
+        AudioBytesConversionRequest(
+          inputBytes: input,
+          targetFormat: AudioTargetFormat.wavPcm16,
+          targetSampleRate: 16000,
+          channelLayout: AudioChannelLayout.mono,
+          fileNameHint: 'tone.wav',
+          waveform: const AudioWaveformSpec(
+            baseInterval: Duration(milliseconds: 10),
+            levelFactors: [1, 4, 16],
+          ),
+        ),
+      );
+
+      expect(withWaveform.bytes, withoutWaveform.bytes);
+      expect(withoutWaveform.waveform, isNull);
+      final waveform = withWaveform.waveform;
+      expect(waveform, isNotNull);
+      expect(waveform!.baseInterval, const Duration(milliseconds: 10));
+      expect(waveform.levels.map((level) => level.factor), [1, 4, 16]);
+      expect(waveform.levels.map((level) => level.interval), [
+        const Duration(milliseconds: 10),
+        const Duration(milliseconds: 40),
+        const Duration(milliseconds: 160),
+      ]);
+      expect(waveform.levels.first.peaks, isA<Int8List>());
+      expect(waveform.levels.first.peaks, isNotEmpty);
+      expect(waveform.levels.first.peaks.length.isEven, isTrue);
+      expect(waveform.levels.first.peaks.any((peak) => peak < 0), isTrue);
+      expect(waveform.levels.first.peaks.any((peak) => peak > 0), isTrue);
+    },
+  );
+
+  test(
+    'analyzeWaveform returns peaks without converted audio output',
+    () async {
+      final input = await File(_fixturePath('tone.wav')).readAsBytes();
+      final result = await DartEdgeAudio.analyzeWaveform(
+        AudioWaveformAnalysisRequest(
+          inputBytes: input,
+          targetSampleRate: 16000,
+          channelLayout: AudioChannelLayout.mono,
+          fileNameHint: 'tone.wav',
+          waveform: const AudioWaveformSpec(
+            baseInterval: Duration(milliseconds: 20),
+            levelFactors: [1],
+          ),
+        ),
+      );
+
+      expect(result.metadata.sampleRate, 16000);
+      expect(result.metadata.channelCount, 1);
+      expect(result.waveform.levels, hasLength(1));
+      expect(
+        result.waveform.levels.single.interval,
+        const Duration(milliseconds: 20),
+      );
+      expect(result.waveform.levels.single.peaks, isNotEmpty);
+    },
+  );
+
   test('convertNativeBytes returns wav bytes and metadata', () async {
     final input = await File(_fixturePath('tone.flac')).readAsBytes();
     final nativeBytes = _allocateNativeBytes(input);

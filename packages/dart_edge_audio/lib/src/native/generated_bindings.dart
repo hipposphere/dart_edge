@@ -198,6 +198,8 @@ final class DartEdgeAudioPool extends ffi.Opaque {}
 final class NativeAudioBytesResult extends ffi.Struct {
   external imp$1.NativeOwnedBytes bytes;
 
+  external imp$1.NativeOwnedBytes waveform;
+
   external ffi.Pointer<ffi.Char> result_json;
 }
 

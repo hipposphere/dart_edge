@@ -1,3 +1,13 @@
+## 0.3.13
+
+- Generate optional signed, multi-resolution waveform peaks while native WAV
+  conversion writes samples, without an additional decoded-audio pass.
+- Add waveform-only analysis for upload paths that do not need converted WAV
+  bytes in the Dart heap.
+- Keep concatenated WAV output in native memory and expose it as a transferable
+  native stream instead of using anonymous temporary-file storage.
+- Bump the native artifact version to 0.1.9 for the waveform result ABI.
+
 ## 0.3.12
 
 - Add native audio-stream normalization and concatenation with anonymous

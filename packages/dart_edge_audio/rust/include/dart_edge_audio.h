@@ -7,6 +7,7 @@
 
 typedef struct NativeAudioBytesResult {
   NativeOwnedBytes bytes;
+  NativeOwnedBytes waveform;
   char* result_json;
 } NativeAudioBytesResult;
 

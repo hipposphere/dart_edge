@@ -12,6 +12,9 @@ import 'audio_file_conversion_result.dart';
 import 'audio_metadata.dart';
 import 'audio_probe_mode.dart';
 import 'audio_target_format.dart';
+import 'audio_waveform.dart';
+import 'audio_waveform_analysis_request.dart';
+import 'audio_waveform_analysis_result.dart';
 import 'native_audio_pool.dart';
 import 'native_audio_stream_conversion_result.dart';
 import 'native_audio_stream_input.dart';
@@ -104,6 +107,15 @@ abstract final class DartEdgeAudio {
     return (await _ensureSharedPool()).convertBytes(request);
   }
 
+  /// Generates a compact waveform without returning converted WAV bytes.
+  static Future<AudioWaveformAnalysisResult> analyzeWaveform(
+    AudioWaveformAnalysisRequest request,
+  ) async {
+    _ensureBytes(request.inputBytes);
+    _ensurePositiveSampleRate(request.targetSampleRate);
+    return (await _ensureSharedPool()).analyzeWaveform(request);
+  }
+
   /// Converts borrowed native audio bytes without first copying them into
   /// Dart-managed memory.
   ///
@@ -117,6 +129,7 @@ abstract final class DartEdgeAudio {
     AudioChannelLayout channelLayout = AudioChannelLayout.keepSource,
     String? fileNameHint,
     String? mimeTypeHint,
+    AudioWaveformSpec? waveform,
   }) async {
     _ensureNativeBytes(bytes);
     _ensurePositiveSampleRate(targetSampleRate);
@@ -127,6 +140,7 @@ abstract final class DartEdgeAudio {
       channelLayout: channelLayout,
       fileNameHint: fileNameHint,
       mimeTypeHint: mimeTypeHint,
+      waveform: waveform,
     );
   }
 
