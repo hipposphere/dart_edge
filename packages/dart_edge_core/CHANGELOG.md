@@ -1,3 +1,8 @@
+## 0.3.39
+
+- Add response content-length parsing and download progress tracking for
+  generated-client streamed responses.
+
 ## 0.3.38
 
 - Let binary stream responses release pre-acquired resources on every runtime

@@ -133,9 +133,17 @@ void main() {
         source,
         contains('Future<DartEdgeClientResponseObject<Uint8List>> getTone({'),
       );
+      expect(
+        source,
+        contains(
+          'Future<DartEdgeClientStreamedResponseObject> getToneStream({',
+        ),
+      );
       expect(source, contains('DartEdgeClientResponseSpec<Uint8List>'));
       expect(source, isNot(contains('Uint8List.decode')));
       expect(source, contains('Duration? timeout'));
+      expect(source, contains('invokeStream<Never, Never, Never, Never>'));
+      expect(source, contains('abortTrigger: abortTrigger'));
     });
 
     test('emits streamed bindings for SSE response contracts', () {

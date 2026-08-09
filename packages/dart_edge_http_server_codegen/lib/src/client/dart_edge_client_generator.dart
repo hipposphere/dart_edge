@@ -752,7 +752,13 @@ $files
         ..extend = refer('DartEdgeHttpClientBase')
         ..constructors.add(_clientConstructor())
         ..methods.addAll([
-          ...spec.operations.map(_operationMethod),
+          ...spec.operations.expand(
+            (operation) => [
+              _operationMethod(operation),
+              if (_isBinaryOperation(operation))
+                _binaryStreamOperationMethod(operation),
+            ],
+          ),
           ...spec.webSockets.map(_webSocketMethod),
           ...spec.webTransports.map(_webTransportMethod),
         ]);
@@ -796,6 +802,18 @@ $files
                     : _invokeExpression(operation))
                 .returned
                 .statement;
+    });
+  }
+
+  Method _binaryStreamOperationMethod(DartEdgeClientOperation operation) {
+    return Method((builder) {
+      builder
+        ..returns = _type('Future', [
+          refer('DartEdgeClientStreamedResponseObject'),
+        ])
+        ..name = '${operation.resolvedMethodName}Stream'
+        ..optionalParameters.addAll(_operationParameters(operation))
+        ..body = _invokeStreamExpression(operation).returned.statement;
     });
   }
 
@@ -1845,6 +1863,10 @@ bool _isBinaryContentType(String contentType) {
 
 bool _isSseOperation(DartEdgeClientOperation operation) {
   return _isSseContentType(operation.options.responses.success.contentType);
+}
+
+bool _isBinaryOperation(DartEdgeClientOperation operation) {
+  return operation.successType == 'Uint8List';
 }
 
 bool _isSseContentType(String contentType) {
