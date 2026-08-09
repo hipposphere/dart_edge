@@ -38,7 +38,9 @@ jobs:
         run: dart --disable-dart-dev tool/check_package_boundaries.dart
 
       - name: Test Dart packages
-        run: dart run melos exec --dir-exists=test -- dart test
+        # Native-asset hooks share workspace locks, so package test processes
+        # must not build those hooks concurrently.
+        run: dart run melos exec --concurrency=1 --dir-exists=test -- dart test
 
       - name: Check shared Rust crates
         run: cargo check --workspace
