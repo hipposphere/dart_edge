@@ -1,3 +1,9 @@
+## 0.3.41
+
+- Generate an additive streamed-response method alongside each buffered
+  `Uint8List` client method.
+- Require `dart_edge_core` 0.3.39.
+
 ## 0.3.40
 
 - Infer `Uint8List` for client operation schemas using the JSON Schema

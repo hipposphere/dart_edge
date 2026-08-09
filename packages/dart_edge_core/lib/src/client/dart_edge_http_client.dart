@@ -930,6 +930,18 @@ final class DartEdgeClientStreamedResponseObject {
   /// Whether this response matched the generated success status.
   bool get isSuccess => error == null;
 
+  /// Response body length from the `Content-Length` header, when available.
+  int? get contentLength {
+    for (final entry in headers.entries) {
+      if (entry.key.toLowerCase() != 'content-length') {
+        continue;
+      }
+      final value = int.tryParse(entry.value.trim());
+      return value != null && value >= 0 ? value : null;
+    }
+    return null;
+  }
+
   /// Returns [bodyStream] or throws when the response is an error.
   Stream<List<int>> get requireBodyStream {
     if (error case final error?) {
@@ -939,6 +951,51 @@ final class DartEdgeClientStreamedResponseObject {
       );
     }
     return bodyStream;
+  }
+
+  /// Returns the response body stream and reports progress as it is consumed.
+  ///
+  /// [totalBytes] overrides the response `Content-Length` when the caller has
+  /// more accurate metadata. Progress is reported after each emitted chunk.
+  Stream<List<int>> bodyStreamWithProgress({
+    required void Function(DartEdgeClientDownloadProgress progress) onProgress,
+    int? totalBytes,
+  }) async* {
+    final resolvedTotalBytes = totalBytes ?? contentLength;
+    var bytesReceived = 0;
+    await for (final chunk in requireBodyStream) {
+      bytesReceived += chunk.length;
+      onProgress(
+        DartEdgeClientDownloadProgress(
+          bytesReceived: bytesReceived,
+          totalBytes: resolvedTotalBytes,
+        ),
+      );
+      yield chunk;
+    }
+  }
+}
+
+/// Download progress for a streamed generated-client response body.
+final class DartEdgeClientDownloadProgress {
+  const DartEdgeClientDownloadProgress({
+    required this.bytesReceived,
+    required this.totalBytes,
+  });
+
+  /// Response body bytes received from the client transport.
+  final int bytesReceived;
+
+  /// Total response body bytes, when known before downloading.
+  final int? totalBytes;
+
+  /// Completed download fraction, or `null` when [totalBytes] is unknown.
+  double? get fraction {
+    final totalBytes = this.totalBytes;
+    if (totalBytes == null || totalBytes == 0) {
+      return null;
+    }
+    return bytesReceived / totalBytes;
   }
 }
 

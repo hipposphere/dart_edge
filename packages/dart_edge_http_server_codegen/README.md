@@ -117,3 +117,23 @@ final class _$CreateUserInput {
 `dart_edge_http_server_codegen` contains the client-generation slice for HTTP
 routes. It is intentionally built around normalized route options and schema
 ids, not runtime reflection.
+
+Binary response operations generate both a buffered method and an additive
+`Stream`-suffixed method. Use the buffered method when the complete
+`Uint8List` is convenient, or consume the streamed response incrementally for
+large downloads:
+
+```dart
+final response = await client.getRecordingStream(body: request);
+await for (final chunk in response.bodyStreamWithProgress(
+  onProgress: (progress) {
+    print('${progress.bytesReceived}/${progress.totalBytes ?? '?'}');
+  },
+)) {
+  sink.add(chunk);
+}
+```
+
+The progress helper reads `Content-Length` when available. Applications remain
+responsible for presenting progress, choosing storage, and handling lifecycle
+states such as preparing, saving, completion, and cancellation.
