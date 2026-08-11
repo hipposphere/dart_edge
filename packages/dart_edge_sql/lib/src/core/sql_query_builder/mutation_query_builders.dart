@@ -203,9 +203,33 @@ SqlStatement _compileSelect(
   List<_SelectedProjection> projections,
 ) {
   final compiler = _SqlCompiler(query.executor.dialect);
+  _writeSelect(compiler, query, projections);
+  return compiler.toStatement();
+}
+
+void _writeSelect(
+  _SqlCompiler compiler,
+  _SqlSelectCore query,
+  List<_SelectedProjection> projections,
+) {
+  _writeCtes(compiler, query);
   compiler.write('SELECT ');
+  if (query.distinct && query.distinctOn.isNotEmpty) {
+    throw StateError('distinct() and distinctOn() cannot be combined.');
+  }
   if (query.distinct) {
     compiler.write('DISTINCT ');
+  } else if (query.distinctOn.isNotEmpty) {
+    if (compiler.dialect != SqlDialect.postgres) {
+      throw UnsupportedError('DISTINCT ON is only supported by PostgreSQL.');
+    }
+    compiler.write('DISTINCT ON (');
+    compiler.writeJoined(
+      query.distinctOn,
+      separator: ', ',
+      writeElement: compiler.writeSelectable,
+    );
+    compiler.write(') ');
   }
   compiler.writeJoined(
     projections,
@@ -218,6 +242,14 @@ SqlStatement _compileSelect(
     compiler.write(' ');
     compiler.write(join.type.keyword);
     compiler.write(' ');
+    if (join.lateral) {
+      if (compiler.dialect != SqlDialect.postgres) {
+        throw UnsupportedError(
+          'LATERAL joins are only supported by PostgreSQL.',
+        );
+      }
+      compiler.write('LATERAL ');
+    }
     compiler.writeTable(join.table);
     compiler.write(' ON ');
     compiler.writePredicate(join.on);
@@ -262,17 +294,59 @@ SqlStatement _compileSelect(
     compiler.write(' OFFSET $offset');
   }
   _writeLockingClause(compiler, query);
-  return compiler.toStatement();
+}
+
+void _writeCtes(_SqlCompiler compiler, _SqlSelectCore query) {
+  if (query.ctes.isEmpty) return;
+  compiler.write('WITH ');
+  compiler.writeJoined(
+    query.ctes,
+    separator: ', ',
+    writeElement: (relation) {
+      final table = relation._table;
+      compiler.writeIdentifier(table.name);
+      _writeRelationColumnList(compiler, table);
+      compiler.write(' AS ');
+      switch (table.materialization) {
+        case SqlCteMaterialization.defaultBehavior:
+          break;
+        case SqlCteMaterialization.materialized:
+          compiler.write('MATERIALIZED ');
+        case SqlCteMaterialization.notMaterialized:
+          compiler.write('NOT MATERIALIZED ');
+      }
+      compiler.write('(');
+      _writeSelect(
+        compiler,
+        table.source._core,
+        table.source._selection.projections,
+      );
+      compiler.write(')');
+    },
+  );
+  compiler.write(' ');
+}
+
+void _writeRelationColumnList(_SqlCompiler compiler, _SqlQueryTable table) {
+  compiler.write(' (');
+  compiler.writeJoined(
+    table.definitions,
+    separator: ', ',
+    writeElement: (column) => compiler.writeIdentifier(column.name),
+  );
+  compiler.write(')');
 }
 
 SqlStatement _compileExists(_SqlSelectCore query) {
   final compiler = _SqlCompiler(query.executor.dialect);
+  _writeCtes(compiler, query);
   compiler.write('SELECT 1 FROM ');
   compiler.writeTable(query.from);
   for (final join in query.joins) {
     compiler.write(' ');
     compiler.write(join.type.keyword);
     compiler.write(' ');
+    if (join.lateral) compiler.write('LATERAL ');
     compiler.writeTable(join.table);
     compiler.write(' ON ');
     compiler.writePredicate(join.on);
@@ -328,6 +402,7 @@ SqlStatement _compileCount(_SqlSelectCore query) {
   }
 
   final compiler = _SqlCompiler(query.executor.dialect);
+  _writeCtes(compiler, query);
   compiler.write('SELECT COUNT(*) AS ');
   compiler.writeIdentifier('count');
   compiler.write(' FROM ');
@@ -336,6 +411,7 @@ SqlStatement _compileCount(_SqlSelectCore query) {
     compiler.write(' ');
     compiler.write(join.type.keyword);
     compiler.write(' ');
+    if (join.lateral) compiler.write('LATERAL ');
     compiler.writeTable(join.table);
     compiler.write(' ON ');
     compiler.writePredicate(join.on);

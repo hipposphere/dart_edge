@@ -12,10 +12,14 @@ final class _SqlSelectCore {
     this.limit,
     this.offset,
     this.distinct = false,
+    List<Object> distinctOn = const <Object>[],
+    List<SqlQueryRelation> ctes = const <SqlQueryRelation>[],
     this.locking,
   }) : joins = List<_SqlJoin>.unmodifiable(joins),
        groupBy = List<Object>.unmodifiable(groupBy),
-       orderBy = List<SqlOrderBy>.unmodifiable(orderBy);
+       orderBy = List<SqlOrderBy>.unmodifiable(orderBy),
+       distinctOn = List<Object>.unmodifiable(distinctOn),
+       ctes = List<SqlQueryRelation>.unmodifiable(ctes);
 
   final SqlExecutor executor;
   final SqlTable<dynamic, dynamic, dynamic> from;
@@ -27,6 +31,8 @@ final class _SqlSelectCore {
   final int? limit;
   final int? offset;
   final bool distinct;
+  final List<Object> distinctOn;
+  final List<SqlQueryRelation> ctes;
   final _SqlLockingClause? locking;
 
   _SqlSelectCore innerJoin(
@@ -74,6 +80,28 @@ final class _SqlSelectCore {
 
   _SqlSelectCore setDistinct() => _copyWith(distinct: true);
 
+  _SqlSelectCore setDistinctOn(Iterable<Object> values) =>
+      _copyWith(distinctOn: values.toList(growable: false));
+
+  _SqlSelectCore addCte(SqlQueryRelation relation) {
+    if (relation._table.kind != _SqlQueryRelationKind.cte) {
+      throw ArgumentError.value(relation, 'relation', 'Expected a CTE.');
+    }
+    return _copyWith(ctes: [...ctes, relation]);
+  }
+
+  _SqlSelectCore join(
+    SqlTable<dynamic, dynamic, dynamic> table, {
+    required _SqlJoinType type,
+    required SqlPredicate on,
+    bool lateral = false,
+  }) => _copyWith(
+    joins: [
+      ...joins,
+      _SqlJoin(type: type, table: table, on: on, lateral: lateral),
+    ],
+  );
+
   _SqlSelectCore setLocking(_SqlLockingClause value) =>
       _copyWith(locking: value, useLocking: true);
 
@@ -90,6 +118,8 @@ final class _SqlSelectCore {
     int? offset,
     bool useOffset = false,
     bool? distinct,
+    List<Object>? distinctOn,
+    List<SqlQueryRelation>? ctes,
     _SqlLockingClause? locking,
     bool useLocking = false,
   }) {
@@ -104,6 +134,8 @@ final class _SqlSelectCore {
       limit: useLimit ? limit : this.limit,
       offset: useOffset ? offset : this.offset,
       distinct: distinct ?? this.distinct,
+      distinctOn: distinctOn ?? this.distinctOn,
+      ctes: ctes ?? this.ctes,
       locking: useLocking ? locking : this.locking,
     );
   }
@@ -208,6 +240,16 @@ final class SqlRawSelectQueryBuilder {
   /// Adds `DISTINCT` to the selection.
   SqlRawSelectQueryBuilder distinct() =>
       SqlRawSelectQueryBuilder._fromCore(_core.setDistinct());
+
+  /// Adds PostgreSQL `DISTINCT ON` expressions to the selection.
+  SqlRawSelectQueryBuilder distinctOn(Iterable<Object> expressions) =>
+      SqlRawSelectQueryBuilder._fromCore(
+        _core.setDistinctOn(expressions.map(_normalizeSelectable)),
+      );
+
+  /// Adds a CTE definition to this query.
+  SqlRawSelectQueryBuilder withCte(SqlQueryRelation relation) =>
+      SqlRawSelectQueryBuilder._fromCore(_core.addCte(relation));
 
   /// Adds a PostgreSQL row-locking clause.
   SqlRawSelectQueryBuilder forLock(
@@ -322,6 +364,48 @@ final class SelectQueryBuilder<TRow, TInsert, TUpdate> {
     return _copyWith(raw: _raw._leftJoinTable(table, on: on));
   }
 
+  /// Adds an inner join to a CTE or derived relation.
+  SelectQueryBuilder<TRow, TInsert, TUpdate> innerJoinRelation(
+    SqlQueryRelation relation, {
+    required SqlPredicate on,
+  }) => _copyWith(raw: _raw._innerJoinTable(relation._table, on: on));
+
+  /// Adds a left join to a CTE or derived relation.
+  SelectQueryBuilder<TRow, TInsert, TUpdate> leftJoinRelation(
+    SqlQueryRelation relation, {
+    required SqlPredicate on,
+  }) => _copyWith(raw: _raw._leftJoinTable(relation._table, on: on));
+
+  /// Adds an inner lateral join to a derived relation.
+  SelectQueryBuilder<TRow, TInsert, TUpdate> innerJoinLateral(
+    SqlQueryRelation relation, {
+    required SqlPredicate on,
+  }) => _copyWith(
+    raw: SqlRawSelectQueryBuilder._fromCore(
+      _raw._core.join(
+        relation._table,
+        type: _SqlJoinType.inner,
+        on: on,
+        lateral: true,
+      ),
+    ),
+  );
+
+  /// Adds a left lateral join to a derived relation.
+  SelectQueryBuilder<TRow, TInsert, TUpdate> leftJoinLateral(
+    SqlQueryRelation relation, {
+    required SqlPredicate on,
+  }) => _copyWith(
+    raw: SqlRawSelectQueryBuilder._fromCore(
+      _raw._core.join(
+        relation._table,
+        type: _SqlJoinType.left,
+        on: on,
+        lateral: true,
+      ),
+    ),
+  );
+
   /// Adds [predicate] to the `WHERE` clause with `AND`.
   SelectQueryBuilder<TRow, TInsert, TUpdate> where(SqlPredicate predicate) =>
       _copyWith(raw: _raw.where(predicate));
@@ -371,6 +455,16 @@ final class SelectQueryBuilder<TRow, TInsert, TUpdate> {
   /// Adds `DISTINCT` to the selection.
   SelectQueryBuilder<TRow, TInsert, TUpdate> distinct() =>
       _copyWith(raw: _raw.distinct());
+
+  /// Adds PostgreSQL `DISTINCT ON` expressions to the selection.
+  SelectQueryBuilder<TRow, TInsert, TUpdate> distinctOn(
+    Iterable<Object> expressions,
+  ) => _copyWith(raw: _raw.distinctOn(expressions));
+
+  /// Adds a CTE definition to this query.
+  SelectQueryBuilder<TRow, TInsert, TUpdate> withCte(
+    SqlQueryRelation relation,
+  ) => _copyWith(raw: _raw.withCte(relation));
 
   /// Adds a PostgreSQL row-locking clause.
   SelectQueryBuilder<TRow, TInsert, TUpdate> forLock(
@@ -580,6 +674,76 @@ final class SelectedSelectQueryBuilder<TSelection> {
         core: _core.setDistinct(),
         selection: _selection,
       );
+
+  /// Adds PostgreSQL `DISTINCT ON` expressions to the selection.
+  SelectedSelectQueryBuilder<TSelection> distinctOn(
+    Iterable<Object> expressions,
+  ) => SelectedSelectQueryBuilder<TSelection>._(
+    core: _core.setDistinctOn(expressions.map(_normalizeSelectable)),
+    selection: _selection,
+  );
+
+  /// Adds a CTE definition to this query.
+  SelectedSelectQueryBuilder<TSelection> withCte(SqlQueryRelation relation) =>
+      SelectedSelectQueryBuilder<TSelection>._(
+        core: _core.addCte(relation),
+        selection: _selection,
+      );
+
+  /// Exposes this selected query as a named CTE.
+  SqlQueryRelation asCte(
+    String name, {
+    required Iterable<SqlQueryColumn<dynamic>> columns,
+    SqlCteMaterialization materialization =
+        SqlCteMaterialization.defaultBehavior,
+  }) => _asRelation(
+    name,
+    columns: columns,
+    kind: _SqlQueryRelationKind.cte,
+    materialization: materialization,
+  );
+
+  /// Exposes this selected query as an aliased derived table.
+  SqlQueryRelation asDerivedTable(
+    String alias, {
+    required Iterable<SqlQueryColumn<dynamic>> columns,
+  }) =>
+      _asRelation(alias, columns: columns, kind: _SqlQueryRelationKind.derived);
+
+  SqlQueryRelation _asRelation(
+    String name, {
+    required Iterable<SqlQueryColumn<dynamic>> columns,
+    required _SqlQueryRelationKind kind,
+    SqlCteMaterialization materialization =
+        SqlCteMaterialization.defaultBehavior,
+  }) {
+    final definitions = columns.toList(growable: false);
+    if (definitions.length != _selection.projections.length) {
+      throw ArgumentError(
+        'Relation $name declares ${definitions.length} columns for '
+        '${_selection.projections.length} projections.',
+      );
+    }
+    final byName = <String, SqlQueryColumn<dynamic>>{};
+    for (final definition in definitions) {
+      if (byName.containsKey(definition.name)) {
+        throw ArgumentError.value(
+          definition.name,
+          'columns',
+          'Duplicate name.',
+        );
+      }
+      byName[definition.name] = definition;
+    }
+    final table = _SqlQueryTable(
+      name: name,
+      source: this,
+      definitions: definitions,
+      kind: kind,
+      materialization: materialization,
+    );
+    return SqlQueryRelation._(table, Map.unmodifiable(byName));
+  }
 
   /// Adds a PostgreSQL row-locking clause.
   SelectedSelectQueryBuilder<TSelection> forLock(

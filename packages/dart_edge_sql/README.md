@@ -88,6 +88,33 @@ final jobs = await pool.withTransaction((tx) {
 });
 ```
 
+Selected queries can also become typed CTEs or derived tables. Declare their
+output columns once, then use the resulting bound columns in joins and other
+expressions:
+
+```dart
+const userId = SqlQueryColumn<int>('user_id', databaseType: 'int8');
+
+final activeUsers = database.typed
+    .from(UsersTable.table)
+    .where(UsersTable.active.equals(true))
+    .select([UsersTable.id])
+    .asCte(
+      'active_users',
+      columns: const [userId],
+      materialization: SqlCteMaterialization.materialized,
+    );
+
+final rows = await database.typed
+    .fromRelation(activeUsers)
+    .withCte(activeUsers)
+    .select([activeUsers.column(userId)])
+    .execute();
+```
+
+PostgreSQL queries additionally support `distinctOn(...)`,
+`innerJoinLateral(...)`, and `leftJoinLateral(...)`.
+
 ## Native Integration
 
 Most code should import `package:dart_edge_sql/dart_edge_sql.dart`. Sibling

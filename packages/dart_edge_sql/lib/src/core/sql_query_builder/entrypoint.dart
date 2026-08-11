@@ -13,6 +13,11 @@ final class SqlTypedQueryRoot {
     return SelectQueryBuilder._(executor: _executor, from: table);
   }
 
+  /// Starts building a `SELECT` query from a CTE or derived relation.
+  SelectQueryBuilder<SqlRow, Never, Never> fromRelation(
+    SqlQueryRelation relation,
+  ) => SelectQueryBuilder._(executor: _executor, from: relation._table);
+
   /// Starts building an `INSERT` query into [table].
   InsertQueryBuilder<TRow, TInsert, TUpdate> insertInto<TRow, TInsert, TUpdate>(
     SqlTable<TRow, TInsert, TUpdate> table,

@@ -1,3 +1,9 @@
+## 0.3.37
+
+- Add typed CTE and derived-table relations with declared output columns.
+- Add typed relation joins, PostgreSQL lateral joins, and `DISTINCT ON`.
+- Preserve nested query parameters while compiling relation queries.
+
 ## 0.3.36
 
 - Add process-wide native SQL pool cleanup for embedder hot-restart recovery.

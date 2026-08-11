@@ -14,6 +14,7 @@ import 'sql_value.dart';
 import 'sql_vector.dart';
 
 part 'sql_query_builder/entrypoint.dart';
+part 'sql_query_builder/query_relations.dart';
 part 'sql_query_builder/select_query_builder.dart';
 part 'sql_query_builder/mutation_query_builders.dart';
 part 'sql_query_builder/sql_compiler.dart';

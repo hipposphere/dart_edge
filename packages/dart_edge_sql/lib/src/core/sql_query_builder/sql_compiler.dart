@@ -16,6 +16,22 @@ final class _SqlCompiler {
   }
 
   void writeTable(SqlTable<dynamic, dynamic, dynamic> table) {
+    if (table case final _SqlQueryTable queryTable) {
+      if (queryTable.kind == _SqlQueryRelationKind.cte) {
+        writeIdentifier(queryTable.name);
+        return;
+      }
+      write('(');
+      _writeSelect(
+        this,
+        queryTable.source._core,
+        queryTable.source._selection.projections,
+      );
+      write(') AS ');
+      writeIdentifier(queryTable.name);
+      _writeRelationColumnList(this, queryTable);
+      return;
+    }
     if (table case final SqlRawTable rawTable) {
       write(rawTable.tableExpression);
       if (rawTable.alias case final alias?) {
@@ -32,7 +48,9 @@ final class _SqlCompiler {
   }
 
   void writeColumn(SqlColumnBase column) {
-    if (column.table case final SqlRawTable rawTable) {
+    if (column.table case final _SqlQueryTable queryTable) {
+      writeIdentifier(queryTable.name);
+    } else if (column.table case final SqlRawTable rawTable) {
       writeIdentifier(rawTable.alias ?? rawTable.tableExpression);
     } else {
       writeTable(column.table);
@@ -751,6 +769,9 @@ _SqlFragment _sqlFragment(
       prefix: prefix,
     ),
     final SqlValue<dynamic> value => _valueFragment(value, prefix: prefix),
+    final SqlQueryRelation relation => _compileSqlFragment((compiler) {
+      compiler.writeIdentifier(relation.name);
+    }),
     final SqlTable<dynamic, dynamic, dynamic> table => _compileSqlFragment((
       compiler,
     ) {
@@ -764,7 +785,8 @@ _SqlFragment _sqlFragment(
     final Object invalid => throw ArgumentError.value(
       invalid,
       'value',
-      'Expected String, SqlRawExpression, SqlColumn, or SqlTable.',
+      'Expected String, SqlRawExpression, SqlColumn, SqlQueryRelation, or '
+          'SqlTable.',
     ),
   };
 }
@@ -1032,11 +1054,17 @@ enum _SqlJoinType {
 }
 
 final class _SqlJoin {
-  const _SqlJoin({required this.type, required this.table, required this.on});
+  const _SqlJoin({
+    required this.type,
+    required this.table,
+    required this.on,
+    this.lateral = false,
+  });
 
   final _SqlJoinType type;
   final SqlTable<dynamic, dynamic, dynamic> table;
   final SqlPredicate on;
+  final bool lateral;
 }
 
 final class _SqlRawPredicate extends SqlPredicate {

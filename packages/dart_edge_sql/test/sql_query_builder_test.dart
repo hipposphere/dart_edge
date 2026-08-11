@@ -70,6 +70,72 @@ void main() {
   });
 
   test(
+    'compiles typed CTEs, derived tables, lateral joins, and DISTINCT ON',
+    () {
+      const userId = SqlQueryColumn<int>('user_id', databaseType: 'integer');
+      const email = SqlQueryColumn<String>('email');
+      const postTitle = SqlQueryColumn<String>('post_title');
+      final pg = const _NoopSqlExecutor(SqlDialect.postgres);
+
+      final selectedUsers = pg.typed
+          .from(UsersTable.table)
+          .where(UsersTable.email.equals('ada@example.com'))
+          .select([UsersTable.id, UsersTable.email])
+          .asCte(
+            'selected_users',
+            columns: const [userId, email],
+            materialization: SqlCteMaterialization.materialized,
+          );
+
+      final latestPost = pg.typed
+          .from(PostsTable.table)
+          .where(PostsTable.userId.equalsColumn(selectedUsers.column(userId)))
+          .distinctOn([PostsTable.userId])
+          .orderByColumn(PostsTable.userId)
+          .orderByColumn(PostsTable.id, descending: true)
+          .select([PostsTable.title])
+          .asDerivedTable('latest_post', columns: const [postTitle]);
+
+      final statement = pg.typed
+          .fromRelation(selectedUsers)
+          .withCte(selectedUsers)
+          .leftJoinLateral(latestPost, on: SqlPredicate.raw('TRUE'))
+          .where(selectedUsers.column(userId).greaterThan(0))
+          .select([selectedUsers.column(email), latestPost.column(postTitle)])
+          .toStatement();
+
+      expect(
+        statement.sql,
+        'WITH "selected_users" ("user_id", "email") AS MATERIALIZED '
+        '(SELECT "users"."id" AS "users__id", '
+        '"users"."email" AS "users__email" FROM "users" '
+        'WHERE "users"."email" = @p1) '
+        'SELECT "selected_users"."email" AS "selected_users__email", '
+        '"latest_post"."post_title" AS "latest_post__post_title" '
+        'FROM "selected_users" LEFT JOIN LATERAL '
+        '(SELECT DISTINCT ON ("posts"."user_id") '
+        '"posts"."title" AS "posts__title" FROM "posts" '
+        'WHERE "posts"."user_id" = "selected_users"."user_id" '
+        'ORDER BY "posts"."user_id" ASC, "posts"."id" DESC) '
+        'AS "latest_post" ("post_title") ON TRUE '
+        'WHERE "selected_users"."user_id" > @p2::int4',
+      );
+      expect(statement.namedParameters, {'p1': 'ada@example.com', 'p2': 0});
+    },
+  );
+
+  test('rejects PostgreSQL-only DISTINCT ON for SQLite', () {
+    expect(
+      () => pool.typed
+          .from(UsersTable.table)
+          .distinctOn([UsersTable.id])
+          .selectAll()
+          .toStatement(),
+      throwsUnsupportedError,
+    );
+  });
+
+  test(
     'inserts and updates with generated-style insert and update classes',
     () async {
       await _createSchema(pool);
