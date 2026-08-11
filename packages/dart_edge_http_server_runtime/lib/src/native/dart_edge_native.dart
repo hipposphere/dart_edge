@@ -416,6 +416,77 @@ abstract final class DartEdgeNative {
     }
   }
 
+  static NativeWebTransportStreamInfo? takeWebTransportStreamInfo(
+    int streamId,
+  ) {
+    final infoPtr = gen
+        .dart_edge_http_server_runtime_take_web_transport_stream_info(streamId);
+    if (infoPtr == nullptr) return null;
+    try {
+      return decodeNativeWebTransportStreamInfo(infoPtr);
+    } finally {
+      gen.dart_edge_http_server_runtime_free_web_transport_stream_info(infoPtr);
+    }
+  }
+
+  static NativeWebTransportStreamChunk? takeWebTransportStreamChunk(
+    int streamId,
+  ) {
+    final chunkPtr = gen
+        .dart_edge_http_server_runtime_take_web_transport_stream_chunk(
+          streamId,
+        );
+    if (chunkPtr == nullptr) return null;
+    try {
+      return decodeNativeWebTransportStreamChunk(
+        chunkPtr,
+        release: () =>
+            gen.dart_edge_http_server_runtime_free_web_transport_stream_chunk(
+              chunkPtr,
+            ),
+      );
+    } catch (_) {
+      gen.dart_edge_http_server_runtime_free_web_transport_stream_chunk(
+        chunkPtr,
+      );
+      rethrow;
+    }
+  }
+
+  static NativeWebTransportStreamTerminal? takeWebTransportStreamTerminal(
+    int streamId,
+  ) {
+    final terminalPtr = gen
+        .dart_edge_http_server_runtime_take_web_transport_stream_terminal(
+          streamId,
+        );
+    if (terminalPtr == nullptr) return null;
+    try {
+      return decodeNativeWebTransportStreamTerminal(terminalPtr);
+    } finally {
+      gen.dart_edge_http_server_runtime_free_web_transport_stream_terminal(
+        terminalPtr,
+      );
+    }
+  }
+
+  static NativeWebTransportOperation? takeWebTransportOperation(
+    int operationId,
+  ) {
+    final operationPtr = gen
+        .dart_edge_http_server_runtime_take_web_transport_operation(
+          operationId,
+        );
+    if (operationPtr == nullptr) return null;
+    try {
+      return decodeNativeWebTransportOperation(operationPtr);
+    } finally {
+      gen.dart_edge_http_server_runtime_free_web_transport_operation(
+        operationPtr,
+      );
+    }
+  }
+
   /// Sends a text frame over an active WebSocket session.
   static bool webSocketSendText(int sessionId, String text) {
     final textPtr = text.toNativeUtf8();
@@ -542,9 +613,61 @@ abstract final class DartEdgeNative {
     );
   }
 
-  static bool _withNativeBody(
+  static int webTransportOpenUnidirectionalStream(int sessionId) => gen
+      .dart_edge_http_server_runtime_web_transport_open_unidirectional_stream(
+        sessionId,
+      );
+
+  static int webTransportOpenBidirectionalStream(int sessionId) =>
+      gen.dart_edge_http_server_runtime_web_transport_open_bidirectional_stream(
+        sessionId,
+      );
+
+  static int webTransportStreamWrite(int streamId, List<int> body) =>
+      _withNativeBody(
+        body,
+        (nativeBytes) =>
+            gen.dart_edge_http_server_runtime_web_transport_stream_write(
+              streamId,
+              nativeBytes,
+            ),
+      );
+
+  static int webTransportStreamWriteNative(
+    int streamId, {
+    required Pointer<Uint8> bodyPtr,
+    required int bodyLength,
+  }) => _withBorrowedNativeBody(
+    bodyPtr: bodyPtr,
+    bodyLength: bodyLength,
+    run: (body) => gen.dart_edge_http_server_runtime_web_transport_stream_write(
+      streamId,
+      body,
+    ),
+  );
+
+  static int webTransportStreamFinish(int streamId) =>
+      gen.dart_edge_http_server_runtime_web_transport_stream_finish(streamId);
+
+  static int webTransportStreamReset(int streamId, int errorCode) {
+    RangeError.checkValueInInterval(errorCode, 0, 0xffffffff, 'errorCode');
+    return gen.dart_edge_http_server_runtime_web_transport_stream_reset(
+      streamId,
+      errorCode,
+    );
+  }
+
+  static int webTransportStreamStop(int streamId, int errorCode) {
+    RangeError.checkValueInInterval(errorCode, 0, 0xffffffff, 'errorCode');
+    return gen.dart_edge_http_server_runtime_web_transport_stream_stop(
+      streamId,
+      errorCode,
+    );
+  }
+
+  static T _withNativeBody<T>(
     List<int> body,
-    bool Function(core_ffi.NativeBytes body) run,
+    T Function(core_ffi.NativeBytes body) run,
   ) {
     final bytes = Uint8List.fromList(body);
     final bodyPtr = calloc<Uint8>(bytes.length);
@@ -561,10 +684,10 @@ abstract final class DartEdgeNative {
     }
   }
 
-  static bool _withBorrowedNativeBody({
+  static T _withBorrowedNativeBody<T>({
     required Pointer<Uint8> bodyPtr,
     required int bodyLength,
-    required bool Function(core_ffi.NativeBytes body) run,
+    required T Function(core_ffi.NativeBytes body) run,
   }) {
     RangeError.checkNotNegative(bodyLength, 'bodyLength');
     if (bodyLength > 0 && bodyPtr == nullptr) {

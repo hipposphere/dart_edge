@@ -89,6 +89,58 @@ void main() {
     expect(datagramLease.closeCount, 1);
     expect(streamLease.closeCount, 1);
   });
+
+  test('persistent WebTransport stream exposes incremental leases', () async {
+    final first = _TrackingBinaryPayloadLease([1, 2]);
+    final second = _TrackingBinaryPayloadLease([3, 4]);
+    var stoppedWith = -1;
+    final stream = WebTransportReceiveStream(
+      id: 7,
+      protocolId: 12,
+      leases: Stream.fromIterable([first, second]),
+      stop: ([errorCode = 0]) async => stoppedWith = errorCode,
+    );
+
+    expect(stream.id, 7);
+    expect(stream.protocolId, 12);
+    expect(await stream.chunks().toList(), [
+      [1, 2],
+      [3, 4],
+    ]);
+    expect(first.closeCount, 1);
+    expect(second.closeCount, 1);
+    await stream.stop(19);
+    expect(stoppedWith, 19);
+  });
+
+  test('persistent WebTransport send stream forwards its lifecycle', () async {
+    final calls = <Object>[];
+    final lease = _TrackingBinaryPayloadLease([5, 6]);
+    final stream = WebTransportSendStream(
+      id: 8,
+      protocolId: 16,
+      write: (value) async => calls.add(List<int>.from(value)),
+      writeLease: (value) async {
+        calls.add(value.copyBytes());
+        value.close();
+      },
+      finish: () async => calls.add('finish'),
+      reset: ([errorCode = 0]) async => calls.add(errorCode),
+    );
+
+    await stream.write([1, 2]);
+    await stream.writeLease(lease);
+    await stream.finish();
+    await stream.reset(23);
+
+    expect(calls, [
+      [1, 2],
+      [5, 6],
+      'finish',
+      23,
+    ]);
+    expect(lease.closeCount, 1);
+  });
 }
 
 final class _TrackingBinaryPayloadLease implements BinaryPayloadLease {

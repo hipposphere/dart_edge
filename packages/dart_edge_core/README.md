@@ -21,6 +21,8 @@ same contract model.
   request and response metadata
 - `WebSocketOptions`, `WebSocketContext`, `WebSocketMessage`, and related route
   definitions for text, JSON, and binary WebSocket routes
+- `WebTransportContext` plus persistent unidirectional and bidirectional stream
+  contracts with incremental binary payload leases
 
 ## Quick Start
 

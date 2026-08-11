@@ -8,6 +8,7 @@ import 'package:json_schema/json_schema.dart';
 
 import '../native/dart_edge_native.dart';
 import '../native/native_transport_web_socket.dart';
+import '../native/native_transport_web_transport.dart';
 import 'compiled_route.dart';
 import 'compiled_route_table.dart';
 import 'dart_edge_codec.dart';
@@ -29,6 +30,10 @@ const _transportEventWebTransportOpened = 5;
 const _transportEventWebTransportDatagramReady = 6;
 const _transportEventWebTransportClosed = 7;
 const _transportEventWebTransportStreamReady = 8;
+const _transportEventWebTransportPersistentStreamOpened = 9;
+const _transportEventWebTransportStreamChunkReady = 10;
+const _transportEventWebTransportStreamFinished = 11;
+const _transportEventWebTransportOperationReady = 12;
 
 /// Main application object for a Dart Edge server.
 ///
@@ -71,6 +76,11 @@ class DartEdge<TServices> extends Router<TServices> {
       <int, RequestContext<TServices>>{};
   final Map<int, _ActiveWebTransportSession> _activeWebTransportSessions =
       <int, _ActiveWebTransportSession>{};
+  final Map<int, Completer<NativeWebTransportOperation>>
+  _pendingWebTransportOperations =
+      <int, Completer<NativeWebTransportOperation>>{};
+  final Map<int, NativeWebTransportOperation> _earlyWebTransportOperations =
+      <int, NativeWebTransportOperation>{};
 
   /// Installed JSON Schema registry used for validation and manifests.
   JsonSchemaRegistry? get schemaRegistry => _schemaRegistry;
@@ -167,10 +177,16 @@ class DartEdge<TServices> extends Router<TServices> {
         _activeWebSocketSessions.clear();
         _pendingWebTransportContexts.clear();
         for (final session in _activeWebTransportSessions.values.toList()) {
-          unawaited(session.datagrams.close());
-          unawaited(session.streams.close());
+          unawaited(session.close());
         }
         _activeWebTransportSessions.clear();
+        for (final completer in _pendingWebTransportOperations.values) {
+          completer.completeError(
+            StateError('WebTransport server closed during native operation.'),
+          );
+        }
+        _pendingWebTransportOperations.clear();
+        _earlyWebTransportOperations.clear();
       },
     );
   }
@@ -204,6 +220,18 @@ class DartEdge<TServices> extends Router<TServices> {
         return;
       case _transportEventWebTransportStreamReady:
         _drainWebTransportStreams(eventId);
+        return;
+      case _transportEventWebTransportPersistentStreamOpened:
+        _handleWebTransportPersistentStreamOpened(eventId);
+        return;
+      case _transportEventWebTransportStreamChunkReady:
+        _drainWebTransportStreamChunks(eventId);
+        return;
+      case _transportEventWebTransportStreamFinished:
+        await _handleWebTransportStreamFinished(eventId);
+        return;
+      case _transportEventWebTransportOperationReady:
+        _handleWebTransportOperationReady(eventId);
         return;
     }
   }
@@ -608,8 +636,11 @@ class DartEdge<TServices> extends Router<TServices> {
         );
 
     final activeSession = _ActiveWebTransportSession(
+      sessionId,
       StreamController<BinaryPayloadLease>(),
       StreamController<BinaryPayloadLease>(),
+      StreamController<WebTransportReceiveStream>(),
+      StreamController<WebTransportBidirectionalStream>(),
     );
     _activeWebTransportSessions[sessionId] = activeSession;
 
@@ -619,12 +650,20 @@ class DartEdge<TServices> extends Router<TServices> {
         activeSession.datagrams.stream,
       ),
       streams: IncomingWebTransportStreams.leased(activeSession.streams.stream),
+      incomingStreams: IncomingWebTransportReceiveStreams(
+        unidirectional: activeSession.unidirectional.stream,
+        bidirectional: activeSession.bidirectional.stream,
+      ),
       sendDatagram: (value) => _sendWebTransportDatagram(sessionId, value),
       sendDatagramLease: (lease) =>
           _sendWebTransportDatagramLease(sessionId, lease),
       sendStream: (value) => _sendWebTransportStream(sessionId, value),
       sendStreamLease: (lease) =>
           _sendWebTransportStreamLease(sessionId, lease),
+      openUnidirectionalStream: () =>
+          _openWebTransportUnidirectionalStream(activeSession),
+      openBidirectionalStream: () =>
+          _openWebTransportBidirectionalStream(activeSession),
       close: ([code, reason]) async {
         DartEdgeNative.webTransportClose(sessionId, code: code, reason: reason);
       },
@@ -641,8 +680,7 @@ class DartEdge<TServices> extends Router<TServices> {
             })
             .whenComplete(() async {
               final session = _activeWebTransportSessions.remove(sessionId);
-              await session?.datagrams.close();
-              await session?.streams.close();
+              await session?.close();
               session?.closeLeases();
               DartEdgeNative.webTransportClose(sessionId);
             });
@@ -671,6 +709,13 @@ class DartEdge<TServices> extends Router<TServices> {
     final session = _activeWebTransportSessions[sessionId];
     await session?.datagrams.close();
     await session?.streams.close();
+    await session?.unidirectional.close();
+    await session?.bidirectional.close();
+    if (session != null) {
+      for (final stream in session.persistentStreams.values) {
+        await stream.chunks.close();
+      }
+    }
   }
 
   void _drainWebTransportStreams(int sessionId) {
@@ -687,6 +732,210 @@ class DartEdge<TServices> extends Router<TServices> {
       session.track(stream.bodyLease);
       session.streams.add(stream.bodyLease);
     }
+  }
+
+  void _handleWebTransportPersistentStreamOpened(int streamId) {
+    final info = DartEdgeNative.takeWebTransportStreamInfo(streamId);
+    if (info == null) return;
+    final session = _activeWebTransportSessions[info.sessionId];
+    if (session == null) return;
+    final stream = _registerWebTransportPersistentStream(session, info);
+    switch (info.kind) {
+      case 1:
+        session.unidirectional.add(stream.receive);
+      case 2:
+        session.bidirectional.add(
+          WebTransportBidirectionalStream(
+            receive: stream.receive,
+            send: stream.send,
+          ),
+        );
+      default:
+        unawaited(stream.chunks.close());
+        return;
+    }
+    _drainWebTransportStreamChunks(streamId);
+  }
+
+  void _drainWebTransportStreamChunks(int streamId) {
+    final stream = _activeWebTransportStream(streamId);
+    if (stream == null || stream.chunks.isClosed) return;
+    while (true) {
+      final chunk = DartEdgeNative.takeWebTransportStreamChunk(streamId);
+      if (chunk == null) return;
+      stream.session.track(chunk.bodyLease);
+      stream.chunks.add(chunk.bodyLease);
+    }
+  }
+
+  Future<void> _handleWebTransportStreamFinished(int streamId) async {
+    final stream = _activeWebTransportStream(streamId);
+    final terminal = DartEdgeNative.takeWebTransportStreamTerminal(streamId);
+    if (stream == null || terminal == null) return;
+    _drainWebTransportStreamChunks(streamId);
+    if (terminal.error.isNotEmpty &&
+        terminal.error != 'receive stopped locally') {
+      stream.chunks.addError(
+        StateError('WebTransport stream $streamId ended: ${terminal.error}'),
+      );
+    }
+    await stream.chunks.close();
+  }
+
+  void _handleWebTransportOperationReady(int operationId) {
+    final operation = DartEdgeNative.takeWebTransportOperation(operationId);
+    if (operation == null) return;
+    final completer = _pendingWebTransportOperations.remove(operationId);
+    if (completer != null) {
+      completer.complete(operation);
+    } else {
+      _earlyWebTransportOperations[operationId] = operation;
+    }
+  }
+
+  Future<NativeWebTransportOperation> _waitForWebTransportOperation(
+    int operationId,
+    String action,
+  ) async {
+    if (operationId == 0) {
+      throw StateError('Failed to submit WebTransport $action.');
+    }
+    final early = _earlyWebTransportOperations.remove(operationId);
+    final operation =
+        early ??
+        await (_pendingWebTransportOperations[operationId] =
+                Completer<NativeWebTransportOperation>())
+            .future;
+    if (!operation.succeeded) {
+      throw StateError(
+        'WebTransport $action failed${operation.error.isEmpty ? '.' : ': ${operation.error}'}',
+      );
+    }
+    return operation;
+  }
+
+  Future<WebTransportSendStream> _openWebTransportUnidirectionalStream(
+    _ActiveWebTransportSession session,
+  ) async {
+    final operation = await _waitForWebTransportOperation(
+      DartEdgeNative.webTransportOpenUnidirectionalStream(session.sessionId),
+      'unidirectional stream open',
+    );
+    final stream = _registerWebTransportPersistentStreamFromOperation(
+      session,
+      operation,
+    );
+    return stream.send;
+  }
+
+  Future<WebTransportBidirectionalStream> _openWebTransportBidirectionalStream(
+    _ActiveWebTransportSession session,
+  ) async {
+    final operation = await _waitForWebTransportOperation(
+      DartEdgeNative.webTransportOpenBidirectionalStream(session.sessionId),
+      'bidirectional stream open',
+    );
+    final stream = _registerWebTransportPersistentStreamFromOperation(
+      session,
+      operation,
+    );
+    _drainWebTransportStreamChunks(stream.id);
+    return WebTransportBidirectionalStream(
+      receive: stream.receive,
+      send: stream.send,
+    );
+  }
+
+  _ActiveWebTransportStream _registerWebTransportPersistentStreamFromOperation(
+    _ActiveWebTransportSession session,
+    NativeWebTransportOperation operation,
+  ) => _registerWebTransportPersistentStream(
+    session,
+    NativeWebTransportStreamInfo(
+      sessionId: operation.sessionId,
+      streamId: operation.streamId,
+      protocolId: operation.protocolId,
+      kind: operation.kind == 1 ? 3 : 4,
+    ),
+  );
+
+  _ActiveWebTransportStream _registerWebTransportPersistentStream(
+    _ActiveWebTransportSession session,
+    NativeWebTransportStreamInfo info,
+  ) {
+    final existing = session.persistentStreams[info.streamId];
+    if (existing != null) return existing;
+    late final _ActiveWebTransportStream stream;
+    final chunks = StreamController<BinaryPayloadLease>();
+    final receive = WebTransportReceiveStream(
+      id: info.streamId,
+      protocolId: info.protocolId,
+      leases: chunks.stream,
+      stop: ([errorCode = 0]) async {
+        await _waitForWebTransportOperation(
+          DartEdgeNative.webTransportStreamStop(info.streamId, errorCode),
+          'stream stop',
+        );
+      },
+    );
+    final send = WebTransportSendStream(
+      id: info.streamId,
+      protocolId: info.protocolId,
+      write: (value) => stream.enqueueSend(() async {
+        await _waitForWebTransportOperation(
+          DartEdgeNative.webTransportStreamWrite(info.streamId, value),
+          'stream write',
+        );
+      }),
+      writeLease: (lease) => stream.enqueueSend(() async {
+        try {
+          final operationId = switch (lease) {
+            NativeBinaryPayloadLease() =>
+              DartEdgeNative.webTransportStreamWriteNative(
+                info.streamId,
+                bodyPtr: lease.bytesPtr,
+                bodyLength: lease.length,
+              ),
+            _ => DartEdgeNative.webTransportStreamWrite(
+              info.streamId,
+              lease.bytesView,
+            ),
+          };
+          await _waitForWebTransportOperation(operationId, 'stream write');
+        } finally {
+          lease.close();
+        }
+      }),
+      finish: () => stream.enqueueSend(() async {
+        await _waitForWebTransportOperation(
+          DartEdgeNative.webTransportStreamFinish(info.streamId),
+          'stream finish',
+        );
+      }),
+      reset: ([errorCode = 0]) => stream.enqueueSend(() async {
+        await _waitForWebTransportOperation(
+          DartEdgeNative.webTransportStreamReset(info.streamId, errorCode),
+          'stream reset',
+        );
+      }),
+    );
+    stream = _ActiveWebTransportStream(
+      id: info.streamId,
+      session: session,
+      chunks: chunks,
+      receive: receive,
+      send: send,
+    );
+    session.persistentStreams[info.streamId] = stream;
+    return stream;
+  }
+
+  _ActiveWebTransportStream? _activeWebTransportStream(int streamId) {
+    for (final session in _activeWebTransportSessions.values) {
+      final stream = session.persistentStreams[streamId];
+      if (stream != null) return stream;
+    }
+    return null;
   }
 
   SseResponse? _resolveSseResponse(Object? body, ResponseBuilder response) {
@@ -1096,10 +1345,21 @@ final class _ActiveWebSocketSession {
 }
 
 final class _ActiveWebTransportSession {
-  _ActiveWebTransportSession(this.datagrams, this.streams);
+  _ActiveWebTransportSession(
+    this.sessionId,
+    this.datagrams,
+    this.streams,
+    this.unidirectional,
+    this.bidirectional,
+  );
 
+  final int sessionId;
   final StreamController<BinaryPayloadLease> datagrams;
   final StreamController<BinaryPayloadLease> streams;
+  final StreamController<WebTransportReceiveStream> unidirectional;
+  final StreamController<WebTransportBidirectionalStream> bidirectional;
+  final Map<int, _ActiveWebTransportStream> persistentStreams =
+      <int, _ActiveWebTransportStream>{};
   final Set<BinaryPayloadLease> _leases = <BinaryPayloadLease>{};
   Future<void>? task;
 
@@ -1113,5 +1373,55 @@ final class _ActiveWebTransportSession {
       lease.close();
     }
     _leases.clear();
+  }
+
+  Future<void> close() async {
+    await datagrams.close();
+    await streams.close();
+    await unidirectional.close();
+    await bidirectional.close();
+    for (final stream in persistentStreams.values) {
+      if (!stream.chunks.isClosed) await stream.chunks.close();
+    }
+  }
+}
+
+final class _ActiveWebTransportStream {
+  _ActiveWebTransportStream({
+    required this.id,
+    required this.session,
+    required this.chunks,
+    required this.receive,
+    required this.send,
+  });
+
+  final int id;
+  final _ActiveWebTransportSession session;
+  final StreamController<BinaryPayloadLease> chunks;
+  final WebTransportReceiveStream receive;
+  final WebTransportSendStream send;
+  Future<void> _sendTail = Future<void>.value();
+
+  Future<void> enqueueSend(Future<void> Function() action) {
+    final completer = Completer<void>();
+    _sendTail = _sendTail.then(
+      (_) async {
+        try {
+          await action();
+          completer.complete();
+        } catch (error, stackTrace) {
+          completer.completeError(error, stackTrace);
+        }
+      },
+      onError: (_) async {
+        try {
+          await action();
+          completer.complete();
+        } catch (error, stackTrace) {
+          completer.completeError(error, stackTrace);
+        }
+      },
+    );
+    return completer.future;
   }
 }

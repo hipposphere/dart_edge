@@ -165,6 +165,42 @@ WebSocket frames through `messages.frames()`. Use `sendBinaryLease`,
 `sendDatagramLease`, or `sendStreamLease` to send a native lease without a Dart
 payload copy; normal text, JSON, and byte-list send methods remain available.
 
+## Persistent WebTransport streams
+
+Use the persistent stream API when one logical upload spans many chunks. It
+emits peer-initiated streams when they open and exposes each received chunk as
+a native lease instead of waiting for FIN and allocating one Dart `Uint8List`:
+
+```dart
+await for (final audio in transport.incomingStreams.unidirectional) {
+  await for (final chunk in audio.leases()) {
+    try {
+      final native = chunk as NativeBinaryPayloadLease;
+      waveform.addNativePcm16(
+        pcm16LeBytesPtr: native.bytesPtr,
+        byteLength: native.length,
+      );
+    } finally {
+      chunk.close();
+    }
+  }
+}
+```
+
+Servers can open a reliable sending stream with
+`openUnidirectionalStream()` or a two-way control stream with
+`openBidirectionalStream()`. `write()` completes after the native QUIC writer
+has accepted every byte under congestion and flow control; `finish()` sends
+FIN and waits for acknowledgment. `writeLease()` consumes a payload and can
+borrow a native lease pointer without a Dart payload allocation. `reset()` and
+receive-side `stop()` provide immediate cancellation with an application error
+code. Runtime stream IDs and QUIC protocol stream IDs are both exposed.
+
+The older `transport.streams.streams()` and `.leases()` APIs remain compatible
+and still emit one completed unidirectional-stream payload. They are intended
+for message-style traffic; allocation-sensitive streaming handlers should use
+`incomingStreams`.
+
 See [example/native_probe.dart](example/native_probe.dart) for the native asset
 probe and [../dart_edge_http_server/example/simple_http_server.dart](../dart_edge_http_server/example/simple_http_server.dart)
 for a larger application example that uses this runtime surface.

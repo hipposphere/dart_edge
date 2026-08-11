@@ -1,5 +1,7 @@
 ## Unreleased
 
+- Add transport-agnostic contracts for persistent WebTransport
+  unidirectional and bidirectional streams.
 - Add `BinaryPayloadLease` for single-owner binary transport payloads.
 - Add lazy-copy and leased receive/send APIs for WebSocket binary frames and
   WebTransport datagrams and reliable stream payloads.

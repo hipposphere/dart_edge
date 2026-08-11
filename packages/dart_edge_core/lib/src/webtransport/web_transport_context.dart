@@ -5,13 +5,19 @@ import '../context/request_input.dart';
 import '../context/request_telemetry.dart';
 import '../transport/binary_payload_lease.dart';
 import 'incoming_web_transport_datagrams.dart';
+import 'incoming_web_transport_receive_streams.dart';
 import 'incoming_web_transport_streams.dart';
+import 'web_transport_stream.dart';
 
 typedef WebTransportDatagramSender = Future<void> Function(List<int> value);
 typedef WebTransportStreamSender = Future<void> Function(List<int> value);
 typedef WebTransportLeaseSender =
     Future<void> Function(BinaryPayloadLease lease);
 typedef WebTransportCloser = Future<void> Function([int? code, String? reason]);
+typedef WebTransportUnidirectionalStreamOpener =
+    Future<WebTransportSendStream> Function();
+typedef WebTransportBidirectionalStreamOpener =
+    Future<WebTransportBidirectionalStream> Function();
 
 /// Context passed to a WebTransport route when a client connects.
 final class WebTransportContext<TServices> {
@@ -20,11 +26,14 @@ final class WebTransportContext<TServices> {
     this.req = RequestInput.empty,
     this.datagrams = const IncomingWebTransportDatagrams(),
     this.streams = const IncomingWebTransportStreams(),
+    this.incomingStreams = const IncomingWebTransportReceiveStreams(),
     this.telemetry = const RequestTelemetry(),
     this._sendDatagram,
     this._sendDatagramLease,
     this._sendStream,
     this._sendStreamLease,
+    this._openUnidirectionalStream,
+    this._openBidirectionalStream,
     this._close,
   }) : _requestContext = RequestContext<TServices>(
          services: services,
@@ -36,10 +45,13 @@ final class WebTransportContext<TServices> {
     required RequestContext<TServices> request,
     this.datagrams = const IncomingWebTransportDatagrams(),
     this.streams = const IncomingWebTransportStreams(),
+    this.incomingStreams = const IncomingWebTransportReceiveStreams(),
     this._sendDatagram,
     this._sendDatagramLease,
     this._sendStream,
     this._sendStreamLease,
+    this._openUnidirectionalStream,
+    this._openBidirectionalStream,
     this._close,
   }) : services = request.services,
        req = request.req,
@@ -58,6 +70,9 @@ final class WebTransportContext<TServices> {
   /// Incoming reliable stream payloads.
   final IncomingWebTransportStreams streams;
 
+  /// Peer-initiated long-lived unidirectional and bidirectional streams.
+  final IncomingWebTransportReceiveStreams incomingStreams;
+
   /// Telemetry hook associated with the session lifecycle.
   final RequestTelemetry telemetry;
 
@@ -66,6 +81,8 @@ final class WebTransportContext<TServices> {
   final WebTransportLeaseSender? _sendDatagramLease;
   final WebTransportStreamSender? _sendStream;
   final WebTransportLeaseSender? _sendStreamLease;
+  final WebTransportUnidirectionalStreamOpener? _openUnidirectionalStream;
+  final WebTransportBidirectionalStreamOpener? _openBidirectionalStream;
   final WebTransportCloser? _close;
 
   /// Shared request-scoped context used during guard evaluation.
@@ -126,6 +143,31 @@ final class WebTransportContext<TServices> {
     } finally {
       lease.close();
     }
+  }
+
+  /// Opens one persistent, reliable unidirectional sending stream.
+  Future<WebTransportSendStream> openUnidirectionalStream() {
+    final open = _openUnidirectionalStream;
+    if (open == null) {
+      throw UnsupportedError(
+        'Persistent WebTransport streams are unavailable.',
+      );
+    }
+    return open();
+  }
+
+  /// Alias for [openUnidirectionalStream].
+  Future<WebTransportSendStream> openSendStream() => openUnidirectionalStream();
+
+  /// Opens one persistent, reliable bidirectional stream.
+  Future<WebTransportBidirectionalStream> openBidirectionalStream() {
+    final open = _openBidirectionalStream;
+    if (open == null) {
+      throw UnsupportedError(
+        'Bidirectional WebTransport streams are unavailable.',
+      );
+    }
+    return open();
   }
 
   /// Closes the WebTransport session.

@@ -1,5 +1,9 @@
 ## Unreleased
 
+- Add long-lived unidirectional and bidirectional WebTransport stream handles
+  with incremental native-leased receive chunks, flow-controlled writes,
+  graceful FIN, reset, stop, stream IDs, and terminal errors.
+- Bump the native artifact version to 0.1.19 for the persistent stream ABI.
 - Retain native WebSocket and WebTransport message handles as binary payload
   leases instead of eagerly copying their bodies into Dart-managed memory.
 - Add borrowed-pointer sends for leased WebSocket binary frames, WebTransport

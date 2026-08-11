@@ -44,6 +44,62 @@ final class NativeWebTransportStream {
   final NativeBinaryPayloadLease bodyLease;
 }
 
+final class NativeWebTransportStreamInfo {
+  const NativeWebTransportStreamInfo({
+    required this.sessionId,
+    required this.streamId,
+    required this.protocolId,
+    required this.kind,
+  });
+
+  final int sessionId;
+  final int streamId;
+  final int protocolId;
+  final int kind;
+}
+
+final class NativeWebTransportStreamChunk {
+  const NativeWebTransportStreamChunk({
+    required this.streamId,
+    required this.bodyLease,
+  });
+
+  final int streamId;
+  final NativeBinaryPayloadLease bodyLease;
+}
+
+final class NativeWebTransportStreamTerminal {
+  const NativeWebTransportStreamTerminal({
+    required this.streamId,
+    required this.errorCode,
+    required this.error,
+  });
+
+  final int streamId;
+  final int? errorCode;
+  final String error;
+}
+
+final class NativeWebTransportOperation {
+  const NativeWebTransportOperation({
+    required this.operationId,
+    required this.sessionId,
+    required this.streamId,
+    required this.protocolId,
+    required this.kind,
+    required this.succeeded,
+    required this.error,
+  });
+
+  final int operationId;
+  final int sessionId;
+  final int streamId;
+  final int protocolId;
+  final int kind;
+  final bool succeeded;
+  final String error;
+}
+
 NativeWebTransportConnection decodeNativeWebTransportConnection(
   Pointer<gen.NativeWebTransportConnection> connectionPtr,
 ) {
@@ -88,6 +144,59 @@ NativeWebTransportStream decodeNativeWebTransportStream(
       length: stream.body.len,
       release: release,
     ),
+  );
+}
+
+NativeWebTransportStreamInfo decodeNativeWebTransportStreamInfo(
+  Pointer<gen.NativeWebTransportStreamInfo> infoPtr,
+) {
+  final info = infoPtr.ref;
+  return NativeWebTransportStreamInfo(
+    sessionId: info.session_id,
+    streamId: info.stream_id,
+    protocolId: info.protocol_id,
+    kind: info.kind,
+  );
+}
+
+NativeWebTransportStreamChunk decodeNativeWebTransportStreamChunk(
+  Pointer<gen.NativeWebTransportStreamChunk> chunkPtr, {
+  required void Function() release,
+}) {
+  final chunk = chunkPtr.ref;
+  return NativeWebTransportStreamChunk(
+    streamId: chunk.stream_id,
+    bodyLease: NativeBinaryPayloadLease.fromPointer(
+      bytesPtr: chunk.body.ptr,
+      length: chunk.body.len,
+      release: release,
+    ),
+  );
+}
+
+NativeWebTransportStreamTerminal decodeNativeWebTransportStreamTerminal(
+  Pointer<gen.NativeWebTransportStreamTerminal> terminalPtr,
+) {
+  final terminal = terminalPtr.ref;
+  return NativeWebTransportStreamTerminal(
+    streamId: terminal.stream_id,
+    errorCode: terminal.error_code < 0 ? null : terminal.error_code,
+    error: core_ffi.decodeNativeUtf8(terminal.error),
+  );
+}
+
+NativeWebTransportOperation decodeNativeWebTransportOperation(
+  Pointer<gen.NativeWebTransportOperation> operationPtr,
+) {
+  final operation = operationPtr.ref;
+  return NativeWebTransportOperation(
+    operationId: operation.operation_id,
+    sessionId: operation.session_id,
+    streamId: operation.stream_id,
+    protocolId: operation.protocol_id,
+    kind: operation.kind,
+    succeeded: operation.succeeded,
+    error: core_ffi.decodeNativeUtf8(operation.error),
   );
 }
 

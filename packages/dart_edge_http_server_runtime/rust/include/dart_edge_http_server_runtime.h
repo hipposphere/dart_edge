@@ -65,6 +65,34 @@ typedef struct NativeWebTransportStream {
   NativeBytes body;
 } NativeWebTransportStream;
 
+typedef struct NativeWebTransportStreamInfo {
+  int64_t session_id;
+  int64_t stream_id;
+  int64_t protocol_id;
+  uint8_t kind;
+} NativeWebTransportStreamInfo;
+
+typedef struct NativeWebTransportStreamChunk {
+  int64_t stream_id;
+  NativeBytes body;
+} NativeWebTransportStreamChunk;
+
+typedef struct NativeWebTransportStreamTerminal {
+  int64_t stream_id;
+  int64_t error_code;
+  NativeBytes error;
+} NativeWebTransportStreamTerminal;
+
+typedef struct NativeWebTransportOperation {
+  int64_t operation_id;
+  int64_t session_id;
+  int64_t stream_id;
+  int64_t protocol_id;
+  uint8_t kind;
+  bool succeeded;
+  NativeBytes error;
+} NativeWebTransportOperation;
+
 typedef struct NativeMultipartField {
   NativeBytes name;
   NativeBytes value;
@@ -183,6 +211,51 @@ NativeWebTransportStream* dart_edge_http_server_runtime_take_web_transport_strea
 
 void dart_edge_http_server_runtime_free_web_transport_stream(
     NativeWebTransportStream* value);
+
+NativeWebTransportStreamInfo* dart_edge_http_server_runtime_take_web_transport_stream_info(
+    int64_t stream_id);
+
+void dart_edge_http_server_runtime_free_web_transport_stream_info(
+    NativeWebTransportStreamInfo* value);
+
+NativeWebTransportStreamChunk* dart_edge_http_server_runtime_take_web_transport_stream_chunk(
+    int64_t stream_id);
+
+void dart_edge_http_server_runtime_free_web_transport_stream_chunk(
+    NativeWebTransportStreamChunk* value);
+
+NativeWebTransportStreamTerminal* dart_edge_http_server_runtime_take_web_transport_stream_terminal(
+    int64_t stream_id);
+
+void dart_edge_http_server_runtime_free_web_transport_stream_terminal(
+    NativeWebTransportStreamTerminal* value);
+
+NativeWebTransportOperation* dart_edge_http_server_runtime_take_web_transport_operation(
+    int64_t operation_id);
+
+void dart_edge_http_server_runtime_free_web_transport_operation(
+    NativeWebTransportOperation* value);
+
+int64_t dart_edge_http_server_runtime_web_transport_open_unidirectional_stream(
+    int64_t session_id);
+
+int64_t dart_edge_http_server_runtime_web_transport_open_bidirectional_stream(
+    int64_t session_id);
+
+int64_t dart_edge_http_server_runtime_web_transport_stream_write(
+    int64_t stream_id,
+    NativeBytes body);
+
+int64_t dart_edge_http_server_runtime_web_transport_stream_finish(
+    int64_t stream_id);
+
+int64_t dart_edge_http_server_runtime_web_transport_stream_reset(
+    int64_t stream_id,
+    uint32_t error_code);
+
+int64_t dart_edge_http_server_runtime_web_transport_stream_stop(
+    int64_t stream_id,
+    uint32_t error_code);
 
 bool dart_edge_http_server_runtime_web_transport_send_datagram(
     int64_t session_id,

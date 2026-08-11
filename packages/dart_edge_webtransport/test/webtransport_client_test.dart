@@ -81,9 +81,19 @@ void main() {
         '/streams',
         options: const WebTransportOptions(operationId: 'connectStreams'),
         onConnect: (transport) async {
-          await transport.sendStream(Uint8List.fromList([9]));
-          await for (final stream in transport.streams.streams()) {
-            await transport.sendStream(stream);
+          final connected = await transport.openUnidirectionalStream();
+          await connected.write(Uint8List.fromList([9]));
+          await connected.finish();
+          await for (final stream in transport.incomingStreams.unidirectional) {
+            final bytes = <int>[];
+            await for (final lease in stream.leases()) {
+              try {
+                bytes.addAll(lease.bytesView);
+              } finally {
+                lease.close();
+              }
+            }
+            await transport.sendStream(bytes);
           }
         },
       );

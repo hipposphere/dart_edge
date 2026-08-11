@@ -38,7 +38,7 @@ use wtransport::{
     ServerConfig as WebTransportServerConfig, VarInt,
 };
 
-const DART_EDGE_HTTP_SERVER_RUNTIME_NATIVE_ABI_VERSION: i32 = 15;
+const DART_EDGE_HTTP_SERVER_RUNTIME_NATIVE_ABI_VERSION: i32 = 16;
 const SCHEMA_REGISTRY_URI: &str = "urn:dart-edge:schema-registry";
 
 type TransportEventCallback = extern "C" fn(i32, i64);
@@ -47,12 +47,20 @@ static NEXT_REQUEST_ID: AtomicI64 = AtomicI64::new(1);
 static NEXT_SERVER_ID: AtomicI64 = AtomicI64::new(1);
 static NEXT_WEB_SOCKET_SESSION_ID: AtomicI64 = AtomicI64::new(1);
 static NEXT_WEB_TRANSPORT_SESSION_ID: AtomicI64 = AtomicI64::new(1);
+static NEXT_WEB_TRANSPORT_STREAM_HANDLE_ID: AtomicI64 = AtomicI64::new(1);
+static NEXT_WEB_TRANSPORT_OPERATION_ID: AtomicI64 = AtomicI64::new(1);
 static LAST_ERROR: Lazy<Mutex<Option<String>>> = Lazy::new(|| Mutex::new(None));
 static PENDING_REQUESTS: Lazy<Mutex<HashMap<i64, PendingRequest>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
 static WEB_SOCKET_SESSIONS: Lazy<Mutex<HashMap<i64, WebSocketSessionState>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
 static WEB_TRANSPORT_SESSIONS: Lazy<Mutex<HashMap<i64, WebTransportSessionState>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
+static WEB_TRANSPORT_STREAMS: Lazy<Mutex<HashMap<i64, WebTransportStreamState>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
+static WEB_TRANSPORT_OPENED_STREAMS: Lazy<Mutex<HashMap<i64, WebTransportStreamInfo>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
+static WEB_TRANSPORT_OPERATIONS: Lazy<Mutex<HashMap<i64, WebTransportOperationResult>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
 static SERVER_STATES: Lazy<Mutex<HashMap<i64, ServerState>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
@@ -158,6 +166,38 @@ pub struct NativeWebTransportStream {
 }
 
 #[repr(C)]
+pub struct NativeWebTransportStreamInfo {
+    session_id: i64,
+    stream_id: i64,
+    protocol_id: i64,
+    kind: u8,
+}
+
+#[repr(C)]
+pub struct NativeWebTransportStreamChunk {
+    stream_id: i64,
+    body: NativeBytes,
+}
+
+#[repr(C)]
+pub struct NativeWebTransportStreamTerminal {
+    stream_id: i64,
+    error_code: i64,
+    error: NativeBytes,
+}
+
+#[repr(C)]
+pub struct NativeWebTransportOperation {
+    operation_id: i64,
+    session_id: i64,
+    stream_id: i64,
+    protocol_id: i64,
+    kind: u8,
+    succeeded: bool,
+    error: NativeBytes,
+}
+
+#[repr(C)]
 struct NativeTransportRequestHandle {
     request: NativeTransportRequest,
     route_id: OwnedBytes,
@@ -219,6 +259,24 @@ struct NativeWebTransportDatagramHandle {
 struct NativeWebTransportStreamHandle {
     stream: NativeWebTransportStream,
     body: OwnedBytes,
+}
+
+#[repr(C)]
+struct NativeWebTransportStreamChunkHandle {
+    chunk: NativeWebTransportStreamChunk,
+    body: OwnedBytes,
+}
+
+#[repr(C)]
+struct NativeWebTransportStreamTerminalHandle {
+    terminal: NativeWebTransportStreamTerminal,
+    error: OwnedBytes,
+}
+
+#[repr(C)]
+struct NativeWebTransportOperationHandle {
+    operation: NativeWebTransportOperation,
+    error: OwnedBytes,
 }
 
 #[repr(u8)]
@@ -461,6 +519,65 @@ struct WebTransportIncomingStream {
 }
 
 #[derive(Clone, Copy)]
+struct WebTransportStreamInfo {
+    session_id: i64,
+    stream_id: i64,
+    protocol_id: i64,
+    kind: WebTransportStreamKind,
+}
+
+struct WebTransportStreamState {
+    info: WebTransportStreamInfo,
+    runtime_state: ServerRuntimeState,
+    chunks: VecDeque<Vec<u8>>,
+    terminal: Option<WebTransportStreamTerminal>,
+    send_tx: Option<mpsc::Sender<WebTransportStreamCommand>>,
+    stop_tx: Option<mpsc::UnboundedSender<u32>>,
+    send_closed: bool,
+    receive_closed: bool,
+}
+
+struct WebTransportStreamTerminal {
+    error_code: Option<u32>,
+    error: String,
+}
+
+struct WebTransportOperationResult {
+    operation_id: i64,
+    session_id: i64,
+    stream_id: i64,
+    protocol_id: i64,
+    kind: WebTransportOperationKind,
+    error: Option<String>,
+}
+
+#[repr(u8)]
+#[derive(Clone, Copy)]
+enum WebTransportStreamKind {
+    IncomingUnidirectional = 1,
+    IncomingBidirectional = 2,
+    OutgoingUnidirectional = 3,
+    OutgoingBidirectional = 4,
+}
+
+#[repr(u8)]
+#[derive(Clone, Copy)]
+enum WebTransportOperationKind {
+    OpenUnidirectional = 1,
+    OpenBidirectional = 2,
+    Write = 3,
+    Finish = 4,
+    Reset = 5,
+    Stop = 6,
+}
+
+enum WebTransportStreamCommand {
+    Write { operation_id: i64, body: Vec<u8> },
+    Finish { operation_id: i64 },
+    Reset { operation_id: i64, error_code: u32 },
+}
+
+#[derive(Clone, Copy)]
 enum WebSocketMessageKind {
     Text = 1,
     Binary = 2,
@@ -478,6 +595,12 @@ enum WebSocketCommand {
 enum WebTransportCommand {
     SendDatagram(Vec<u8>),
     SendStream(Vec<u8>),
+    OpenUnidirectional {
+        operation_id: i64,
+    },
+    OpenBidirectional {
+        operation_id: i64,
+    },
     Close {
         code: Option<u32>,
         reason: Option<String>,
@@ -681,6 +804,10 @@ enum TransportEventKind {
     WebTransportDatagramReady = 6,
     WebTransportClosed = 7,
     WebTransportStreamReady = 8,
+    WebTransportPersistentStreamOpened = 9,
+    WebTransportStreamChunkReady = 10,
+    WebTransportStreamFinished = 11,
+    WebTransportOperationReady = 12,
 }
 
 #[unsafe(no_mangle)]
@@ -1295,6 +1422,215 @@ pub extern "C" fn dart_edge_http_server_runtime_free_web_transport_stream(
     unsafe {
         let _ = Box::from_raw(value.cast::<NativeWebTransportStreamHandle>());
     }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_http_server_runtime_take_web_transport_stream_info(
+    stream_id: i64,
+) -> *mut NativeWebTransportStreamInfo {
+    let Some(info) = WEB_TRANSPORT_OPENED_STREAMS
+        .lock()
+        .unwrap()
+        .remove(&stream_id)
+    else {
+        return std::ptr::null_mut();
+    };
+    Box::into_raw(Box::new(NativeWebTransportStreamInfo {
+        session_id: info.session_id,
+        stream_id: info.stream_id,
+        protocol_id: info.protocol_id,
+        kind: info.kind as u8,
+    }))
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_http_server_runtime_free_web_transport_stream_info(
+    value: *mut NativeWebTransportStreamInfo,
+) {
+    if !value.is_null() {
+        unsafe { drop(Box::from_raw(value)) };
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_http_server_runtime_take_web_transport_stream_chunk(
+    stream_id: i64,
+) -> *mut NativeWebTransportStreamChunk {
+    let body = {
+        let mut streams = WEB_TRANSPORT_STREAMS.lock().unwrap();
+        streams
+            .get_mut(&stream_id)
+            .and_then(|stream| stream.chunks.pop_front())
+    };
+    remove_web_transport_stream_if_complete(stream_id);
+    let Some(body) = body else {
+        return std::ptr::null_mut();
+    };
+    let handle = Box::new(NativeWebTransportStreamChunkHandle::new(stream_id, body));
+    Box::into_raw(handle).cast::<NativeWebTransportStreamChunk>()
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_http_server_runtime_free_web_transport_stream_chunk(
+    value: *mut NativeWebTransportStreamChunk,
+) {
+    if !value.is_null() {
+        unsafe {
+            drop(Box::from_raw(
+                value.cast::<NativeWebTransportStreamChunkHandle>(),
+            ))
+        };
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_http_server_runtime_take_web_transport_stream_terminal(
+    stream_id: i64,
+) -> *mut NativeWebTransportStreamTerminal {
+    let terminal = {
+        let mut streams = WEB_TRANSPORT_STREAMS.lock().unwrap();
+        streams
+            .get_mut(&stream_id)
+            .and_then(|stream| stream.terminal.take())
+    };
+    remove_web_transport_stream_if_complete(stream_id);
+    let Some(terminal) = terminal else {
+        return std::ptr::null_mut();
+    };
+    let handle = Box::new(NativeWebTransportStreamTerminalHandle::new(
+        stream_id, terminal,
+    ));
+    Box::into_raw(handle).cast::<NativeWebTransportStreamTerminal>()
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_http_server_runtime_free_web_transport_stream_terminal(
+    value: *mut NativeWebTransportStreamTerminal,
+) {
+    if !value.is_null() {
+        unsafe {
+            drop(Box::from_raw(
+                value.cast::<NativeWebTransportStreamTerminalHandle>(),
+            ))
+        };
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_http_server_runtime_take_web_transport_operation(
+    operation_id: i64,
+) -> *mut NativeWebTransportOperation {
+    let operation = WEB_TRANSPORT_OPERATIONS
+        .lock()
+        .unwrap()
+        .remove(&operation_id);
+    let Some(operation) = operation else {
+        return std::ptr::null_mut();
+    };
+    let handle = Box::new(NativeWebTransportOperationHandle::new(operation));
+    Box::into_raw(handle).cast::<NativeWebTransportOperation>()
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_http_server_runtime_free_web_transport_operation(
+    value: *mut NativeWebTransportOperation,
+) {
+    if !value.is_null() {
+        unsafe {
+            drop(Box::from_raw(
+                value.cast::<NativeWebTransportOperationHandle>(),
+            ))
+        };
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_http_server_runtime_web_transport_open_unidirectional_stream(
+    session_id: i64,
+) -> i64 {
+    submit_web_transport_session_operation(session_id, |operation_id| {
+        WebTransportCommand::OpenUnidirectional { operation_id }
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_http_server_runtime_web_transport_open_bidirectional_stream(
+    session_id: i64,
+) -> i64 {
+    submit_web_transport_session_operation(session_id, |operation_id| {
+        WebTransportCommand::OpenBidirectional { operation_id }
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_http_server_runtime_web_transport_stream_write(
+    stream_id: i64,
+    body: NativeBytes,
+) -> i64 {
+    let Some(body) = (unsafe { read_native_bytes(body) }) else {
+        return 0;
+    };
+    submit_web_transport_send_operation(stream_id, |operation_id| {
+        WebTransportStreamCommand::Write {
+            operation_id,
+            body: body.to_vec(),
+        }
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_http_server_runtime_web_transport_stream_finish(stream_id: i64) -> i64 {
+    submit_web_transport_send_operation(stream_id, |operation_id| {
+        WebTransportStreamCommand::Finish { operation_id }
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_http_server_runtime_web_transport_stream_reset(
+    stream_id: i64,
+    error_code: u32,
+) -> i64 {
+    submit_web_transport_send_operation(stream_id, |operation_id| {
+        WebTransportStreamCommand::Reset {
+            operation_id,
+            error_code,
+        }
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_http_server_runtime_web_transport_stream_stop(
+    stream_id: i64,
+    error_code: u32,
+) -> i64 {
+    let operation_id = NEXT_WEB_TRANSPORT_OPERATION_ID.fetch_add(1, Ordering::Relaxed);
+    let (info, runtime_state, stop_tx) = {
+        let streams = WEB_TRANSPORT_STREAMS.lock().unwrap();
+        let Some(stream) = streams.get(&stream_id) else {
+            return 0;
+        };
+        (
+            stream.info,
+            stream.runtime_state.clone(),
+            stream.stop_tx.clone(),
+        )
+    };
+    let Some(stop_tx) = stop_tx else { return 0 };
+    if stop_tx.send(error_code).is_err() {
+        return 0;
+    }
+    push_web_transport_operation(
+        WebTransportOperationResult {
+            operation_id,
+            session_id: info.session_id,
+            stream_id,
+            protocol_id: info.protocol_id,
+            kind: WebTransportOperationKind::Stop,
+            error: None,
+        },
+        &runtime_state,
+    );
+    operation_id
 }
 
 #[unsafe(no_mangle)]
@@ -2327,20 +2663,29 @@ async fn handle_web_transport_session(
             incoming = connection.accept_uni() => {
                 match incoming {
                     Ok(stream) => {
-                        match read_web_transport_stream_payload(stream).await {
-                            Ok(body) => {
-                                push_web_transport_stream(
-                                    session_id,
-                                    WebTransportIncomingStream { session_id, body },
-                                );
-                                notify_transport_event(
-                                    &runtime_state,
-                                    TransportEventKind::WebTransportStreamReady,
-                                    session_id,
-                                );
-                            }
-                            Err(_) => break,
-                        }
+                        register_web_transport_receive_stream(
+                            session_id,
+                            WebTransportStreamKind::IncomingUnidirectional,
+                            stream,
+                            None,
+                            runtime_state.clone(),
+                            true,
+                        );
+                    }
+                    Err(_) => break,
+                }
+            }
+            incoming = connection.accept_bi() => {
+                match incoming {
+                    Ok((send, receive)) => {
+                        register_web_transport_receive_stream(
+                            session_id,
+                            WebTransportStreamKind::IncomingBidirectional,
+                            receive,
+                            Some(send),
+                            runtime_state.clone(),
+                            false,
+                        );
                     }
                     Err(_) => break,
                 }
@@ -2367,6 +2712,30 @@ async fn handle_web_transport_session(
                             Err(_) => break,
                         }
                     }
+                    Some(WebTransportCommand::OpenUnidirectional { operation_id }) => {
+                        let connection = connection.clone();
+                        let runtime_state = runtime_state.clone();
+                        tokio::spawn(async move {
+                            open_web_transport_unidirectional_stream(
+                                connection,
+                                session_id,
+                                operation_id,
+                                runtime_state,
+                            ).await;
+                        });
+                    }
+                    Some(WebTransportCommand::OpenBidirectional { operation_id }) => {
+                        let connection = connection.clone();
+                        let runtime_state = runtime_state.clone();
+                        tokio::spawn(async move {
+                            open_web_transport_bidirectional_stream(
+                                connection,
+                                session_id,
+                                operation_id,
+                                runtime_state,
+                            ).await;
+                        });
+                    }
                     Some(WebTransportCommand::Close { code, reason }) => {
                         let code = code.map(VarInt::from_u32).unwrap_or_else(|| VarInt::from_u32(0));
                         let reason = reason.unwrap_or_default();
@@ -2380,6 +2749,10 @@ async fn handle_web_transport_session(
     }
 
     let _ = WEB_TRANSPORT_SESSIONS.lock().unwrap().remove(&session_id);
+    WEB_TRANSPORT_STREAMS
+        .lock()
+        .unwrap()
+        .retain(|_, stream| stream.info.session_id != session_id);
     notify_transport_event(
         &runtime_state,
         TransportEventKind::WebTransportClosed,
@@ -2520,17 +2893,398 @@ fn push_web_transport_stream(session_id: i64, stream: WebTransportIncomingStream
     }
 }
 
-async fn read_web_transport_stream_payload(
-    mut stream: wtransport::stream::RecvStream,
-) -> Result<Vec<u8>, String> {
-    let mut payload = Vec::new();
-    let mut buffer = [0u8; 16 * 1024];
-    loop {
-        match stream.read(&mut buffer).await {
-            Ok(Some(bytes_read)) => payload.extend_from_slice(&buffer[..bytes_read]),
-            Ok(None) => return Ok(payload),
-            Err(error) => return Err(error.to_string()),
+fn register_web_transport_receive_stream(
+    session_id: i64,
+    kind: WebTransportStreamKind,
+    receive: wtransport::stream::RecvStream,
+    send: Option<wtransport::stream::SendStream>,
+    runtime_state: ServerRuntimeState,
+    collect_legacy_payload: bool,
+) {
+    let stream_id = NEXT_WEB_TRANSPORT_STREAM_HANDLE_ID.fetch_add(1, Ordering::Relaxed);
+    let protocol_id = receive.id().into_u64() as i64;
+    let info = WebTransportStreamInfo {
+        session_id,
+        stream_id,
+        protocol_id,
+        kind,
+    };
+    let (stop_tx, stop_rx) = mpsc::unbounded_channel();
+    let send_tx =
+        send.map(|send| spawn_web_transport_send_actor(info, send, runtime_state.clone()));
+    let send_closed = send_tx.is_none();
+    WEB_TRANSPORT_STREAMS.lock().unwrap().insert(
+        stream_id,
+        WebTransportStreamState {
+            info,
+            runtime_state: runtime_state.clone(),
+            chunks: VecDeque::new(),
+            terminal: None,
+            send_tx,
+            stop_tx: Some(stop_tx),
+            send_closed,
+            receive_closed: false,
+        },
+    );
+    WEB_TRANSPORT_OPENED_STREAMS
+        .lock()
+        .unwrap()
+        .insert(stream_id, info);
+    notify_transport_event(
+        &runtime_state,
+        TransportEventKind::WebTransportPersistentStreamOpened,
+        stream_id,
+    );
+    tokio::spawn(read_web_transport_stream_chunks(
+        info,
+        receive,
+        stop_rx,
+        runtime_state,
+        collect_legacy_payload,
+    ));
+}
+
+async fn open_web_transport_unidirectional_stream(
+    connection: WebTransportConnection,
+    session_id: i64,
+    operation_id: i64,
+    runtime_state: ServerRuntimeState,
+) {
+    let result = async {
+        let opening = connection
+            .open_uni()
+            .await
+            .map_err(|error| error.to_string())?;
+        opening.await.map_err(|error| error.to_string())
+    }
+    .await;
+    match result {
+        Ok(send) => register_opened_web_transport_send_stream(
+            session_id,
+            operation_id,
+            WebTransportStreamKind::OutgoingUnidirectional,
+            WebTransportOperationKind::OpenUnidirectional,
+            send,
+            None,
+            runtime_state,
+        ),
+        Err(error) => complete_web_transport_open_error(
+            session_id,
+            operation_id,
+            WebTransportOperationKind::OpenUnidirectional,
+            error,
+            &runtime_state,
+        ),
+    }
+}
+
+async fn open_web_transport_bidirectional_stream(
+    connection: WebTransportConnection,
+    session_id: i64,
+    operation_id: i64,
+    runtime_state: ServerRuntimeState,
+) {
+    let result = async {
+        let opening = connection
+            .open_bi()
+            .await
+            .map_err(|error| error.to_string())?;
+        opening.await.map_err(|error| error.to_string())
+    }
+    .await;
+    match result {
+        Ok((send, receive)) => register_opened_web_transport_send_stream(
+            session_id,
+            operation_id,
+            WebTransportStreamKind::OutgoingBidirectional,
+            WebTransportOperationKind::OpenBidirectional,
+            send,
+            Some(receive),
+            runtime_state,
+        ),
+        Err(error) => complete_web_transport_open_error(
+            session_id,
+            operation_id,
+            WebTransportOperationKind::OpenBidirectional,
+            error,
+            &runtime_state,
+        ),
+    }
+}
+
+fn register_opened_web_transport_send_stream(
+    session_id: i64,
+    operation_id: i64,
+    kind: WebTransportStreamKind,
+    operation_kind: WebTransportOperationKind,
+    send: wtransport::stream::SendStream,
+    receive: Option<wtransport::stream::RecvStream>,
+    runtime_state: ServerRuntimeState,
+) {
+    let stream_id = NEXT_WEB_TRANSPORT_STREAM_HANDLE_ID.fetch_add(1, Ordering::Relaxed);
+    let protocol_id = send.id().into_u64() as i64;
+    let info = WebTransportStreamInfo {
+        session_id,
+        stream_id,
+        protocol_id,
+        kind,
+    };
+    let send_tx = spawn_web_transport_send_actor(info, send, runtime_state.clone());
+    let (stop_tx, stop_rx) = if receive.is_some() {
+        let (tx, rx) = mpsc::unbounded_channel();
+        (Some(tx), Some(rx))
+    } else {
+        (None, None)
+    };
+    WEB_TRANSPORT_STREAMS.lock().unwrap().insert(
+        stream_id,
+        WebTransportStreamState {
+            info,
+            runtime_state: runtime_state.clone(),
+            chunks: VecDeque::new(),
+            terminal: None,
+            send_tx: Some(send_tx),
+            stop_tx,
+            send_closed: false,
+            receive_closed: receive.is_none(),
+        },
+    );
+    push_web_transport_operation(
+        WebTransportOperationResult {
+            operation_id,
+            session_id,
+            stream_id,
+            protocol_id,
+            kind: operation_kind,
+            error: None,
+        },
+        &runtime_state,
+    );
+    if let (Some(receive), Some(stop_rx)) = (receive, stop_rx) {
+        tokio::spawn(read_web_transport_stream_chunks(
+            info,
+            receive,
+            stop_rx,
+            runtime_state,
+            false,
+        ));
+    }
+}
+
+fn complete_web_transport_open_error(
+    session_id: i64,
+    operation_id: i64,
+    kind: WebTransportOperationKind,
+    error: String,
+    runtime_state: &ServerRuntimeState,
+) {
+    push_web_transport_operation(
+        WebTransportOperationResult {
+            operation_id,
+            session_id,
+            stream_id: 0,
+            protocol_id: 0,
+            kind,
+            error: Some(error),
+        },
+        runtime_state,
+    );
+}
+
+fn spawn_web_transport_send_actor(
+    info: WebTransportStreamInfo,
+    mut send: wtransport::stream::SendStream,
+    runtime_state: ServerRuntimeState,
+) -> mpsc::Sender<WebTransportStreamCommand> {
+    let (tx, mut rx) = mpsc::channel(8);
+    tokio::spawn(async move {
+        while let Some(command) = rx.recv().await {
+            let (operation_id, kind, result, terminal) = match command {
+                WebTransportStreamCommand::Write { operation_id, body } => (
+                    operation_id,
+                    WebTransportOperationKind::Write,
+                    send.write_all(&body)
+                        .await
+                        .map_err(|error| error.to_string()),
+                    false,
+                ),
+                WebTransportStreamCommand::Finish { operation_id } => (
+                    operation_id,
+                    WebTransportOperationKind::Finish,
+                    send.finish().await.map_err(|error| error.to_string()),
+                    true,
+                ),
+                WebTransportStreamCommand::Reset {
+                    operation_id,
+                    error_code,
+                } => (
+                    operation_id,
+                    WebTransportOperationKind::Reset,
+                    send.reset(VarInt::from_u32(error_code))
+                        .map_err(|error| error.to_string()),
+                    true,
+                ),
+            };
+            push_web_transport_operation(
+                WebTransportOperationResult {
+                    operation_id,
+                    session_id: info.session_id,
+                    stream_id: info.stream_id,
+                    protocol_id: info.protocol_id,
+                    kind,
+                    error: result.err(),
+                },
+                &runtime_state,
+            );
+            if terminal {
+                if let Some(stream) = WEB_TRANSPORT_STREAMS
+                    .lock()
+                    .unwrap()
+                    .get_mut(&info.stream_id)
+                {
+                    stream.send_closed = true;
+                    stream.send_tx = None;
+                }
+                remove_web_transport_stream_if_complete(info.stream_id);
+                break;
+            }
         }
+    });
+    tx
+}
+
+async fn read_web_transport_stream_chunks(
+    info: WebTransportStreamInfo,
+    mut receive: wtransport::stream::RecvStream,
+    mut stop_rx: mpsc::UnboundedReceiver<u32>,
+    runtime_state: ServerRuntimeState,
+    collect_legacy_payload: bool,
+) {
+    let mut legacy_payload = collect_legacy_payload.then(Vec::new);
+    let mut buffer = [0u8; 16 * 1024];
+    let terminal = loop {
+        tokio::select! {
+            stop = stop_rx.recv() => {
+                let error_code = stop.unwrap_or_default();
+                receive.stop(VarInt::from_u32(error_code));
+                break WebTransportStreamTerminal { error_code: Some(error_code), error: "receive stopped locally".to_string() };
+            }
+            result = receive.read(&mut buffer) => {
+                match result {
+                    Ok(Some(bytes_read)) => {
+                        let body = buffer[..bytes_read].to_vec();
+                        if let Some(payload) = legacy_payload.as_mut() {
+                            payload.extend_from_slice(&body);
+                        }
+                        if let Some(stream) = WEB_TRANSPORT_STREAMS.lock().unwrap().get_mut(&info.stream_id) {
+                            stream.chunks.push_back(body);
+                        } else {
+                            return;
+                        }
+                        notify_transport_event(&runtime_state, TransportEventKind::WebTransportStreamChunkReady, info.stream_id);
+                    }
+                    Ok(None) => break WebTransportStreamTerminal { error_code: None, error: String::new() },
+                    Err(error) => {
+                        let error_code = match error {
+                            wtransport::error::StreamReadError::Reset(code) => Some(code.into_inner() as u32),
+                            _ => None,
+                        };
+                        break WebTransportStreamTerminal { error_code, error: error.to_string() };
+                    }
+                }
+            }
+        }
+    };
+    if let Some(body) = legacy_payload {
+        push_web_transport_stream(
+            info.session_id,
+            WebTransportIncomingStream {
+                session_id: info.session_id,
+                body,
+            },
+        );
+        notify_transport_event(
+            &runtime_state,
+            TransportEventKind::WebTransportStreamReady,
+            info.session_id,
+        );
+    }
+    if let Some(stream) = WEB_TRANSPORT_STREAMS
+        .lock()
+        .unwrap()
+        .get_mut(&info.stream_id)
+    {
+        stream.terminal = Some(terminal);
+        stream.stop_tx = None;
+        stream.receive_closed = true;
+    }
+    notify_transport_event(
+        &runtime_state,
+        TransportEventKind::WebTransportStreamFinished,
+        info.stream_id,
+    );
+}
+
+fn submit_web_transport_session_operation(
+    session_id: i64,
+    command: impl FnOnce(i64) -> WebTransportCommand,
+) -> i64 {
+    let operation_id = NEXT_WEB_TRANSPORT_OPERATION_ID.fetch_add(1, Ordering::Relaxed);
+    let sessions = WEB_TRANSPORT_SESSIONS.lock().unwrap();
+    let Some(session) = sessions.get(&session_id) else {
+        return 0;
+    };
+    if session.command_tx.send(command(operation_id)).is_err() {
+        0
+    } else {
+        operation_id
+    }
+}
+
+fn submit_web_transport_send_operation(
+    stream_id: i64,
+    command: impl FnOnce(i64) -> WebTransportStreamCommand,
+) -> i64 {
+    let operation_id = NEXT_WEB_TRANSPORT_OPERATION_ID.fetch_add(1, Ordering::Relaxed);
+    let streams = WEB_TRANSPORT_STREAMS.lock().unwrap();
+    let Some(send_tx) = streams
+        .get(&stream_id)
+        .and_then(|stream| stream.send_tx.as_ref())
+    else {
+        return 0;
+    };
+    match send_tx.try_send(command(operation_id)) {
+        Ok(()) => operation_id,
+        Err(_) => 0,
+    }
+}
+
+fn push_web_transport_operation(
+    operation: WebTransportOperationResult,
+    runtime_state: &ServerRuntimeState,
+) {
+    let operation_id = operation.operation_id;
+    WEB_TRANSPORT_OPERATIONS
+        .lock()
+        .unwrap()
+        .insert(operation_id, operation);
+    notify_transport_event(
+        runtime_state,
+        TransportEventKind::WebTransportOperationReady,
+        operation_id,
+    );
+}
+
+fn remove_web_transport_stream_if_complete(stream_id: i64) {
+    let mut streams = WEB_TRANSPORT_STREAMS.lock().unwrap();
+    let remove = streams.get(&stream_id).is_some_and(|stream| {
+        stream.send_closed
+            && stream.receive_closed
+            && stream.terminal.is_none()
+            && stream.chunks.is_empty()
+    });
+    if remove {
+        streams.remove(&stream_id);
     }
 }
 
@@ -2990,6 +3744,51 @@ impl NativeWebTransportStreamHandle {
         Self {
             stream: native_stream,
             body,
+        }
+    }
+}
+
+impl NativeWebTransportStreamChunkHandle {
+    fn new(stream_id: i64, body: Vec<u8>) -> Self {
+        let body = OwnedBytes::from_vec(body);
+        let chunk = NativeWebTransportStreamChunk {
+            stream_id,
+            body: body.as_native(),
+        };
+        Self { chunk, body }
+    }
+}
+
+impl NativeWebTransportStreamTerminalHandle {
+    fn new(stream_id: i64, terminal: WebTransportStreamTerminal) -> Self {
+        let error = OwnedBytes::from_vec(terminal.error.into_bytes());
+        let native_terminal = NativeWebTransportStreamTerminal {
+            stream_id,
+            error_code: terminal.error_code.map(i64::from).unwrap_or(-1),
+            error: error.as_native(),
+        };
+        Self {
+            terminal: native_terminal,
+            error,
+        }
+    }
+}
+
+impl NativeWebTransportOperationHandle {
+    fn new(operation: WebTransportOperationResult) -> Self {
+        let error = OwnedBytes::from_vec(operation.error.clone().unwrap_or_default().into_bytes());
+        let native_operation = NativeWebTransportOperation {
+            operation_id: operation.operation_id,
+            session_id: operation.session_id,
+            stream_id: operation.stream_id,
+            protocol_id: operation.protocol_id,
+            kind: operation.kind as u8,
+            succeeded: operation.error.is_none(),
+            error: error.as_native(),
+        };
+        Self {
+            operation: native_operation,
+            error,
         }
     }
 }

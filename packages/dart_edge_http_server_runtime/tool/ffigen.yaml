@@ -31,6 +31,13 @@ structs:
     - NativeTransportRequest
     - NativeWebSocketConnection
     - NativeWebSocketMessage
+    - NativeWebTransportConnection
+    - NativeWebTransportDatagram
+    - NativeWebTransportStream
+    - NativeWebTransportStreamInfo
+    - NativeWebTransportStreamChunk
+    - NativeWebTransportStreamTerminal
+    - NativeWebTransportOperation
 typedefs:
   include:
     - dart_edge_http_server_runtime_transport_event_callback_t

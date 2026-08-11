@@ -87,4 +87,31 @@ void main() {
     stream.bodyLease.close();
     expect(releaseCount, 1);
   });
+
+  test('WebTransport stream chunks retain their native chunk handle', () {
+    final bytes = calloc<Uint8>(3);
+    bytes.asTypedList(3).setAll(0, [9, 10, 11]);
+    final native = calloc<gen.NativeWebTransportStreamChunk>();
+    native.ref
+      ..stream_id = 44
+      ..body.ptr = bytes
+      ..body.len = 3;
+    var releaseCount = 0;
+
+    final chunk = decodeNativeWebTransportStreamChunk(
+      native,
+      release: () {
+        releaseCount += 1;
+        calloc.free(bytes);
+        calloc.free(native);
+      },
+    );
+
+    expect(chunk.streamId, 44);
+    expect(chunk.bodyLease.bytesPtr, bytes);
+    expect(chunk.bodyLease.bytesView, [9, 10, 11]);
+    expect(releaseCount, 0);
+    chunk.bodyLease.close();
+    expect(releaseCount, 1);
+  });
 }

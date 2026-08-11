@@ -79,9 +79,29 @@ external void dart_edge_http_server_runtime_free_web_transport_datagram(
   ffi.Pointer<NativeWebTransportDatagram> value,
 );
 
+@ffi.Native<ffi.Void Function(ffi.Pointer<NativeWebTransportOperation>)>()
+external void dart_edge_http_server_runtime_free_web_transport_operation(
+  ffi.Pointer<NativeWebTransportOperation> value,
+);
+
 @ffi.Native<ffi.Void Function(ffi.Pointer<NativeWebTransportStream>)>()
 external void dart_edge_http_server_runtime_free_web_transport_stream(
   ffi.Pointer<NativeWebTransportStream> value,
+);
+
+@ffi.Native<ffi.Void Function(ffi.Pointer<NativeWebTransportStreamChunk>)>()
+external void dart_edge_http_server_runtime_free_web_transport_stream_chunk(
+  ffi.Pointer<NativeWebTransportStreamChunk> value,
+);
+
+@ffi.Native<ffi.Void Function(ffi.Pointer<NativeWebTransportStreamInfo>)>()
+external void dart_edge_http_server_runtime_free_web_transport_stream_info(
+  ffi.Pointer<NativeWebTransportStreamInfo> value,
+);
+
+@ffi.Native<ffi.Void Function(ffi.Pointer<NativeWebTransportStreamTerminal>)>()
+external void dart_edge_http_server_runtime_free_web_transport_stream_terminal(
+  ffi.Pointer<NativeWebTransportStreamTerminal> value,
 );
 
 @ffi.Native<ffi.Int32 Function()>(isLeaf: true)
@@ -233,9 +253,25 @@ dart_edge_http_server_runtime_take_web_transport_connection(int session_id);
 external ffi.Pointer<NativeWebTransportDatagram>
 dart_edge_http_server_runtime_take_web_transport_datagram(int session_id);
 
+@ffi.Native<ffi.Pointer<NativeWebTransportOperation> Function(ffi.Int64)>()
+external ffi.Pointer<NativeWebTransportOperation>
+dart_edge_http_server_runtime_take_web_transport_operation(int operation_id);
+
 @ffi.Native<ffi.Pointer<NativeWebTransportStream> Function(ffi.Int64)>()
 external ffi.Pointer<NativeWebTransportStream>
 dart_edge_http_server_runtime_take_web_transport_stream(int session_id);
+
+@ffi.Native<ffi.Pointer<NativeWebTransportStreamChunk> Function(ffi.Int64)>()
+external ffi.Pointer<NativeWebTransportStreamChunk>
+dart_edge_http_server_runtime_take_web_transport_stream_chunk(int stream_id);
+
+@ffi.Native<ffi.Pointer<NativeWebTransportStreamInfo> Function(ffi.Int64)>()
+external ffi.Pointer<NativeWebTransportStreamInfo>
+dart_edge_http_server_runtime_take_web_transport_stream_info(int stream_id);
+
+@ffi.Native<ffi.Pointer<NativeWebTransportStreamTerminal> Function(ffi.Int64)>()
+external ffi.Pointer<NativeWebTransportStreamTerminal>
+dart_edge_http_server_runtime_take_web_transport_stream_terminal(int stream_id);
 
 @ffi.Native<ffi.Bool Function(ffi.Int64, ffi.Int32, ffi.Pointer<ffi.Char>)>()
 external bool dart_edge_http_server_runtime_web_socket_close(
@@ -263,6 +299,18 @@ external bool dart_edge_http_server_runtime_web_transport_close(
   ffi.Pointer<ffi.Char> reason,
 );
 
+@ffi.Native<ffi.Int64 Function(ffi.Int64)>()
+external int
+dart_edge_http_server_runtime_web_transport_open_bidirectional_stream(
+  int session_id,
+);
+
+@ffi.Native<ffi.Int64 Function(ffi.Int64)>()
+external int
+dart_edge_http_server_runtime_web_transport_open_unidirectional_stream(
+  int session_id,
+);
+
 @ffi.Native<ffi.Bool Function(ffi.Int64, imp$1.NativeBytes)>()
 external bool dart_edge_http_server_runtime_web_transport_send_datagram(
   int session_id,
@@ -272,6 +320,29 @@ external bool dart_edge_http_server_runtime_web_transport_send_datagram(
 @ffi.Native<ffi.Bool Function(ffi.Int64, imp$1.NativeBytes)>()
 external bool dart_edge_http_server_runtime_web_transport_send_stream(
   int session_id,
+  imp$1.NativeBytes body,
+);
+
+@ffi.Native<ffi.Int64 Function(ffi.Int64)>()
+external int dart_edge_http_server_runtime_web_transport_stream_finish(
+  int stream_id,
+);
+
+@ffi.Native<ffi.Int64 Function(ffi.Int64, ffi.Uint32)>()
+external int dart_edge_http_server_runtime_web_transport_stream_reset(
+  int stream_id,
+  int error_code,
+);
+
+@ffi.Native<ffi.Int64 Function(ffi.Int64, ffi.Uint32)>()
+external int dart_edge_http_server_runtime_web_transport_stream_stop(
+  int stream_id,
+  int error_code,
+);
+
+@ffi.Native<ffi.Int64 Function(ffi.Int64, imp$1.NativeBytes)>()
+external int dart_edge_http_server_runtime_web_transport_stream_write(
+  int stream_id,
   imp$1.NativeBytes body,
 );
 
@@ -430,11 +501,64 @@ final class NativeWebTransportDatagram extends ffi.Struct {
   external imp$1.NativeBytes body;
 }
 
+final class NativeWebTransportOperation extends ffi.Struct {
+  @ffi.Int64()
+  external int operation_id;
+
+  @ffi.Int64()
+  external int session_id;
+
+  @ffi.Int64()
+  external int stream_id;
+
+  @ffi.Int64()
+  external int protocol_id;
+
+  @ffi.Uint8()
+  external int kind;
+
+  @ffi.Bool()
+  external bool succeeded;
+
+  external imp$1.NativeBytes error;
+}
+
 final class NativeWebTransportStream extends ffi.Struct {
   @ffi.Int64()
   external int session_id;
 
   external imp$1.NativeBytes body;
+}
+
+final class NativeWebTransportStreamChunk extends ffi.Struct {
+  @ffi.Int64()
+  external int stream_id;
+
+  external imp$1.NativeBytes body;
+}
+
+final class NativeWebTransportStreamInfo extends ffi.Struct {
+  @ffi.Int64()
+  external int session_id;
+
+  @ffi.Int64()
+  external int stream_id;
+
+  @ffi.Int64()
+  external int protocol_id;
+
+  @ffi.Uint8()
+  external int kind;
+}
+
+final class NativeWebTransportStreamTerminal extends ffi.Struct {
+  @ffi.Int64()
+  external int stream_id;
+
+  @ffi.Int64()
+  external int error_code;
+
+  external imp$1.NativeBytes error;
 }
 
 typedef dart_edge_http_server_runtime_transport_event_callback_t =
