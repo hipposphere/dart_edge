@@ -19,3 +19,4 @@ export 'src/dart_edge_audio.dart';
 export 'src/native_audio_pool.dart';
 export 'src/native_audio_stream_conversion_result.dart';
 export 'src/native_audio_stream_input.dart';
+export 'src/native_audio_waveform_session.dart';

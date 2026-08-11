@@ -24,6 +24,7 @@ typedef struct NativeAudioStreamResult {
 } NativeAudioStreamResult;
 
 typedef struct DartEdgeAudioPool DartEdgeAudioPool;
+typedef struct DartEdgeAudioWaveformSession DartEdgeAudioWaveformSession;
 
 int32_t dart_edge_audio_native_abi_version(void);
 
@@ -42,6 +43,20 @@ NativeAudioBytesResult* dart_edge_audio_convert_bytes(
     const char* request_json,
     const uint8_t* input_ptr,
     intptr_t input_len);
+
+DartEdgeAudioWaveformSession* dart_edge_audio_waveform_create(
+    const char* request_json);
+
+int32_t dart_edge_audio_waveform_add_pcm16(
+    DartEdgeAudioWaveformSession* session,
+    const uint8_t* input_ptr,
+    intptr_t input_len);
+
+NativeAudioBytesResult* dart_edge_audio_waveform_finish(
+    DartEdgeAudioWaveformSession* session);
+
+void dart_edge_audio_waveform_free(
+    DartEdgeAudioWaveformSession* session);
 
 DartEdgeAudioPool* dart_edge_audio_pool_create(
     uintptr_t worker_count,

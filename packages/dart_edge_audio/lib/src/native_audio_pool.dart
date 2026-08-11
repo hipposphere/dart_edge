@@ -17,6 +17,7 @@ import 'audio_target_format.dart';
 import 'audio_waveform.dart';
 import 'audio_waveform_analysis_request.dart';
 import 'audio_waveform_analysis_result.dart';
+import 'audio_waveform_validation.dart';
 import 'native/dart_edge_audio_native.dart';
 import 'native/generated_bindings.dart' as gen;
 import 'native_audio_stream_conversion_result.dart';
@@ -215,7 +216,7 @@ final class NativeAudioPool {
     _ensureOpen();
     _ensureBytes(request.inputBytes);
     _ensurePositiveSampleRate(request.targetSampleRate);
-    _ensureWaveformSpec(request.waveform);
+    validateAudioWaveformSpec(request.waveform);
     final jobId = DartEdgeAudioNative.submitPoolConvertBytes(
       _poolPtr,
       jsonEncode(request.toJson()),
@@ -254,7 +255,7 @@ final class NativeAudioPool {
     _ensureOpen();
     _ensureBytes(request.inputBytes);
     _ensurePositiveSampleRate(request.targetSampleRate);
-    _ensureWaveformSpec(request.waveform);
+    validateAudioWaveformSpec(request.waveform);
     final jobId = DartEdgeAudioNative.submitPoolConvertBytes(
       _poolPtr,
       jsonEncode(request.toJson()),
@@ -282,7 +283,7 @@ final class NativeAudioPool {
     _ensureOpen();
     _ensureNativeBytes(bytes);
     _ensurePositiveSampleRate(targetSampleRate);
-    _ensureWaveformSpec(waveform);
+    validateAudioWaveformSpec(waveform);
     final jobId = DartEdgeAudioNative.submitPoolConvertNativeBytes(
       _poolPtr,
       jsonEncode({
@@ -498,35 +499,6 @@ void _ensurePositiveSampleRate(int? sampleRate) {
       'sampleRate',
       'sampleRate must be at least 1.',
     );
-  }
-}
-
-void _ensureWaveformSpec(AudioWaveformSpec? spec) {
-  if (spec == null) return;
-  if (spec.baseInterval.inMicroseconds < 1) {
-    throw ArgumentError.value(
-      spec.baseInterval,
-      'waveform.baseInterval',
-      'baseInterval must be at least one microsecond.',
-    );
-  }
-  if (spec.levelFactors.isEmpty || spec.levelFactors.first != 1) {
-    throw ArgumentError.value(
-      spec.levelFactors,
-      'waveform.levelFactors',
-      'levelFactors must start with 1.',
-    );
-  }
-  var previous = 0;
-  for (final factor in spec.levelFactors) {
-    if (factor <= previous) {
-      throw ArgumentError.value(
-        spec.levelFactors,
-        'waveform.levelFactors',
-        'levelFactors must be unique, positive, and increasing.',
-      );
-    }
-    previous = factor;
   }
 }
 

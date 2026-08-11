@@ -314,6 +314,68 @@ void main() {
     },
   );
 
+  test('streaming waveform is stable across Dart-managed chunks', () {
+    final pcm16 = _pcm16Le([
+      ...List.filled(10, -32768),
+      ...List.filled(10, 32767),
+      ...List.filled(5, 0),
+    ]);
+    final session = NativeAudioWaveformSession(
+      sampleRateHz: 1000,
+      waveform: const AudioWaveformSpec(
+        baseInterval: Duration(milliseconds: 10),
+        levelFactors: [1, 2],
+      ),
+    );
+    addTearDown(session.close);
+
+    session.addPcm16(Uint8List.sublistView(pcm16, 0, 12));
+    session.addPcm16(Uint8List.sublistView(pcm16, 12));
+    final result = session.finish();
+
+    expect(result.sampleRateHz, 1000);
+    expect(result.channelCount, 1);
+    expect(result.frameCount, 25);
+    expect(result.duration, const Duration(milliseconds: 25));
+    expect(result.waveform.levels[0].peaks, [-127, -127, 127, 127, 0, 0]);
+    expect(result.waveform.levels[1].peaks, [-127, 127, 0, 0]);
+    expect(() => session.addPcm16(Uint8List(0)), throwsStateError);
+  });
+
+  test('streaming waveform accepts borrowed native PCM without a copy', () {
+    final pcm16 = _pcm16Le([
+      ...List.filled(10, -16384),
+      ...List.filled(10, 16384),
+    ]);
+    final nativePcm = calloc<Uint8>(pcm16.length);
+    nativePcm.asTypedList(pcm16.length).setAll(0, pcm16);
+    addTearDown(() => calloc.free(nativePcm));
+    final session = NativeAudioWaveformSession(
+      sampleRateHz: 1000,
+      waveform: const AudioWaveformSpec(
+        baseInterval: Duration(milliseconds: 10),
+        levelFactors: [1],
+      ),
+    );
+    addTearDown(session.close);
+
+    session.addNativePcm16(
+      pcm16LeBytesPtr: nativePcm,
+      byteLength: pcm16.length,
+    );
+    final result = session.finish();
+
+    expect(result.frameCount, 20);
+    expect(result.waveform.levels.single.peaks, [-64, -64, 64, 64]);
+  });
+
+  test('streaming waveform rejects incomplete PCM frames', () {
+    final session = NativeAudioWaveformSession(sampleRateHz: 16000);
+    addTearDown(session.close);
+
+    expect(() => session.addPcm16(Uint8List(1)), throwsArgumentError);
+  });
+
   test('convertNativeBytes returns wav bytes and metadata', () async {
     final input = await File(_fixturePath('tone.flac')).readAsBytes();
     final nativeBytes = _allocateNativeBytes(input);
@@ -455,6 +517,15 @@ void main() {
       );
     },
   );
+}
+
+Uint8List _pcm16Le(List<int> samples) {
+  final bytes = Uint8List(samples.length * 2);
+  final data = ByteData.sublistView(bytes);
+  for (var index = 0; index < samples.length; index += 1) {
+    data.setInt16(index * 2, samples[index], Endian.little);
+  }
+  return bytes;
 }
 
 final class _FixtureCase {

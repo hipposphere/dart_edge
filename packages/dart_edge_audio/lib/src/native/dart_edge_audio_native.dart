@@ -229,6 +229,87 @@ abstract final class DartEdgeAudioNative {
     }
   }
 
+  static Pointer<gen.DartEdgeAudioWaveformSession> createWaveformSession(
+    String requestJson,
+  ) {
+    final requestPtr = requestJson.toNativeUtf8();
+    try {
+      final sessionPtr = gen.dart_edge_audio_waveform_create(
+        requestPtr.cast<Char>(),
+      );
+      if (sessionPtr == nullptr) {
+        throw StateError(_takeLastError());
+      }
+      return sessionPtr;
+    } finally {
+      calloc.free(requestPtr);
+    }
+  }
+
+  static void addWaveformPcm16(
+    Pointer<gen.DartEdgeAudioWaveformSession> sessionPtr,
+    Uint8List pcm16LeBytes,
+  ) {
+    final bytesPtr = pcm16LeBytes.isEmpty
+        ? nullptr
+        : calloc<Uint8>(pcm16LeBytes.length);
+    try {
+      if (bytesPtr != nullptr) {
+        bytesPtr.asTypedList(pcm16LeBytes.length).setAll(0, pcm16LeBytes);
+      }
+      addWaveformNativePcm16(sessionPtr, bytesPtr, pcm16LeBytes.length);
+    } finally {
+      if (bytesPtr != nullptr) {
+        calloc.free(bytesPtr);
+      }
+    }
+  }
+
+  static void addWaveformNativePcm16(
+    Pointer<gen.DartEdgeAudioWaveformSession> sessionPtr,
+    Pointer<Uint8> pcm16LeBytesPtr,
+    int byteLength,
+  ) {
+    RangeError.checkNotNegative(byteLength, 'byteLength');
+    final result = gen.dart_edge_audio_waveform_add_pcm16(
+      sessionPtr,
+      pcm16LeBytesPtr,
+      byteLength,
+    );
+    if (result == 0) {
+      throw StateError(_takeLastError());
+    }
+  }
+
+  static NativeBytesConversionResponse finishWaveformSession(
+    Pointer<gen.DartEdgeAudioWaveformSession> sessionPtr,
+  ) {
+    final resultPtr = gen.dart_edge_audio_waveform_finish(sessionPtr);
+    if (resultPtr == nullptr) {
+      throw StateError(_takeLastError());
+    }
+    try {
+      final response = resultPtr.ref;
+      return NativeBytesConversionResponse(
+        resultJson: response.result_json == nullptr
+            ? '{}'
+            : response.result_json.cast<Utf8>().toDartString(),
+        bytes: core_ffi.copyNativeOwnedBytes(response.bytes),
+        waveformBytes: core_ffi.copyNativeOwnedBytes(response.waveform),
+      );
+    } finally {
+      gen.dart_edge_audio_free_bytes_result(resultPtr);
+    }
+  }
+
+  static void freeWaveformSession(
+    Pointer<gen.DartEdgeAudioWaveformSession> sessionPtr,
+  ) {
+    if (sessionPtr != nullptr) {
+      gen.dart_edge_audio_waveform_free(sessionPtr);
+    }
+  }
+
   static int submitPoolProbeBytes(
     Pointer<gen.DartEdgeAudioPool> poolPtr,
     String optionsJson,

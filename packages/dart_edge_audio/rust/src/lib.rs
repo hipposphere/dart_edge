@@ -36,7 +36,7 @@ use symphonia::core::meta::{MetadataOptions, MetadataRevision, StandardTag, Tag}
 use symphonia::core::units::Timestamp;
 use symphonia::default::{get_codecs, get_probe};
 
-const DART_EDGE_AUDIO_NATIVE_ABI_VERSION: i32 = 2;
+const DART_EDGE_AUDIO_NATIVE_ABI_VERSION: i32 = 3;
 
 static LAST_ERROR: Lazy<Mutex<Option<CString>>> = Lazy::new(|| Mutex::new(None));
 
@@ -64,6 +64,14 @@ pub struct NativeAudioStreamResult {
 
 pub struct DartEdgeAudioPool {
     jobs: NativeJobPool<NativeAudioPoolJob, NativeAudioPoolResult, String>,
+}
+
+pub struct DartEdgeAudioWaveformSession {
+    accumulator: Option<WaveformAccumulator>,
+    spec: NativeWaveformSpec,
+    sample_rate_hz: u32,
+    channel_count: u32,
+    frame_count: u64,
 }
 
 enum NativeAudioPoolJob {
@@ -206,6 +214,14 @@ struct NativeWaveformSpec {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct NativeStreamingWaveformRequest {
+    sample_rate_hz: u32,
+    channel_count: u32,
+    waveform: NativeWaveformSpec,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct NativeStreamConcatenationRequest {
     target_format: NativeAudioTargetFormat,
     target_sample_rate: Option<u32>,
@@ -298,6 +314,15 @@ struct NativeWaveformLevelJson {
     interval_micros: u64,
     byte_offset: usize,
     byte_length: usize,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct NativeStreamingWaveformResultJson {
+    sample_rate_hz: u32,
+    channel_count: u32,
+    frame_count: u64,
+    waveform: NativeWaveformResultJson,
 }
 
 struct DecodedAudio {
@@ -464,6 +489,110 @@ pub extern "C" fn dart_edge_audio_convert_bytes(
             set_last_error(error);
             std::ptr::null_mut()
         }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_audio_waveform_create(
+    request_json: *const c_char,
+) -> *mut DartEdgeAudioWaveformSession {
+    let Some(request_json) = (unsafe { read_c_string(request_json) }) else {
+        set_last_error("Missing streaming waveform request.");
+        return std::ptr::null_mut();
+    };
+    let request = match serde_json::from_str::<NativeStreamingWaveformRequest>(&request_json) {
+        Ok(value) => value,
+        Err(error) => {
+            set_last_error(format!("Invalid streaming waveform request: {error}"));
+            return std::ptr::null_mut();
+        }
+    };
+    if request.sample_rate_hz == 0 || request.sample_rate_hz > 768_000 {
+        set_last_error("Streaming waveform sampleRateHz must be between 1 and 768000.");
+        return std::ptr::null_mut();
+    }
+    if request.channel_count == 0 || request.channel_count > 32 {
+        set_last_error("Streaming waveform channelCount must be between 1 and 32.");
+        return std::ptr::null_mut();
+    }
+    if let Err(error) = validate_waveform_spec(&request.waveform) {
+        set_last_error(error);
+        return std::ptr::null_mut();
+    }
+
+    let accumulator = WaveformAccumulator::new(
+        request.sample_rate_hz,
+        request.waveform.base_interval_micros,
+    );
+    clear_last_error();
+    Box::into_raw(Box::new(DartEdgeAudioWaveformSession {
+        accumulator: Some(accumulator),
+        spec: request.waveform,
+        sample_rate_hz: request.sample_rate_hz,
+        channel_count: request.channel_count,
+        frame_count: 0,
+    }))
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_audio_waveform_add_pcm16(
+    session: *mut DartEdgeAudioWaveformSession,
+    input_ptr: *const u8,
+    input_len: isize,
+) -> i32 {
+    if session.is_null() {
+        set_last_error("Missing streaming waveform session.");
+        return 0;
+    }
+    if input_len < 0 {
+        set_last_error("Streaming PCM16 byte length must not be negative.");
+        return 0;
+    }
+    if input_len == 0 {
+        clear_last_error();
+        return 1;
+    }
+    if input_ptr.is_null() {
+        set_last_error("Missing streaming PCM16 input.");
+        return 0;
+    }
+    let input = unsafe { std::slice::from_raw_parts(input_ptr, input_len as usize) };
+    match unsafe { &mut *session }.add_pcm16(input) {
+        Ok(()) => {
+            clear_last_error();
+            1
+        }
+        Err(error) => {
+            set_last_error(error);
+            0
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_audio_waveform_finish(
+    session: *mut DartEdgeAudioWaveformSession,
+) -> *mut NativeAudioBytesResult {
+    if session.is_null() {
+        set_last_error("Missing streaming waveform session.");
+        return std::ptr::null_mut();
+    }
+    match unsafe { &mut *session }.finish() {
+        Ok(value) => {
+            clear_last_error();
+            value
+        }
+        Err(error) => {
+            set_last_error(error);
+            std::ptr::null_mut()
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_audio_waveform_free(session: *mut DartEdgeAudioWaveformSession) {
+    if !session.is_null() {
+        drop(unsafe { Box::from_raw(session) });
     }
 }
 
@@ -1733,6 +1862,55 @@ struct WaveformAccumulator {
     current_max: i8,
     has_current: bool,
     base_peaks: Vec<i8>,
+}
+
+impl DartEdgeAudioWaveformSession {
+    fn add_pcm16(&mut self, input: &[u8]) -> Result<(), String> {
+        let bytes_per_frame = usize::try_from(self.channel_count)
+            .ok()
+            .and_then(|channels| channels.checked_mul(2))
+            .ok_or_else(|| "Streaming waveform frame size is too large.".to_string())?;
+        if input.len() % bytes_per_frame != 0 {
+            return Err(format!(
+                "Streaming PCM16 input must contain complete {}-channel frames.",
+                self.channel_count
+            ));
+        }
+        let accumulator = self
+            .accumulator
+            .as_mut()
+            .ok_or_else(|| "Streaming waveform session is already finished.".to_string())?;
+
+        for frame in input.chunks_exact(bytes_per_frame) {
+            let mut visualization_sample = 0.0f32;
+            for sample_bytes in frame.chunks_exact(2) {
+                let sample = i16::from_le_bytes([sample_bytes[0], sample_bytes[1]]);
+                visualization_sample += f32::from(sample) / 32768.0;
+            }
+            accumulator.observe(visualization_sample / self.channel_count as f32);
+            self.frame_count = self
+                .frame_count
+                .checked_add(1)
+                .ok_or_else(|| "Streaming waveform frame count overflowed.".to_string())?;
+        }
+        Ok(())
+    }
+
+    fn finish(&mut self) -> Result<*mut NativeAudioBytesResult, String> {
+        let accumulator = self
+            .accumulator
+            .take()
+            .ok_or_else(|| "Streaming waveform session is already finished.".to_string())?;
+        let waveform = accumulator.finish(&self.spec)?;
+        let result_json = serde_json::to_string(&NativeStreamingWaveformResultJson {
+            sample_rate_hz: self.sample_rate_hz,
+            channel_count: self.channel_count,
+            frame_count: self.frame_count,
+            waveform: waveform.json,
+        })
+        .map_err(|error| format!("Failed to encode streaming waveform result: {error}"))?;
+        encode_bytes_result_json(Vec::new(), waveform.bytes, result_json)
+    }
 }
 
 impl WaveformAccumulator {

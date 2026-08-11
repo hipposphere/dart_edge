@@ -1,3 +1,10 @@
+## Unreleased
+
+- Add a stateful native PCM16LE waveform session for generating compact peaks
+  while audio arrives, including a borrowed-pointer input path that avoids
+  Dart-side chunk allocation and copies.
+- Bump the native artifact version to 0.1.10 for the streaming waveform ABI.
+
 ## 0.3.13
 
 - Generate optional signed, multi-resolution waveform peaks while native WAV

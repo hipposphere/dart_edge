@@ -193,7 +193,42 @@ external ffi.Pointer<ffi.Char> dart_edge_audio_probe_file(
 @ffi.Native<ffi.Pointer<ffi.Char> Function()>()
 external ffi.Pointer<ffi.Char> dart_edge_audio_take_last_error();
 
+@ffi.Native<
+  ffi.Int32 Function(
+    ffi.Pointer<DartEdgeAudioWaveformSession>,
+    ffi.Pointer<ffi.Uint8>,
+    ffi.IntPtr,
+  )
+>()
+external int dart_edge_audio_waveform_add_pcm16(
+  ffi.Pointer<DartEdgeAudioWaveformSession> session,
+  ffi.Pointer<ffi.Uint8> input_ptr,
+  int input_len,
+);
+
+@ffi.Native<
+  ffi.Pointer<DartEdgeAudioWaveformSession> Function(ffi.Pointer<ffi.Char>)
+>()
+external ffi.Pointer<DartEdgeAudioWaveformSession>
+dart_edge_audio_waveform_create(ffi.Pointer<ffi.Char> request_json);
+
+@ffi.Native<
+  ffi.Pointer<NativeAudioBytesResult> Function(
+    ffi.Pointer<DartEdgeAudioWaveformSession>,
+  )
+>()
+external ffi.Pointer<NativeAudioBytesResult> dart_edge_audio_waveform_finish(
+  ffi.Pointer<DartEdgeAudioWaveformSession> session,
+);
+
+@ffi.Native<ffi.Void Function(ffi.Pointer<DartEdgeAudioWaveformSession>)>()
+external void dart_edge_audio_waveform_free(
+  ffi.Pointer<DartEdgeAudioWaveformSession> session,
+);
+
 final class DartEdgeAudioPool extends ffi.Opaque {}
+
+final class DartEdgeAudioWaveformSession extends ffi.Opaque {}
 
 final class NativeAudioBytesResult extends ffi.Struct {
   external imp$1.NativeOwnedBytes bytes;

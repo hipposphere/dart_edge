@@ -39,6 +39,8 @@ Future<void> main() async {
 - `AudioFileConversionRequest` and `AudioBytesConversionRequest` configure WAV
   conversion
 - `AudioTargetFormat` currently supports `wavPcm16` and `wavPcm24`
+- `NativeAudioWaveformSession` accumulates compact waveform peaks directly
+  from streaming PCM16LE chunks
 - `NativeAudioPool.concatenateStreams` normalizes single-owner native inputs
   into an anonymous-file-backed WAV stream without materializing payloads in
   Dart memory
@@ -90,6 +92,30 @@ final result = await audioPool.concatenateStreams(
 The completed WAV is held in anonymous OS temporary storage. Its native body
 is backpressured and automatically releases the temporary file when consumed,
 canceled, or closed.
+
+## Streaming PCM16 Waveforms
+
+Use `NativeAudioWaveformSession` when canonical PCM16LE audio is already
+arriving incrementally. The accumulator retains only compact min/max peaks, not
+the audio payload.
+
+```dart
+final waveform = NativeAudioWaveformSession(
+  sampleRateHz: 16000,
+  waveform: const AudioWaveformSpec(
+    baseInterval: Duration(milliseconds: 20),
+    levelFactors: [1, 4, 16],
+  ),
+);
+
+waveform.addPcm16(chunk);
+final result = waveform.finish();
+```
+
+`addPcm16` accepts Dart-managed `Uint8List` data and uses a temporary native
+copy for the FFI call. When a transport or recorder already owns native bytes,
+use `addNativePcm16` with its pointer and length. Rust reads the borrowed bytes
+synchronously without retaining or copying the chunk.
 
 ## Native Bindings
 

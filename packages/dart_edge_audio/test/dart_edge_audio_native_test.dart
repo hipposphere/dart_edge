@@ -3,7 +3,7 @@ import 'package:test/test.dart';
 
 void main() {
   test('loads the bundled Rust audio asset', () {
-    expect(DartEdgeAudioNative.abiVersion, 2);
+    expect(DartEdgeAudioNative.abiVersion, 3);
     expect(DartEdgeAudioNative.hasBundledAsset, isTrue);
   });
 }
