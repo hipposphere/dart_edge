@@ -1,5 +1,7 @@
 ## Unreleased
 
+## 0.3.36
+
 - Add long-lived unidirectional and bidirectional WebTransport stream handles
   with incremental native-leased receive chunks, flow-controlled writes,
   graceful FIN, reset, stop, stream IDs, and terminal errors.
@@ -8,6 +10,7 @@
   leases instead of eagerly copying their bodies into Dart-managed memory.
 - Add borrowed-pointer sends for leased WebSocket binary frames, WebTransport
   datagrams, and WebTransport reliable stream payloads.
+- Require `dart_edge_core` 0.3.41.
 
 ## 0.3.35
 

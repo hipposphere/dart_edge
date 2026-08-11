@@ -1,5 +1,7 @@
 ## Unreleased
 
+## 0.3.41
+
 - Add transport-agnostic contracts for persistent WebTransport
   unidirectional and bidirectional streams.
 - Add `BinaryPayloadLease` for single-owner binary transport payloads.

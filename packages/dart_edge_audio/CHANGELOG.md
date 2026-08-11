@@ -1,5 +1,7 @@
 ## Unreleased
 
+## 0.3.14
+
 - Add a stateful native PCM16LE waveform session for generating compact peaks
   while audio arrives, including a borrowed-pointer input path that avoids
   Dart-side chunk allocation and copies.
