@@ -748,6 +748,39 @@ void main() {
     expect(messages.current, [4, 4, 3, 2, 1]);
   });
 
+  test('websocket routes can receive and send leased native frames', () async {
+    final receivedNativeLease = Completer<bool>();
+    final app = DartEdge<void>(services: () {});
+    app.websocket(
+      '/native-audio',
+      onConnect: (socket) async {
+        await for (final lease in socket.messages.leasedBinary()) {
+          receivedNativeLease.complete(lease is NativeBinaryPayloadLease);
+          await socket.sendBinaryLease(lease);
+          await socket.close();
+        }
+      },
+    );
+
+    final server = await app.listen(port: 0);
+    final socket = await WebSocket.connect(
+      'ws://127.0.0.1:${server.port}/native-audio',
+    );
+    final messages = StreamIterator<dynamic>(socket);
+
+    addTearDown(() async {
+      await messages.cancel();
+      await socket.close();
+      await server.close();
+    });
+
+    socket.add(Uint8List.fromList([9, 8, 7, 6]));
+
+    expect(await messages.moveNext(), isTrue);
+    expect(messages.current, [9, 8, 7, 6]);
+    expect(await receivedNativeLease.future, isTrue);
+  });
+
   test('websocket guards can reject the upgrade handshake', () async {
     final app = DartEdge<void>(services: () {});
     app.websocket(

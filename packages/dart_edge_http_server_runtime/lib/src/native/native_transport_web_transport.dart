@@ -1,9 +1,9 @@
 import 'dart:ffi';
-import 'dart:typed_data';
 
 import 'package:dart_edge_native_bridge/dart_edge_native_bridge.dart'
     as core_ffi;
 
+import '../runtime/native_binary_payload_lease.dart';
 import 'generated_bindings.dart' as gen;
 
 final class NativeWebTransportConnection {
@@ -27,18 +27,21 @@ final class NativeWebTransportConnection {
 final class NativeWebTransportDatagram {
   const NativeWebTransportDatagram({
     required this.sessionId,
-    required this.body,
+    required this.bodyLease,
   });
 
   final int sessionId;
-  final Uint8List body;
+  final NativeBinaryPayloadLease bodyLease;
 }
 
 final class NativeWebTransportStream {
-  const NativeWebTransportStream({required this.sessionId, required this.body});
+  const NativeWebTransportStream({
+    required this.sessionId,
+    required this.bodyLease,
+  });
 
   final int sessionId;
-  final Uint8List body;
+  final NativeBinaryPayloadLease bodyLease;
 }
 
 NativeWebTransportConnection decodeNativeWebTransportConnection(
@@ -59,22 +62,32 @@ NativeWebTransportConnection decodeNativeWebTransportConnection(
 }
 
 NativeWebTransportDatagram decodeNativeWebTransportDatagram(
-  Pointer<gen.NativeWebTransportDatagram> datagramPtr,
-) {
+  Pointer<gen.NativeWebTransportDatagram> datagramPtr, {
+  required void Function() release,
+}) {
   final datagram = datagramPtr.ref;
   return NativeWebTransportDatagram(
     sessionId: datagram.session_id,
-    body: core_ffi.maybeCopyNativeBytes(datagram.body) ?? Uint8List(0),
+    bodyLease: NativeBinaryPayloadLease.fromPointer(
+      bytesPtr: datagram.body.ptr,
+      length: datagram.body.len,
+      release: release,
+    ),
   );
 }
 
 NativeWebTransportStream decodeNativeWebTransportStream(
-  Pointer<gen.NativeWebTransportStream> streamPtr,
-) {
+  Pointer<gen.NativeWebTransportStream> streamPtr, {
+  required void Function() release,
+}) {
   final stream = streamPtr.ref;
   return NativeWebTransportStream(
     sessionId: stream.session_id,
-    body: core_ffi.maybeCopyNativeBytes(stream.body) ?? Uint8List(0),
+    bodyLease: NativeBinaryPayloadLease.fromPointer(
+      bytesPtr: stream.body.ptr,
+      length: stream.body.len,
+      release: release,
+    ),
   );
 }
 

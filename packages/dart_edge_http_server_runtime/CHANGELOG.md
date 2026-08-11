@@ -1,3 +1,10 @@
+## Unreleased
+
+- Retain native WebSocket and WebTransport message handles as binary payload
+  leases instead of eagerly copying their bodies into Dart-managed memory.
+- Add borrowed-pointer sends for leased WebSocket binary frames, WebTransport
+  datagrams, and WebTransport reliable stream payloads.
+
 ## 0.3.35
 
 - Add `NativeBinaryStreamResponse.partial` for native `206 Partial Content`

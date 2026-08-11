@@ -17,7 +17,8 @@ The current delivered center is HTTP. The HTTP codegen package exposes
 annotations, normalized route artifact generation, schema registry generation,
 runtime codec registry skeletons, and client-generation pieces. A full
 analyzer-backed builder remains a later layer. WebSocket routes are also
-supported by the runtime, including text, JSON, and binary frames.
+supported by the runtime, including text, JSON, binary frames, and native
+single-owner binary leases for allocation-sensitive streaming paths.
 
 ## Quick Start
 
@@ -89,6 +90,11 @@ app.websocket('/audio', onConnect: (socket) async {
   }
 });
 ```
+
+Use `messages.leasedBinary()` when a native consumer should receive the frame
+without first copying it into Dart-managed memory. WebTransport provides the
+same opt-in path through `datagrams.leases()` and `streams.leases()`. Text and
+JSON control messages continue to use the normal APIs on the same connection.
 
 ## Workspace Layout
 

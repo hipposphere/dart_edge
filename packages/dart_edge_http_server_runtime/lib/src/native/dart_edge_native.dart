@@ -337,10 +337,19 @@ abstract final class DartEdgeNative {
       return null;
     }
 
+    var transferred = false;
     try {
-      return decodeNativeWebSocketMessage(messagePtr);
+      final message = decodeNativeWebSocketMessage(
+        messagePtr,
+        release: () => gen
+            .dart_edge_http_server_runtime_free_web_socket_message(messagePtr),
+      );
+      transferred = message.bodyLease != null;
+      return message;
     } finally {
-      gen.dart_edge_http_server_runtime_free_web_socket_message(messagePtr);
+      if (!transferred) {
+        gen.dart_edge_http_server_runtime_free_web_socket_message(messagePtr);
+      }
     }
   }
 
@@ -372,11 +381,18 @@ abstract final class DartEdgeNative {
     }
 
     try {
-      return decodeNativeWebTransportDatagram(datagramPtr);
-    } finally {
+      return decodeNativeWebTransportDatagram(
+        datagramPtr,
+        release: () =>
+            gen.dart_edge_http_server_runtime_free_web_transport_datagram(
+              datagramPtr,
+            ),
+      );
+    } catch (_) {
       gen.dart_edge_http_server_runtime_free_web_transport_datagram(
         datagramPtr,
       );
+      rethrow;
     }
   }
 
@@ -389,9 +405,14 @@ abstract final class DartEdgeNative {
     }
 
     try {
-      return decodeNativeWebTransportStream(streamPtr);
-    } finally {
+      return decodeNativeWebTransportStream(
+        streamPtr,
+        release: () => gen
+            .dart_edge_http_server_runtime_free_web_transport_stream(streamPtr),
+      );
+    } catch (_) {
       gen.dart_edge_http_server_runtime_free_web_transport_stream(streamPtr);
+      rethrow;
     }
   }
 
@@ -428,6 +449,25 @@ abstract final class DartEdgeNative {
     }
   }
 
+  /// Sends borrowed native bytes without materializing the payload in Dart.
+  ///
+  /// The runtime copies the bytes into its outbound WebSocket frame before
+  /// this method returns and does not retain [bodyPtr].
+  static bool webSocketSendNativeBinary(
+    int sessionId, {
+    required Pointer<Uint8> bodyPtr,
+    required int bodyLength,
+  }) {
+    return _withBorrowedNativeBody(
+      bodyPtr: bodyPtr,
+      bodyLength: bodyLength,
+      run: (body) => gen.dart_edge_http_server_runtime_web_socket_send_binary(
+        sessionId,
+        body,
+      ),
+    );
+  }
+
   /// Closes an active WebSocket session.
   static bool webSocketClose(int sessionId, {int? code, String? reason}) {
     final reasonPtr = reason?.toNativeUtf8();
@@ -456,6 +496,23 @@ abstract final class DartEdgeNative {
     );
   }
 
+  /// Sends a borrowed native WebTransport datagram without a Dart payload copy.
+  static bool webTransportSendNativeDatagram(
+    int sessionId, {
+    required Pointer<Uint8> bodyPtr,
+    required int bodyLength,
+  }) {
+    return _withBorrowedNativeBody(
+      bodyPtr: bodyPtr,
+      bodyLength: bodyLength,
+      run: (body) =>
+          gen.dart_edge_http_server_runtime_web_transport_send_datagram(
+            sessionId,
+            body,
+          ),
+    );
+  }
+
   /// Sends one reliable payload over a new WebTransport stream.
   static bool webTransportSendStream(int sessionId, List<int> body) {
     return _withNativeBody(
@@ -464,6 +521,23 @@ abstract final class DartEdgeNative {
           gen.dart_edge_http_server_runtime_web_transport_send_stream(
             sessionId,
             nativeBytes,
+          ),
+    );
+  }
+
+  /// Sends a borrowed native reliable payload without a Dart payload copy.
+  static bool webTransportSendNativeStream(
+    int sessionId, {
+    required Pointer<Uint8> bodyPtr,
+    required int bodyLength,
+  }) {
+    return _withBorrowedNativeBody(
+      bodyPtr: bodyPtr,
+      bodyLength: bodyLength,
+      run: (body) =>
+          gen.dart_edge_http_server_runtime_web_transport_send_stream(
+            sessionId,
+            body,
           ),
     );
   }
@@ -484,6 +558,30 @@ abstract final class DartEdgeNative {
     } finally {
       calloc.free(nativeBytesPtr);
       calloc.free(bodyPtr);
+    }
+  }
+
+  static bool _withBorrowedNativeBody({
+    required Pointer<Uint8> bodyPtr,
+    required int bodyLength,
+    required bool Function(core_ffi.NativeBytes body) run,
+  }) {
+    RangeError.checkNotNegative(bodyLength, 'bodyLength');
+    if (bodyLength > 0 && bodyPtr == nullptr) {
+      throw ArgumentError.value(
+        bodyPtr,
+        'bodyPtr',
+        'Pointer must not be null for a non-empty body.',
+      );
+    }
+    final nativeBytesPtr = calloc<core_ffi.NativeBytes>();
+    try {
+      nativeBytesPtr.ref
+        ..ptr = bodyPtr
+        ..len = bodyLength;
+      return run(nativeBytesPtr.ref);
+    } finally {
+      calloc.free(nativeBytesPtr);
     }
   }
 

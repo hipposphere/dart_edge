@@ -138,6 +138,33 @@ app.websocket(
 );
 ```
 
+For allocation-sensitive binary streams, take ownership of the native payload
+and close it after all synchronous native consumers have borrowed its pointer:
+
+```dart
+await for (final payload in socket.messages.leasedBinary()) {
+  try {
+    final native = payload as NativeBinaryPayloadLease;
+    waveform.addNativePcm16(
+      pcm16LeBytesPtr: native.bytesPtr,
+      byteLength: native.length,
+    );
+  } finally {
+    payload.close();
+  }
+}
+```
+
+Reading `frame.bytes`, `messages.binary()`, WebTransport `datagrams()`, or
+WebTransport `streams()` remains fully supported. Those compatibility APIs
+copy a native lease lazily and release it immediately. WebTransport callers can
+avoid the copy with `datagrams.leases()` and `streams.leases()`.
+
+Text and JSON control frames are unchanged and can be mixed with leased binary
+WebSocket frames through `messages.frames()`. Use `sendBinaryLease`,
+`sendDatagramLease`, or `sendStreamLease` to send a native lease without a Dart
+payload copy; normal text, JSON, and byte-list send methods remain available.
+
 See [example/native_probe.dart](example/native_probe.dart) for the native asset
 probe and [../dart_edge_http_server/example/simple_http_server.dart](../dart_edge_http_server/example/simple_http_server.dart)
 for a larger application example that uses this runtime surface.

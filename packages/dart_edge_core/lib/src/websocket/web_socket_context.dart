@@ -3,11 +3,14 @@ import 'dart:typed_data';
 import '../context/request_context.dart';
 import '../context/request_input.dart';
 import '../context/request_telemetry.dart';
+import '../transport/binary_payload_lease.dart';
 import 'incoming_web_socket_messages.dart';
 import 'web_socket_message.dart';
 
 typedef WebSocketTextSender = Future<void> Function(String value);
 typedef WebSocketBinarySender = Future<void> Function(List<int> value);
+typedef WebSocketBinaryLeaseSender =
+    Future<void> Function(BinaryPayloadLease lease);
 typedef WebSocketJsonSender = Future<void> Function(Object? value);
 typedef WebSocketCloser = Future<void> Function([int? code, String? reason]);
 
@@ -20,6 +23,7 @@ final class WebSocketContext<TServices> {
     this.telemetry = const RequestTelemetry(),
     this._sendText,
     this._sendBinary,
+    this._sendBinaryLease,
     this._sendJson,
     this._close,
   }) : _requestContext = RequestContext<TServices>(
@@ -33,6 +37,7 @@ final class WebSocketContext<TServices> {
     this.messages = const IncomingWebSocketMessages(),
     this._sendText,
     this._sendBinary,
+    this._sendBinaryLease,
     this._sendJson,
     this._close,
   }) : services = request.services,
@@ -55,6 +60,7 @@ final class WebSocketContext<TServices> {
   final RequestContext<TServices> _requestContext;
   final WebSocketTextSender? _sendText;
   final WebSocketBinarySender? _sendBinary;
+  final WebSocketBinaryLeaseSender? _sendBinaryLease;
   final WebSocketJsonSender? _sendJson;
   final WebSocketCloser? _close;
 
@@ -90,13 +96,34 @@ final class WebSocketContext<TServices> {
     await sendBinary(Uint8List.fromList(value));
   }
 
+  /// Sends and consumes one single-owner binary payload.
+  ///
+  /// Native runtimes can borrow a native lease directly. The lease is always
+  /// closed after the send operation completes or fails.
+  Future<void> sendBinaryLease(BinaryPayloadLease lease) async {
+    try {
+      final sendBinaryLease = _sendBinaryLease;
+      if (sendBinaryLease != null) {
+        await sendBinaryLease(lease);
+        return;
+      }
+      await sendBinary(lease.bytesView);
+    } finally {
+      lease.close();
+    }
+  }
+
   /// Sends one text or binary frame to the client.
   Future<void> sendFrame(WebSocketMessage message) async {
     switch (message.kind) {
       case WebSocketMessageKind.text:
         await sendText(message.text);
       case WebSocketMessageKind.binary:
-        await sendBinary(message.bytes);
+        if (message.hasBinaryLease) {
+          await sendBinaryLease(message.takeBinaryLease());
+        } else {
+          await sendBinary(message.bytes);
+        }
     }
   }
 

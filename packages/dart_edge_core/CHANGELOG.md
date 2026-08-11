@@ -1,3 +1,9 @@
+## Unreleased
+
+- Add `BinaryPayloadLease` for single-owner binary transport payloads.
+- Add lazy-copy and leased receive/send APIs for WebSocket binary frames and
+  WebTransport datagrams and reliable stream payloads.
+
 ## 0.3.40
 
 - Add typed single-byte HTTP range parsing and resolution for closed,

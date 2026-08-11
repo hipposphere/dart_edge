@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:dart_edge_native_bridge/dart_edge_native_bridge.dart'
     as core_ffi;
 
+import '../runtime/native_binary_payload_lease.dart';
 import 'generated_bindings.dart' as gen;
 
 final class NativeWebSocketConnection {
@@ -28,12 +29,14 @@ final class NativeWebSocketMessage {
   const NativeWebSocketMessage({
     required this.sessionId,
     required this.kind,
-    required this.body,
+    this.body,
+    this.bodyLease,
   });
 
   final int sessionId;
   final NativeWebSocketMessageKind kind;
-  final Uint8List body;
+  final Uint8List? body;
+  final NativeBinaryPayloadLease? bodyLease;
 }
 
 enum NativeWebSocketMessageKind { text, binary }
@@ -56,18 +59,27 @@ NativeWebSocketConnection decodeNativeWebSocketConnection(
 }
 
 NativeWebSocketMessage decodeNativeWebSocketMessage(
-  Pointer<gen.NativeWebSocketMessage> messagePtr,
-) {
+  Pointer<gen.NativeWebSocketMessage> messagePtr, {
+  required void Function() release,
+}) {
   final message = messagePtr.ref;
-  return NativeWebSocketMessage(
-    sessionId: message.session_id,
-    kind: switch (message.kind) {
-      1 => NativeWebSocketMessageKind.text,
-      2 => NativeWebSocketMessageKind.binary,
-      _ => throw StateError('Unknown WebSocket message kind ${message.kind}.'),
-    },
-    body: core_ffi.maybeCopyNativeBytes(message.body) ?? Uint8List(0),
-  );
+  return switch (message.kind) {
+    1 => NativeWebSocketMessage(
+      sessionId: message.session_id,
+      kind: NativeWebSocketMessageKind.text,
+      body: core_ffi.maybeCopyNativeBytes(message.body) ?? Uint8List(0),
+    ),
+    2 => NativeWebSocketMessage(
+      sessionId: message.session_id,
+      kind: NativeWebSocketMessageKind.binary,
+      bodyLease: NativeBinaryPayloadLease.fromPointer(
+        bytesPtr: message.body.ptr,
+        length: message.body.len,
+        release: release,
+      ),
+    ),
+    _ => throw StateError('Unknown WebSocket message kind ${message.kind}.'),
+  };
 }
 
 Map<String, String> _decodePairs(

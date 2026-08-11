@@ -1,3 +1,4 @@
+export 'transport/binary_payload_lease.dart';
 export 'webtransport/handler_web_transport_route_definition.dart';
 export 'webtransport/incoming_web_transport_datagrams.dart';
 export 'webtransport/incoming_web_transport_streams.dart';

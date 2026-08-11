@@ -3,11 +3,14 @@ import 'dart:typed_data';
 import '../context/request_context.dart';
 import '../context/request_input.dart';
 import '../context/request_telemetry.dart';
+import '../transport/binary_payload_lease.dart';
 import 'incoming_web_transport_datagrams.dart';
 import 'incoming_web_transport_streams.dart';
 
 typedef WebTransportDatagramSender = Future<void> Function(List<int> value);
 typedef WebTransportStreamSender = Future<void> Function(List<int> value);
+typedef WebTransportLeaseSender =
+    Future<void> Function(BinaryPayloadLease lease);
 typedef WebTransportCloser = Future<void> Function([int? code, String? reason]);
 
 /// Context passed to a WebTransport route when a client connects.
@@ -19,7 +22,9 @@ final class WebTransportContext<TServices> {
     this.streams = const IncomingWebTransportStreams(),
     this.telemetry = const RequestTelemetry(),
     this._sendDatagram,
+    this._sendDatagramLease,
     this._sendStream,
+    this._sendStreamLease,
     this._close,
   }) : _requestContext = RequestContext<TServices>(
          services: services,
@@ -32,7 +37,9 @@ final class WebTransportContext<TServices> {
     this.datagrams = const IncomingWebTransportDatagrams(),
     this.streams = const IncomingWebTransportStreams(),
     this._sendDatagram,
+    this._sendDatagramLease,
     this._sendStream,
+    this._sendStreamLease,
     this._close,
   }) : services = request.services,
        req = request.req,
@@ -56,7 +63,9 @@ final class WebTransportContext<TServices> {
 
   final RequestContext<TServices> _requestContext;
   final WebTransportDatagramSender? _sendDatagram;
+  final WebTransportLeaseSender? _sendDatagramLease;
   final WebTransportStreamSender? _sendStream;
+  final WebTransportLeaseSender? _sendStreamLease;
   final WebTransportCloser? _close;
 
   /// Shared request-scoped context used during guard evaluation.
@@ -82,6 +91,20 @@ final class WebTransportContext<TServices> {
     await sendDatagram(Uint8List.fromList(value));
   }
 
+  /// Sends and consumes one single-owner unreliable datagram payload.
+  Future<void> sendDatagramLease(BinaryPayloadLease lease) async {
+    try {
+      final sendDatagramLease = _sendDatagramLease;
+      if (sendDatagramLease != null) {
+        await sendDatagramLease(lease);
+        return;
+      }
+      await sendDatagram(lease.bytesView);
+    } finally {
+      lease.close();
+    }
+  }
+
   /// Sends one reliable payload on a new unidirectional WebTransport stream.
   Future<void> sendStream(List<int> value) async {
     final sendStream = _sendStream;
@@ -89,6 +112,20 @@ final class WebTransportContext<TServices> {
       return;
     }
     await sendStream(Uint8List.fromList(value));
+  }
+
+  /// Sends and consumes one single-owner reliable stream payload.
+  Future<void> sendStreamLease(BinaryPayloadLease lease) async {
+    try {
+      final sendStreamLease = _sendStreamLease;
+      if (sendStreamLease != null) {
+        await sendStreamLease(lease);
+        return;
+      }
+      await sendStream(lease.bytesView);
+    } finally {
+      lease.close();
+    }
   }
 
   /// Closes the WebTransport session.

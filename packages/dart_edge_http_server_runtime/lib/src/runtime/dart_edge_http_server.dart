@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:ffi';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:dart_edge_core/dart_edge_core.dart';
 import 'package:json_schema/json_schema.dart';
@@ -14,6 +13,7 @@ import 'compiled_route_table.dart';
 import 'dart_edge_codec.dart';
 import 'dart_edge_server.dart';
 import 'json_schema_route_id.dart';
+import 'native_binary_payload_lease.dart';
 import 'native_binary_stream_response.dart';
 import 'open_api_document.dart';
 import 'request_decoder.dart';
@@ -471,6 +471,7 @@ class DartEdge<TServices> extends Router<TServices> {
       messages: IncomingWebSocketMessages(activeSession.messages.stream),
       sendText: (value) => _sendWebSocketText(sessionId, value),
       sendBinary: (value) => _sendWebSocketBinary(sessionId, value),
+      sendBinaryLease: (lease) => _sendWebSocketBinaryLease(sessionId, lease),
       sendJson: (value) => _sendWebSocketJson(sessionId, value),
       close: ([code, reason]) async {
         DartEdgeNative.webSocketClose(sessionId, code: code, reason: reason);
@@ -489,6 +490,7 @@ class DartEdge<TServices> extends Router<TServices> {
             .whenComplete(() async {
               final session = _activeWebSocketSessions.remove(sessionId);
               await session?.messages.close();
+              session?.closeLeases();
               DartEdgeNative.webSocketClose(sessionId);
             });
 
@@ -506,12 +508,15 @@ class DartEdge<TServices> extends Router<TServices> {
       if (message == null) {
         return;
       }
+      if (message.bodyLease case final lease?) {
+        session.track(lease);
+      }
       session.messages.add(_decodeWebSocketMessage(message));
     }
   }
 
   Future<void> _handleWebSocketClosed(int sessionId) async {
-    final session = _activeWebSocketSessions.remove(sessionId);
+    final session = _activeWebSocketSessions[sessionId];
     await session?.messages.close();
   }
 
@@ -603,17 +608,23 @@ class DartEdge<TServices> extends Router<TServices> {
         );
 
     final activeSession = _ActiveWebTransportSession(
-      StreamController<Uint8List>(),
-      StreamController<Uint8List>(),
+      StreamController<BinaryPayloadLease>(),
+      StreamController<BinaryPayloadLease>(),
     );
     _activeWebTransportSessions[sessionId] = activeSession;
 
     final transport = WebTransportContext<TServices>.fromRequest(
       request: requestContext,
-      datagrams: IncomingWebTransportDatagrams(activeSession.datagrams.stream),
-      streams: IncomingWebTransportStreams(activeSession.streams.stream),
+      datagrams: IncomingWebTransportDatagrams.leased(
+        activeSession.datagrams.stream,
+      ),
+      streams: IncomingWebTransportStreams.leased(activeSession.streams.stream),
       sendDatagram: (value) => _sendWebTransportDatagram(sessionId, value),
+      sendDatagramLease: (lease) =>
+          _sendWebTransportDatagramLease(sessionId, lease),
       sendStream: (value) => _sendWebTransportStream(sessionId, value),
+      sendStreamLease: (lease) =>
+          _sendWebTransportStreamLease(sessionId, lease),
       close: ([code, reason]) async {
         DartEdgeNative.webTransportClose(sessionId, code: code, reason: reason);
       },
@@ -632,6 +643,7 @@ class DartEdge<TServices> extends Router<TServices> {
               final session = _activeWebTransportSessions.remove(sessionId);
               await session?.datagrams.close();
               await session?.streams.close();
+              session?.closeLeases();
               DartEdgeNative.webTransportClose(sessionId);
             });
 
@@ -650,12 +662,13 @@ class DartEdge<TServices> extends Router<TServices> {
       if (datagram == null) {
         return;
       }
-      session.datagrams.add(datagram.body);
+      session.track(datagram.bodyLease);
+      session.datagrams.add(datagram.bodyLease);
     }
   }
 
   Future<void> _handleWebTransportClosed(int sessionId) async {
-    final session = _activeWebTransportSessions.remove(sessionId);
+    final session = _activeWebTransportSessions[sessionId];
     await session?.datagrams.close();
     await session?.streams.close();
   }
@@ -671,7 +684,8 @@ class DartEdge<TServices> extends Router<TServices> {
       if (stream == null) {
         return;
       }
-      session.streams.add(stream.body);
+      session.track(stream.bodyLease);
+      session.streams.add(stream.bodyLease);
     }
   }
 
@@ -879,6 +893,23 @@ Future<void> _sendWebSocketBinary(int sessionId, List<int> value) async {
   }
 }
 
+Future<void> _sendWebSocketBinaryLease(
+  int sessionId,
+  BinaryPayloadLease lease,
+) async {
+  final sent = switch (lease) {
+    NativeBinaryPayloadLease() => DartEdgeNative.webSocketSendNativeBinary(
+      sessionId,
+      bodyPtr: lease.bytesPtr,
+      bodyLength: lease.length,
+    ),
+    _ => DartEdgeNative.webSocketSendBinary(sessionId, lease.bytesView),
+  };
+  if (!sent) {
+    throw StateError('Failed to send WebSocket binary frame for $sessionId.');
+  }
+}
+
 Future<void> _sendWebSocketJson(int sessionId, Object? value) async {
   final encoded = jsonEncode(_normalizeWebSocketJson(value));
   if (!DartEdgeNative.webSocketSendText(sessionId, encoded)) {
@@ -892,18 +923,56 @@ Future<void> _sendWebTransportDatagram(int sessionId, List<int> value) async {
   }
 }
 
+Future<void> _sendWebTransportDatagramLease(
+  int sessionId,
+  BinaryPayloadLease lease,
+) async {
+  final sent = switch (lease) {
+    NativeBinaryPayloadLease() => DartEdgeNative.webTransportSendNativeDatagram(
+      sessionId,
+      bodyPtr: lease.bytesPtr,
+      bodyLength: lease.length,
+    ),
+    _ => DartEdgeNative.webTransportSendDatagram(sessionId, lease.bytesView),
+  };
+  if (!sent) {
+    throw StateError('Failed to send WebTransport datagram for $sessionId.');
+  }
+}
+
 Future<void> _sendWebTransportStream(int sessionId, List<int> value) async {
   if (!DartEdgeNative.webTransportSendStream(sessionId, value)) {
     throw StateError('Failed to send WebTransport stream for $sessionId.');
   }
 }
 
+Future<void> _sendWebTransportStreamLease(
+  int sessionId,
+  BinaryPayloadLease lease,
+) async {
+  final sent = switch (lease) {
+    NativeBinaryPayloadLease() => DartEdgeNative.webTransportSendNativeStream(
+      sessionId,
+      bodyPtr: lease.bytesPtr,
+      bodyLength: lease.length,
+    ),
+    _ => DartEdgeNative.webTransportSendStream(sessionId, lease.bytesView),
+  };
+  if (!sent) {
+    throw StateError(
+      'Failed to send WebTransport stream payload for $sessionId.',
+    );
+  }
+}
+
 WebSocketMessage _decodeWebSocketMessage(NativeWebSocketMessage message) {
   return switch (message.kind) {
     NativeWebSocketMessageKind.text => WebSocketMessage.text(
-      utf8.decode(message.body),
+      utf8.decode(message.body!),
     ),
-    NativeWebSocketMessageKind.binary => WebSocketMessage.binary(message.body),
+    NativeWebSocketMessageKind.binary => WebSocketMessage.leasedBinary(
+      message.bodyLease!,
+    ),
   };
 }
 
@@ -1010,13 +1079,39 @@ final class _ActiveWebSocketSession {
   _ActiveWebSocketSession(this.messages);
 
   final StreamController<WebSocketMessage> messages;
+  final Set<BinaryPayloadLease> _leases = <BinaryPayloadLease>{};
   Future<void>? task;
+
+  void track(BinaryPayloadLease lease) {
+    _leases.removeWhere((value) => value.isClosed);
+    _leases.add(lease);
+  }
+
+  void closeLeases() {
+    for (final lease in _leases) {
+      lease.close();
+    }
+    _leases.clear();
+  }
 }
 
 final class _ActiveWebTransportSession {
   _ActiveWebTransportSession(this.datagrams, this.streams);
 
-  final StreamController<Uint8List> datagrams;
-  final StreamController<Uint8List> streams;
+  final StreamController<BinaryPayloadLease> datagrams;
+  final StreamController<BinaryPayloadLease> streams;
+  final Set<BinaryPayloadLease> _leases = <BinaryPayloadLease>{};
   Future<void>? task;
+
+  void track(BinaryPayloadLease lease) {
+    _leases.removeWhere((value) => value.isClosed);
+    _leases.add(lease);
+  }
+
+  void closeLeases() {
+    for (final lease in _leases) {
+      lease.close();
+    }
+    _leases.clear();
+  }
 }

@@ -71,7 +71,8 @@ storing it beyond the handler.
 
 Use `WebSocketOptions.query` for typed handshake query parameters.
 `messages.json<T>()` handles JSON text protocols, and `messages.binary()` or
-`messages.frames()` handle raw binary data:
+`messages.frames()` handle raw binary data. Native hot paths can use
+`messages.leasedBinary()` instead:
 
 ```dart
 app.websocket(
@@ -87,3 +88,8 @@ app.websocket(
   },
 );
 ```
+
+WebTransport offers the same split: `datagrams()` and `streams()` return safe
+Dart bytes, while `datagrams.leases()` and `streams.leases()` preserve native
+payload ownership. JSON and text control messages continue through the normal
+WebSocket methods.
