@@ -23,6 +23,7 @@ on:
           - dart_edge_sql
           - dart_edge_sql_pglite
           - dart_edge_vad
+          - dart_edge_webtransport
 
 permissions:
   contents: write

@@ -1775,6 +1775,19 @@ final class _FakeWebTransportSession
   Stream<Uint8List> get datagrams => const Stream.empty();
 
   @override
+  IncomingWebTransportReceiveStreams get incomingStreams =>
+      const IncomingWebTransportReceiveStreams();
+
+  @override
+  Future<WebTransportSendStream> openUnidirectionalStream({int? sendOrder}) =>
+      throw UnsupportedError('Not used by this generated-client test.');
+
+  @override
+  Future<WebTransportBidirectionalStream> openBidirectionalStream({
+    int? sendOrder,
+  }) => throw UnsupportedError('Not used by this generated-client test.');
+
+  @override
   Stream<Uint8List> get streams => const Stream.empty();
 
   @override

@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import '../http.dart';
 import '../web_socket.dart';
+import '../web_transport.dart';
 
 /// One outbound request emitted by a generated client.
 final class DartEdgeClientRequest {
@@ -160,10 +161,23 @@ final class DartEdgeClientWebTransportRequest {
 abstract interface class DartEdgeClientWebTransportSession {
   Stream<Uint8List> get datagrams;
 
+  IncomingWebTransportReceiveStreams get incomingStreams;
+
+  Future<WebTransportSendStream> openUnidirectionalStream({int? sendOrder});
+
+  Future<WebTransportBidirectionalStream> openBidirectionalStream({
+    int? sendOrder,
+  });
+
+  /// Complete incoming unidirectional stream payloads.
+  ///
+  /// This compatibility surface must not be listened to at the same time as
+  /// [incomingStreams].
   Stream<Uint8List> get streams;
 
   Future<void> sendDatagram(List<int> value);
 
+  /// Sends one complete payload on a new unidirectional stream.
   Future<void> sendStream(List<int> value);
 
   Future<void> close([int? code, String? reason]);

@@ -25,5 +25,37 @@ Future<void> main() async {
 }
 ```
 
-Browser cookie headers cannot be set manually. Use browser-managed cookies or
-bearer-style headers when the browser allows the requested header.
+Reliable streams remain open until they are explicitly finished or reset:
+
+```dart
+final audio = await session.openUnidirectionalStream(sendOrder: 10);
+await audio.write(metadataBytes);
+for (final chunk in audioChunks) {
+  await audio.writeLease(chunk);
+}
+await audio.finish();
+
+await for (final control in session.incomingStreams.bidirectional) {
+  await for (final chunk in control.receive.chunks()) {
+    handleControlBytes(chunk);
+  }
+}
+```
+
+`writeLease` consumes the lease. Native receive leases retain the Rust-owned
+allocation until the consumer closes them, avoiding a Dart-managed byte copy on
+the incremental path. `sendStream` and `streams` remain available as
+whole-payload compatibility helpers; do not listen to `streams` and
+`incomingStreams.unidirectional` at the same time.
+
+Browser WebTransport does not support custom HTTP/3 handshake headers. Use
+browser-managed cookies, a short-lived credential in the URL, or authenticate
+over the first reliable stream. Native clients can pass custom headers.
+
+The native FFI declarations are generated from
+`rust/include/dart_edge_webtransport.h`:
+
+```bash
+cd packages/dart_edge_webtransport
+dart run ffigen --config tool/ffigen.yaml
+```

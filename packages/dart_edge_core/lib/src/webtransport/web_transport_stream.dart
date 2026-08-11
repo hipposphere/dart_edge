@@ -20,7 +20,9 @@ final class WebTransportReceiveStream {
   final int id;
 
   /// QUIC stream identifier, unique within the WebTransport session.
-  final int protocolId;
+  ///
+  /// Browser WebTransport implementations do not expose this identifier.
+  final int? protocolId;
 
   final Stream<BinaryPayloadLease> _leases;
   final WebTransportStreamTerminator _stop;
@@ -52,7 +54,9 @@ final class WebTransportSendStream {
   final int id;
 
   /// QUIC stream identifier, unique within the WebTransport session.
-  final int protocolId;
+  ///
+  /// Browser WebTransport implementations do not expose this identifier.
+  final int? protocolId;
 
   final WebTransportStreamWriter _write;
   final WebTransportStreamLeaseWriter _writeLease;
@@ -83,5 +87,5 @@ final class WebTransportBidirectionalStream {
   final WebTransportSendStream send;
 
   int get id => send.id;
-  int get protocolId => send.protocolId;
+  int? get protocolId => send.protocolId;
 }

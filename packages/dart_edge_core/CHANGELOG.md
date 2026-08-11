@@ -1,5 +1,12 @@
 ## Unreleased
 
+## 0.3.42
+
+- Add long-lived unidirectional and bidirectional stream handles to generated
+  WebTransport client sessions.
+- Make QUIC protocol stream identifiers optional for browser clients, which do
+  not expose them.
+
 ## 0.3.41
 
 - Add transport-agnostic contracts for persistent WebTransport

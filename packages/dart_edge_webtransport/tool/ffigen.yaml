@@ -1,0 +1,40 @@
+name: DartEdgeWebTransportNativeBindings
+description: Generated C ABI bindings for dart_edge_webtransport.
+output: ../lib/src/platform/webtransport_native_bindings.dart
+headers:
+  entry-points:
+    - ../rust/include/dart_edge_webtransport.h
+functions:
+  include:
+    - dart_edge_webtransport_.*
+  leaf:
+    include:
+      - dart_edge_webtransport_dispose
+      - dart_edge_webtransport_free_bytes_result
+      - dart_edge_webtransport_free_connect_result
+      - dart_edge_webtransport_free_operation
+      - dart_edge_webtransport_free_stream_chunk
+      - dart_edge_webtransport_free_stream_info
+      - dart_edge_webtransport_free_stream_terminal
+      - dart_edge_webtransport_free_string
+      - dart_edge_webtransport_native_abi_version
+structs:
+  include:
+    - NativeWebTransportBytesResult
+    - NativeWebTransportConnectConfig
+    - NativeWebTransportConnectResult
+    - NativeWebTransportOperation
+    - NativeWebTransportStreamChunk
+    - NativeWebTransportStreamInfo
+    - NativeWebTransportStreamTerminal
+typedefs:
+  include:
+    - dart_edge_webtransport_event_callback_t
+exclude-all-by-default: true
+sort: true
+use-supported-typedefs: true
+comments: false
+preamble: |
+  // ignore_for_file: camel_case_types, non_constant_identifier_names
+ffi-native:
+  asset-id: package:dart_edge_webtransport/dart_edge_webtransport.dart

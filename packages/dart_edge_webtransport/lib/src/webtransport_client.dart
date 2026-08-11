@@ -15,8 +15,8 @@ abstract interface class DartEdgeWebTransportClient {
 
   /// Opens a WebTransport session.
   ///
-  /// Browser runtimes cannot send forbidden request headers such as `cookie`.
-  /// Native runtimes pass headers through to the HTTP/3 CONNECT request.
+  /// Browser WebTransport does not expose custom handshake headers. Native
+  /// runtimes pass [headers] through to the HTTP/3 CONNECT request.
   Future<DartEdgeWebTransportSession> connect(
     Uri uri, {
     Map<String, String> headers,
@@ -56,6 +56,22 @@ final class _DartEdgeClientWebTransportSession
   Stream<Uint8List> get datagrams => _session.datagrams;
 
   @override
+  IncomingWebTransportReceiveStreams get incomingStreams =>
+      _session.incomingStreams;
+
+  @override
+  Future<WebTransportSendStream> openUnidirectionalStream({int? sendOrder}) {
+    return _session.openUnidirectionalStream(sendOrder: sendOrder);
+  }
+
+  @override
+  Future<WebTransportBidirectionalStream> openBidirectionalStream({
+    int? sendOrder,
+  }) {
+    return _session.openBidirectionalStream(sendOrder: sendOrder);
+  }
+
+  @override
   Stream<Uint8List> get streams => _session.streams;
 
   @override
@@ -79,13 +95,33 @@ abstract interface class DartEdgeWebTransportSession {
   /// Incoming unreliable datagrams.
   Stream<Uint8List> get datagrams;
 
-  /// Incoming reliable stream payloads.
+  /// Incoming long-lived reliable streams initiated by the peer.
+  IncomingWebTransportReceiveStreams get incomingStreams;
+
+  /// Opens a long-lived client-to-server reliable stream.
+  ///
+  /// Streams with a higher [sendOrder] are scheduled before streams with a
+  /// lower value when both have buffered data.
+  Future<WebTransportSendStream> openUnidirectionalStream({int? sendOrder});
+
+  /// Opens a long-lived reliable stream with independent send/receive halves.
+  ///
+  /// Streams with a higher [sendOrder] are scheduled before streams with a
+  /// lower value when both have buffered data.
+  Future<WebTransportBidirectionalStream> openBidirectionalStream({
+    int? sendOrder,
+  });
+
+  /// Complete incoming reliable stream payloads.
+  ///
+  /// This compatibility surface must not be listened to at the same time as
+  /// [incomingStreams]. Prefer [incomingStreams] for incremental processing.
   Stream<Uint8List> get streams;
 
   /// Sends one unreliable datagram.
   Future<void> sendDatagram(List<int> bytes);
 
-  /// Sends one reliable payload on a new unidirectional WebTransport stream.
+  /// Sends one complete payload on a new unidirectional WebTransport stream.
   Future<void> sendStream(List<int> bytes);
 
   /// Closes the session.

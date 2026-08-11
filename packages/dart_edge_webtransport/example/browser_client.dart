@@ -6,7 +6,6 @@ Future<void> main() async {
   final client = DartEdgeWebTransportClient();
   final session = await client.connect(
     Uri.parse('https://localhost:4433/events'),
-    headers: {'authorization': 'Bearer dev-token'},
   );
 
   await session.sendDatagram(utf8.encode('ping'));
