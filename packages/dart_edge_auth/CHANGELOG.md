@@ -1,3 +1,9 @@
+## 0.3.41
+
+- Normalize email addresses before persistence and use case-insensitive email
+  lookups across the native SQLite and shared SQL authentication backends.
+- Bump the native artifact version to 0.1.23.
+
 ## 0.3.40
 
 - Require `json_schema` 0.1.2.

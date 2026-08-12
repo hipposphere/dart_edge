@@ -4,7 +4,9 @@ use async_trait::async_trait;
 use better_auth_core::adapters::UserOps;
 use better_auth_core::error::AuthResult;
 use better_auth_core::types::{CreateUser, ListUsersParams, UpdateUser, User};
+use diesel::dsl::sql;
 use diesel::prelude::*;
+use diesel::sql_types::{Bool, Text};
 
 use crate::adapter::DieselSqliteAdapter;
 use crate::error::diesel_to_auth_error;
@@ -48,10 +50,13 @@ impl UserOps for DieselSqliteAdapter {
     }
 
     async fn get_user_by_email(&self, email: &str) -> AuthResult<Option<Self::User>> {
-        let email = email.to_string();
+        let email = email.trim().to_lowercase();
         self.interact(move |conn| {
             user::table
-                .filter(user::email.eq(&email))
+                .filter(
+                    sql::<Bool>("LOWER(email) = ")
+                        .bind::<Text, _>(&email),
+                )
                 .first::<UserRow>(conn)
                 .optional()
                 .map(|opt| opt.map(User::from))

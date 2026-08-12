@@ -94,7 +94,10 @@ impl From<CreateUser> for NewUserRow {
         NewUserRow {
             id,
             name: data.name,
-            email: data.email.unwrap_or_default(),
+            email: data
+                .email
+                .map(|email| email.trim().to_lowercase())
+                .unwrap_or_default(),
             username: data.username,
             display_username: data.display_username,
             email_verified: data.email_verified.unwrap_or(false),
@@ -120,7 +123,7 @@ impl From<better_auth_core::types::UpdateUser> for UpdateUserRow {
 
         let mut row = UpdateUserRow {
             name: data.name.map(Some),
-            email: data.email,
+            email: data.email.map(|email| email.trim().to_lowercase()),
             username: data.username.map(Some),
             display_username: data.display_username.map(Some),
             email_verified: data.email_verified,

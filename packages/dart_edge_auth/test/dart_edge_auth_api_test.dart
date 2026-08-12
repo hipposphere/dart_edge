@@ -18,7 +18,7 @@ void main() {
     addTearDown(auth.dispose);
 
     final signup = await auth.api.signUpEmail(
-      email: 'ada@example.com',
+      email: '  Ada@Example.COM  ',
       password: 'password123',
       name: 'Ada Lovelace',
     );
@@ -29,6 +29,12 @@ void main() {
       signup.response.header('set-cookie'),
       contains('better-auth.session_token='),
     );
+
+    final signIn = await auth.api.signInEmail(
+      email: 'ADA@EXAMPLE.COM',
+      password: 'password123',
+    );
+    expect(signIn.user?.id, signup.user.id);
 
     final session = await auth.api.getSession(
       headers: {HttpHeaders.authorizationHeader: 'Bearer $token'},
@@ -117,7 +123,7 @@ void main() {
     });
 
     final created = await auth.trustedAdmin.createUser(
-      email: 'pglite-trusted@example.com',
+      email: '  PGlite-Trusted@Example.COM  ',
       password: 'password123',
       name: 'PGlite Trusted User',
       role: 'admin',
@@ -126,7 +132,7 @@ void main() {
     expect(created.user.role, 'admin');
 
     final signIn = await auth.api.signInEmail(
-      email: 'pglite-trusted@example.com',
+      email: 'PGLITE-TRUSTED@EXAMPLE.COM',
       password: 'password123',
     );
     expect(signIn.user!.id, created.user.id);
@@ -153,6 +159,21 @@ void main() {
     final listed = await auth.trustedAdmin.listUsers(limit: 10);
     expect(listed.total, 1);
     expect(listed.users.single.email, 'pglite-trusted@example.com');
+
+    await database.execute(
+      sql(
+        'UPDATE auth."user" SET email = @email WHERE id = @id',
+        parameters: {
+          'email': 'Legacy.MixedCase@Example.COM',
+          'id': created.user.id,
+        },
+      ),
+    );
+    final legacySignIn = await auth.api.signInEmail(
+      email: 'legacy.mixedcase@example.com',
+      password: 'password123',
+    );
+    expect(legacySignIn.user?.id, created.user.id);
   });
 
   test(

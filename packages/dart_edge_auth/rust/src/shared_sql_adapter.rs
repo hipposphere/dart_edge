@@ -673,7 +673,7 @@ impl UserOps for SharedSqlDatabaseAdapter {
             vec![
                 SqlParam::String(id.clone()),
                 match create_user.email {
-                    Some(value) => SqlParam::String(value),
+                    Some(value) => SqlParam::String(normalize_email(&value)),
                     None => SqlParam::Null,
                 },
                 match create_user.name {
@@ -725,11 +725,11 @@ impl UserOps for SharedSqlDatabaseAdapter {
 
     async fn get_user_by_email(&self, email: &str) -> AuthResult<Option<User>> {
         let sql = self.user_select_sql(&format!(
-            "u.{email_col} = {placeholder}",
+            "LOWER(u.{email_col}) = {placeholder}",
             email_col = quoted("email"),
             placeholder = self.placeholder(1),
         ));
-        self.fetch_optional_row(sql, vec![SqlParam::String(email.to_string())])?
+        self.fetch_optional_row(sql, vec![SqlParam::String(normalize_email(email))])?
             .map(decode_user)
             .transpose()
     }
@@ -759,7 +759,7 @@ impl UserOps for SharedSqlDatabaseAdapter {
         };
 
         if let Some(value) = update.email {
-            push_update("email", SqlParam::String(value));
+            push_update("email", SqlParam::String(normalize_email(&value)));
         }
         if let Some(value) = update.name {
             push_update("name", SqlParam::String(value));
@@ -916,6 +916,10 @@ impl UserOps for SharedSqlDatabaseAdapter {
 
         Ok((users, total))
     }
+}
+
+fn normalize_email(email: &str) -> String {
+    email.trim().to_lowercase()
 }
 
 #[async_trait]
