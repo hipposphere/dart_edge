@@ -426,13 +426,17 @@ impl<'a> RowReader<'a> {
 
     fn string(&self, name: &str) -> AuthResult<String> {
         match self.value(name)? {
-            SqlValue::String(value) | SqlValue::DateTime(value) | SqlValue::Bytes(value) => {
-                Ok(value.clone())
-            }
+            SqlValue::String(value)
+            | SqlValue::Decimal(value)
+            | SqlValue::DateTime(value)
+            | SqlValue::Bytes(value) => Ok(value.clone()),
             SqlValue::Integer(value) => Ok(value.to_string()),
             SqlValue::Double(value) => Ok(value.to_string()),
             SqlValue::Boolean(value) => Ok(value.to_string()),
             SqlValue::Json(value) => Ok(value.to_string()),
+            SqlValue::Vector(_) => Err(AuthError::internal(format!(
+                "Column \"{name}\" could not be read as a string"
+            ))),
             SqlValue::Null => Err(AuthError::internal(format!(
                 "Column \"{name}\" was unexpectedly null"
             ))),
