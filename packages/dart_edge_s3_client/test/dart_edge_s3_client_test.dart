@@ -134,7 +134,15 @@ void main() {
         await for (final chunk in request) {
           body.add(chunk);
         }
-        uploaded.complete(body.takeBytes());
+        final received = body.takeBytes();
+        uploaded.complete(
+          request.headers
+                      .value(HttpHeaders.contentEncodingHeader)
+                      ?.contains('aws-chunked') ==
+                  true
+              ? _decodeAwsChunked(received)
+              : received,
+        );
         request.response
           ..statusCode = HttpStatus.ok
           ..headers.set(HttpHeaders.etagHeader, '"native-upload"');
@@ -397,6 +405,39 @@ void main() {
     expect(config.resolvedRegion, isNull);
     expect(config.toJson(), isNot(contains('region')));
   });
+}
+
+Uint8List _decodeAwsChunked(Uint8List encoded) {
+  final decoded = BytesBuilder(copy: false);
+  var offset = 0;
+  while (offset < encoded.lengthInBytes) {
+    final headerEnd = _indexOfCrlf(encoded, offset);
+    if (headerEnd < 0) {
+      throw const FormatException('Truncated aws-chunked header.');
+    }
+    final header = ascii.decode(
+      Uint8List.sublistView(encoded, offset, headerEnd),
+    );
+    final size = int.parse(header.split(';').first, radix: 16);
+    offset = headerEnd + 2;
+    if (size == 0) break;
+    final payloadEnd = offset + size;
+    if (payloadEnd + 2 > encoded.lengthInBytes ||
+        encoded[payloadEnd] != 13 ||
+        encoded[payloadEnd + 1] != 10) {
+      throw const FormatException('Truncated aws-chunked payload.');
+    }
+    decoded.add(Uint8List.sublistView(encoded, offset, payloadEnd));
+    offset = payloadEnd + 2;
+  }
+  return decoded.takeBytes();
+}
+
+int _indexOfCrlf(Uint8List bytes, int start) {
+  for (var index = start; index + 1 < bytes.lengthInBytes; index += 1) {
+    if (bytes[index] == 13 && bytes[index + 1] == 10) return index;
+  }
+  return -1;
 }
 
 const _checksumSeed = 0xcbf29ce484222325;
