@@ -30,7 +30,7 @@ melos:
       run: dart format .
       description: Format Dart sources across the workspace.
     test:
-      run: melos exec --concurrency=1 --dir-exists=test -- dart test
+      run: dart run melos exec --concurrency=1 --dir-exists=test -- dart test
       description: Run tests in workspace packages that have a test directory.
     check:boundaries:
       run: dart --disable-dart-dev tool/check_package_boundaries.dart

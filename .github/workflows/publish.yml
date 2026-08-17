@@ -107,7 +107,10 @@ jobs:
               --scope "$PACKAGE_SCOPE" \
               -- dart test
           else
-            dart run melos run test
+            dart run melos exec \
+              --concurrency=1 \
+              --dir-exists=test \
+              -- dart test
           fi
 
       - name: Configure pub token
