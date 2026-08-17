@@ -24,7 +24,7 @@ single-owner binary leases for allocation-sensitive streaming paths.
 
 Requirements:
 
-- Dart `>=3.11.0 <4.0.0`
+- Dart `>=3.13.0 <4.0.0`
 - Rust toolchain when working on native-backed packages such as
   `dart_edge_http_server_runtime`, `dart_edge_auth`, `dart_edge_sql`,
   `dart_edge_audio`, `dart_edge_s3_client`, or `dart_edge_sip`

@@ -30,8 +30,8 @@ repository root and composed from `packages/*`, with shared Rust crates under
 
 ## Dart Baseline
 
-- Target Dart `>=3.11.0 <4.0.0`.
-- Treat Dart 3.11 as the minimum language baseline for repo design and API
+- Target Dart `>=3.13.0 <4.0.0`.
+- Treat Dart 3.13 as the minimum language baseline for repo design and API
   examples.
 - Use Pub workspaces instead of older monorepo tools for dependency resolution.
 - Keep all first-party packages under `packages/` so `workspace: ['packages/*']`
