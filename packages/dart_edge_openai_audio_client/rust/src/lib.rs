@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 use std::ffi::{CStr, CString, c_char};
 use std::io::{self, Read};
-use std::sync::Mutex;
-use std::sync::atomic::{AtomicI64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use dart_edge_core::{
@@ -16,11 +16,21 @@ use reqwest::blocking::Client;
 use reqwest::blocking::multipart::{Form, Part};
 use reqwest::header::{AUTHORIZATION, HeaderMap, HeaderName, HeaderValue, USER_AGENT};
 
-const NATIVE_ABI_VERSION: i32 = 1;
-const DEFAULT_USER_AGENT: &str = "dart_edge_openai_audio_client/0.1.0";
+const NATIVE_ABI_VERSION: i32 = 2;
+const DEFAULT_USER_AGENT: &str = "dart_edge_openai_audio_client/0.1.1";
+const REQUEST_CANCELED_ERROR: &str = "DART_EDGE_OPENAI_AUDIO_REQUEST_CANCELED";
 
 static NEXT_HANDLE: AtomicI64 = AtomicI64::new(1);
+static NEXT_OPERATION: AtomicI64 = AtomicI64::new(1);
 static CLIENTS: Lazy<Mutex<HashMap<i64, ClientState>>> = Lazy::new(|| Mutex::new(HashMap::new()));
+static OPERATIONS: Lazy<Mutex<HashMap<i64, OperationState>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
+
+struct OperationState {
+    client_handle: i64,
+    canceled: Arc<AtomicBool>,
+    active_stream: Option<NativeByteStream>,
+}
 
 #[repr(C)]
 pub struct NativeOpenAiAudioStringPair {
@@ -94,23 +104,70 @@ pub extern "C" fn dart_edge_openai_audio_client_dispose(handle: i64) {
     if let Ok(mut clients) = CLIENTS.lock() {
         clients.remove(&handle);
     }
+    if let Ok(mut operations) = OPERATIONS.lock() {
+        for operation in operations.values_mut() {
+            if operation.client_handle == handle {
+                cancel_operation_state(operation);
+            }
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_openai_audio_client_create_operation(handle: i64) -> i64 {
+    if client_state(handle).is_err() {
+        return 0;
+    }
+    let operation_id = NEXT_OPERATION.fetch_add(1, Ordering::Relaxed);
+    let state = OperationState {
+        client_handle: handle,
+        canceled: Arc::new(AtomicBool::new(false)),
+        active_stream: None,
+    };
+    match OPERATIONS.lock() {
+        Ok(mut operations) => {
+            operations.insert(operation_id, state);
+            operation_id
+        }
+        Err(_) => 0,
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_openai_audio_client_cancel_operation(operation_id: i64) {
+    if let Ok(mut operations) = OPERATIONS.lock()
+        && let Some(operation) = operations.get_mut(&operation_id)
+    {
+        cancel_operation_state(operation);
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_openai_audio_client_discard_operation(operation_id: i64) {
+    if let Ok(mut operations) = OPERATIONS.lock() {
+        operations.remove(&operation_id);
+    }
 }
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn dart_edge_openai_audio_client_transcribe_bytes(
     handle: i64,
+    operation_id: i64,
     request: *const NativeOpenAiAudioTranscriptionRequest,
     bytes_ptr: *const u8,
     bytes_len: isize,
 ) -> *mut NativeOpenAiAudioTranscriptionResult {
-    let result = transcribe_bytes(handle, request, bytes_ptr, bytes_len)
-        .unwrap_or_else(transcription_result_error);
+    let result = with_operation(handle, operation_id, |canceled| {
+        transcribe_bytes(handle, request, bytes_ptr, bytes_len, canceled)
+    })
+    .unwrap_or_else(transcription_result_error);
     Box::into_raw(Box::new(result))
 }
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn dart_edge_openai_audio_client_transcribe_native_stream(
     handle: i64,
+    operation_id: i64,
     request: *const NativeOpenAiAudioTranscriptionRequest,
     stream: *const NativeByteStream,
     content_length: i64,
@@ -121,8 +178,10 @@ pub unsafe extern "C" fn dart_edge_openai_audio_client_transcribe_native_stream(
         Err("Missing native audio stream descriptor.".to_string())
     } else {
         let descriptor = unsafe { *stream };
-        let reader = NativeStreamReader::new(descriptor);
-        transcribe_stream(handle, request, reader, content_length)
+        with_operation(handle, operation_id, |canceled| {
+            let reader = NativeStreamReader::new(descriptor, operation_id, canceled.clone())?;
+            transcribe_stream(handle, request, reader, content_length, canceled)
+        })
     }
     .unwrap_or_else(transcription_result_error);
     Box::into_raw(Box::new(result))
@@ -216,12 +275,92 @@ fn create_client(
     })
 }
 
+struct OperationGuard {
+    operation_id: i64,
+    canceled: Arc<AtomicBool>,
+}
+
+impl OperationGuard {
+    fn begin(client_handle: i64, operation_id: i64) -> Result<Self, String> {
+        let operations = OPERATIONS
+            .lock()
+            .map_err(|_| "OpenAI audio operation registry is unavailable.".to_string())?;
+        let operation = operations
+            .get(&operation_id)
+            .filter(|operation| operation.client_handle == client_handle)
+            .ok_or_else(|| "OpenAI audio operation is invalid or completed.".to_string())?;
+        Ok(Self {
+            operation_id,
+            canceled: operation.canceled.clone(),
+        })
+    }
+}
+
+impl Drop for OperationGuard {
+    fn drop(&mut self) {
+        if let Ok(mut operations) = OPERATIONS.lock() {
+            operations.remove(&self.operation_id);
+        }
+    }
+}
+
+fn with_operation<T>(
+    client_handle: i64,
+    operation_id: i64,
+    action: impl FnOnce(Arc<AtomicBool>) -> Result<T, String>,
+) -> Result<T, String> {
+    let operation = OperationGuard::begin(client_handle, operation_id)?;
+    ensure_not_canceled(&operation.canceled)?;
+    action(operation.canceled.clone())
+}
+
+fn cancel_operation_state(operation: &mut OperationState) {
+    operation.canceled.store(true, Ordering::Release);
+    if let Some(stream) = operation.active_stream
+        && let Some(cancel) = stream.cancel
+    {
+        unsafe { cancel(stream.context) };
+    }
+}
+
+fn register_operation_stream(operation_id: i64, stream: NativeByteStream) -> Result<(), String> {
+    let mut operations = OPERATIONS
+        .lock()
+        .map_err(|_| "OpenAI audio operation registry is unavailable.".to_string())?;
+    let operation = operations
+        .get_mut(&operation_id)
+        .ok_or_else(|| "OpenAI audio operation is invalid or completed.".to_string())?;
+    operation.active_stream = Some(stream);
+    if operation.canceled.load(Ordering::Acquire) {
+        cancel_operation_state(operation);
+    }
+    Ok(())
+}
+
+fn unregister_operation_stream(operation_id: i64) {
+    if let Ok(mut operations) = OPERATIONS.lock()
+        && let Some(operation) = operations.get_mut(&operation_id)
+    {
+        operation.active_stream = None;
+    }
+}
+
+fn ensure_not_canceled(canceled: &AtomicBool) -> Result<(), String> {
+    if canceled.load(Ordering::Acquire) {
+        Err(REQUEST_CANCELED_ERROR.to_string())
+    } else {
+        Ok(())
+    }
+}
+
 fn transcribe_bytes(
     handle: i64,
     request: *const NativeOpenAiAudioTranscriptionRequest,
     bytes_ptr: *const u8,
     bytes_len: isize,
+    canceled: Arc<AtomicBool>,
 ) -> Result<NativeOpenAiAudioTranscriptionResult, String> {
+    ensure_not_canceled(&canceled)?;
     let client = client_state(handle)?;
     let request = unsafe { read_request(request)? };
     let bytes = unsafe { read_input_bytes(bytes_ptr, bytes_len)? };
@@ -232,18 +371,16 @@ fn transcribe_bytes(
         .file_name(request.filename.clone())
         .mime_str(&request.content_type)
         .map_err(|error| format!("Invalid audio content type: {error}"))?;
-    send_transcription(&client, request, part)
+    send_transcription(&client, request, part, &canceled)
 }
 
 fn transcribe_stream(
     handle: i64,
     request: *const NativeOpenAiAudioTranscriptionRequest,
-    reader: Result<NativeStreamReader, String>,
+    reader: NativeStreamReader,
     content_length: i64,
+    canceled: Arc<AtomicBool>,
 ) -> Result<NativeOpenAiAudioTranscriptionResult, String> {
-    // Resolve the reader first so its descriptor is owned even if the client
-    // handle or request is invalid.
-    let reader = reader?;
     let content_length = u64::try_from(content_length)
         .ok()
         .filter(|value| *value > 0)
@@ -254,14 +391,16 @@ fn transcribe_stream(
         .file_name(request.filename.clone())
         .mime_str(&request.content_type)
         .map_err(|error| format!("Invalid audio content type: {error}"))?;
-    send_transcription(&client, request, part)
+    send_transcription(&client, request, part, &canceled)
 }
 
 fn send_transcription(
     state: &ClientState,
     request: TranscriptionRequest,
     file: Part,
+    canceled: &AtomicBool,
 ) -> Result<NativeOpenAiAudioTranscriptionResult, String> {
+    ensure_not_canceled(canceled)?;
     let mut form = Form::new().part("file", file);
     for (name, value) in request.fields {
         form = form.text(name, value);
@@ -272,6 +411,7 @@ fn send_transcription(
         .multipart(form)
         .send()
         .map_err(|error| format!("OpenAI-compatible transcription request failed: {error}"))?;
+    ensure_not_canceled(canceled)?;
     let status_code = i32::from(response.status().as_u16());
     let content_type = response
         .headers()
@@ -283,7 +423,7 @@ fn send_transcription(
         .get("x-request-id")
         .and_then(|value| value.to_str().ok())
         .map(ToOwned::to_owned);
-    let body = read_limited_response(response, state.max_response_bytes)?;
+    let body = read_limited_response(response, state.max_response_bytes, canceled)?;
     let body = String::from_utf8(body)
         .map_err(|error| format!("Provider response was not UTF-8: {error}"))?;
 
@@ -299,14 +439,23 @@ fn send_transcription(
 fn read_limited_response(
     response: reqwest::blocking::Response,
     max_bytes: usize,
+    canceled: &AtomicBool,
 ) -> Result<Vec<u8>, String> {
     let limit = u64::try_from(max_bytes)
         .map_err(|_| "Maximum response size is unsupported on this platform.".to_string())?;
     let mut body = Vec::with_capacity(max_bytes.min(64 * 1024));
-    response
-        .take(limit.saturating_add(1))
-        .read_to_end(&mut body)
-        .map_err(|error| format!("Failed to read provider response: {error}"))?;
+    let mut response = response.take(limit.saturating_add(1));
+    let mut chunk = [0_u8; 16 * 1024];
+    loop {
+        ensure_not_canceled(canceled)?;
+        let read = response
+            .read(&mut chunk)
+            .map_err(|error| format!("Failed to read provider response: {error}"))?;
+        if read == 0 {
+            break;
+        }
+        body.extend_from_slice(&chunk[..read]);
+    }
     if body.len() > max_bytes {
         return Err(format!(
             "Provider response exceeded the configured {max_bytes}-byte limit."
@@ -432,29 +581,51 @@ unsafe fn read_optional_string(value: *const c_char) -> Result<Option<String>, S
 
 struct NativeStreamReader {
     stream: NativeByteStream,
+    operation_id: i64,
+    canceled: Arc<AtomicBool>,
     current: Option<NativeReadChunk>,
     completed: bool,
 }
 
 impl NativeStreamReader {
-    fn new(stream: NativeByteStream) -> Result<Self, String> {
+    fn new(
+        stream: NativeByteStream,
+        operation_id: i64,
+        canceled: Arc<AtomicBool>,
+    ) -> Result<Self, String> {
         if !stream.is_valid() {
             let owned = Self {
                 stream,
+                operation_id,
+                canceled,
                 current: None,
                 completed: false,
             };
             drop(owned);
             return Err("Native audio stream descriptor is invalid.".to_string());
         }
+        if let Err(error) = register_operation_stream(operation_id, stream) {
+            let owned = Self {
+                stream,
+                operation_id,
+                canceled,
+                current: None,
+                completed: false,
+            };
+            drop(owned);
+            return Err(error);
+        }
         Ok(Self {
             stream,
+            operation_id,
+            canceled,
             current: None,
             completed: false,
         })
     }
 
     fn next_read(&mut self) -> io::Result<Option<NativeReadChunk>> {
+        ensure_not_canceled(&self.canceled).map_err(io::Error::other)?;
         let next = self
             .stream
             .next
@@ -506,6 +677,7 @@ impl NativeStreamReader {
 
 impl Read for NativeStreamReader {
     fn read(&mut self, output: &mut [u8]) -> io::Result<usize> {
+        ensure_not_canceled(&self.canceled).map_err(io::Error::other)?;
         if output.is_empty() {
             return Ok(0);
         }
@@ -530,6 +702,7 @@ impl Read for NativeStreamReader {
 impl Drop for NativeStreamReader {
     fn drop(&mut self) {
         self.current = None;
+        unregister_operation_stream(self.operation_id);
         unsafe {
             if !self.completed
                 && let Some(cancel) = self.stream.cancel
@@ -722,6 +895,20 @@ mod tests {
         )
     }
 
+    fn test_operation() -> (i64, Arc<AtomicBool>) {
+        let operation_id = NEXT_OPERATION.fetch_add(1, Ordering::Relaxed);
+        let canceled = Arc::new(AtomicBool::new(false));
+        OPERATIONS.lock().unwrap().insert(
+            operation_id,
+            OperationState {
+                client_handle: 1,
+                canceled: canceled.clone(),
+                active_stream: None,
+            },
+        );
+        (operation_id, canceled)
+    }
+
     #[test]
     fn builds_default_and_v1_transcription_endpoints() {
         assert_eq!(
@@ -753,10 +940,12 @@ mod tests {
     fn reads_and_releases_native_stream_chunks() {
         let (stream, canceled, released) =
             fake_stream(vec![b"native".to_vec(), b"-audio".to_vec()]);
-        let mut reader = NativeStreamReader::new(stream).unwrap();
+        let (operation_id, operation_canceled) = test_operation();
+        let mut reader = NativeStreamReader::new(stream, operation_id, operation_canceled).unwrap();
         let mut output = Vec::new();
         reader.read_to_end(&mut output).unwrap();
         drop(reader);
+        dart_edge_openai_audio_client_discard_operation(operation_id);
 
         assert_eq!(output, b"native-audio");
         assert!(!canceled.load(Ordering::Relaxed));
@@ -766,9 +955,26 @@ mod tests {
     #[test]
     fn cancels_native_stream_when_request_stops_early() {
         let (stream, canceled, released) = fake_stream(vec![b"audio".to_vec()]);
-        drop(NativeStreamReader::new(stream).unwrap());
+        let (operation_id, operation_canceled) = test_operation();
+        drop(NativeStreamReader::new(stream, operation_id, operation_canceled).unwrap());
+        dart_edge_openai_audio_client_discard_operation(operation_id);
 
         assert!(canceled.load(Ordering::Relaxed));
+        assert!(released.load(Ordering::Relaxed));
+    }
+
+    #[test]
+    fn operation_cancellation_reaches_the_native_stream() {
+        let (stream, canceled, released) = fake_stream(vec![b"audio".to_vec()]);
+        let (operation_id, operation_canceled) = test_operation();
+        let mut reader = NativeStreamReader::new(stream, operation_id, operation_canceled).unwrap();
+
+        dart_edge_openai_audio_client_cancel_operation(operation_id);
+
+        assert!(canceled.load(Ordering::Relaxed));
+        assert!(reader.read(&mut [0_u8; 8]).is_err());
+        drop(reader);
+        dart_edge_openai_audio_client_discard_operation(operation_id);
         assert!(released.load(Ordering::Relaxed));
     }
 }

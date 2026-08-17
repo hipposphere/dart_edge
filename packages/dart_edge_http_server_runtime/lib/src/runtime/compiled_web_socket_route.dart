@@ -59,6 +59,8 @@ final class CompiledWebSocketRoute<TServices> {
     'querySchemaId': jsonSchemaRouteId(options.query),
     'headersSchemaId': null,
     'requestBody': null,
+    'maxPendingMessages': options.maxPendingMessages,
+    'maxPendingBytes': options.maxPendingBytes,
   };
 }
 
@@ -76,6 +78,8 @@ WebSocketOptions _effectiveOptions<TServices>(
     paramsDecoder: options.paramsDecoder,
     query: options.query,
     queryDecoder: options.queryDecoder,
+    maxPendingMessages: options.maxPendingMessages,
+    maxPendingBytes: options.maxPendingBytes,
   );
 }
 

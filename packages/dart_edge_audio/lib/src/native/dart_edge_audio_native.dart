@@ -69,10 +69,8 @@ abstract final class DartEdgeAudioNative {
     String path, {
     AudioProbeMode mode = AudioProbeMode.adaptive,
   }) {
-    final requestPtr = jsonEncode({
-      'path': path,
-      'mode': mode.wireValue,
-    }).toNativeUtf8();
+    final requestPtr = jsonEncode({'path': path, 'mode': mode.wireValue})
+        .toNativeUtf8();
 
     try {
       final resultPtr = gen.dart_edge_audio_probe_file(requestPtr.cast<Char>());
@@ -308,6 +306,80 @@ abstract final class DartEdgeAudioNative {
     if (sessionPtr != nullptr) {
       gen.dart_edge_audio_waveform_free(sessionPtr);
     }
+  }
+
+  static Pointer<gen.DartEdgeAudioPcm16StreamSession> createPcm16StreamSession(
+    String requestJson,
+  ) {
+    final requestPtr = requestJson.toNativeUtf8();
+    try {
+      final sessionPtr = gen.dart_edge_audio_pcm16_stream_create(
+        requestPtr.cast<Char>(),
+      );
+      if (sessionPtr == nullptr) {
+        throw StateError(_takeLastError());
+      }
+      return sessionPtr;
+    } finally {
+      calloc.free(requestPtr);
+    }
+  }
+
+  /// Copies one borrowed Dart or native-backed typed-data view into the native
+  /// PCM16 stream buffer without allocating an intermediate FFI buffer.
+  static void addPcm16StreamBytes(
+    Pointer<gen.DartEdgeAudioPcm16StreamSession> sessionPtr,
+    Uint8List pcm16LeBytes,
+  ) {
+    final result = gen.dart_edge_audio_pcm16_stream_add(
+      sessionPtr,
+      pcm16LeBytes.address,
+      pcm16LeBytes.lengthInBytes,
+    );
+    if (result == 0) {
+      throw StateError(_takeLastError());
+    }
+  }
+
+  static void addPcm16StreamNativeBytes(
+    Pointer<gen.DartEdgeAudioPcm16StreamSession> sessionPtr,
+    Pointer<Uint8> pcm16LeBytesPtr,
+    int byteLength,
+  ) {
+    RangeError.checkNotNegative(byteLength, 'byteLength');
+    final result = gen.dart_edge_audio_pcm16_stream_add(
+      sessionPtr,
+      pcm16LeBytesPtr,
+      byteLength,
+    );
+    if (result == 0) {
+      throw StateError(_takeLastError());
+    }
+  }
+
+  static void freePcm16StreamSession(
+    Pointer<gen.DartEdgeAudioPcm16StreamSession> sessionPtr,
+  ) {
+    if (sessionPtr != nullptr) {
+      gen.dart_edge_audio_pcm16_stream_free(sessionPtr);
+    }
+  }
+
+  /// Transfers a PCM16 session into the pool's bounded finish queue.
+  ///
+  /// Native code adopts the session pointer on every return path.
+  static int submitPoolFinishPcm16StreamSession(
+    Pointer<gen.DartEdgeAudioPool> poolPtr,
+    int sessionAddress,
+  ) {
+    final jobId = gen.dart_edge_audio_pool_submit_pcm16_stream_finish(
+      poolPtr,
+      Pointer<gen.DartEdgeAudioPcm16StreamSession>.fromAddress(sessionAddress),
+    );
+    if (jobId == 0) {
+      throw StateError(_takeLastError());
+    }
+    return jobId;
   }
 
   static int submitPoolProbeBytes(

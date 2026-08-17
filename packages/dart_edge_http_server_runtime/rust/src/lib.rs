@@ -38,8 +38,11 @@ use wtransport::{
     ServerConfig as WebTransportServerConfig, VarInt,
 };
 
-const DART_EDGE_HTTP_SERVER_RUNTIME_NATIVE_ABI_VERSION: i32 = 16;
+const DART_EDGE_HTTP_SERVER_RUNTIME_NATIVE_ABI_VERSION: i32 = 17;
 const SCHEMA_REGISTRY_URI: &str = "urn:dart-edge:schema-registry";
+const DEFAULT_REALTIME_MAX_PENDING_MESSAGES: usize = 256;
+const DEFAULT_REALTIME_MAX_PENDING_BYTES: usize = 8 * 1024 * 1024;
+const REALTIME_OVERLOAD_CODE: u32 = 0x100;
 
 type TransportEventCallback = extern "C" fn(i32, i64);
 
@@ -473,6 +476,9 @@ struct WebSocketSessionState {
     server_id: i64,
     connection: Option<WebSocketConnection>,
     messages: VecDeque<WebSocketIncomingMessage>,
+    pending_bytes: usize,
+    max_pending_messages: usize,
+    max_pending_bytes: usize,
     command_tx: mpsc::UnboundedSender<WebSocketCommand>,
 }
 
@@ -496,6 +502,9 @@ struct WebTransportSessionState {
     connection: Option<WebTransportConnectionInfo>,
     datagrams: VecDeque<WebTransportIncomingDatagram>,
     streams: VecDeque<WebTransportIncomingStream>,
+    pending_bytes: usize,
+    max_pending_messages: usize,
+    max_pending_bytes: usize,
     command_tx: mpsc::UnboundedSender<WebTransportCommand>,
 }
 
@@ -530,6 +539,9 @@ struct WebTransportStreamState {
     info: WebTransportStreamInfo,
     runtime_state: ServerRuntimeState,
     chunks: VecDeque<Vec<u8>>,
+    pending_bytes: usize,
+    max_pending_messages: usize,
+    max_pending_bytes: usize,
     terminal: Option<WebTransportStreamTerminal>,
     send_tx: Option<mpsc::Sender<WebTransportStreamCommand>>,
     stop_tx: Option<mpsc::UnboundedSender<u32>>,
@@ -640,6 +652,10 @@ struct RouteManifestEntry {
     native_handle: Option<i64>,
     native_handler_address: Option<usize>,
     native_free_response_address: Option<usize>,
+    #[serde(default = "default_realtime_max_pending_messages")]
+    max_pending_messages: usize,
+    #[serde(default = "default_realtime_max_pending_bytes")]
+    max_pending_bytes: usize,
 }
 
 #[derive(Deserialize)]
@@ -669,6 +685,8 @@ struct CompiledRoute {
     headers_schema_id: Option<String>,
     request_body: Option<RequestBodyValidation>,
     native_handler: Option<CompiledNativeHttpHandler>,
+    max_pending_messages: usize,
+    max_pending_bytes: usize,
 }
 
 #[derive(Clone)]
@@ -711,6 +729,8 @@ struct NativeRouteMatch {
     headers_schema_id: Option<String>,
     request_body: Option<RequestBodyValidation>,
     native_handler: Option<CompiledNativeHttpHandler>,
+    max_pending_messages: usize,
+    max_pending_bytes: usize,
 }
 
 #[derive(Clone)]
@@ -1330,6 +1350,7 @@ pub extern "C" fn dart_edge_http_server_runtime_take_web_socket_message(
     let Some(message) = session.messages.pop_front() else {
         return std::ptr::null_mut();
     };
+    session.pending_bytes = session.pending_bytes.saturating_sub(message.body.len());
 
     let handle = Box::new(NativeWebSocketMessageHandle::from_message(message));
     Box::into_raw(handle).cast::<NativeWebSocketMessage>()
@@ -1390,6 +1411,7 @@ pub extern "C" fn dart_edge_http_server_runtime_take_web_transport_datagram(
     let Some(datagram) = session.datagrams.pop_front() else {
         return std::ptr::null_mut();
     };
+    session.pending_bytes = session.pending_bytes.saturating_sub(datagram.body.len());
 
     let handle = Box::new(NativeWebTransportDatagramHandle::from_datagram(datagram));
     Box::into_raw(handle).cast::<NativeWebTransportDatagram>()
@@ -1406,6 +1428,7 @@ pub extern "C" fn dart_edge_http_server_runtime_take_web_transport_stream(
     let Some(stream) = session.streams.pop_front() else {
         return std::ptr::null_mut();
     };
+    session.pending_bytes = session.pending_bytes.saturating_sub(stream.body.len());
 
     let handle = Box::new(NativeWebTransportStreamHandle::from_stream(stream));
     Box::into_raw(handle).cast::<NativeWebTransportStream>()
@@ -1458,9 +1481,11 @@ pub extern "C" fn dart_edge_http_server_runtime_take_web_transport_stream_chunk(
 ) -> *mut NativeWebTransportStreamChunk {
     let body = {
         let mut streams = WEB_TRANSPORT_STREAMS.lock().unwrap();
-        streams
-            .get_mut(&stream_id)
-            .and_then(|stream| stream.chunks.pop_front())
+        streams.get_mut(&stream_id).and_then(|stream| {
+            let body = stream.chunks.pop_front()?;
+            stream.pending_bytes = stream.pending_bytes.saturating_sub(body.len());
+            Some(body)
+        })
     };
     remove_web_transport_stream_if_complete(stream_id);
     let Some(body) = body else {
@@ -2313,6 +2338,8 @@ async fn handle_web_socket_request(
     headers: HashMap<String, String>,
     runtime_state: ServerRuntimeState,
 ) -> Response<Body> {
+    let max_pending_messages = route_match.max_pending_messages;
+    let max_pending_bytes = route_match.max_pending_bytes;
     let route_id = route_match.route_id;
     let path_params = route_match.path_params;
     let transport_request = TransportRequest {
@@ -2356,6 +2383,8 @@ async fn handle_web_socket_request(
                         path_params,
                         query,
                         headers,
+                        max_pending_messages,
+                        max_pending_bytes,
                         runtime_state,
                     )
                 })
@@ -2378,6 +2407,8 @@ async fn handle_web_socket_session(
     path_params: HashMap<String, String>,
     query: HashMap<String, String>,
     headers: HashMap<String, String>,
+    max_pending_messages: usize,
+    max_pending_bytes: usize,
     runtime_state: ServerRuntimeState,
 ) {
     let session_id = NEXT_WEB_SOCKET_SESSION_ID.fetch_add(1, Ordering::Relaxed);
@@ -2397,6 +2428,9 @@ async fn handle_web_socket_session(
                     headers,
                 }),
                 messages: VecDeque::new(),
+                pending_bytes: 0,
+                max_pending_messages,
+                max_pending_bytes,
                 command_tx,
             },
         );
@@ -2412,7 +2446,7 @@ async fn handle_web_socket_session(
             incoming = socket.next() => {
                 match incoming {
                     Some(Ok(Message::Text(text))) => {
-                        push_web_socket_message(
+                        let accepted = push_web_socket_message(
                             session_id,
                             WebSocketIncomingMessage {
                                 session_id,
@@ -2420,10 +2454,18 @@ async fn handle_web_socket_session(
                                 body: text.as_str().as_bytes().to_vec(),
                             },
                         );
+                        if !accepted {
+                            let _ = try_send_web_socket_close(
+                                &mut socket,
+                                Some(1013),
+                                Some("incoming queue limit exceeded".to_string()),
+                            ).await;
+                            break;
+                        }
                         notify_transport_event(&runtime_state, TransportEventKind::WebSocketMessageReady, session_id);
                     }
                     Some(Ok(Message::Binary(bytes))) => {
-                        push_web_socket_message(
+                        let accepted = push_web_socket_message(
                             session_id,
                             WebSocketIncomingMessage {
                                 session_id,
@@ -2431,6 +2473,14 @@ async fn handle_web_socket_session(
                                 body: bytes.to_vec(),
                             },
                         );
+                        if !accepted {
+                            let _ = try_send_web_socket_close(
+                                &mut socket,
+                                Some(1013),
+                                Some("incoming queue limit exceeded".to_string()),
+                            ).await;
+                            break;
+                        }
                         notify_transport_event(&runtime_state, TransportEventKind::WebSocketMessageReady, session_id);
                     }
                     Some(Ok(Message::Close(_))) | None => break,
@@ -2551,6 +2601,8 @@ async fn handle_web_transport_incoming_session(
         return Ok(());
     }
 
+    let max_pending_messages = route_match.max_pending_messages;
+    let max_pending_bytes = route_match.max_pending_bytes;
     let route_id = route_match.route_id;
     let path_params = route_match.path_params;
     let transport_request = TransportRequest {
@@ -2590,6 +2642,8 @@ async fn handle_web_transport_incoming_session(
                 path_params,
                 query,
                 headers,
+                max_pending_messages,
+                max_pending_bytes,
                 runtime_state,
             )
             .await;
@@ -2609,6 +2663,8 @@ async fn handle_web_transport_session(
     path_params: HashMap<String, String>,
     query: HashMap<String, String>,
     headers: HashMap<String, String>,
+    max_pending_messages: usize,
+    max_pending_bytes: usize,
     runtime_state: ServerRuntimeState,
 ) {
     let session_id = NEXT_WEB_TRANSPORT_SESSION_ID.fetch_add(1, Ordering::Relaxed);
@@ -2629,6 +2685,9 @@ async fn handle_web_transport_session(
                 }),
                 datagrams: VecDeque::new(),
                 streams: VecDeque::new(),
+                pending_bytes: 0,
+                max_pending_messages,
+                max_pending_bytes,
                 command_tx,
             },
         );
@@ -2644,13 +2703,20 @@ async fn handle_web_transport_session(
             incoming = connection.receive_datagram() => {
                 match incoming {
                     Ok(datagram) => {
-                        push_web_transport_datagram(
+                        let accepted = push_web_transport_datagram(
                             session_id,
                             WebTransportIncomingDatagram {
                                 session_id,
                                 body: datagram.payload().to_vec(),
                             },
                         );
+                        if !accepted {
+                            connection.close(
+                                VarInt::from_u32(REALTIME_OVERLOAD_CODE),
+                                b"incoming queue limit exceeded",
+                            );
+                            break;
+                        }
                         notify_transport_event(
                             &runtime_state,
                             TransportEventKind::WebTransportDatagramReady,
@@ -2670,6 +2736,8 @@ async fn handle_web_transport_session(
                             None,
                             runtime_state.clone(),
                             true,
+                            max_pending_messages,
+                            max_pending_bytes,
                         );
                     }
                     Err(_) => break,
@@ -2685,6 +2753,8 @@ async fn handle_web_transport_session(
                             Some(send),
                             runtime_state.clone(),
                             false,
+                            max_pending_messages,
+                            max_pending_bytes,
                         );
                     }
                     Err(_) => break,
@@ -2872,25 +2942,60 @@ fn response_body_with_headers(
         .unwrap_or_else(|_| Response::new(Body::from("Internal Server Error")))
 }
 
-fn push_web_socket_message(session_id: i64, message: WebSocketIncomingMessage) {
+fn push_web_socket_message(session_id: i64, message: WebSocketIncomingMessage) -> bool {
     let mut sessions = WEB_SOCKET_SESSIONS.lock().unwrap();
     if let Some(session) = sessions.get_mut(&session_id) {
+        let next_bytes = session.pending_bytes.saturating_add(message.body.len());
+        if session.messages.len() >= session.max_pending_messages
+            || next_bytes > session.max_pending_bytes
+        {
+            return false;
+        }
+        session.pending_bytes = next_bytes;
         session.messages.push_back(message);
+        return true;
     }
+    false
 }
 
-fn push_web_transport_datagram(session_id: i64, datagram: WebTransportIncomingDatagram) {
+fn push_web_transport_datagram(session_id: i64, datagram: WebTransportIncomingDatagram) -> bool {
     let mut sessions = WEB_TRANSPORT_SESSIONS.lock().unwrap();
     if let Some(session) = sessions.get_mut(&session_id) {
+        let next_bytes = session.pending_bytes.saturating_add(datagram.body.len());
+        if session
+            .datagrams
+            .len()
+            .saturating_add(session.streams.len())
+            >= session.max_pending_messages
+            || next_bytes > session.max_pending_bytes
+        {
+            return false;
+        }
+        session.pending_bytes = next_bytes;
         session.datagrams.push_back(datagram);
+        return true;
     }
+    false
 }
 
-fn push_web_transport_stream(session_id: i64, stream: WebTransportIncomingStream) {
+fn push_web_transport_stream(session_id: i64, stream: WebTransportIncomingStream) -> bool {
     let mut sessions = WEB_TRANSPORT_SESSIONS.lock().unwrap();
     if let Some(session) = sessions.get_mut(&session_id) {
+        let next_bytes = session.pending_bytes.saturating_add(stream.body.len());
+        if session
+            .datagrams
+            .len()
+            .saturating_add(session.streams.len())
+            >= session.max_pending_messages
+            || next_bytes > session.max_pending_bytes
+        {
+            return false;
+        }
+        session.pending_bytes = next_bytes;
         session.streams.push_back(stream);
+        return true;
     }
+    false
 }
 
 fn register_web_transport_receive_stream(
@@ -2900,6 +3005,8 @@ fn register_web_transport_receive_stream(
     send: Option<wtransport::stream::SendStream>,
     runtime_state: ServerRuntimeState,
     collect_legacy_payload: bool,
+    max_pending_messages: usize,
+    max_pending_bytes: usize,
 ) {
     let stream_id = NEXT_WEB_TRANSPORT_STREAM_HANDLE_ID.fetch_add(1, Ordering::Relaxed);
     let protocol_id = receive.id().into_u64() as i64;
@@ -2919,6 +3026,9 @@ fn register_web_transport_receive_stream(
             info,
             runtime_state: runtime_state.clone(),
             chunks: VecDeque::new(),
+            pending_bytes: 0,
+            max_pending_messages,
+            max_pending_bytes,
             terminal: None,
             send_tx,
             stop_tx: Some(stop_tx),
@@ -2941,6 +3051,7 @@ fn register_web_transport_receive_stream(
         stop_rx,
         runtime_state,
         collect_legacy_payload,
+        max_pending_bytes,
     ));
 }
 
@@ -3021,6 +3132,7 @@ fn register_opened_web_transport_send_stream(
     receive: Option<wtransport::stream::RecvStream>,
     runtime_state: ServerRuntimeState,
 ) {
+    let (max_pending_messages, max_pending_bytes) = web_transport_session_limits(session_id);
     let stream_id = NEXT_WEB_TRANSPORT_STREAM_HANDLE_ID.fetch_add(1, Ordering::Relaxed);
     let protocol_id = send.id().into_u64() as i64;
     let info = WebTransportStreamInfo {
@@ -3042,6 +3154,9 @@ fn register_opened_web_transport_send_stream(
             info,
             runtime_state: runtime_state.clone(),
             chunks: VecDeque::new(),
+            pending_bytes: 0,
+            max_pending_messages,
+            max_pending_bytes,
             terminal: None,
             send_tx: Some(send_tx),
             stop_tx,
@@ -3067,6 +3182,7 @@ fn register_opened_web_transport_send_stream(
             stop_rx,
             runtime_state,
             false,
+            max_pending_bytes,
         ));
     }
 }
@@ -3159,6 +3275,7 @@ async fn read_web_transport_stream_chunks(
     mut stop_rx: mpsc::UnboundedReceiver<u32>,
     runtime_state: ServerRuntimeState,
     collect_legacy_payload: bool,
+    max_pending_bytes: usize,
 ) {
     let mut legacy_payload = collect_legacy_payload.then(Vec::new);
     let mut buffer = [0u8; 16 * 1024];
@@ -3174,9 +3291,27 @@ async fn read_web_transport_stream_chunks(
                     Ok(Some(bytes_read)) => {
                         let body = buffer[..bytes_read].to_vec();
                         if let Some(payload) = legacy_payload.as_mut() {
+                            if payload.len().saturating_add(body.len()) > max_pending_bytes {
+                                receive.stop(VarInt::from_u32(REALTIME_OVERLOAD_CODE));
+                                break WebTransportStreamTerminal {
+                                    error_code: Some(REALTIME_OVERLOAD_CODE),
+                                    error: "incoming legacy stream exceeded its byte limit".to_string(),
+                                };
+                            }
                             payload.extend_from_slice(&body);
                         }
                         if let Some(stream) = WEB_TRANSPORT_STREAMS.lock().unwrap().get_mut(&info.stream_id) {
+                            let next_bytes = stream.pending_bytes.saturating_add(body.len());
+                            if stream.chunks.len() >= stream.max_pending_messages
+                                || next_bytes > stream.max_pending_bytes
+                            {
+                                receive.stop(VarInt::from_u32(REALTIME_OVERLOAD_CODE));
+                                break WebTransportStreamTerminal {
+                                    error_code: Some(REALTIME_OVERLOAD_CODE),
+                                    error: "incoming stream queue limit exceeded".to_string(),
+                                };
+                            }
+                            stream.pending_bytes = next_bytes;
                             stream.chunks.push_back(body);
                         } else {
                             return;
@@ -3196,18 +3331,20 @@ async fn read_web_transport_stream_chunks(
         }
     };
     if let Some(body) = legacy_payload {
-        push_web_transport_stream(
+        let accepted = push_web_transport_stream(
             info.session_id,
             WebTransportIncomingStream {
                 session_id: info.session_id,
                 body,
             },
         );
-        notify_transport_event(
-            &runtime_state,
-            TransportEventKind::WebTransportStreamReady,
-            info.session_id,
-        );
+        if accepted {
+            notify_transport_event(
+                &runtime_state,
+                TransportEventKind::WebTransportStreamReady,
+                info.session_id,
+            );
+        }
     }
     if let Some(stream) = WEB_TRANSPORT_STREAMS
         .lock()
@@ -3223,6 +3360,18 @@ async fn read_web_transport_stream_chunks(
         TransportEventKind::WebTransportStreamFinished,
         info.stream_id,
     );
+}
+
+fn web_transport_session_limits(session_id: i64) -> (usize, usize) {
+    WEB_TRANSPORT_SESSIONS
+        .lock()
+        .unwrap()
+        .get(&session_id)
+        .map(|session| (session.max_pending_messages, session.max_pending_bytes))
+        .unwrap_or((
+            DEFAULT_REALTIME_MAX_PENDING_MESSAGES,
+            DEFAULT_REALTIME_MAX_PENDING_BYTES,
+        ))
 }
 
 fn submit_web_transport_session_operation(
@@ -3476,6 +3625,18 @@ fn compile_route(
     route: RouteManifestEntry,
     schemas: &HashMap<String, jsonschema::Validator>,
 ) -> Result<CompiledRoute, String> {
+    if route.max_pending_messages == 0 {
+        return Err(format!(
+            "Route '{}' maxPendingMessages must be at least 1",
+            route.route_id
+        ));
+    }
+    if route.max_pending_bytes == 0 {
+        return Err(format!(
+            "Route '{}' maxPendingBytes must be at least 1",
+            route.route_id
+        ));
+    }
     ensure_schema_exists(schemas, route.params_schema_id.as_deref())?;
     ensure_schema_exists(schemas, route.query_schema_id.as_deref())?;
     ensure_schema_exists(schemas, route.headers_schema_id.as_deref())?;
@@ -3541,7 +3702,17 @@ fn compile_route(
         headers_schema_id: route.headers_schema_id,
         request_body,
         native_handler,
+        max_pending_messages: route.max_pending_messages,
+        max_pending_bytes: route.max_pending_bytes,
     })
+}
+
+const fn default_realtime_max_pending_messages() -> usize {
+    DEFAULT_REALTIME_MAX_PENDING_MESSAGES
+}
+
+const fn default_realtime_max_pending_bytes() -> usize {
+    DEFAULT_REALTIME_MAX_PENDING_BYTES
 }
 
 fn compile_route_segments(segments: Vec<RouteSegmentManifest>) -> Vec<CompiledRouteSegment> {
@@ -3956,6 +4127,8 @@ fn match_route(
                 headers_schema_id: route.headers_schema_id.clone(),
                 request_body: route.request_body.clone(),
                 native_handler: route.native_handler.clone(),
+                max_pending_messages: route.max_pending_messages,
+                max_pending_bytes: route.max_pending_bytes,
             });
         }
     }
@@ -4515,5 +4688,97 @@ mod tests {
         let query = parse_query(Some("value=bad%zz%2"));
 
         assert_eq!(query.get("value").map(String::as_str), Some("bad%zz%2"));
+    }
+
+    #[test]
+    fn bounds_web_socket_ingress_by_count_and_bytes() {
+        let session_id = NEXT_WEB_SOCKET_SESSION_ID.fetch_add(1, Ordering::Relaxed);
+        let (command_tx, _command_rx) = mpsc::unbounded_channel();
+        WEB_SOCKET_SESSIONS.lock().unwrap().insert(
+            session_id,
+            WebSocketSessionState {
+                server_id: 1,
+                connection: None,
+                messages: VecDeque::new(),
+                pending_bytes: 0,
+                max_pending_messages: 1,
+                max_pending_bytes: 4,
+                command_tx,
+            },
+        );
+
+        assert!(push_web_socket_message(
+            session_id,
+            WebSocketIncomingMessage {
+                session_id,
+                kind: WebSocketMessageKind::Binary,
+                body: vec![0; 4],
+            },
+        ));
+        assert!(!push_web_socket_message(
+            session_id,
+            WebSocketIncomingMessage {
+                session_id,
+                kind: WebSocketMessageKind::Binary,
+                body: vec![0],
+            },
+        ));
+
+        let session = WEB_SOCKET_SESSIONS
+            .lock()
+            .unwrap()
+            .remove(&session_id)
+            .unwrap();
+        assert_eq!(session.messages.len(), 1);
+        assert_eq!(session.pending_bytes, 4);
+    }
+
+    #[test]
+    fn bounds_combined_web_transport_compatibility_ingress() {
+        let session_id = NEXT_WEB_TRANSPORT_SESSION_ID.fetch_add(1, Ordering::Relaxed);
+        let (command_tx, _command_rx) = mpsc::unbounded_channel();
+        WEB_TRANSPORT_SESSIONS.lock().unwrap().insert(
+            session_id,
+            WebTransportSessionState {
+                server_id: 1,
+                connection: None,
+                datagrams: VecDeque::new(),
+                streams: VecDeque::new(),
+                pending_bytes: 0,
+                max_pending_messages: 2,
+                max_pending_bytes: 4,
+                command_tx,
+            },
+        );
+
+        assert!(push_web_transport_datagram(
+            session_id,
+            WebTransportIncomingDatagram {
+                session_id,
+                body: vec![0; 2],
+            },
+        ));
+        assert!(push_web_transport_stream(
+            session_id,
+            WebTransportIncomingStream {
+                session_id,
+                body: vec![0; 2],
+            },
+        ));
+        assert!(!push_web_transport_datagram(
+            session_id,
+            WebTransportIncomingDatagram {
+                session_id,
+                body: vec![0],
+            },
+        ));
+
+        let session = WEB_TRANSPORT_SESSIONS
+            .lock()
+            .unwrap()
+            .remove(&session_id)
+            .unwrap();
+        assert_eq!(session.datagrams.len() + session.streams.len(), 2);
+        assert_eq!(session.pending_bytes, 4);
     }
 }

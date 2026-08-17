@@ -59,6 +59,8 @@ final class CompiledWebTransportRoute<TServices> {
     'querySchemaId': null,
     'headersSchemaId': null,
     'requestBody': null,
+    'maxPendingMessages': options.maxPendingMessages,
+    'maxPendingBytes': options.maxPendingBytes,
   };
 }
 
@@ -72,6 +74,8 @@ WebTransportOptions _effectiveOptions<TServices>(
     tags: _mergeTags(registration.tags, options.tags),
     deprecated: options.deprecated,
     exposure: registration.exposure.restrict(options.exposure),
+    maxPendingMessages: options.maxPendingMessages,
+    maxPendingBytes: options.maxPendingBytes,
   );
 }
 

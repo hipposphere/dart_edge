@@ -50,6 +50,27 @@ The call consumes the single-owner handle. Audio chunks stay outside the Dart
 heap and are copied directly into the native multipart encoder. The native
 client cancels and releases the producer on every success or failure path.
 
+## Cancellation
+
+Use a `start...` method when the caller can disconnect while provider work is
+active:
+
+```dart
+final operation = client.startTranscribeNativeStream(
+  body: normalized.body,
+  contentLength: normalized.contentLength,
+  request: request,
+);
+
+connection.onDone(operation.cancel);
+final response = await operation.response;
+```
+
+`cancel()` is idempotent. Native-stream cancellation reaches the active
+producer immediately; request and response I/O is additionally bounded by
+`OpenAiAudioClientConfig.requestTimeout`. Cancellation completes the future
+with `OpenAiAudioRequestCancelledException`.
+
 ## OpenAI-compatible providers
 
 `baseUrl` may point to an origin or an existing `/v1` prefix. The client

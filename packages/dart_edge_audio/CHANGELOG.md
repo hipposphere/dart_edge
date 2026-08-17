@@ -1,5 +1,22 @@
 ## Unreleased
 
+## 0.3.15
+
+- Add `NativeAudioPcm16StreamSession` for consuming single-owner transport
+  leases into a bounded native PCM buffer and sealing them as a transferable
+  native WAV stream.
+- Support zero-copy protocol-envelope slicing, optional resampling, and channel
+  remixing when the stream is finalized.
+- Add configurable memory and adaptive audio spool policies. Adaptive spooling
+  remains memory-only and never implicitly enables disk writes.
+- Finish PCM sessions through the bounded native audio pool and expose global
+  spool limits plus current, peak, and queued-byte metrics.
+- Add typed spool-limit errors, remaining-capacity reporting, abandoned-session
+  cleanup, and fallible native PCM buffer growth.
+- Borrow native transport lease pointers directly while retaining a safe
+  copying fallback for Dart-backed leases.
+- Bump the native artifact version to 0.1.12 for the pooled finishing ABI.
+
 ## 0.3.14
 
 - Add a stateful native PCM16LE waveform session for generating compact peaks

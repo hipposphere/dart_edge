@@ -49,9 +49,16 @@ NativeOpenAiAudioCreateResult* dart_edge_openai_audio_client_create(
 
 void dart_edge_openai_audio_client_dispose(int64_t handle);
 
+int64_t dart_edge_openai_audio_client_create_operation(int64_t handle);
+
+void dart_edge_openai_audio_client_cancel_operation(int64_t operation_id);
+
+void dart_edge_openai_audio_client_discard_operation(int64_t operation_id);
+
 NativeOpenAiAudioTranscriptionResult*
 dart_edge_openai_audio_client_transcribe_bytes(
     int64_t handle,
+    int64_t operation_id,
     const NativeOpenAiAudioTranscriptionRequest* request,
     const uint8_t* bytes_ptr,
     intptr_t bytes_len);
@@ -59,6 +66,7 @@ dart_edge_openai_audio_client_transcribe_bytes(
 NativeOpenAiAudioTranscriptionResult*
 dart_edge_openai_audio_client_transcribe_native_stream(
     int64_t handle,
+    int64_t operation_id,
     const NativeOpenAiAudioTranscriptionRequest* request,
     const NativeByteStream* stream,
     int64_t content_length);

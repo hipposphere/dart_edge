@@ -36,7 +36,7 @@ use symphonia::core::meta::{MetadataOptions, MetadataRevision, StandardTag, Tag}
 use symphonia::core::units::Timestamp;
 use symphonia::default::{get_codecs, get_probe};
 
-const DART_EDGE_AUDIO_NATIVE_ABI_VERSION: i32 = 3;
+const DART_EDGE_AUDIO_NATIVE_ABI_VERSION: i32 = 5;
 
 static LAST_ERROR: Lazy<Mutex<Option<CString>>> = Lazy::new(|| Mutex::new(None));
 
@@ -74,6 +74,16 @@ pub struct DartEdgeAudioWaveformSession {
     frame_count: u64,
 }
 
+pub struct DartEdgeAudioPcm16StreamSession {
+    input: Vec<u8>,
+    input_sample_rate_hz: u32,
+    input_channel_count: u32,
+    target_format: NativeAudioTargetFormat,
+    target_sample_rate: Option<u32>,
+    channel_layout: NativeAudioChannelLayout,
+    max_buffered_bytes: usize,
+}
+
 enum NativeAudioPoolJob {
     ProbeFile {
         request_json: String,
@@ -92,6 +102,9 @@ enum NativeAudioPoolJob {
     ConcatenateStreams {
         request_json: String,
         inputs: Vec<OwnedAudioStreamInput>,
+    },
+    FinishPcm16Stream {
+        session: Box<DartEdgeAudioPcm16StreamSession>,
     },
 }
 
@@ -218,6 +231,18 @@ struct NativeStreamingWaveformRequest {
     sample_rate_hz: u32,
     channel_count: u32,
     waveform: NativeWaveformSpec,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct NativePcm16StreamRequest {
+    input_sample_rate_hz: u32,
+    input_channel_count: u32,
+    target_format: NativeAudioTargetFormat,
+    target_sample_rate: Option<u32>,
+    #[serde(default)]
+    channel_layout: NativeAudioChannelLayout,
+    max_buffered_bytes: usize,
 }
 
 #[derive(Deserialize)]
@@ -597,6 +622,81 @@ pub extern "C" fn dart_edge_audio_waveform_free(session: *mut DartEdgeAudioWavef
 }
 
 #[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_audio_pcm16_stream_create(
+    request_json: *const c_char,
+) -> *mut DartEdgeAudioPcm16StreamSession {
+    let Some(request_json) = (unsafe { read_c_string(request_json) }) else {
+        set_last_error("Missing PCM16 stream request.");
+        return std::ptr::null_mut();
+    };
+    let request = match serde_json::from_str::<NativePcm16StreamRequest>(&request_json) {
+        Ok(request) => request,
+        Err(error) => {
+            set_last_error(format!("Invalid PCM16 stream request: {error}"));
+            return std::ptr::null_mut();
+        }
+    };
+    if let Err(error) = validate_pcm16_stream_request(&request) {
+        set_last_error(error);
+        return std::ptr::null_mut();
+    }
+
+    clear_last_error();
+    Box::into_raw(Box::new(DartEdgeAudioPcm16StreamSession {
+        input: Vec::new(),
+        input_sample_rate_hz: request.input_sample_rate_hz,
+        input_channel_count: request.input_channel_count,
+        target_format: request.target_format,
+        target_sample_rate: request.target_sample_rate,
+        channel_layout: request.channel_layout,
+        max_buffered_bytes: request.max_buffered_bytes,
+    }))
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_audio_pcm16_stream_add(
+    session: *mut DartEdgeAudioPcm16StreamSession,
+    input_ptr: *const u8,
+    input_len: isize,
+) -> i32 {
+    if session.is_null() {
+        set_last_error("Missing PCM16 stream session.");
+        return 0;
+    }
+    if input_len < 0 {
+        set_last_error("PCM16 stream input length must not be negative.");
+        return 0;
+    }
+    if input_len > 0 && input_ptr.is_null() {
+        set_last_error("Missing PCM16 stream input.");
+        return 0;
+    }
+    let input = if input_len == 0 {
+        &[]
+    } else {
+        unsafe { std::slice::from_raw_parts(input_ptr, input_len as usize) }
+    };
+
+    match unsafe { &mut *session }.add_pcm16(input) {
+        Ok(()) => {
+            clear_last_error();
+            1
+        }
+        Err(error) => {
+            set_last_error(error);
+            0
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_audio_pcm16_stream_free(session: *mut DartEdgeAudioPcm16StreamSession) {
+    if !session.is_null() {
+        drop(unsafe { Box::from_raw(session) });
+    }
+}
+
+#[unsafe(no_mangle)]
 pub extern "C" fn dart_edge_audio_pool_create(
     worker_count: usize,
     max_queue_size: usize,
@@ -752,6 +852,28 @@ pub extern "C" fn dart_edge_audio_pool_submit_concatenate_streams(
             request_json,
             inputs,
         },
+    )
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_audio_pool_submit_pcm16_stream_finish(
+    pool: *mut DartEdgeAudioPool,
+    session: *mut DartEdgeAudioPcm16StreamSession,
+) -> i64 {
+    if session.is_null() {
+        set_last_error("Missing PCM16 stream session.");
+        return 0;
+    }
+    // This ABI adopts the session before validating the pool so ownership is
+    // deterministic on every return path.
+    let session = unsafe { Box::from_raw(session) };
+    if pool.is_null() {
+        set_last_error("Missing audio pool.");
+        return 0;
+    }
+    submit_audio_pool_job(
+        unsafe { &*pool },
+        NativeAudioPoolJob::FinishPcm16Stream { session },
     )
 }
 
@@ -1517,6 +1639,7 @@ fn create_audio_pool_handler()
             })?;
             concatenate_audio_streams(inputs, request)
         }
+        NativeAudioPoolJob::FinishPcm16Stream { session } => session.finish_pool_result(),
     }
 }
 
@@ -1722,7 +1845,9 @@ fn remix_channels(
             if samples.len() == 1 {
                 samples
             } else {
-                let mut mono = Vec::with_capacity(frame_count);
+                let mut mono = Vec::new();
+                mono.try_reserve_exact(frame_count)
+                    .map_err(|error| format!("Could not reserve mono audio output: {error}"))?;
                 for frame_index in 0..frame_count {
                     let total: f32 = samples.iter().map(|channel| channel[frame_index]).sum();
                     mono.push(total / samples.len() as f32);
@@ -1734,10 +1859,22 @@ fn remix_channels(
             if samples.len() == 2 {
                 samples
             } else if samples.len() == 1 {
-                vec![samples[0].clone(), samples[0].clone()]
+                let source = samples.into_iter().next().expect("one channel");
+                let mut duplicate = Vec::new();
+                duplicate
+                    .try_reserve_exact(frame_count)
+                    .map_err(|error| format!("Could not reserve stereo audio output: {error}"))?;
+                duplicate.extend_from_slice(&source);
+                vec![source, duplicate]
             } else {
-                let mut left = Vec::with_capacity(frame_count);
-                let mut right = Vec::with_capacity(frame_count);
+                let mut left = Vec::new();
+                let mut right = Vec::new();
+                left.try_reserve_exact(frame_count).map_err(|error| {
+                    format!("Could not reserve left-channel audio output: {error}")
+                })?;
+                right.try_reserve_exact(frame_count).map_err(|error| {
+                    format!("Could not reserve right-channel audio output: {error}")
+                })?;
 
                 for frame_index in 0..frame_count {
                     let mut left_total = 0.0f32;
@@ -1800,8 +1937,20 @@ fn resample(
         .map_err(|error| format!("Failed to resample audio: {error}"))?;
 
     let channel_count = samples.len();
-    let mut resampled = vec![Vec::new(); channel_count];
-    for frame in output.take_data().chunks(channel_count) {
+    let output = output.take_data();
+    let output_frame_count = output.len() / channel_count;
+    let mut resampled = Vec::new();
+    resampled
+        .try_reserve_exact(channel_count)
+        .map_err(|error| format!("Could not reserve resampled audio channels: {error}"))?;
+    for _ in 0..channel_count {
+        let mut channel = Vec::new();
+        channel
+            .try_reserve_exact(output_frame_count)
+            .map_err(|error| format!("Could not reserve resampled audio output: {error}"))?;
+        resampled.push(channel);
+    }
+    for frame in output.chunks(channel_count) {
         for (index, sample) in frame.iter().enumerate() {
             resampled[index].push(*sample);
         }
@@ -1822,7 +1971,16 @@ fn encode_wav(audio: &ConvertedAudio) -> Result<Vec<u8>, String> {
         sample_format: SampleFormat::Int,
     };
 
-    let mut cursor = Cursor::new(Vec::new());
+    let bytes_per_sample = usize::from(audio.target_format.bit_depth()).div_ceil(8);
+    let expected_bytes = frame_count
+        .checked_mul(audio.samples.len())
+        .and_then(|value| value.checked_mul(bytes_per_sample))
+        .and_then(|value| value.checked_add(64))
+        .ok_or_else(|| "WAV output size overflowed.".to_string())?;
+    let mut wav = Vec::new();
+    wav.try_reserve_exact(expected_bytes)
+        .map_err(|error| format!("Could not reserve WAV output: {error}"))?;
+    let mut cursor = Cursor::new(wav);
     {
         let mut writer = WavWriter::new(&mut cursor, spec)
             .map_err(|error| format!("Failed to create WAV writer: {error}"))?;
@@ -1862,6 +2020,145 @@ struct WaveformAccumulator {
     current_max: i8,
     has_current: bool,
     base_peaks: Vec<i8>,
+}
+
+impl DartEdgeAudioPcm16StreamSession {
+    fn add_pcm16(&mut self, input: &[u8]) -> Result<(), String> {
+        let bytes_per_frame = usize::try_from(self.input_channel_count)
+            .ok()
+            .and_then(|channels| channels.checked_mul(2))
+            .ok_or_else(|| "PCM16 stream frame size is too large.".to_string())?;
+        if input.len() % bytes_per_frame != 0 {
+            return Err(format!(
+                "PCM16 stream input must contain complete {}-channel frames.",
+                self.input_channel_count
+            ));
+        }
+        let next_length = self
+            .input
+            .len()
+            .checked_add(input.len())
+            .ok_or_else(|| "PCM16 stream input length overflowed.".to_string())?;
+        if next_length > self.max_buffered_bytes {
+            return Err(format!(
+                "PCM16 stream exceeded its {} byte buffer limit.",
+                self.max_buffered_bytes
+            ));
+        }
+        self.input
+            .try_reserve_exact(input.len())
+            .map_err(|error| format!("PCM16 stream could not reserve native memory: {error}"))?;
+        self.input.extend_from_slice(input);
+        Ok(())
+    }
+
+    fn finish(self) -> Result<*mut NativeAudioStreamResult, String> {
+        let NativeAudioPoolResult::ConvertedStream {
+            stream,
+            content_length,
+            result_json,
+        } = self.finish_pool_result()?
+        else {
+            unreachable!("PCM16 finish must produce a stream result")
+        };
+        let content_length = i64::try_from(content_length)
+            .map_err(|_| "PCM16 stream output is too large for the native ABI.".to_string())?;
+        Ok(Box::into_raw(Box::new(NativeAudioStreamResult {
+            stream: stream.into_descriptor(),
+            content_length,
+            result_json: c_string(result_json).into_raw(),
+        })))
+    }
+
+    fn finish_pool_result(self) -> Result<NativeAudioPoolResult, String> {
+        if self.input.is_empty() {
+            return Err("PCM16 stream does not contain audio.".to_string());
+        }
+        let decoded = decode_pcm16_le(
+            self.input,
+            self.input_sample_rate_hz,
+            self.input_channel_count,
+        )?;
+        let converted = convert_audio(
+            decoded,
+            self.target_sample_rate,
+            self.channel_layout,
+            self.target_format,
+        )?;
+        let metadata = converted.metadata();
+        let wav = encode_wav(&converted)?;
+        let content_length = wav.len() as u64;
+        let result_json = serde_json::to_string(&NativeBytesConversionResultJson {
+            mime_type: "audio/wav".to_string(),
+            metadata,
+            waveform: None,
+        })
+        .map_err(|error| format!("Failed to encode PCM16 stream result: {error}"))?;
+
+        Ok(NativeAudioPoolResult::ConvertedStream {
+            stream: OwnedNativeByteStream::new(native_memory_byte_stream(wav)),
+            content_length,
+            result_json,
+        })
+    }
+}
+
+fn validate_pcm16_stream_request(request: &NativePcm16StreamRequest) -> Result<(), String> {
+    validate_sample_rate(Some(request.input_sample_rate_hz))?;
+    validate_sample_rate(request.target_sample_rate)?;
+    if request.input_channel_count == 0 || request.input_channel_count > 32 {
+        return Err("PCM16 stream inputChannelCount must be between 1 and 32.".to_string());
+    }
+    if request.max_buffered_bytes == 0 {
+        return Err("PCM16 stream maxBufferedBytes must be at least 1.".to_string());
+    }
+    Ok(())
+}
+
+fn decode_pcm16_le(
+    input: Vec<u8>,
+    sample_rate: u32,
+    channel_count: u32,
+) -> Result<DecodedAudio, String> {
+    let channel_count = usize::try_from(channel_count)
+        .map_err(|_| "PCM16 stream channel count is too large.".to_string())?;
+    let bytes_per_frame = channel_count
+        .checked_mul(2)
+        .ok_or_else(|| "PCM16 stream frame size is too large.".to_string())?;
+    if input.len() % bytes_per_frame != 0 {
+        return Err("PCM16 stream ended with an incomplete frame.".to_string());
+    }
+
+    let frame_count = input.len() / bytes_per_frame;
+    let mut samples = Vec::new();
+    samples
+        .try_reserve_exact(channel_count)
+        .map_err(|error| format!("Could not reserve PCM channel buffers: {error}"))?;
+    for _ in 0..channel_count {
+        let mut channel = Vec::new();
+        channel
+            .try_reserve_exact(frame_count)
+            .map_err(|error| format!("Could not reserve decoded PCM samples: {error}"))?;
+        samples.push(channel);
+    }
+    for frame in input.chunks_exact(bytes_per_frame) {
+        for (channel_index, sample_bytes) in frame.chunks_exact(2).enumerate() {
+            let sample = i16::from_le_bytes([sample_bytes[0], sample_bytes[1]]);
+            samples[channel_index].push(f32::from(sample) / 32768.0);
+        }
+    }
+
+    Ok(DecodedAudio {
+        samples,
+        sample_rate,
+        container: None,
+        codec: Some("pcm_s16le".to_string()),
+        bit_rate: sample_rate
+            .checked_mul(channel_count as u32)
+            .and_then(|value| value.checked_mul(16)),
+        bit_depth: Some(16),
+        tags: BTreeMap::new(),
+    })
 }
 
 impl DartEdgeAudioWaveformSession {
@@ -2601,6 +2898,32 @@ mod tests {
             })
             .is_err()
         );
+    }
+
+    #[test]
+    fn pcm16_stream_enforces_bounds_and_returns_native_wav() {
+        let mut session = DartEdgeAudioPcm16StreamSession {
+            input: Vec::new(),
+            input_sample_rate_hz: 16_000,
+            input_channel_count: 1,
+            target_format: NativeAudioTargetFormat::WavPcm16,
+            target_sample_rate: Some(16_000),
+            channel_layout: NativeAudioChannelLayout::Mono,
+            max_buffered_bytes: 8,
+        };
+        session
+            .add_pcm16(&[0, 0, 1, 0, 2, 0, 3, 0])
+            .expect("complete PCM frames should be accepted");
+        assert!(session.add_pcm16(&[4, 0]).is_err());
+
+        let result_ptr = session.finish().expect("PCM should encode as WAV");
+        let result = unsafe { Box::from_raw(result_ptr) };
+        assert_eq!(result.content_length, 52);
+        let mut stream = OwnedNativeByteStream::new(result.stream);
+        let bytes = read_native_stream_to_end(&mut stream).expect("WAV stream should read");
+        assert!(bytes.starts_with(b"RIFF"));
+        assert_eq!(&bytes[8..12], b"WAVE");
+        unsafe { free_c_string(result.result_json) };
     }
 
     fn native_input(

@@ -6,6 +6,7 @@ import 'package:dart_edge_native_bridge/dart_edge_native_bridge.dart';
 import 'native/open_ai_audio_client_native.dart';
 import 'open_ai_audio_client_config.dart';
 import 'open_ai_audio_client_exception.dart';
+import 'open_ai_audio_transcription_operation.dart';
 import 'open_ai_audio_transcription_request.dart';
 import 'open_ai_audio_transcription_response.dart';
 
@@ -13,7 +14,7 @@ import 'open_ai_audio_transcription_response.dart';
 final class OpenAiAudioClient {
   OpenAiAudioClient._(this.config, this._nativeHandle);
 
-  static const nativeAbiVersion = 1;
+  static const nativeAbiVersion = 2;
 
   final OpenAiAudioClientConfig config;
   final int _nativeHandle;
@@ -39,7 +40,13 @@ final class OpenAiAudioClient {
   Future<OpenAiAudioTranscriptionResponse> transcribeBytes({
     required Uint8List bytes,
     required OpenAiAudioTranscriptionRequest request,
-  }) async {
+  }) => startTranscribeBytes(bytes: bytes, request: request).response;
+
+  /// Starts a cancellable transcription of Dart-owned audio bytes.
+  OpenAiAudioTranscriptionOperation startTranscribeBytes({
+    required Uint8List bytes,
+    required OpenAiAudioTranscriptionRequest request,
+  }) {
     _ensureActive();
     _validateRequest(request);
     if (bytes.isEmpty) {
@@ -51,15 +58,25 @@ final class OpenAiAudioClient {
     }
 
     final transferable = TransferableTypedData.fromList(<Uint8List>[bytes]);
-    final response = await Isolate.run(() {
-      final isolatedBytes = transferable.materialize().asUint8List();
-      return OpenAiAudioClientNative.transcribeBytes(
-        handle: _nativeHandle,
-        request: request,
-        bytes: isolatedBytes,
-      );
-    });
-    return _requireSuccess(response);
+    final operationId = OpenAiAudioClientNative.createOperation(_nativeHandle);
+    final response =
+        Isolate.run(() {
+              final isolatedBytes = transferable.materialize().asUint8List();
+              return OpenAiAudioClientNative.transcribeBytes(
+                handle: _nativeHandle,
+                operationId: operationId,
+                request: request,
+                bytes: isolatedBytes,
+              );
+            })
+            .whenComplete(
+              () => OpenAiAudioClientNative.discardOperation(operationId),
+            )
+            .then(_requireSuccess);
+    return createOpenAiAudioTranscriptionOperation(
+      response,
+      () => OpenAiAudioClientNative.cancelOperation(operationId),
+    );
   }
 
   /// Consumes a native audio body and streams it into multipart encoding.
@@ -71,7 +88,18 @@ final class OpenAiAudioClient {
     required NativeByteStreamHandle body,
     required int contentLength,
     required OpenAiAudioTranscriptionRequest request,
-  }) async {
+  }) => startTranscribeNativeStream(
+    body: body,
+    contentLength: contentLength,
+    request: request,
+  ).response;
+
+  /// Starts a cancellable transcription that consumes a native audio body.
+  OpenAiAudioTranscriptionOperation startTranscribeNativeStream({
+    required NativeByteStreamHandle body,
+    required int contentLength,
+    required OpenAiAudioTranscriptionRequest request,
+  }) {
     _ensureActive();
     _validateRequest(request);
     if (contentLength <= 0) {
@@ -82,23 +110,36 @@ final class OpenAiAudioClient {
       );
     }
 
-    final lease = body.takeDescriptor();
-    final descriptorAddress = lease.descriptor.address;
+    final operationId = OpenAiAudioClientNative.createOperation(_nativeHandle);
+    NativeByteStreamLease? lease;
     try {
-      final response = await Isolate.run(
-        () => OpenAiAudioClientNative.transcribeNativeStream(
-          handle: _nativeHandle,
-          request: request,
-          descriptorAddress: descriptorAddress,
-          contentLength: contentLength,
-        ),
-      );
-      return _requireSuccess(response);
-    } finally {
-      // The FFI function adopts the producer context before validating or
-      // sending the request, so the native side owns release in every outcome.
-      lease.markTransferred();
+      lease = body.takeDescriptor();
+    } catch (_) {
+      OpenAiAudioClientNative.discardOperation(operationId);
+      rethrow;
     }
+    final descriptorAddress = lease.descriptor.address;
+    final response =
+        Isolate.run(
+              () => OpenAiAudioClientNative.transcribeNativeStream(
+                handle: _nativeHandle,
+                operationId: operationId,
+                request: request,
+                descriptorAddress: descriptorAddress,
+                contentLength: contentLength,
+              ),
+            )
+            .whenComplete(() {
+              // The FFI function adopts the producer context before validating or
+              // sending the request, so the native side owns release in every outcome.
+              lease!.markTransferred();
+              OpenAiAudioClientNative.discardOperation(operationId);
+            })
+            .then(_requireSuccess);
+    return createOpenAiAudioTranscriptionOperation(
+      response,
+      () => OpenAiAudioClientNative.cancelOperation(operationId),
+    );
   }
 
   /// Releases the reusable native client handle.

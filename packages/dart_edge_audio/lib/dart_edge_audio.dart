@@ -11,6 +11,7 @@ export 'src/audio_file_conversion_request.dart';
 export 'src/audio_file_conversion_result.dart';
 export 'src/audio_metadata.dart';
 export 'src/audio_probe_mode.dart';
+export 'src/audio_spool_policy.dart';
 export 'src/audio_target_format.dart';
 export 'src/audio_waveform.dart';
 export 'src/audio_waveform_analysis_request.dart';

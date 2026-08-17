@@ -8,6 +8,8 @@ final class WebTransportOptions {
     this.tags = const <String>[],
     this.deprecated = false,
     this.exposure = RouteExposure.all,
+    this.maxPendingMessages = 256,
+    this.maxPendingBytes = 8 * 1024 * 1024,
   });
 
   /// Optional stable identifier used in generated output and manifests.
@@ -25,6 +27,12 @@ final class WebTransportOptions {
   /// Generated surfaces this route should appear in.
   final RouteExposure exposure;
 
+  /// Maximum number of queued datagrams, stream payloads, or stream chunks.
+  final int maxPendingMessages;
+
+  /// Maximum queued bytes per session or persistent receive stream.
+  final int maxPendingBytes;
+
   /// Returns a normalized options object suitable for runtime execution.
   WebTransportOptions normalized({String? defaultOperationId}) {
     final resolvedOperationId = operationId ?? defaultOperationId;
@@ -35,6 +43,18 @@ final class WebTransportOptions {
         'WebTransportOptions.operationId is required for WebTransport routes.',
       );
     }
+    RangeError.checkValueInInterval(
+      maxPendingMessages,
+      1,
+      1 << 20,
+      'maxPendingMessages',
+    );
+    RangeError.checkValueInInterval(
+      maxPendingBytes,
+      1,
+      1 << 40,
+      'maxPendingBytes',
+    );
 
     return WebTransportOptions(
       operationId: resolvedOperationId,
@@ -42,6 +62,8 @@ final class WebTransportOptions {
       tags: List<String>.unmodifiable(tags),
       deprecated: deprecated,
       exposure: exposure,
+      maxPendingMessages: maxPendingMessages,
+      maxPendingBytes: maxPendingBytes,
     );
   }
 }

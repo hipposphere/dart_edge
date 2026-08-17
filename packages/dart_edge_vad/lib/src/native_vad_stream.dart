@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'dart:ffi';
 import 'dart:typed_data';
 
+import 'package:dart_edge_core/dart_edge_core.dart';
+
 import 'native/dart_edge_vad_native.dart';
 import 'native/generated_bindings.dart' as gen;
 import 'native_pcm16_buffer.dart';
@@ -93,6 +95,23 @@ final class NativeVadStreamingSession {
     return _process(pcm16KhzMono, flush: false);
   }
 
+  /// Processes bytes from [lease] without consuming or closing it.
+  ///
+  /// This lets a transport payload be inspected by VAD and then handed to an
+  /// audio spool. [offset] and [length] must select complete PCM16 samples.
+  NativeVadStreamResult addBorrowedLease(
+    NativeBinaryPayloadLease lease, {
+    int offset = 0,
+    int? length,
+  }) {
+    return processBorrowedLease(
+      lease,
+      offset: offset,
+      length: length,
+      flush: false,
+    );
+  }
+
   NativeVadStreamResult addNativeChunk(NativePcm16Buffer pcm16KhzMono) {
     return processNativePointer(
       pcm16BytesPtr: pcm16KhzMono.bytesPtr,
@@ -103,6 +122,19 @@ final class NativeVadStreamingSession {
 
   NativeVadStreamResult finish([Int16List? pcm16KhzMono]) {
     return _process(pcm16KhzMono ?? Int16List(0), flush: true);
+  }
+
+  NativeVadStreamResult finishBorrowedLease(
+    NativeBinaryPayloadLease lease, {
+    int offset = 0,
+    int? length,
+  }) {
+    return processBorrowedLease(
+      lease,
+      offset: offset,
+      length: length,
+      flush: true,
+    );
   }
 
   NativeVadStreamResult finishNative([NativePcm16Buffer? pcm16KhzMono]) {
@@ -131,6 +163,34 @@ final class NativeVadStreamingSession {
     );
     final json = jsonDecode(resultJson) as Map<String, Object?>;
     return _readStreamResult(json);
+  }
+
+  /// Processes a borrowed native lease without transferring its ownership.
+  NativeVadStreamResult processBorrowedLease(
+    NativeBinaryPayloadLease lease, {
+    int offset = 0,
+    int? length,
+    required bool flush,
+  }) {
+    final selectedLength = length ?? lease.length - offset;
+    RangeError.checkValidRange(
+      offset,
+      offset + selectedLength,
+      lease.length,
+      'offset',
+    );
+    if (selectedLength.isOdd) {
+      throw ArgumentError.value(
+        selectedLength,
+        'length',
+        'PCM16 byte length must be even.',
+      );
+    }
+    return processNativePointer(
+      pcm16BytesPtr: lease.bytesPtr + offset,
+      pcm16ByteLength: selectedLength,
+      flush: flush,
+    );
   }
 
   void close() {

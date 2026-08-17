@@ -13,6 +13,9 @@ import 'dart:ffi' as ffi;
 
 import 'package:dart_edge_native_bridge/dart_edge_native_bridge.dart' as imp$1;
 
+@ffi.Native<ffi.Void Function(ffi.Int64)>()
+external void dart_edge_openai_audio_client_cancel_operation(int operation_id);
+
 @ffi.Native<
   ffi.Pointer<NativeOpenAiAudioCreateResult> Function(
     ffi.Pointer<NativeOpenAiAudioClientConfig>,
@@ -22,6 +25,12 @@ external ffi.Pointer<NativeOpenAiAudioCreateResult>
 dart_edge_openai_audio_client_create(
   ffi.Pointer<NativeOpenAiAudioClientConfig> config,
 );
+
+@ffi.Native<ffi.Int64 Function(ffi.Int64)>()
+external int dart_edge_openai_audio_client_create_operation(int handle);
+
+@ffi.Native<ffi.Void Function(ffi.Int64)>()
+external void dart_edge_openai_audio_client_discard_operation(int operation_id);
 
 @ffi.Native<ffi.Void Function(ffi.Int64)>(isLeaf: true)
 external void dart_edge_openai_audio_client_dispose(int handle);
@@ -46,6 +55,7 @@ external int dart_edge_openai_audio_client_native_abi_version();
 @ffi.Native<
   ffi.Pointer<NativeOpenAiAudioTranscriptionResult> Function(
     ffi.Int64,
+    ffi.Int64,
     ffi.Pointer<NativeOpenAiAudioTranscriptionRequest>,
     ffi.Pointer<ffi.Uint8>,
     ffi.IntPtr,
@@ -54,6 +64,7 @@ external int dart_edge_openai_audio_client_native_abi_version();
 external ffi.Pointer<NativeOpenAiAudioTranscriptionResult>
 dart_edge_openai_audio_client_transcribe_bytes(
   int handle,
+  int operation_id,
   ffi.Pointer<NativeOpenAiAudioTranscriptionRequest> request,
   ffi.Pointer<ffi.Uint8> bytes_ptr,
   int bytes_len,
@@ -61,6 +72,7 @@ dart_edge_openai_audio_client_transcribe_bytes(
 
 @ffi.Native<
   ffi.Pointer<NativeOpenAiAudioTranscriptionResult> Function(
+    ffi.Int64,
     ffi.Int64,
     ffi.Pointer<NativeOpenAiAudioTranscriptionRequest>,
     ffi.Pointer<imp$1.NativeByteStream>,
@@ -70,6 +82,7 @@ dart_edge_openai_audio_client_transcribe_bytes(
 external ffi.Pointer<NativeOpenAiAudioTranscriptionResult>
 dart_edge_openai_audio_client_transcribe_native_stream(
   int handle,
+  int operation_id,
   ffi.Pointer<NativeOpenAiAudioTranscriptionRequest> request,
   ffi.Pointer<imp$1.NativeByteStream> stream,
   int content_length,

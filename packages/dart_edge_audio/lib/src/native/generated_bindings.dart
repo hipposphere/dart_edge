@@ -8,6 +8,7 @@
 library;
 
 import 'dart:ffi' as ffi;
+
 import 'package:dart_edge_native_bridge/dart_edge_native_bridge.dart' as imp$1;
 
 @ffi.Native<
@@ -53,6 +54,30 @@ external int dart_edge_audio_initialize_dart_api_dl(ffi.Pointer<ffi.Void> data);
 
 @ffi.Native<ffi.Int32 Function()>(isLeaf: true)
 external int dart_edge_audio_native_abi_version();
+
+@ffi.Native<
+  ffi.Int32 Function(
+    ffi.Pointer<DartEdgeAudioPcm16StreamSession>,
+    ffi.Pointer<ffi.Uint8>,
+    ffi.IntPtr,
+  )
+>(isLeaf: true)
+external int dart_edge_audio_pcm16_stream_add(
+  ffi.Pointer<DartEdgeAudioPcm16StreamSession> session,
+  ffi.Pointer<ffi.Uint8> input_ptr,
+  int input_len,
+);
+
+@ffi.Native<
+  ffi.Pointer<DartEdgeAudioPcm16StreamSession> Function(ffi.Pointer<ffi.Char>)
+>()
+external ffi.Pointer<DartEdgeAudioPcm16StreamSession>
+dart_edge_audio_pcm16_stream_create(ffi.Pointer<ffi.Char> request_json);
+
+@ffi.Native<ffi.Void Function(ffi.Pointer<DartEdgeAudioPcm16StreamSession>)>()
+external void dart_edge_audio_pcm16_stream_free(
+  ffi.Pointer<DartEdgeAudioPcm16StreamSession> session,
+);
 
 @ffi.Native<
   ffi.Pointer<DartEdgeAudioPool> Function(ffi.UintPtr, ffi.UintPtr, ffi.Int64)
@@ -107,6 +132,17 @@ external int dart_edge_audio_pool_submit_convert_bytes(
 external int dart_edge_audio_pool_submit_convert_file(
   ffi.Pointer<DartEdgeAudioPool> pool,
   ffi.Pointer<ffi.Char> request_json,
+);
+
+@ffi.Native<
+  ffi.Int64 Function(
+    ffi.Pointer<DartEdgeAudioPool>,
+    ffi.Pointer<DartEdgeAudioPcm16StreamSession>,
+  )
+>()
+external int dart_edge_audio_pool_submit_pcm16_stream_finish(
+  ffi.Pointer<DartEdgeAudioPool> pool,
+  ffi.Pointer<DartEdgeAudioPcm16StreamSession> session,
 );
 
 @ffi.Native<
@@ -225,6 +261,8 @@ external ffi.Pointer<NativeAudioBytesResult> dart_edge_audio_waveform_finish(
 external void dart_edge_audio_waveform_free(
   ffi.Pointer<DartEdgeAudioWaveformSession> session,
 );
+
+final class DartEdgeAudioPcm16StreamSession extends ffi.Opaque {}
 
 final class DartEdgeAudioPool extends ffi.Opaque {}
 

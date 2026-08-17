@@ -17,6 +17,7 @@ functions:
       - dart_edge_audio_free_bytes_result
       - dart_edge_audio_free_string
       - dart_edge_audio_native_abi_version
+      - dart_edge_audio_pcm16_stream_add
 structs:
   include:
     - NativeAudioBytesResult

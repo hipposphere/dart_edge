@@ -15,6 +15,8 @@ final class WebSocketOptions {
     this.paramsDecoder,
     this.query,
     this.queryDecoder,
+    this.maxPendingMessages = 256,
+    this.maxPendingBytes = 8 * 1024 * 1024,
   });
 
   /// Optional stable identifier used in generated output and manifests.
@@ -48,6 +50,12 @@ final class WebSocketOptions {
   /// Optional route-local decoder for query parameters.
   final RequestValueDecoder? queryDecoder;
 
+  /// Maximum number of incoming payloads retained before closing the session.
+  final int maxPendingMessages;
+
+  /// Maximum total incoming payload bytes retained before closing the session.
+  final int maxPendingBytes;
+
   /// Returns a normalized options object suitable for runtime execution.
   WebSocketOptions normalized({String? defaultOperationId}) {
     final resolvedOperationId = operationId ?? defaultOperationId;
@@ -58,6 +66,18 @@ final class WebSocketOptions {
         'WebSocketOptions.operationId is required for WebSocket routes.',
       );
     }
+    RangeError.checkValueInInterval(
+      maxPendingMessages,
+      1,
+      1 << 20,
+      'maxPendingMessages',
+    );
+    RangeError.checkValueInInterval(
+      maxPendingBytes,
+      1,
+      1 << 40,
+      'maxPendingBytes',
+    );
 
     return WebSocketOptions(
       operationId: resolvedOperationId,
@@ -69,6 +89,8 @@ final class WebSocketOptions {
       paramsDecoder: paramsDecoder,
       query: query,
       queryDecoder: queryDecoder,
+      maxPendingMessages: maxPendingMessages,
+      maxPendingBytes: maxPendingBytes,
     );
   }
 }

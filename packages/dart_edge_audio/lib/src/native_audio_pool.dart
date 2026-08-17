@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:ffi';
 import 'dart:typed_data';
 
+import 'package:dart_edge_core/dart_edge_core.dart';
 import 'package:dart_edge_native_bridge/dart_edge_native_bridge.dart'
     as native_bridge;
 
@@ -13,6 +14,7 @@ import 'audio_file_conversion_request.dart';
 import 'audio_file_conversion_result.dart';
 import 'audio_metadata.dart';
 import 'audio_probe_mode.dart';
+import 'audio_spool_policy.dart';
 import 'audio_target_format.dart';
 import 'audio_waveform.dart';
 import 'audio_waveform_analysis_request.dart';
@@ -22,6 +24,8 @@ import 'native/dart_edge_audio_native.dart';
 import 'native/generated_bindings.dart' as gen;
 import 'native_audio_stream_conversion_result.dart';
 import 'native_audio_stream_input.dart';
+
+part 'native_audio_pcm16_stream_session.dart';
 
 final class NativeAudioPoolMetrics {
   const NativeAudioPoolMetrics({
@@ -40,9 +44,19 @@ final class NativeAudioPoolMetrics {
     required this.maxObservedQueuedJobs,
     required this.maxObservedActiveJobs,
     required this.completionPostFailedJobs,
+    required this.maxActiveSpoolBytes,
+    required this.currentSpoolBytes,
+    required this.maxObservedSpoolBytes,
+    required this.pendingFinishBytes,
+    required this.maxObservedPendingFinishBytes,
   });
 
-  factory NativeAudioPoolMetrics.fromJson(Map<String, Object?> json) {
+  factory NativeAudioPoolMetrics._fromJson(
+    Map<String, Object?> json, {
+    _AudioSpoolCounters? spoolCounters,
+    int? pendingFinishBytes,
+    int? maxObservedPendingFinishBytes,
+  }) {
     return NativeAudioPoolMetrics(
       workerCount: json['workerCount'] as int,
       maxQueueSize: json['maxQueueSize'] as int,
@@ -59,8 +73,26 @@ final class NativeAudioPoolMetrics {
       maxObservedQueuedJobs: json['maxObservedQueuedJobs'] as int,
       maxObservedActiveJobs: json['maxObservedActiveJobs'] as int,
       completionPostFailedJobs: json['completionPostFailedJobs'] as int,
+      maxActiveSpoolBytes:
+          spoolCounters?.maxBytes ?? json['maxActiveSpoolBytes'] as int? ?? 0,
+      currentSpoolBytes:
+          spoolCounters?.currentBytes ?? json['currentSpoolBytes'] as int? ?? 0,
+      maxObservedSpoolBytes:
+          spoolCounters?.maxObservedBytes ??
+          json['maxObservedSpoolBytes'] as int? ??
+          0,
+      pendingFinishBytes:
+          pendingFinishBytes ?? json['pendingFinishBytes'] as int? ?? 0,
+      maxObservedPendingFinishBytes:
+          maxObservedPendingFinishBytes ??
+          json['maxObservedPendingFinishBytes'] as int? ??
+          0,
     );
   }
+
+  /// Decodes metrics returned by a native audio pool.
+  factory NativeAudioPoolMetrics.fromJson(Map<String, Object?> json) =>
+      NativeAudioPoolMetrics._fromJson(json);
 
   final int workerCount;
   final int maxQueueSize;
@@ -77,10 +109,19 @@ final class NativeAudioPoolMetrics {
   final int maxObservedQueuedJobs;
   final int maxObservedActiveJobs;
   final int completionPostFailedJobs;
+  final int maxActiveSpoolBytes;
+  final int currentSpoolBytes;
+  final int maxObservedSpoolBytes;
+  final int pendingFinishBytes;
+  final int maxObservedPendingFinishBytes;
 }
 
 final class NativeAudioPool {
-  factory NativeAudioPool({int workerCount = 4, int? maxQueueSize}) {
+  factory NativeAudioPool({
+    int workerCount = 4,
+    int? maxQueueSize,
+    int maxActiveSpoolBytes = 512 * 1024 * 1024,
+  }) {
     RangeError.checkValueInInterval(workerCount, 1, 128, 'workerCount');
     final resolvedQueueSize = maxQueueSize ?? workerCount * 16;
     RangeError.checkValueInInterval(
@@ -88,6 +129,12 @@ final class NativeAudioPool {
       1,
       65536,
       'maxQueueSize',
+    );
+    RangeError.checkValueInInterval(
+      maxActiveSpoolBytes,
+      1,
+      1 << 44,
+      'maxActiveSpoolBytes',
     );
 
     DartEdgeAudioNative.initializeDartApiDl();
@@ -101,6 +148,7 @@ final class NativeAudioPool {
       completionPort: completionPort,
       workerCount: workerCount,
       maxQueueSize: resolvedQueueSize,
+      spoolCounters: _AudioSpoolCounters(maxActiveSpoolBytes),
     );
     pool._completionSubscription = completionPort.completedJobIds.listen(
       pool._handleCompletedJob,
@@ -114,15 +162,21 @@ final class NativeAudioPool {
     required this._completionPort,
     required this.workerCount,
     required this.maxQueueSize,
+    required this._spoolCounters,
   });
 
   final int workerCount;
   final int maxQueueSize;
+  int get maxActiveSpoolBytes => _spoolCounters.maxBytes;
 
   Pointer<gen.DartEdgeAudioPool> _poolPtr;
   final native_bridge.NativeCompletionPort _completionPort;
   late final StreamSubscription<int> _completionSubscription;
   final _pendingJobs = <int, _PendingAudioJob>{};
+  final Set<WeakReference<NativeAudioPcm16StreamSession>> _spoolSessions = {};
+  final _AudioSpoolCounters _spoolCounters;
+  var _pendingFinishBytes = 0;
+  var _maxObservedPendingFinishBytes = 0;
   bool _closed = false;
 
   Future<void> initialize() async {
@@ -139,10 +193,81 @@ final class NativeAudioPool {
 
   NativeAudioPoolMetrics get metrics {
     _ensureOpen();
-    return NativeAudioPoolMetrics.fromJson(
+    return NativeAudioPoolMetrics._fromJson(
       jsonDecode(DartEdgeAudioNative.readPoolMetrics(_poolPtr))
           as Map<String, Object?>,
+      spoolCounters: _spoolCounters,
+      pendingFinishBytes: _pendingFinishBytes,
+      maxObservedPendingFinishBytes: _maxObservedPendingFinishBytes,
     );
+  }
+
+  /// Creates a bounded PCM16 ingress session finished by this worker pool.
+  NativeAudioPcm16StreamSession createPcm16StreamSession({
+    required int inputSampleRateHz,
+    int inputChannelCount = 1,
+    AudioTargetFormat targetFormat = AudioTargetFormat.wavPcm16,
+    int? targetSampleRateHz,
+    AudioChannelLayout channelLayout = AudioChannelLayout.keepSource,
+    AudioSpoolPolicy spoolPolicy = const AudioSpoolPolicy.adaptive(
+      preferredMemoryBytes: 32 * 1024 * 1024,
+      maxBytes: 128 * 1024 * 1024,
+    ),
+  }) {
+    _ensureOpen();
+    final session = NativeAudioPcm16StreamSession._(
+      pool: this,
+      inputSampleRateHz: inputSampleRateHz,
+      inputChannelCount: inputChannelCount,
+      targetFormat: targetFormat,
+      targetSampleRateHz: targetSampleRateHz,
+      channelLayout: channelLayout,
+      spoolPolicy: spoolPolicy,
+    );
+    _spoolSessions.add(WeakReference(session));
+    return session;
+  }
+
+  Future<NativeAudioStreamConversionResult> _finishPcm16StreamSession(
+    NativeAudioPcm16StreamSession session,
+  ) async {
+    _ensureOpen();
+    final (:sessionAddress, :bufferedBytes) = session._takeForFinish();
+    late final int jobId;
+    try {
+      jobId = DartEdgeAudioNative.submitPoolFinishPcm16StreamSession(
+        _poolPtr,
+        sessionAddress,
+      );
+    } catch (_) {
+      _spoolCounters.release(bufferedBytes);
+      rethrow;
+    }
+    final response = await _waitForResult<NativeStreamConversionResponse>(
+      jobId,
+      _AudioJobKind.stream,
+      spoolBytes: bufferedBytes,
+    );
+    final body = native_bridge.NativeByteStreamHandle.fromAddresses(
+      response.descriptor,
+    );
+    try {
+      return NativeAudioStreamConversionResult.fromJson(
+        jsonDecode(response.resultJson) as Map<String, Object?>,
+        body: body,
+        contentLength: response.contentLength,
+      );
+    } catch (_) {
+      await body.close();
+      rethrow;
+    }
+  }
+
+  void _unregisterSpoolSession(NativeAudioPcm16StreamSession session) {
+    _spoolSessions.removeWhere((reference) {
+      final value = reference.target;
+      return value == null || identical(value, session);
+    });
   }
 
   Future<AudioMetadata> probeFile(
@@ -367,6 +492,10 @@ final class NativeAudioPool {
     if (_closed) {
       return;
     }
+    for (final reference in _spoolSessions.toList()) {
+      reference.target?.close();
+    }
+    _spoolSessions.clear();
     final pendingJobs = List<_PendingAudioJob>.of(_pendingJobs.values);
     _pendingJobs.clear();
     DartEdgeAudioNative.freePool(_poolPtr);
@@ -376,14 +505,29 @@ final class NativeAudioPool {
     await _completionPort.close();
 
     for (final job in pendingJobs) {
+      _releasePendingJobSpool(job);
       job.completeError(StateError('Native audio pool is closed.'));
     }
   }
 
-  Future<T> _waitForResult<T>(int jobId, _AudioJobKind kind) {
+  Future<T> _waitForResult<T>(
+    int jobId,
+    _AudioJobKind kind, {
+    int spoolBytes = 0,
+  }) {
     _ensureOpen();
     final completer = Completer<Object>();
-    _pendingJobs[jobId] = _PendingAudioJob(kind: kind, completer: completer);
+    if (spoolBytes > 0) {
+      _pendingFinishBytes += spoolBytes;
+      if (_pendingFinishBytes > _maxObservedPendingFinishBytes) {
+        _maxObservedPendingFinishBytes = _pendingFinishBytes;
+      }
+    }
+    _pendingJobs[jobId] = _PendingAudioJob(
+      kind: kind,
+      completer: completer,
+      spoolBytes: spoolBytes,
+    );
     return completer.future.then((value) => value as T);
   }
 
@@ -393,6 +537,7 @@ final class NativeAudioPool {
       return;
     }
 
+    _releasePendingJobSpool(job);
     try {
       final result = switch (job.kind) {
         _AudioJobKind.file => DartEdgeAudioNative.takePoolFileResult(
@@ -422,8 +567,16 @@ final class NativeAudioPool {
     final pendingJobs = List<_PendingAudioJob>.of(_pendingJobs.values);
     _pendingJobs.clear();
     for (final job in pendingJobs) {
+      _releasePendingJobSpool(job);
       job.completeError(error, stackTrace);
     }
+  }
+
+  void _releasePendingJobSpool(_PendingAudioJob job) {
+    if (job.spoolBytes == 0 || job.spoolReleased) return;
+    job.spoolReleased = true;
+    _pendingFinishBytes -= job.spoolBytes;
+    _spoolCounters.release(job.spoolBytes);
   }
 
   void _ensureOpen() {
@@ -436,10 +589,16 @@ final class NativeAudioPool {
 enum _AudioJobKind { file, probe, convert, stream }
 
 final class _PendingAudioJob {
-  const _PendingAudioJob({required this.kind, required this.completer});
+  _PendingAudioJob({
+    required this.kind,
+    required this.completer,
+    this.spoolBytes = 0,
+  });
 
   final _AudioJobKind kind;
   final Completer<Object> completer;
+  final int spoolBytes;
+  var spoolReleased = false;
 
   void complete(Object value) {
     if (!completer.isCompleted) {

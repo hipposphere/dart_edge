@@ -41,6 +41,8 @@ Future<void> main() async {
 - `AudioTargetFormat` currently supports `wavPcm16` and `wavPcm24`
 - `NativeAudioWaveformSession` accumulates compact waveform peaks directly
   from streaming PCM16LE chunks
+- `NativeAudioPcm16StreamSession` consumes transport payload leases into a
+  bounded native PCM buffer and seals them as a transferable WAV stream
 - `NativeAudioPool.concatenateStreams` normalizes single-owner native inputs
   into an anonymous-file-backed WAV stream without materializing payloads in
   Dart memory
@@ -89,9 +91,47 @@ final result = await audioPool.concatenateStreams(
 );
 ```
 
-The completed WAV is held in anonymous OS temporary storage. Its native body
-is backpressured and automatically releases the temporary file when consumed,
-canceled, or closed.
+The completed WAV remains in native memory. Its native body is read in bounded
+chunks and releases its backing storage when consumed, canceled, or closed.
+
+## Streaming PCM16 Transport Ingress
+
+Use `NativeAudioPcm16StreamSession` for WebSocket or WebTransport audio that is
+already interleaved PCM16LE. `addLease` consumes every `BinaryPayloadLease` and
+can skip a protocol header through `offset` without allocating a Dart-owned
+audio copy.
+
+```dart
+final audioPool = NativeAudioPool(
+  workerCount: 4,
+  maxQueueSize: 32,
+  maxActiveSpoolBytes: 512 * 1024 * 1024,
+);
+final audio = audioPool.createPcm16StreamSession(
+  inputSampleRateHz: 48000,
+  inputChannelCount: 2,
+  targetSampleRateHz: 16000,
+  channelLayout: AudioChannelLayout.mono,
+  spoolPolicy: const AudioSpoolPolicy.adaptive(
+    preferredMemoryBytes: 32 * 1024 * 1024,
+    maxBytes: 64 * 1024 * 1024,
+  ),
+);
+
+audio.addLease(frameLease, offset: protocolHeaderLength);
+
+final wav = await audio.finish();
+// Transfer wav.body into another native package, then use wav.contentLength.
+```
+
+The per-session and pool-wide spool ceilings are enforced before accepting each
+frame. `NativeAudioPool.metrics` reports current, peak, and queued finishing
+bytes. Adaptive spooling currently uses bounded native memory only and never
+implicitly writes to disk. Future backends can be added behind the same policy
+while remaining explicitly enabled. `finish` consumes the session and runs on
+the pool's bounded worker queue before returning a native stream. Voice activity
+detection remains owned by `dart_edge_vad` so applications can choose whether
+and how to trim.
 
 ## Streaming PCM16 Waveforms
 
@@ -127,5 +167,6 @@ hand.
 - Regenerate after ABI changes:
 
 ```sh
-dart pub -C packages/dart_edge_audio run ffigen --config tool/ffigen.yaml
+cd packages/dart_edge_audio
+dart run ffigen --config tool/ffigen.yaml
 ```

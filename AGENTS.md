@@ -169,6 +169,8 @@ repository root and composed from `packages/*`, with shared Rust crates under
   and
   `dart pub -C packages/dart_edge_http_server_runtime run ffigen --config tool/ffigen.yaml`
   and
+  `cd packages/dart_edge_audio && dart run ffigen --config tool/ffigen.yaml`
+  and
   `dart pub -C packages/dart_edge_auth run ffigen --config tool/ffigen.yaml`
   and
   `dart pub -C packages/dart_edge_s3_client run ffigen --config tool/ffigen.yaml`

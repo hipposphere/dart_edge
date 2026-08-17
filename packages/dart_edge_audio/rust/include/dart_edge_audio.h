@@ -25,6 +25,7 @@ typedef struct NativeAudioStreamResult {
 
 typedef struct DartEdgeAudioPool DartEdgeAudioPool;
 typedef struct DartEdgeAudioWaveformSession DartEdgeAudioWaveformSession;
+typedef struct DartEdgeAudioPcm16StreamSession DartEdgeAudioPcm16StreamSession;
 
 int32_t dart_edge_audio_native_abi_version(void);
 
@@ -58,6 +59,17 @@ NativeAudioBytesResult* dart_edge_audio_waveform_finish(
 void dart_edge_audio_waveform_free(
     DartEdgeAudioWaveformSession* session);
 
+DartEdgeAudioPcm16StreamSession* dart_edge_audio_pcm16_stream_create(
+    const char* request_json);
+
+int32_t dart_edge_audio_pcm16_stream_add(
+    DartEdgeAudioPcm16StreamSession* session,
+    const uint8_t* input_ptr,
+    intptr_t input_len);
+
+void dart_edge_audio_pcm16_stream_free(
+    DartEdgeAudioPcm16StreamSession* session);
+
 DartEdgeAudioPool* dart_edge_audio_pool_create(
     uintptr_t worker_count,
     uintptr_t max_queue_size,
@@ -88,6 +100,10 @@ int64_t dart_edge_audio_pool_submit_concatenate_streams(
     const char* request_json,
     const NativeAudioStreamInput* inputs,
     intptr_t input_count);
+
+int64_t dart_edge_audio_pool_submit_pcm16_stream_finish(
+    DartEdgeAudioPool* pool,
+    DartEdgeAudioPcm16StreamSession* session);
 
 char* dart_edge_audio_pool_take_file_result(
     DartEdgeAudioPool* pool,

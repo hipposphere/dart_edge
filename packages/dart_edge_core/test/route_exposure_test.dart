@@ -25,7 +25,28 @@ void main() {
     expect(webSocketOptions.paramsDecoder, same(_decodeEventPath));
     expect(webSocketOptions.query, const JsonSchema.ref('EventQuery'));
     expect(webSocketOptions.queryDecoder, same(_decodeEventQuery));
+    expect(webSocketOptions.maxPendingMessages, 256);
+    expect(webSocketOptions.maxPendingBytes, 8 * 1024 * 1024);
     expect(webTransportOptions.exposure, RouteExposure.all);
+    expect(webTransportOptions.maxPendingMessages, 256);
+    expect(webTransportOptions.maxPendingBytes, 8 * 1024 * 1024);
+  });
+
+  test('realtime ingress queue ceilings must be positive', () {
+    expect(
+      () => const WebSocketOptions(
+        operationId: 'socket',
+        maxPendingMessages: 0,
+      ).normalized(),
+      throwsRangeError,
+    );
+    expect(
+      () => const WebTransportOptions(
+        operationId: 'transport',
+        maxPendingBytes: 0,
+      ).normalized(),
+      throwsRangeError,
+    );
   });
 
   test('router exposure is inherited restrictively', () {

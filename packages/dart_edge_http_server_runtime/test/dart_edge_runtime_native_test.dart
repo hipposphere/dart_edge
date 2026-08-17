@@ -3,7 +3,7 @@ import 'package:test/test.dart';
 
 void main() {
   test('loads the bundled Rust runtime asset', () {
-    expect(DartEdgeNative.abiVersion, 16);
+    expect(DartEdgeNative.abiVersion, 17);
     expect(DartEdgeNative.hasBundledRuntime, isTrue);
   });
 }

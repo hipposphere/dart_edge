@@ -1,9 +1,28 @@
+import 'dart:ffi';
 import 'dart:typed_data';
 
 import 'package:dart_edge_core/dart_edge_core.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test('native payload lease releases its owner exactly once', () {
+    var releaseCount = 0;
+    final lease = NativeBinaryPayloadLease.fromPointer(
+      bytesPtr: nullptr,
+      length: 0,
+      release: () => releaseCount += 1,
+    );
+
+    expect(lease.length, 0);
+    expect(lease.bytesView, isEmpty);
+    lease.close();
+    lease.close();
+
+    expect(lease.isClosed, isTrue);
+    expect(releaseCount, 1);
+    expect(() => lease.bytesPtr, throwsStateError);
+  });
+
   test('WebSocket bytes copy and release a native-style lease lazily', () {
     final lease = _TrackingBinaryPayloadLease([1, 2, 3]);
     final message = WebSocketMessage.leasedBinary(lease);

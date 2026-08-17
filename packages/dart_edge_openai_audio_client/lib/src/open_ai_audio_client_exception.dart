@@ -18,3 +18,11 @@ final class OpenAiAudioClientException implements Exception {
     return 'OpenAiAudioClientException$status: $message';
   }
 }
+
+/// The caller canceled an active transcription operation.
+final class OpenAiAudioRequestCancelledException implements Exception {
+  const OpenAiAudioRequestCancelledException();
+
+  @override
+  String toString() => 'OpenAiAudioRequestCancelledException';
+}

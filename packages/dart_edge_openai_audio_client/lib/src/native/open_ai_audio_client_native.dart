@@ -6,6 +6,7 @@ import 'package:dart_edge_native_bridge/dart_edge_native_bridge.dart'
 import 'package:ffi/ffi.dart';
 
 import '../open_ai_audio_client_config.dart';
+import '../open_ai_audio_client_exception.dart';
 import '../open_ai_audio_form_field.dart';
 import '../open_ai_audio_transcription_request.dart';
 import '../open_ai_audio_transcription_response.dart';
@@ -59,8 +60,27 @@ abstract final class OpenAiAudioClientNative {
     gen.dart_edge_openai_audio_client_dispose(handle);
   }
 
+  static int createOperation(int handle) {
+    final operationId = gen.dart_edge_openai_audio_client_create_operation(
+      handle,
+    );
+    if (operationId <= 0) {
+      throw StateError('Failed to create native OpenAI audio operation.');
+    }
+    return operationId;
+  }
+
+  static void cancelOperation(int operationId) {
+    gen.dart_edge_openai_audio_client_cancel_operation(operationId);
+  }
+
+  static void discardOperation(int operationId) {
+    gen.dart_edge_openai_audio_client_discard_operation(operationId);
+  }
+
   static OpenAiAudioTranscriptionResponse transcribeBytes({
     required int handle,
+    required int operationId,
     required OpenAiAudioTranscriptionRequest request,
     required Uint8List bytes,
   }) {
@@ -70,6 +90,7 @@ abstract final class OpenAiAudioClientNative {
       return _withRequest(request, (requestPtr) {
         final resultPtr = gen.dart_edge_openai_audio_client_transcribe_bytes(
           handle,
+          operationId,
           requestPtr,
           bytesPtr,
           bytes.length,
@@ -83,6 +104,7 @@ abstract final class OpenAiAudioClientNative {
 
   static OpenAiAudioTranscriptionResponse transcribeNativeStream({
     required int handle,
+    required int operationId,
     required OpenAiAudioTranscriptionRequest request,
     required int descriptorAddress,
     required int contentLength,
@@ -94,6 +116,7 @@ abstract final class OpenAiAudioClientNative {
       final resultPtr = gen
           .dart_edge_openai_audio_client_transcribe_native_stream(
             handle,
+            operationId,
             requestPtr,
             descriptor,
             contentLength,
@@ -165,6 +188,9 @@ OpenAiAudioTranscriptionResponse _readResult(
 void _throwIfError(Pointer<Char> error) {
   final message = native_bridge.optionalNativeString(error);
   if (message != null) {
+    if (message == 'DART_EDGE_OPENAI_AUDIO_REQUEST_CANCELED') {
+      throw const OpenAiAudioRequestCancelledException();
+    }
     throw StateError(message);
   }
 }

@@ -96,6 +96,20 @@ jobs:
       - name: Analyze workspace
         run: dart analyze
 
+      - name: Test workspace packages
+        env:
+          PACKAGE_SCOPE: ${{ inputs.package_scope }}
+        run: |
+          if [[ -n "$PACKAGE_SCOPE" ]]; then
+            dart run melos exec \
+              --concurrency=1 \
+              --dir-exists=test \
+              --scope "$PACKAGE_SCOPE" \
+              -- dart test
+          else
+            dart run melos run test
+          fi
+
       - name: Configure pub token
         env:
           PUB_TOKEN: ${{ secrets.INTERNAL_PUB_TOKEN }}

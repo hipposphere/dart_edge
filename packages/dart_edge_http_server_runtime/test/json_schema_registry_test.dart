@@ -286,9 +286,9 @@ void main() {
     final compiledRoutes = CompiledRouteTable.fromRegistrations(
       app.routeRegistry.registrations,
     );
-    final manifest =
-        jsonDecode(compiledRoutes.nativeManifestJson(schemaRegistry: registry))
-            as Map<String, Object?>;
+    final manifest = jsonDecode(
+      compiledRoutes.nativeManifestJson(schemaRegistry: registry),
+    ) as Map<String, Object?>;
 
     expect(
       manifest['schemas'],
@@ -324,9 +324,9 @@ void main() {
     final compiledRoutes = CompiledRouteTable.fromRegistrations(
       app.routeRegistry.registrations,
     );
-    final manifest =
-        jsonDecode(compiledRoutes.nativeManifestJson(schemaRegistry: registry))
-            as Map<String, Object?>;
+    final manifest = jsonDecode(
+      compiledRoutes.nativeManifestJson(schemaRegistry: registry),
+    ) as Map<String, Object?>;
     final schemas = manifest['schemas']! as Map<String, Object?>;
 
     expect(schemas['ListSort'], {
@@ -403,6 +403,8 @@ void main() {
       '/calls/<id>/live',
       options: const WebSocketOptions(
         operationId: 'connectLiveCall',
+        maxPendingMessages: 12,
+        maxPendingBytes: 3456,
         params: JsonSchema.ref('IdParams'),
         query: JsonSchema.ref('LiveCallQuery'),
         queryDecoder: _decodeLiveCallQuery,
@@ -422,6 +424,8 @@ void main() {
     expect(route['kind'], 'webSocket');
     expect(route['paramsSchemaId'], 'IdParams');
     expect(route['querySchemaId'], 'LiveCallQuery');
+    expect(route['maxPendingMessages'], 12);
+    expect(route['maxPendingBytes'], 3456);
     expect(compiledRoute.options.queryDecoder, same(_decodeLiveCallQuery));
   });
 }

@@ -1,3 +1,9 @@
+## 0.2.6
+
+- Add synchronous borrowed native transport-lease APIs for zero-copy streaming
+  PCM16 VAD.
+- Document 16 kHz mono PCM16LE as the streaming VAD input contract.
+
 ## 0.2.1
 
 - Reuse Silero VAD tensor input buffers and pass borrowed ONNX Runtime tensor

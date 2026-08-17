@@ -1,3 +1,8 @@
+## 0.3.26
+
+- Require `dart_edge_http_server_runtime` 0.3.37 for bounded WebSocket and
+  WebTransport ingress queues.
+
 ## 0.3.25
 
 - Export typed HTTP byte-range parsing and partial streaming response helpers.

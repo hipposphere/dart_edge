@@ -1,7 +1,10 @@
+import 'dart:ffi';
 import 'dart:typed_data';
 
+import 'package:dart_edge_core/dart_edge_core.dart';
 import 'package:dart_edge_vad/dart_edge_vad.dart';
 import 'package:dart_edge_vad/src/native/dart_edge_vad_native.dart';
+import 'package:ffi/ffi.dart';
 import 'package:test/test.dart';
 
 void main() {
@@ -170,6 +173,49 @@ void main() {
       stream.close();
       tail.close();
       chunk.close();
+    }
+  });
+
+  test('Native VAD borrows transport lease bytes without consuming them', () {
+    final bytesPtr = calloc<Uint8>(1024);
+    var releaseCount = 0;
+    final lease = NativeBinaryPayloadLease.fromPointer(
+      bytesPtr: bytesPtr,
+      length: 1024,
+      release: () {
+        releaseCount += 1;
+        calloc.free(bytesPtr);
+      },
+    );
+    final stream = NativeVadStreamingSession();
+    try {
+      final result = stream.addBorrowedLease(lease);
+
+      expect(result.totalSamples, 512);
+      expect(result.processedSamples, 512);
+      expect(lease.isClosed, isFalse);
+      expect(lease.length, 1024);
+      expect(releaseCount, 0);
+    } finally {
+      stream.close();
+      lease.close();
+    }
+    expect(releaseCount, 1);
+  });
+
+  test('Native VAD rejects partial borrowed PCM16 samples', () {
+    final bytesPtr = calloc<Uint8>(3);
+    final lease = NativeBinaryPayloadLease.fromPointer(
+      bytesPtr: bytesPtr,
+      length: 3,
+      release: () => calloc.free(bytesPtr),
+    );
+    final stream = NativeVadStreamingSession();
+    try {
+      expect(() => stream.addBorrowedLease(lease), throwsArgumentError);
+    } finally {
+      stream.close();
+      lease.close();
     }
   });
 

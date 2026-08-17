@@ -144,3 +144,9 @@
 ## 0.1.0
 
 - Initial internal release.
+## 0.3.44
+
+- Add configurable pending-message and pending-byte limits to WebSocket and
+  WebTransport route options.
+- Expose native binary payload leases from the shared transport layer so
+  synchronous consumers can borrow native pointers without runtime coupling.

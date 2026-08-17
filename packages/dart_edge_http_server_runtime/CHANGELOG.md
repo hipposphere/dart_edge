@@ -1,5 +1,16 @@
 ## Unreleased
 
+## 0.3.37
+
+- Enforce configurable pending-message and pending-byte ceilings for native
+  WebSocket and WebTransport ingress queues.
+- Close overloaded WebSocket sessions with 1013 and overloaded WebTransport
+  sessions with the application overload code instead of accumulating frames.
+- Move the native binary payload lease contract into `dart_edge_core` for
+  synchronous cross-package borrowed-pointer processing.
+- Bump the native artifact version to 0.1.20 and require `dart_edge_core`
+  0.3.44.
+
 ## 0.3.36
 
 - Add long-lived unidirectional and bidirectional WebTransport stream handles

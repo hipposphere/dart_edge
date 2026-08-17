@@ -79,11 +79,15 @@ For live audio, use `NativeVadStreamingSession` and feed 16 kHz mono PCM16
 chunks. The native stream keeps recurrent model state between calls and only
 emits newly finalized segments.
 
-The standard `Int16List` APIs copy Dart heap memory into native memory before
-calling FFI because ordinary Dart typed lists do not expose stable C pointers.
-For capture or streaming pipelines that can write directly into native memory,
-use `NativePcm16Buffer` with `detectNativeBuffer`, `addNativeChunk`, or
-`finishNative` to avoid that wrapper copy.
+Native transport-lease methods call VAD synchronously without an intermediate
+byte copy. Use `addBorrowedLease` when the same native transport payload must
+remain available for an audio spool afterward. The lease remains owned by the
+caller. Input is required to be 16 kHz mono PCM16LE; normalize other formats
+incrementally before VAD. Ordinary Dart typed lists use the safe copying path.
+
+For capture pipelines that already produce native memory, `NativePcm16Buffer`
+remains available through `detectNativeBuffer`, `addNativeChunk`, and
+`finishNative`.
 
 ## Benchmarks
 
