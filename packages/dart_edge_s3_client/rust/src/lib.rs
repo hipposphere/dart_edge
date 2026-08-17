@@ -741,7 +741,14 @@ fn next_get_object_stream_chunk(download_handle: i64) -> Result<DownloadRead, St
         download
     };
 
-    let next = RUNTIME.block_on(download.body.next());
+    // Native consumers may invoke this producer callback from one of their
+    // Tokio workers. Enter a supported blocking section before driving the S3
+    // body on our runtime instead of recursively calling `Runtime::block_on`.
+    let next = if tokio::runtime::Handle::try_current().is_ok() {
+        tokio::task::block_in_place(|| RUNTIME.handle().block_on(download.body.next()))
+    } else {
+        RUNTIME.block_on(download.body.next())
+    };
     let canceled = {
         let mut downloads = DOWNLOADS.lock().unwrap();
         downloads.in_flight.remove(&download_handle);
