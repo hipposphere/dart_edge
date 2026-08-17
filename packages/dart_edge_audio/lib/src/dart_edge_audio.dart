@@ -10,6 +10,7 @@ import 'audio_channel_layout.dart';
 import 'audio_file_conversion_request.dart';
 import 'audio_file_conversion_result.dart';
 import 'audio_metadata.dart';
+import 'audio_output_spec.dart';
 import 'audio_probe_mode.dart';
 import 'audio_target_format.dart';
 import 'audio_waveform.dart';
@@ -107,7 +108,7 @@ abstract final class DartEdgeAudio {
     return (await _ensureSharedPool()).convertBytes(request);
   }
 
-  /// Generates a compact waveform without returning converted WAV bytes.
+  /// Generates a compact waveform without returning converted audio bytes.
   static Future<AudioWaveformAnalysisResult> analyzeWaveform(
     AudioWaveformAnalysisRequest request,
   ) async {
@@ -124,7 +125,8 @@ abstract final class DartEdgeAudio {
   /// Edge runtime packages.
   static Future<AudioBytesConversionResult> convertNativeBytes({
     required core_ffi.NativeBytes bytes,
-    required AudioTargetFormat targetFormat,
+    AudioOutputSpec? output,
+    AudioTargetFormat? targetFormat,
     int? targetSampleRate,
     AudioChannelLayout channelLayout = AudioChannelLayout.keepSource,
     String? fileNameHint,
@@ -135,6 +137,7 @@ abstract final class DartEdgeAudio {
     _ensurePositiveSampleRate(targetSampleRate);
     return (await _ensureSharedPool()).convertNativeBytes(
       bytes: bytes,
+      output: output,
       targetFormat: targetFormat,
       targetSampleRate: targetSampleRate,
       channelLayout: channelLayout,
@@ -148,7 +151,8 @@ abstract final class DartEdgeAudio {
   /// through the Dart heap.
   static Future<NativeAudioStreamConversionResult> concatenateStreams({
     required List<NativeAudioStreamInput> inputs,
-    required AudioTargetFormat targetFormat,
+    AudioOutputSpec? output,
+    AudioTargetFormat? targetFormat,
     int? targetSampleRate,
     AudioChannelLayout channelLayout = AudioChannelLayout.keepSource,
   }) async {
@@ -162,6 +166,7 @@ abstract final class DartEdgeAudio {
     _ensurePositiveSampleRate(targetSampleRate);
     return (await _ensureSharedPool()).concatenateStreams(
       inputs: inputs,
+      output: output,
       targetFormat: targetFormat,
       targetSampleRate: targetSampleRate,
       channelLayout: channelLayout,

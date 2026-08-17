@@ -1,3 +1,5 @@
+mod encoding;
+
 use std::collections::BTreeMap;
 use std::ffi::{CStr, CString, c_char};
 use std::fs;
@@ -35,6 +37,8 @@ use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta::{MetadataOptions, MetadataRevision, StandardTag, Tag};
 use symphonia::core::units::Timestamp;
 use symphonia::default::{get_codecs, get_probe};
+
+use encoding::encode_audio;
 
 const DART_EDGE_AUDIO_NATIVE_ABI_VERSION: i32 = 5;
 
@@ -255,10 +259,40 @@ struct NativeStreamConcatenationRequest {
 }
 
 #[derive(Deserialize, Clone, Copy)]
-#[serde(rename_all = "camelCase")]
+#[serde(untagged)]
 enum NativeAudioTargetFormat {
+    Legacy(NativeLegacyAudioTargetFormat),
+    Output(NativeAudioOutputSpec),
+}
+
+#[derive(Deserialize, Clone, Copy)]
+#[serde(rename_all = "camelCase")]
+enum NativeLegacyAudioTargetFormat {
     WavPcm16,
     WavPcm24,
+}
+
+#[derive(Deserialize, Clone, Copy)]
+#[serde(tag = "format", rename_all = "camelCase")]
+enum NativeAudioOutputSpec {
+    WavPcm16,
+    WavPcm24,
+    M4aAacLc {
+        #[serde(default = "default_aac_bit_rate")]
+        bit_rate: u32,
+    },
+    Flac {
+        #[serde(default = "default_flac_compression_level")]
+        compression_level: u8,
+    },
+}
+
+fn default_aac_bit_rate() -> u32 {
+    48_000
+}
+
+fn default_flac_compression_level() -> u8 {
+    5
 }
 
 #[derive(Default, Deserialize, Clone, Copy)]
@@ -271,17 +305,88 @@ enum NativeAudioProbeMode {
 }
 
 impl NativeAudioTargetFormat {
-    fn bit_depth(self) -> u16 {
+    fn validate(self) -> Result<(), String> {
+        match self.output() {
+            NativeAudioOutputSpec::M4aAacLc { bit_rate }
+                if !(8_000..=512_000).contains(&bit_rate) =>
+            {
+                Err("AAC bit rate must be between 8000 and 512000 bits per second.".to_string())
+            }
+            NativeAudioOutputSpec::Flac { compression_level } if compression_level > 8 => {
+                Err("FLAC compression level must be between 0 and 8.".to_string())
+            }
+            _ => Ok(()),
+        }
+    }
+
+    fn output(self) -> NativeAudioOutputSpec {
         match self {
-            Self::WavPcm16 => 16,
-            Self::WavPcm24 => 24,
+            Self::Legacy(NativeLegacyAudioTargetFormat::WavPcm16) => {
+                NativeAudioOutputSpec::WavPcm16
+            }
+            Self::Legacy(NativeLegacyAudioTargetFormat::WavPcm24) => {
+                NativeAudioOutputSpec::WavPcm24
+            }
+            Self::Output(output) => output,
+        }
+    }
+
+    fn pcm_bit_depth(self) -> Result<u16, String> {
+        match self.output() {
+            NativeAudioOutputSpec::WavPcm16 => Ok(16),
+            NativeAudioOutputSpec::WavPcm24 => Ok(24),
+            NativeAudioOutputSpec::Flac { .. } => Ok(16),
+            NativeAudioOutputSpec::M4aAacLc { .. } => {
+                Err("AAC output does not expose a PCM bit depth.".to_string())
+            }
+        }
+    }
+
+    fn metadata_bit_depth(self) -> Option<u32> {
+        match self.output() {
+            NativeAudioOutputSpec::WavPcm16 | NativeAudioOutputSpec::Flac { .. } => Some(16),
+            NativeAudioOutputSpec::WavPcm24 => Some(24),
+            NativeAudioOutputSpec::M4aAacLc { .. } => None,
         }
     }
 
     fn codec_name(self) -> &'static str {
-        match self {
-            Self::WavPcm16 => "pcm_s16le",
-            Self::WavPcm24 => "pcm_s24le",
+        match self.output() {
+            NativeAudioOutputSpec::WavPcm16 => "pcm_s16le",
+            NativeAudioOutputSpec::WavPcm24 => "pcm_s24le",
+            NativeAudioOutputSpec::M4aAacLc { .. } => "aac",
+            NativeAudioOutputSpec::Flac { .. } => "flac",
+        }
+    }
+
+    fn container(self) -> &'static str {
+        match self.output() {
+            NativeAudioOutputSpec::WavPcm16 | NativeAudioOutputSpec::WavPcm24 => "wav",
+            NativeAudioOutputSpec::M4aAacLc { .. } => "mp4",
+            NativeAudioOutputSpec::Flac { .. } => "flac",
+        }
+    }
+
+    fn mime_type(self) -> &'static str {
+        match self.output() {
+            NativeAudioOutputSpec::WavPcm16 | NativeAudioOutputSpec::WavPcm24 => "audio/wav",
+            NativeAudioOutputSpec::M4aAacLc { .. } => "audio/mp4",
+            NativeAudioOutputSpec::Flac { .. } => "audio/flac",
+        }
+    }
+
+    fn file_extension(self) -> &'static str {
+        match self.output() {
+            NativeAudioOutputSpec::WavPcm16 | NativeAudioOutputSpec::WavPcm24 => "wav",
+            NativeAudioOutputSpec::M4aAacLc { .. } => "m4a",
+            NativeAudioOutputSpec::Flac { .. } => "flac",
+        }
+    }
+
+    fn target_bit_rate(self) -> Option<u32> {
+        match self.output() {
+            NativeAudioOutputSpec::M4aAacLc { bit_rate } => Some(bit_rate),
+            _ => None,
         }
     }
 }
@@ -295,7 +400,7 @@ enum NativeAudioChannelLayout {
     Stereo,
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct NativeAudioMetadata {
     duration_micros: u64,
@@ -313,6 +418,7 @@ struct NativeAudioMetadata {
 struct NativeFileConversionResult {
     output_path: String,
     mime_type: String,
+    file_extension: String,
     metadata: NativeAudioMetadata,
 }
 
@@ -320,6 +426,7 @@ struct NativeFileConversionResult {
 #[serde(rename_all = "camelCase")]
 struct NativeBytesConversionResultJson {
     mime_type: String,
+    file_extension: String,
     metadata: NativeAudioMetadata,
     #[serde(skip_serializing_if = "Option::is_none")]
     waveform: Option<NativeWaveformResultJson>,
@@ -1187,6 +1294,7 @@ fn convert_file(
     request: NativeFileConversionRequest,
 ) -> Result<NativeFileConversionResult, String> {
     validate_sample_rate(request.target_sample_rate)?;
+    request.target_format.validate()?;
 
     if !request.overwrite_existing && Path::new(&request.output_path).exists() {
         return Err("Output file already exists.".to_string());
@@ -1204,15 +1312,16 @@ fn convert_file(
         request.channel_layout,
         request.target_format,
     )?;
-    let wav_bytes = encode_wav(&converted)?;
+    let encoded = encode_audio(&converted)?;
 
-    fs::write(&request.output_path, wav_bytes)
+    fs::write(&request.output_path, encoded.bytes)
         .map_err(|error| format!("Failed to write converted audio file: {error}"))?;
 
     Ok(NativeFileConversionResult {
         output_path: request.output_path,
-        mime_type: "audio/wav".to_string(),
-        metadata: converted.metadata(),
+        mime_type: encoded.mime_type.to_string(),
+        file_extension: request.target_format.file_extension().to_string(),
+        metadata: encoded.metadata,
     })
 }
 
@@ -1240,6 +1349,7 @@ fn convert_bytes_payload(
     request: NativeBytesConversionRequest,
 ) -> Result<NativeAudioPoolResult, String> {
     validate_sample_rate(request.target_sample_rate)?;
+    request.target_format.validate()?;
 
     let decoded = decode_audio(
         bytes,
@@ -1252,32 +1362,41 @@ fn convert_bytes_payload(
         request.channel_layout,
         request.target_format,
     )?;
-    let (wav_bytes, waveform_bytes, waveform) = match request.waveform {
+    let (waveform_bytes, waveform) = match request.waveform {
         Some(spec) => {
             validate_waveform_spec(&spec)?;
-            if request.waveform_only {
-                let waveform = generate_waveform(&converted, &spec)?;
-                (Vec::new(), waveform.bytes, Some(waveform.json))
-            } else {
-                let (wav, waveform) = encode_wav_with_waveform(&converted, &spec)?;
-                (wav, waveform.bytes, Some(waveform.json))
-            }
+            let waveform = generate_waveform(&converted, &spec)?;
+            (waveform.bytes, Some(waveform.json))
         }
         None if request.waveform_only => {
             return Err("waveform is required when waveformOnly is true.".to_string());
         }
-        None => (encode_wav(&converted)?, Vec::new(), None),
+        None => (Vec::new(), None),
+    };
+    let encoded = if request.waveform_only {
+        None
+    } else {
+        Some(encode_audio(&converted)?)
     };
     let result_json = NativeBytesConversionResultJson {
-        mime_type: "audio/wav".to_string(),
-        metadata: converted.metadata(),
+        mime_type: encoded
+            .as_ref()
+            .map_or_else(
+                || request.target_format.mime_type(),
+                |value| value.mime_type,
+            )
+            .to_string(),
+        file_extension: request.target_format.file_extension().to_string(),
+        metadata: encoded
+            .as_ref()
+            .map_or_else(|| converted.metadata(), |value| value.metadata.clone()),
         waveform,
     };
     let result_json = serde_json::to_string(&result_json)
         .map_err(|error| format!("Failed to encode JSON payload: {error}"))?;
 
     Ok(NativeAudioPoolResult::ConvertedBytes {
-        bytes: wav_bytes,
+        bytes: encoded.map_or_else(Vec::new, |value| value.bytes),
         waveform: waveform_bytes,
         result_json,
     })
@@ -1288,6 +1407,7 @@ fn concatenate_audio_streams(
     request: NativeStreamConcatenationRequest,
 ) -> Result<NativeAudioPoolResult, String> {
     validate_sample_rate(request.target_sample_rate)?;
+    request.target_format.validate()?;
     let first_input = inputs
         .first_mut()
         .ok_or_else(|| "At least one native audio stream is required.".to_string())?;
@@ -1297,7 +1417,7 @@ fn concatenate_audio_streams(
         first_input.file_name_hint.as_deref(),
         first_input.mime_type_hint.as_deref(),
     )?;
-    let first = convert_audio(
+    let mut first = convert_audio(
         first_decoded,
         request.target_sample_rate,
         request.channel_layout,
@@ -1305,12 +1425,57 @@ fn concatenate_audio_streams(
     )?;
     let sample_rate = first.sample_rate;
     let channel_count = first.samples.len();
+    if !matches!(
+        request.target_format.output(),
+        NativeAudioOutputSpec::WavPcm16 | NativeAudioOutputSpec::WavPcm24
+    ) {
+        for input in inputs.iter_mut().skip(1) {
+            let bytes = read_native_stream_to_end(&mut input.stream)?;
+            let decoded = decode_audio(
+                bytes,
+                input.file_name_hint.as_deref(),
+                input.mime_type_hint.as_deref(),
+            )?;
+            let converted = convert_audio(
+                decoded,
+                request.target_sample_rate,
+                request.channel_layout,
+                request.target_format,
+            )?;
+            if converted.sample_rate != sample_rate || converted.samples.len() != channel_count {
+                return Err(
+                    "Converted audio streams have incompatible sample rates or channels."
+                        .to_string(),
+                );
+            }
+            for (target, source) in first.samples.iter_mut().zip(converted.samples) {
+                target
+                    .try_reserve_exact(source.len())
+                    .map_err(|error| format!("Could not reserve concatenated audio: {error}"))?;
+                target.extend(source);
+            }
+        }
+        let encoded = encode_audio(&first)?;
+        let content_length = encoded.bytes.len() as u64;
+        let result_json = serde_json::to_string(&NativeBytesConversionResultJson {
+            mime_type: encoded.mime_type.to_string(),
+            file_extension: request.target_format.file_extension().to_string(),
+            metadata: encoded.metadata,
+            waveform: None,
+        })
+        .map_err(|error| format!("Failed to encode JSON payload: {error}"))?;
+        return Ok(NativeAudioPoolResult::ConvertedStream {
+            stream: OwnedNativeByteStream::new(native_memory_byte_stream(encoded.bytes)),
+            content_length,
+            result_json,
+        });
+    }
     let mut total_frame_count = first.samples.first().map_or(0usize, Vec::len);
     let mut output = Cursor::new(Vec::new());
     let spec = WavSpec {
         channels: channel_count as u16,
         sample_rate,
-        bits_per_sample: request.target_format.bit_depth(),
+        bits_per_sample: request.target_format.pcm_bit_depth()?,
         sample_format: SampleFormat::Int,
     };
 
@@ -1348,7 +1513,7 @@ fn concatenate_audio_streams(
     }
 
     let content_length = output.get_ref().len() as u64;
-    let bit_depth = request.target_format.bit_depth() as u32;
+    let bit_depth = u32::from(request.target_format.pcm_bit_depth()?);
     let bit_rate = (sample_rate as u64)
         .saturating_mul(channel_count as u64)
         .saturating_mul(bit_depth as u64)
@@ -1356,9 +1521,10 @@ fn concatenate_audio_streams(
         .ok();
     let result_json = serde_json::to_string(&NativeBytesConversionResultJson {
         mime_type: "audio/wav".to_string(),
+        file_extension: request.target_format.file_extension().to_string(),
         metadata: NativeAudioMetadata {
             duration_micros: duration_micros(total_frame_count, sample_rate),
-            container: Some("wav".to_string()),
+            container: Some(request.target_format.container().to_string()),
             codec: Some(request.target_format.codec_name().to_string()),
             sample_rate: Some(sample_rate),
             channel_count: Some(channel_count as u32),
@@ -1384,13 +1550,14 @@ fn write_converted_audio<W: Write + Seek>(
     let frame_count = audio.samples.first().map_or(0usize, Vec::len);
     for frame_index in 0..frame_count {
         for channel in &audio.samples {
-            match audio.target_format {
-                NativeAudioTargetFormat::WavPcm16 => writer
+            match audio.target_format.output() {
+                NativeAudioOutputSpec::WavPcm16 => writer
                     .write_sample(float_to_i16(channel[frame_index]))
                     .map_err(|error| format!("Failed to write WAV sample: {error}"))?,
-                NativeAudioTargetFormat::WavPcm24 => writer
+                NativeAudioOutputSpec::WavPcm24 => writer
                     .write_sample(float_to_i24(channel[frame_index]))
                     .map_err(|error| format!("Failed to write WAV sample: {error}"))?,
+                _ => return Err("Compressed output cannot use the WAV sample writer.".to_string()),
             }
         }
     }
@@ -1967,11 +2134,11 @@ fn encode_wav(audio: &ConvertedAudio) -> Result<Vec<u8>, String> {
     let spec = WavSpec {
         channels: audio.samples.len() as u16,
         sample_rate: audio.sample_rate,
-        bits_per_sample: audio.target_format.bit_depth(),
+        bits_per_sample: audio.target_format.pcm_bit_depth()?,
         sample_format: SampleFormat::Int,
     };
 
-    let bytes_per_sample = usize::from(audio.target_format.bit_depth()).div_ceil(8);
+    let bytes_per_sample = usize::from(audio.target_format.pcm_bit_depth()?).div_ceil(8);
     let expected_bytes = frame_count
         .checked_mul(audio.samples.len())
         .and_then(|value| value.checked_mul(bytes_per_sample))
@@ -1987,13 +2154,16 @@ fn encode_wav(audio: &ConvertedAudio) -> Result<Vec<u8>, String> {
 
         for frame_index in 0..frame_count {
             for channel in &audio.samples {
-                match audio.target_format {
-                    NativeAudioTargetFormat::WavPcm16 => writer
+                match audio.target_format.output() {
+                    NativeAudioOutputSpec::WavPcm16 => writer
                         .write_sample(float_to_i16(channel[frame_index]))
                         .map_err(|error| format!("Failed to write WAV sample: {error}"))?,
-                    NativeAudioTargetFormat::WavPcm24 => writer
+                    NativeAudioOutputSpec::WavPcm24 => writer
                         .write_sample(float_to_i24(channel[frame_index]))
                         .map_err(|error| format!("Failed to write WAV sample: {error}"))?,
+                    _ => {
+                        return Err("Compressed output cannot use the WAV encoder.".to_string());
+                    }
                 }
             }
         }
@@ -2085,18 +2255,18 @@ impl DartEdgeAudioPcm16StreamSession {
             self.channel_layout,
             self.target_format,
         )?;
-        let metadata = converted.metadata();
-        let wav = encode_wav(&converted)?;
-        let content_length = wav.len() as u64;
+        let encoded = encode_audio(&converted)?;
+        let content_length = encoded.bytes.len() as u64;
         let result_json = serde_json::to_string(&NativeBytesConversionResultJson {
-            mime_type: "audio/wav".to_string(),
-            metadata,
+            mime_type: encoded.mime_type.to_string(),
+            file_extension: self.target_format.file_extension().to_string(),
+            metadata: encoded.metadata,
             waveform: None,
         })
         .map_err(|error| format!("Failed to encode PCM16 stream result: {error}"))?;
 
         Ok(NativeAudioPoolResult::ConvertedStream {
-            stream: OwnedNativeByteStream::new(native_memory_byte_stream(wav)),
+            stream: OwnedNativeByteStream::new(native_memory_byte_stream(encoded.bytes)),
             content_length,
             result_json,
         })
@@ -2106,6 +2276,7 @@ impl DartEdgeAudioPcm16StreamSession {
 fn validate_pcm16_stream_request(request: &NativePcm16StreamRequest) -> Result<(), String> {
     validate_sample_rate(Some(request.input_sample_rate_hz))?;
     validate_sample_rate(request.target_sample_rate)?;
+    request.target_format.validate()?;
     if request.input_channel_count == 0 || request.input_channel_count > 32 {
         return Err("PCM16 stream inputChannelCount must be between 1 and 32.".to_string());
     }
@@ -2294,7 +2465,7 @@ fn encode_wav_with_waveform(
     let spec = WavSpec {
         channels: audio.samples.len() as u16,
         sample_rate: audio.sample_rate,
-        bits_per_sample: audio.target_format.bit_depth(),
+        bits_per_sample: audio.target_format.pcm_bit_depth()?,
         sample_format: SampleFormat::Int,
     };
     let mut waveform =
@@ -2308,13 +2479,16 @@ fn encode_wav_with_waveform(
             for channel in &audio.samples {
                 let sample = channel[frame_index];
                 visualization_sample += sample;
-                match audio.target_format {
-                    NativeAudioTargetFormat::WavPcm16 => writer
+                match audio.target_format.output() {
+                    NativeAudioOutputSpec::WavPcm16 => writer
                         .write_sample(float_to_i16(sample))
                         .map_err(|error| format!("Failed to write WAV sample: {error}"))?,
-                    NativeAudioTargetFormat::WavPcm24 => writer
+                    NativeAudioOutputSpec::WavPcm24 => writer
                         .write_sample(float_to_i24(sample))
                         .map_err(|error| format!("Failed to write WAV sample: {error}"))?,
+                    _ => {
+                        return Err("Compressed output cannot use the WAV encoder.".to_string());
+                    }
                 }
             }
             waveform.observe(visualization_sample / audio.samples.len() as f32);
@@ -2682,21 +2856,25 @@ impl ConvertedAudio {
     fn metadata(&self) -> NativeAudioMetadata {
         let channel_count = self.samples.len() as u32;
         let frame_count = self.samples.first().map_or(0usize, Vec::len);
-        let bit_depth = self.target_format.bit_depth() as u32;
-        let bit_rate = (self.sample_rate as u64)
-            .saturating_mul(channel_count as u64)
-            .saturating_mul(bit_depth as u64)
-            .try_into()
-            .ok();
+        let bit_depth = self.target_format.metadata_bit_depth();
+        let bit_rate = self.target_format.target_bit_rate().or_else(|| {
+            bit_depth.and_then(|bit_depth| {
+                (self.sample_rate as u64)
+                    .saturating_mul(channel_count as u64)
+                    .saturating_mul(bit_depth as u64)
+                    .try_into()
+                    .ok()
+            })
+        });
 
         NativeAudioMetadata {
             duration_micros: duration_micros(frame_count, self.sample_rate),
-            container: Some("wav".to_string()),
+            container: Some(self.target_format.container().to_string()),
             codec: Some(self.target_format.codec_name().to_string()),
             sample_rate: Some(self.sample_rate),
             channel_count: Some(channel_count),
             bit_rate,
-            bit_depth: Some(bit_depth),
+            bit_depth,
             tags: BTreeMap::new(),
         }
     }
@@ -2815,7 +2993,9 @@ mod tests {
         let result = concatenate_audio_streams(
             inputs,
             NativeStreamConcatenationRequest {
-                target_format: NativeAudioTargetFormat::WavPcm16,
+                target_format: NativeAudioTargetFormat::Legacy(
+                    NativeLegacyAudioTargetFormat::WavPcm16,
+                ),
                 target_sample_rate: Some(16_000),
                 channel_layout: NativeAudioChannelLayout::Mono,
             },
@@ -2853,7 +3033,7 @@ mod tests {
         let audio = ConvertedAudio {
             samples: vec![vec![-1.0, -0.5, 0.25, 1.0, -0.25]],
             sample_rate: 4,
-            target_format: NativeAudioTargetFormat::WavPcm16,
+            target_format: NativeAudioTargetFormat::Legacy(NativeLegacyAudioTargetFormat::WavPcm16),
         };
         let spec = NativeWaveformSpec {
             base_interval_micros: 500_000,
@@ -2906,7 +3086,7 @@ mod tests {
             input: Vec::new(),
             input_sample_rate_hz: 16_000,
             input_channel_count: 1,
-            target_format: NativeAudioTargetFormat::WavPcm16,
+            target_format: NativeAudioTargetFormat::Legacy(NativeLegacyAudioTargetFormat::WavPcm16),
             target_sample_rate: Some(16_000),
             channel_layout: NativeAudioChannelLayout::Mono,
             max_buffered_bytes: 8,

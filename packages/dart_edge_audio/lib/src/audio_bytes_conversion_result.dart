@@ -9,11 +9,17 @@ final class AudioBytesConversionResult {
     required this.bytes,
     required this.mimeType,
     required this.metadata,
+    this.fileExtension = '',
     this.waveform,
   });
 
   final Uint8List bytes;
   final String mimeType;
+
+  /// Recommended extension for the encoded output, without a leading dot.
+  ///
+  /// This is empty only for manually constructed legacy results.
+  final String fileExtension;
   final AudioMetadata metadata;
   final AudioWaveform? waveform;
 
@@ -25,6 +31,7 @@ final class AudioBytesConversionResult {
     return AudioBytesConversionResult(
       bytes: bytes,
       mimeType: json['mimeType'] as String,
+      fileExtension: json['fileExtension'] as String? ?? '',
       metadata: AudioMetadata.fromJson(
         json['metadata'] as Map<String, Object?>,
       ),

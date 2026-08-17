@@ -13,6 +13,7 @@ import 'audio_channel_layout.dart';
 import 'audio_file_conversion_request.dart';
 import 'audio_file_conversion_result.dart';
 import 'audio_metadata.dart';
+import 'audio_output_spec.dart';
 import 'audio_probe_mode.dart';
 import 'audio_spool_policy.dart';
 import 'audio_target_format.dart';
@@ -26,6 +27,16 @@ import 'native_audio_stream_conversion_result.dart';
 import 'native_audio_stream_input.dart';
 
 part 'native_audio_pcm16_stream_session.dart';
+
+AudioOutputSpec _resolveOutput(
+  AudioOutputSpec? output,
+  AudioTargetFormat? targetFormat,
+) {
+  if (output != null && targetFormat != null) {
+    throw ArgumentError('Only one of output and targetFormat may be provided.');
+  }
+  return AudioOutputSpec.resolve(output ?? targetFormat?.output);
+}
 
 final class NativeAudioPoolMetrics {
   const NativeAudioPoolMetrics({
@@ -276,7 +287,8 @@ final class NativeAudioPool {
   NativeAudioPcm16StreamSession createPcm16StreamSession({
     required int inputSampleRateHz,
     int inputChannelCount = 1,
-    AudioTargetFormat targetFormat = AudioTargetFormat.wavPcm16,
+    AudioOutputSpec? output,
+    AudioTargetFormat? targetFormat,
     int? targetSampleRateHz,
     AudioChannelLayout channelLayout = AudioChannelLayout.keepSource,
     AudioSpoolPolicy spoolPolicy = const AudioSpoolPolicy.adaptive(
@@ -285,11 +297,12 @@ final class NativeAudioPool {
     ),
   }) {
     _ensureOpen();
+    final resolvedOutput = _resolveOutput(output, targetFormat);
     final session = NativeAudioPcm16StreamSession._(
       pool: this,
       inputSampleRateHz: inputSampleRateHz,
       inputChannelCount: inputChannelCount,
-      targetFormat: targetFormat,
+      output: resolvedOutput,
       targetSampleRateHz: targetSampleRateHz,
       channelLayout: channelLayout,
       spoolPolicy: spoolPolicy,
@@ -443,7 +456,7 @@ final class NativeAudioPool {
     );
   }
 
-  /// Generates a compact waveform without materializing converted WAV bytes.
+  /// Generates a compact waveform without materializing converted audio bytes.
   Future<AudioWaveformAnalysisResult> analyzeWaveform(
     AudioWaveformAnalysisRequest request,
   ) async {
@@ -468,7 +481,8 @@ final class NativeAudioPool {
 
   Future<AudioBytesConversionResult> convertNativeBytes({
     required native_bridge.NativeBytes bytes,
-    required AudioTargetFormat targetFormat,
+    AudioOutputSpec? output,
+    AudioTargetFormat? targetFormat,
     int? targetSampleRate,
     AudioChannelLayout channelLayout = AudioChannelLayout.keepSource,
     String? fileNameHint,
@@ -479,10 +493,11 @@ final class NativeAudioPool {
     _ensureNativeBytes(bytes);
     _ensurePositiveSampleRate(targetSampleRate);
     validateAudioWaveformSpec(waveform);
+    final resolvedOutput = _resolveOutput(output, targetFormat);
     final jobId = DartEdgeAudioNative.submitPoolConvertNativeBytes(
       _poolPtr,
       jsonEncode({
-        'targetFormat': targetFormat.wireValue,
+        'targetFormat': resolvedOutput.toJson(),
         'targetSampleRate': targetSampleRate,
         'channelLayout': channelLayout.wireValue,
         'fileNameHint': fileNameHint,
@@ -503,14 +518,15 @@ final class NativeAudioPool {
     );
   }
 
-  /// Normalizes native audio streams and concatenates them into one native WAV.
+  /// Normalizes and concatenates native audio streams into one encoded output.
   ///
   /// Input bodies are consumed when the job is submitted. The returned body is
   /// backed by native memory and can be transferred directly to
   /// a compatible native HTTP response without materializing audio in Dart.
   Future<NativeAudioStreamConversionResult> concatenateStreams({
     required List<NativeAudioStreamInput> inputs,
-    required AudioTargetFormat targetFormat,
+    AudioOutputSpec? output,
+    AudioTargetFormat? targetFormat,
     int? targetSampleRate,
     AudioChannelLayout channelLayout = AudioChannelLayout.keepSource,
   }) async {
@@ -523,10 +539,11 @@ final class NativeAudioPool {
       );
     }
     _ensurePositiveSampleRate(targetSampleRate);
+    final resolvedOutput = _resolveOutput(output, targetFormat);
     final jobId = DartEdgeAudioNative.submitPoolConcatenateStreams(
       _poolPtr,
       jsonEncode({
-        'targetFormat': targetFormat.wireValue,
+        'targetFormat': resolvedOutput.toJson(),
         'targetSampleRate': targetSampleRate,
         'channelLayout': channelLayout.wireValue,
       }),

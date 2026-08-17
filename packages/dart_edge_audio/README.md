@@ -1,10 +1,12 @@
 # dart_edge_audio
 
-Native-backed audio probing and conversion utilities for Dart Edge.
+Native-backed audio probing, normalization, and encoding utilities for Dart
+Edge.
 
 This package provides coarse-grained audio helpers for reading metadata and
-normalizing supported inputs into PCM WAV output. It is a standalone utility
-package and does not depend on `dart_edge_http_server_runtime`.
+normalizing supported inputs into PCM WAV, M4A/AAC-LC, or FLAC output. It is a
+standalone utility package and does not depend on
+`dart_edge_http_server_runtime`.
 
 ## Quick Start
 
@@ -18,7 +20,7 @@ Future<void> main() async {
     AudioFileConversionRequest(
       inputPath: 'voice-note.mp3',
       outputPath: 'voice-note.wav',
-      targetFormat: AudioTargetFormat.wavPcm16,
+      output: const AudioOutputSpec.m4aAacLc(bitRate: 48000),
       targetSampleRate: 16000,
       channelLayout: AudioChannelLayout.mono,
       overwriteExisting: true,
@@ -36,16 +38,48 @@ Future<void> main() async {
 - `DartEdgeAudio.probeNativeBytes` and `DartEdgeAudio.convertNativeBytes`
   accept borrowed `dart_edge_core` `NativeBytes` for zero-copy input handoff
 - `AudioMetadata` describes the decoded source or output asset
-- `AudioFileConversionRequest` and `AudioBytesConversionRequest` configure WAV
-  conversion
-- `AudioTargetFormat` currently supports `wavPcm16` and `wavPcm24`
+- `AudioFileConversionRequest` and `AudioBytesConversionRequest` configure
+  normalization and encoding
+- `AudioOutputSpec` supports PCM16 WAV, PCM24 WAV, M4A/AAC-LC, and FLAC
+- `AudioTargetFormat` remains available for legacy WAV callers
 - `NativeAudioWaveformSession` accumulates compact waveform peaks directly
   from streaming PCM16LE chunks
 - `NativeAudioPcm16StreamSession` consumes transport payload leases into a
-  bounded native PCM buffer and seals them as a transferable WAV stream
+  bounded native PCM buffer and seals them as a transferable encoded stream
 - `NativeAudioPool.concatenateStreams` normalizes single-owner native inputs
-  into an anonymous-file-backed WAV stream without materializing payloads in
-  Dart memory
+  into a native encoded stream without materializing payloads in Dart memory
+
+## Encoded Output
+
+Select output using a typed, codec-neutral specification:
+
+```dart
+const storageOutput = AudioOutputSpec.m4aAacLc(bitRate: 48000);
+
+final encoded = await DartEdgeAudio.convertBytes(
+  AudioBytesConversionRequest(
+    inputBytes: uploadedAudio,
+    output: storageOutput,
+    targetSampleRate: 16000,
+    channelLayout: AudioChannelLayout.mono,
+    fileNameHint: uploadedFileName,
+    mimeTypeHint: uploadedContentType,
+  ),
+);
+
+print(encoded.mimeType); // audio/mp4
+print(encoded.fileExtension); // m4a
+```
+
+AAC-LC is encoded and muxed into M4A through a statically linked FFmpeg
+library. It runs in-process and writes to an in-memory AVIO buffer: no FFmpeg
+CLI process or temporary file is used. FLAC uses a pure-Rust encoder. Both run
+through the same bounded native worker pool as WAV conversion.
+
+The output format should normally be selected by server configuration rather
+than exposed as an upload or dictation request option. This keeps stored media
+consistent and lets the service change its storage policy independently from
+clients.
 
 ## Native Bytes Fast Path
 
@@ -85,14 +119,15 @@ final result = await audioPool.concatenateStreams(
         ),
       )
       .toList(),
-  targetFormat: AudioTargetFormat.wavPcm16,
+  output: const AudioOutputSpec.m4aAacLc(bitRate: 48000),
   targetSampleRate: 16000,
   channelLayout: AudioChannelLayout.mono,
 );
 ```
 
-The completed WAV remains in native memory. Its native body is read in bounded
-chunks and releases its backing storage when consumed, canceled, or closed.
+The completed encoded asset remains in native memory. Its native body is read
+in bounded chunks and releases its backing storage when consumed, canceled, or
+closed.
 
 ## Streaming PCM16 Transport Ingress
 
@@ -110,6 +145,7 @@ final audioPool = NativeAudioPool(
 final audio = audioPool.createPcm16StreamSession(
   inputSampleRateHz: 48000,
   inputChannelCount: 2,
+  output: const AudioOutputSpec.m4aAacLc(bitRate: 48000),
   targetSampleRateHz: 16000,
   channelLayout: AudioChannelLayout.mono,
   spoolPolicy: const AudioSpoolPolicy.adaptive(
@@ -120,8 +156,9 @@ final audio = audioPool.createPcm16StreamSession(
 
 audio.addLease(frameLease, offset: protocolHeaderLength);
 
-final wav = await audio.finish();
-// Transfer wav.body into another native package, then use wav.contentLength.
+final encoded = await audio.finish();
+// Transfer encoded.body into another native package, then use
+// encoded.contentLength, encoded.mimeType, and encoded.fileExtension.
 ```
 
 The per-session and pool-wide spool ceilings are enforced before accepting each

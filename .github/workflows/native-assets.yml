@@ -130,6 +130,9 @@ jobs:
           sudo apt-get update
 
           case "${{ needs.prepare.outputs.package }}" in
+            dart_edge_audio)
+              sudo apt-get install -y pkg-config nasm clang libclang-dev
+              ;;
             dart_edge_bluetooth_server)
               sudo apt-get install -y pkg-config libdbus-1-dev
               ;;
@@ -195,11 +198,18 @@ jobs:
           pkg-config --cflags libpjproject
 
       - name: Install macOS native dependencies
-        if: ${{ matrix.target.os == 'macos' && needs.prepare.outputs.package == 'dart_edge_sip' }}
+        if: ${{ matrix.target.os == 'macos' && (needs.prepare.outputs.package == 'dart_edge_audio' || needs.prepare.outputs.package == 'dart_edge_sip') }}
         shell: bash
         run: |
           set -euo pipefail
-          brew install pkg-config pjproject
+          case "${{ needs.prepare.outputs.package }}" in
+            dart_edge_audio)
+              brew install pkg-config nasm
+              ;;
+            dart_edge_sip)
+              brew install pkg-config pjproject
+              ;;
+          esac
 
       - name: Build native library
         shell: bash

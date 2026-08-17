@@ -33,7 +33,7 @@ final class NativeAudioPcm16StreamSession {
     required NativeAudioPool pool,
     required this.inputSampleRateHz,
     required this.inputChannelCount,
-    required this.targetFormat,
+    required this.output,
     required this.targetSampleRateHz,
     required this.channelLayout,
     required this.spoolPolicy,
@@ -59,7 +59,7 @@ final class NativeAudioPcm16StreamSession {
       jsonEncode({
         'inputSampleRateHz': inputSampleRateHz,
         'inputChannelCount': inputChannelCount,
-        'targetFormat': targetFormat.wireValue,
+        'targetFormat': output.toJson(),
         'targetSampleRate': targetSampleRateHz,
         'channelLayout': channelLayout.wireValue,
         'maxBufferedBytes': spoolPolicy.maxBytes,
@@ -75,7 +75,16 @@ final class NativeAudioPcm16StreamSession {
   final NativeAudioPool _pool;
   final int inputSampleRateHz;
   final int inputChannelCount;
-  final AudioTargetFormat targetFormat;
+  final AudioOutputSpec output;
+
+  @Deprecated('Use output instead.')
+  AudioTargetFormat get targetFormat => switch (output) {
+    WavPcm16AudioOutputSpec() => AudioTargetFormat.wavPcm16,
+    WavPcm24AudioOutputSpec() => AudioTargetFormat.wavPcm24,
+    _ => throw StateError(
+      'Compressed outputs do not have a legacy AudioTargetFormat.',
+    ),
+  };
   final int? targetSampleRateHz;
   final AudioChannelLayout channelLayout;
   final AudioSpoolPolicy spoolPolicy;

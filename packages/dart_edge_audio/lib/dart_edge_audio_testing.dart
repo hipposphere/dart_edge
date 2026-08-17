@@ -69,8 +69,7 @@ const audioFixtureManifest = <AudioFixture>[
     id: 'flac_voice',
     format: 'flac',
     fileName: 'voice-sample-44100hz-16bit.flac',
-    url:
-        'https://sample-files.com/downloads/audio/flac/voice-sample-44100hz-16bit.flac',
+    url: 'https://sample-files.com/downloads/audio/flac/voice-sample-44100hz-16bit.flac',
     sha256: '9ba6407a468265f05b6e68eda800583e0be202e378552981b5d1ddf3e70de202',
     mimeType: 'audio/flac',
     expectedContainer: 'flac',

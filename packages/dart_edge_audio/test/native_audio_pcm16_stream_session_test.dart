@@ -49,6 +49,68 @@ void main() {
     expect(pool.metrics.maxObservedPendingFinishBytes, pcm.length);
   });
 
+  test('encodes pooled PCM as in-memory M4A/AAC-LC', () async {
+    final pcm = _pcm16Tone(sampleRateHz: 16000, sampleCount: 16000);
+    final session = pool.createPcm16StreamSession(
+      inputSampleRateHz: 16000,
+      output: const AudioOutputSpec.m4aAacLc(bitRate: 48000),
+      targetSampleRateHz: 16000,
+      channelLayout: AudioChannelLayout.mono,
+    );
+    addTearDown(session.close);
+    session.addPcm16(pcm);
+
+    final result = await session.finish();
+    addTearDown(result.close);
+    expect(result.mimeType, 'audio/mp4');
+    expect(result.fileExtension, 'm4a');
+    expect(result.metadata.codec, 'aac');
+    expect(result.metadata.sampleRate, 16000);
+    expect(result.metadata.channelCount, 1);
+    expect(result.metadata.bitRate, 48000);
+
+    final bytes = await _collect(result.body.openRead());
+    expect(bytes.length, result.contentLength);
+    expect(String.fromCharCodes(bytes.sublist(4, 8)), 'ftyp');
+    final metadata = await pool.probeBytes(
+      bytes,
+      fileNameHint: 'dictation.m4a',
+      mimeTypeHint: 'audio/mp4',
+      mode: AudioProbeMode.full,
+    );
+    expect(metadata.codec, 'aac');
+    expect(metadata.sampleRate, 16000);
+  });
+
+  test('encodes pooled PCM as in-memory FLAC', () async {
+    final pcm = _pcm16Tone(sampleRateHz: 16000, sampleCount: 16000);
+    final session = pool.createPcm16StreamSession(
+      inputSampleRateHz: 16000,
+      output: const AudioOutputSpec.flac(compressionLevel: 5),
+    );
+    addTearDown(session.close);
+    session.addPcm16(pcm);
+
+    final result = await session.finish();
+    addTearDown(result.close);
+    expect(result.mimeType, 'audio/flac');
+    expect(result.fileExtension, 'flac');
+    expect(result.metadata.codec, 'flac');
+    expect(result.metadata.bitDepth, 16);
+
+    final bytes = await _collect(result.body.openRead());
+    expect(bytes.length, result.contentLength);
+    expect(String.fromCharCodes(bytes.take(4)), 'fLaC');
+    final metadata = await pool.probeBytes(
+      bytes,
+      fileNameHint: 'dictation.flac',
+      mimeTypeHint: 'audio/flac',
+      mode: AudioProbeMode.full,
+    );
+    expect(metadata.codec, 'flac');
+    expect(metadata.sampleRate, 16000);
+  });
+
   test('always closes rejected payload leases', () {
     final lease = _TrackingPayloadLease(Uint8List(3));
     final session = pool.createPcm16StreamSession(inputSampleRateHz: 16000);

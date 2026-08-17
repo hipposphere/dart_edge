@@ -1,7 +1,8 @@
 /// Native-backed audio probing and conversion utilities for Dart Edge.
 ///
 /// Import this library when you want coarse-grained metadata extraction and
-/// WAV conversion helpers backed by a bundled Rust implementation.
+/// WAV, M4A/AAC-LC, and FLAC conversion helpers backed by bundled native
+/// implementations.
 library;
 
 export 'src/audio_bytes_conversion_request.dart';
@@ -10,6 +11,7 @@ export 'src/audio_channel_layout.dart';
 export 'src/audio_file_conversion_request.dart';
 export 'src/audio_file_conversion_result.dart';
 export 'src/audio_metadata.dart';
+export 'src/audio_output_spec.dart';
 export 'src/audio_probe_mode.dart';
 export 'src/audio_spool_policy.dart';
 export 'src/audio_target_format.dart';

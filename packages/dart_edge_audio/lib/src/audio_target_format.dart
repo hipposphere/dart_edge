@@ -1,4 +1,9 @@
-/// Supported v1 output formats for native audio conversion.
+import 'audio_output_spec.dart';
+
+/// Legacy WAV output selector.
+///
+/// New code should use [AudioOutputSpec], which also supports compressed
+/// formats and their codec-specific settings.
 enum AudioTargetFormat {
   wavPcm16,
   wavPcm24;
@@ -23,5 +28,10 @@ enum AudioTargetFormat {
       'value',
       'Unsupported audio target format.',
     ),
+  };
+
+  AudioOutputSpec get output => switch (this) {
+    AudioTargetFormat.wavPcm16 => const AudioOutputSpec.wavPcm16(),
+    AudioTargetFormat.wavPcm24 => const AudioOutputSpec.wavPcm24(),
   };
 }
