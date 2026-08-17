@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -8,7 +9,7 @@ import 'package:test/test.dart';
 
 void main() {
   test('loads the native bundled asset', () {
-    expect(DartEdgeS3ClientNative.abiVersion, greaterThanOrEqualTo(6));
+    expect(DartEdgeS3ClientNative.abiVersion, greaterThanOrEqualTo(7));
   });
 
   test('closes native download streams on close and client disposal', () async {
@@ -113,6 +114,110 @@ void main() {
     expect(result.metadata.contentLength, 3);
     expect(result.metadata.objectLength, 10);
     expect(result.metadata.contentRange, 'bytes 2-4/10');
+  });
+
+  test('moves a native download stream directly into an S3 upload', () async {
+    final sourceBytes = Uint8List.fromList(
+      List<int>.generate(128 * 1024, (index) => index % 251),
+    );
+    final uploaded = Completer<Uint8List>();
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    server.listen((request) async {
+      if (request.method == 'GET') {
+        request.response
+          ..statusCode = HttpStatus.ok
+          ..contentLength = sourceBytes.length
+          ..headers.contentType = ContentType('audio', 'mp4')
+          ..add(sourceBytes);
+      } else if (request.method == 'PUT') {
+        final body = BytesBuilder(copy: false);
+        await for (final chunk in request) {
+          body.add(chunk);
+        }
+        uploaded.complete(body.takeBytes());
+        request.response
+          ..statusCode = HttpStatus.ok
+          ..headers.set(HttpHeaders.etagHeader, '"native-upload"');
+      } else {
+        request.response.statusCode = HttpStatus.methodNotAllowed;
+      }
+      await request.response.close();
+    });
+    addTearDown(() => server.close(force: true));
+
+    final client = await DartEdgeS3Client.open(
+      S3ClientConfig(
+        region: 'us-east-1',
+        endpoint: 'http://127.0.0.1:${server.port}',
+        accessKeyId: 'test',
+        secretAccessKey: 'test',
+        forcePathStyle: true,
+        allowHttp: true,
+      ),
+    );
+    addTearDown(client.dispose);
+    final baseline = DartEdgeS3Client.downloadStreamCounters;
+    final source = await client.getObjectNativeStream(
+      const S3ObjectRef(bucket: 'recordings', key: 'source.m4a'),
+    );
+
+    final result = await client.putObjectNativeStream(
+      bucket: 'recordings',
+      key: 'stored.m4a',
+      body: source.body,
+      contentLength: source.metadata.contentLength,
+      contentType: source.metadata.contentType,
+    );
+
+    expect(result.bucket, 'recordings');
+    expect(result.key, 'stored.m4a');
+    expect(result.eTag, '"native-upload"');
+    expect(await uploaded.future, sourceBytes);
+    await expectLater(source.body.openRead(), emitsError(isA<StateError>()));
+    final counters = DartEdgeS3Client.downloadStreamCounters;
+    expect(counters.active, baseline.active);
+    expect(counters.completed, baseline.completed + 1);
+  });
+
+  test('validates native upload length before consuming its body', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    server.listen((request) async {
+      request.response
+        ..statusCode = HttpStatus.ok
+        ..contentLength = 1
+        ..add(const <int>[1]);
+      await request.response.close();
+    });
+    addTearDown(() => server.close(force: true));
+    final client = await DartEdgeS3Client.open(
+      S3ClientConfig(
+        region: 'us-east-1',
+        endpoint: 'http://127.0.0.1:${server.port}',
+        accessKeyId: 'test',
+        secretAccessKey: 'test',
+        forcePathStyle: true,
+        allowHttp: true,
+      ),
+    );
+    addTearDown(client.dispose);
+    final source = await client.getObjectNativeStream(
+      const S3ObjectRef(bucket: 'recordings', key: 'source.m4a'),
+    );
+    addTearDown(source.close);
+
+    expect(
+      () => client.putObjectNativeStream(
+        bucket: 'recordings',
+        key: 'stored.m4a',
+        body: source.body,
+        contentLength: -1,
+      ),
+      throwsRangeError,
+    );
+    expect(
+      await source.body.openRead().expand((chunk) => chunk).toList(),
+      <int>[1],
+    );
   });
 
   test(

@@ -1,3 +1,11 @@
+## 0.3.18
+
+- Add single-owner native-stream uploads that feed S3 directly without
+  materializing the object body in Dart memory.
+- Enforce the declared upload length and release or cancel the producer on
+  success, validation failure, stream failure, or request failure.
+- Bump the native artifact version to 0.1.13 for the streaming PUT ABI.
+
 ## 0.3.17
 
 - Add closed, open-ended, and suffix byte ranges to in-memory, Dart-streamed,

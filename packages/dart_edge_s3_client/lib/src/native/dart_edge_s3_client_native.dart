@@ -203,6 +203,69 @@ abstract final class DartEdgeS3ClientNative {
     }
   }
 
+  static S3PutObjectResult putObjectNativeStream({
+    required int handle,
+    required String bucket,
+    required String key,
+    required int descriptorAddress,
+    required int contentLength,
+    String? contentType,
+    String? cacheControl,
+    String? contentDisposition,
+    String? contentEncoding,
+    String? contentLanguage,
+    Map<String, String> metadata = const <String, String>{},
+  }) {
+    final descriptor = Pointer<core_ffi.NativeByteStream>.fromAddress(
+      descriptorAddress,
+    );
+    final allocations = core_ffi.NativeAllocations();
+    final requestPtr = calloc<gen.NativeS3PutObjectRequest>();
+
+    try {
+      final request = requestPtr.ref;
+      request.bucket = allocations.requiredString(bucket);
+      request.key = allocations.requiredString(key);
+      request.content_type = allocations.optionalString(contentType);
+      request.cache_control = allocations.optionalString(cacheControl);
+      request.content_disposition = allocations.optionalString(
+        contentDisposition,
+      );
+      request.content_encoding = allocations.optionalString(contentEncoding);
+      request.content_language = allocations.optionalString(contentLanguage);
+      final nativeMetadata = _writeStringPairs(metadata, allocations);
+      request.metadata = nativeMetadata.pointer;
+      request.metadata_len = nativeMetadata.length;
+
+      final resultPtr = gen.dart_edge_s3_client_put_object_native_stream(
+        handle,
+        requestPtr,
+        descriptor,
+        contentLength,
+      );
+      if (resultPtr == nullptr) {
+        throw StateError(
+          'dart_edge_s3_client putObjectNativeStream returned null.',
+        );
+      }
+      try {
+        final result = resultPtr.ref;
+        _throwIfError(result.error);
+        return S3PutObjectResult(
+          bucket: core_ffi.requiredNativeString(result.bucket, 'bucket'),
+          key: core_ffi.requiredNativeString(result.key, 'key'),
+          eTag: core_ffi.optionalNativeString(result.e_tag),
+          versionId: core_ffi.optionalNativeString(result.version_id),
+        );
+      } finally {
+        gen.dart_edge_s3_client_free_put_object_result(resultPtr);
+      }
+    } finally {
+      calloc.free(requestPtr);
+      allocations.free();
+    }
+  }
+
   static NativeS3BytesResponse getObjectBytes(
     int handle,
     S3ObjectRef object, {

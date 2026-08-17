@@ -1,8 +1,11 @@
 use std::collections::{HashMap, HashSet};
 use std::ffi::{CStr, CString, c_char, c_void};
+use std::io;
 use std::mem::size_of;
+use std::pin::Pin;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicI64, Ordering};
+use std::task::{Context, Poll};
 
 use aws_config::BehaviorVersion;
 use aws_credential_types::Credentials;
@@ -12,14 +15,16 @@ use aws_sdk_s3::primitives::ByteStream;
 use aws_types::region::Region;
 use bytes::Bytes;
 use dart_edge_core::{
-    NATIVE_BYTE_STREAM_ABI_VERSION, NATIVE_BYTE_STREAM_READ_CHUNK, NATIVE_BYTE_STREAM_READ_DONE,
-    NATIVE_BYTE_STREAM_READ_ERROR, NativeByteStream, NativeByteStreamRead, NativeBytes,
+    NATIVE_BYTE_STREAM_ABI_VERSION, NATIVE_BYTE_STREAM_READ_CANCELED,
+    NATIVE_BYTE_STREAM_READ_CHUNK, NATIVE_BYTE_STREAM_READ_DONE, NATIVE_BYTE_STREAM_READ_ERROR,
+    NativeByteStream, NativeByteStreamFreeRead, NativeByteStreamRead, NativeBytes,
     NativeOwnedBytes, free_owned_bytes, into_native_owned_bytes,
 };
+use http_body::{Body, Frame, SizeHint};
 use once_cell::sync::Lazy;
 use tokio::runtime::{Builder, Runtime};
 
-const DART_EDGE_S3_CLIENT_NATIVE_ABI_VERSION: i32 = 6;
+const DART_EDGE_S3_CLIENT_NATIVE_ABI_VERSION: i32 = 7;
 
 static NEXT_HANDLE: AtomicI64 = AtomicI64::new(1);
 static NEXT_DOWNLOAD_HANDLE: AtomicI64 = AtomicI64::new(1);
@@ -254,6 +259,168 @@ struct PutObjectBytesRequest {
     metadata: HashMap<String, String>,
 }
 
+/// Single-owner native producer body adopted by one S3 PUT request.
+///
+/// Each producer chunk is wrapped by [`Bytes::from_owner`], so the AWS HTTP
+/// stack reads the producer allocation directly and invokes `free_read` only
+/// after it has finished with that chunk.
+struct NativeUploadBody {
+    stream: NativeByteStream,
+    remaining: u64,
+    completed: bool,
+}
+
+impl NativeUploadBody {
+    fn new(stream: NativeByteStream, content_length: i64) -> Result<Self, String> {
+        let mut owned = Self {
+            stream,
+            remaining: 0,
+            completed: false,
+        };
+        if !owned.stream.is_valid() {
+            return Err("Native S3 upload stream descriptor is invalid.".to_string());
+        }
+        owned.remaining = u64::try_from(content_length)
+            .map_err(|_| "Native S3 upload content length must not be negative.".to_string())?;
+        Ok(owned)
+    }
+
+    fn next_frame(&mut self) -> Result<Option<Frame<Bytes>>, io::Error> {
+        let next = self
+            .stream
+            .next
+            .ok_or_else(|| io::Error::other("Native S3 upload stream has no next callback."))?;
+        let free_read = self.stream.free_read.ok_or_else(|| {
+            io::Error::other("Native S3 upload stream has no result release callback.")
+        })?;
+        let read = unsafe { next(self.stream.context) };
+        if read.is_null() {
+            return Err(io::Error::other(
+                "Native S3 upload stream returned a null read result.",
+            ));
+        }
+        let status = unsafe { (*read).status };
+        match status {
+            NATIVE_BYTE_STREAM_READ_CHUNK => {
+                let owner = NativeUploadRead::new(read, free_read)?;
+                let chunk_length = owner.len() as u64;
+                if chunk_length > self.remaining {
+                    return Err(io::Error::other(format!(
+                        "Native S3 upload stream exceeded its declared content length by {} bytes.",
+                        chunk_length - self.remaining
+                    )));
+                }
+                self.remaining -= chunk_length;
+                Ok(Some(Frame::data(Bytes::from_owner(owner))))
+            }
+            NATIVE_BYTE_STREAM_READ_DONE => {
+                unsafe { free_read(read) };
+                if self.remaining != 0 {
+                    return Err(io::Error::other(format!(
+                        "Native S3 upload stream ended with {} declared bytes remaining.",
+                        self.remaining
+                    )));
+                }
+                self.completed = true;
+                Ok(None)
+            }
+            NATIVE_BYTE_STREAM_READ_CANCELED => {
+                unsafe { free_read(read) };
+                Err(io::Error::other("Native S3 upload stream was canceled."))
+            }
+            NATIVE_BYTE_STREAM_READ_ERROR => {
+                let error = unsafe { read_native_stream_error(read) };
+                unsafe { free_read(read) };
+                Err(io::Error::other(error))
+            }
+            other => {
+                unsafe { free_read(read) };
+                Err(io::Error::other(format!(
+                    "Native S3 upload stream returned unknown status {other}."
+                )))
+            }
+        }
+    }
+}
+
+impl Body for NativeUploadBody {
+    type Data = Bytes;
+    type Error = io::Error;
+
+    fn poll_frame(
+        mut self: Pin<&mut Self>,
+        _cx: &mut Context<'_>,
+    ) -> Poll<Option<Result<Frame<Self::Data>, Self::Error>>> {
+        Poll::Ready(self.next_frame().transpose())
+    }
+
+    fn is_end_stream(&self) -> bool {
+        self.completed
+    }
+
+    fn size_hint(&self) -> SizeHint {
+        SizeHint::with_exact(self.remaining)
+    }
+}
+
+impl Drop for NativeUploadBody {
+    fn drop(&mut self) {
+        unsafe {
+            if !self.completed
+                && let Some(cancel) = self.stream.cancel
+            {
+                cancel(self.stream.context);
+            }
+            if let Some(release) = self.stream.release {
+                release(self.stream.context);
+            }
+        }
+    }
+}
+
+struct NativeUploadRead {
+    read: *mut NativeByteStreamRead,
+    free_read: NativeByteStreamFreeRead,
+}
+
+impl NativeUploadRead {
+    fn new(
+        read: *mut NativeByteStreamRead,
+        free_read: NativeByteStreamFreeRead,
+    ) -> Result<Self, io::Error> {
+        let bytes = unsafe { (*read).bytes };
+        if bytes.len < 0 || (bytes.len > 0 && bytes.ptr.is_null()) {
+            unsafe { free_read(read) };
+            return Err(io::Error::other(
+                "Native S3 upload stream returned invalid chunk bytes.",
+            ));
+        }
+        Ok(Self { read, free_read })
+    }
+
+    fn len(&self) -> usize {
+        usize::try_from(unsafe { (*self.read).bytes.len }).unwrap_or(0)
+    }
+}
+
+impl AsRef<[u8]> for NativeUploadRead {
+    fn as_ref(&self) -> &[u8] {
+        let bytes = unsafe { (*self.read).bytes };
+        if bytes.len == 0 {
+            return &[];
+        }
+        unsafe { std::slice::from_raw_parts(bytes.ptr, bytes.len as usize) }
+    }
+}
+
+impl Drop for NativeUploadRead {
+    fn drop(&mut self) {
+        unsafe { (self.free_read)(self.read) };
+    }
+}
+
+unsafe impl Send for NativeUploadRead {}
+
 struct PutObjectResult {
     bucket: String,
     key: String,
@@ -392,6 +559,25 @@ pub extern "C" fn dart_edge_s3_client_put_object_bytes(
         None => put_object_result_error("Unknown dart_edge_s3_client handle."),
     };
 
+    Box::into_raw(Box::new(result))
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dart_edge_s3_client_put_object_native_stream(
+    handle: i64,
+    request: *const NativeS3PutObjectRequest,
+    stream: *const NativeByteStream,
+    content_length: i64,
+) -> *mut NativeS3PutObjectResult {
+    // Adoption happens before client/request validation. Once a descriptor is
+    // provided, this function releases its producer context on every outcome.
+    let result = if stream.is_null() {
+        Err("Missing native S3 upload stream descriptor.".to_string())
+    } else {
+        let descriptor = unsafe { *stream };
+        put_object_native_stream_inner(handle, request, descriptor, content_length)
+    }
+    .unwrap_or_else(put_object_result_error);
     Box::into_raw(Box::new(result))
 }
 
@@ -830,6 +1016,68 @@ async fn put_object_bytes(
     })
 }
 
+fn put_object_native_stream_inner(
+    handle: i64,
+    request: *const NativeS3PutObjectRequest,
+    stream: NativeByteStream,
+    content_length: i64,
+) -> Result<NativeS3PutObjectResult, String> {
+    let body = NativeUploadBody::new(stream, content_length)?;
+    let client = client_for_handle(handle)
+        .ok_or_else(|| "Unknown dart_edge_s3_client handle.".to_string())?;
+    let request = unsafe { read_put_object_request(request)? };
+    RUNTIME
+        .block_on(put_object_stream(client, request, body, content_length))
+        .map(native_put_object_result)
+}
+
+async fn put_object_stream(
+    client: Client,
+    request: PutObjectBytesRequest,
+    body: NativeUploadBody,
+    content_length: i64,
+) -> Result<PutObjectResult, String> {
+    let bucket = request.bucket.clone();
+    let key = request.key.clone();
+    let mut operation = client
+        .put_object()
+        .bucket(&request.bucket)
+        .key(&request.key)
+        .content_length(content_length)
+        .body(ByteStream::from_body_1_x(body));
+
+    if let Some(content_type) = request.content_type {
+        operation = operation.content_type(content_type);
+    }
+    if let Some(cache_control) = request.cache_control {
+        operation = operation.cache_control(cache_control);
+    }
+    if let Some(content_disposition) = request.content_disposition {
+        operation = operation.content_disposition(content_disposition);
+    }
+    if let Some(content_encoding) = request.content_encoding {
+        operation = operation.content_encoding(content_encoding);
+    }
+    if let Some(content_language) = request.content_language {
+        operation = operation.content_language(content_language);
+    }
+    if !request.metadata.is_empty() {
+        operation = operation.set_metadata(Some(request.metadata));
+    }
+
+    let response = operation
+        .send()
+        .await
+        .map_err(|error| format!("Failed to stream S3 object '{bucket}/{key}': {error}"))?;
+
+    Ok(PutObjectResult {
+        bucket,
+        key,
+        e_tag: response.e_tag().map(ToOwned::to_owned),
+        version_id: response.version_id().map(ToOwned::to_owned),
+    })
+}
+
 async fn get_object_bytes(
     client: Client,
     request: ObjectRef,
@@ -1164,6 +1412,15 @@ unsafe fn read_input_bytes(ptr: *const u8, len: isize) -> Option<Vec<u8>> {
     Some(unsafe { std::slice::from_raw_parts(ptr, len as usize) }.to_vec())
 }
 
+unsafe fn read_native_stream_error(read: *mut NativeByteStreamRead) -> String {
+    let error = unsafe { (*read).error };
+    if error.len <= 0 || error.ptr.is_null() {
+        return "Native S3 upload stream read failed.".to_string();
+    }
+    let bytes = unsafe { std::slice::from_raw_parts(error.ptr, error.len as usize) };
+    String::from_utf8_lossy(bytes).into_owned()
+}
+
 fn create_result_error(error: impl Into<String>) -> NativeS3CreateResult {
     NativeS3CreateResult {
         handle: 0,
@@ -1388,6 +1645,8 @@ unsafe fn free_c_string(value: *mut c_char) {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::VecDeque;
+    use std::ffi::c_void;
     use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -1408,6 +1667,86 @@ mod tests {
         fn drop(&mut self) {
             self.dropped.store(true, Ordering::SeqCst);
         }
+    }
+
+    struct FakeUploadContext {
+        chunks: VecDeque<Vec<u8>>,
+        canceled: Arc<AtomicBool>,
+        released: Arc<AtomicBool>,
+    }
+
+    #[repr(C)]
+    struct FakeUploadRead {
+        read: NativeByteStreamRead,
+        _bytes: Vec<u8>,
+    }
+
+    unsafe extern "C" fn fake_upload_next(context: *mut c_void) -> *mut NativeByteStreamRead {
+        let context = unsafe { &mut *context.cast::<FakeUploadContext>() };
+        let Some(mut bytes) = context.chunks.pop_front() else {
+            return Box::into_raw(Box::new(FakeUploadRead {
+                read: NativeByteStreamRead {
+                    status: NATIVE_BYTE_STREAM_READ_DONE,
+                    bytes: NativeOwnedBytes::empty(),
+                    error: NativeBytes::empty(),
+                },
+                _bytes: Vec::new(),
+            }))
+            .cast();
+        };
+        let native_bytes = NativeOwnedBytes {
+            ptr: bytes.as_mut_ptr(),
+            len: bytes.len() as isize,
+        };
+        Box::into_raw(Box::new(FakeUploadRead {
+            read: NativeByteStreamRead {
+                status: NATIVE_BYTE_STREAM_READ_CHUNK,
+                bytes: native_bytes,
+                error: NativeBytes::empty(),
+            },
+            _bytes: bytes,
+        }))
+        .cast()
+    }
+
+    unsafe extern "C" fn fake_upload_cancel(context: *mut c_void) {
+        unsafe { &*context.cast::<FakeUploadContext>() }
+            .canceled
+            .store(true, Ordering::SeqCst);
+    }
+
+    unsafe extern "C" fn fake_upload_free_read(read: *mut NativeByteStreamRead) {
+        unsafe { drop(Box::from_raw(read.cast::<FakeUploadRead>())) };
+    }
+
+    unsafe extern "C" fn fake_upload_release(context: *mut c_void) {
+        let context = unsafe { Box::from_raw(context.cast::<FakeUploadContext>()) };
+        context.released.store(true, Ordering::SeqCst);
+    }
+
+    fn fake_upload_stream(
+        chunks: impl IntoIterator<Item = Vec<u8>>,
+    ) -> (NativeByteStream, Arc<AtomicBool>, Arc<AtomicBool>) {
+        let canceled = Arc::new(AtomicBool::new(false));
+        let released = Arc::new(AtomicBool::new(false));
+        let context = Box::new(FakeUploadContext {
+            chunks: chunks.into_iter().collect(),
+            canceled: Arc::clone(&canceled),
+            released: Arc::clone(&released),
+        });
+        (
+            NativeByteStream {
+                abi_version: NATIVE_BYTE_STREAM_ABI_VERSION,
+                struct_size: size_of::<NativeByteStream>(),
+                context: Box::into_raw(context).cast(),
+                next: Some(fake_upload_next),
+                cancel: Some(fake_upload_cancel),
+                free_read: Some(fake_upload_free_read),
+                release: Some(fake_upload_release),
+            },
+            canceled,
+            released,
+        )
     }
 
     #[test]
@@ -1447,5 +1786,33 @@ mod tests {
             );
             s3_native_stream_free_read(read);
         }
+    }
+
+    #[test]
+    fn native_upload_body_adopts_chunks_and_releases_the_producer() {
+        let (stream, canceled, released) =
+            fake_upload_stream([b"native ".to_vec(), b"upload".to_vec()]);
+        let body = NativeUploadBody::new(stream, 13).expect("valid native upload body");
+        let bytes = RUNTIME
+            .block_on(ByteStream::from_body_1_x(body).collect())
+            .expect("native body should collect")
+            .into_bytes();
+
+        assert_eq!(bytes.as_ref(), b"native upload");
+        assert!(!canceled.load(Ordering::SeqCst));
+        assert!(released.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn native_upload_body_rejects_declared_length_mismatches() {
+        let (stream, canceled, released) = fake_upload_stream([b"too long".to_vec()]);
+        let body = NativeUploadBody::new(stream, 3).expect("valid native upload body");
+        let error = RUNTIME
+            .block_on(ByteStream::from_body_1_x(body).collect())
+            .expect_err("oversized body must fail");
+
+        assert!(error.to_string().contains("declared content length"));
+        assert!(canceled.load(Ordering::SeqCst));
+        assert!(released.load(Ordering::SeqCst));
     }
 }

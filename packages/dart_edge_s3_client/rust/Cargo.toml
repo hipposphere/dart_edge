@@ -1,6 +1,6 @@
 [package]
 name = "dart_edge_s3_client"
-version = "0.1.12"
+version = "0.1.13"
 edition = "2024"
 publish = false
 
@@ -14,10 +14,11 @@ aws-sdk-s3 = "=1.135.0"
 # aws-smithy-types 1.5.0 triggers Rust 1.95 trait coherence and deferred
 # signer inference failures in the AWS SDK stack. Stay on 1.4.x until the
 # upstream smithy-rs/time interaction is fixed.
-aws-smithy-types = ">=1.4.9, <1.5.0"
+aws-smithy-types = { version = ">=1.4.9, <1.5.0", features = ["http-body-1-x"] }
 aws-types = "1"
 bytes = "1"
 dart_edge_core = "0.2.0"
+http-body = "1"
 once_cell = "1.21"
 # Keep transitive time resolution below the release that exposes the same
 # upstream trait coherence conflict in AWS/rcgen dependency graphs.

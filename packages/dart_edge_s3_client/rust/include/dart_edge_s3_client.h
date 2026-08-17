@@ -127,6 +127,12 @@ NativeS3PutObjectResult* dart_edge_s3_client_put_object_bytes(
     const uint8_t* bytes_ptr,
     intptr_t bytes_len);
 
+NativeS3PutObjectResult* dart_edge_s3_client_put_object_native_stream(
+    int64_t handle,
+    const NativeS3PutObjectRequest* request,
+    const NativeByteStream* stream,
+    int64_t content_length);
+
 NativeS3BytesResult* dart_edge_s3_client_get_object_bytes(
     int64_t handle,
     const NativeS3ObjectRef* request);

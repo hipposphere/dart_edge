@@ -55,6 +55,24 @@ Future<void> main() async {
 
 ## Native streaming bodies
 
+`putObjectNativeStream` adopts a compatible single-owner native body and feeds
+it directly into the S3 request. The producer's chunk allocation remains alive
+until the AWS HTTP stack has consumed it; the payload is not copied into Dart:
+
+```dart
+await client.putObjectNativeStream(
+  bucket: 'recordings',
+  key: 'segment-id',
+  body: encodedAudio.body,
+  contentLength: encodedAudio.contentLength,
+  contentType: encodedAudio.mimeType,
+);
+```
+
+The declared content length must exactly match the producer output. Native
+stream uploads are single-use and non-replayable, so callers should create a
+fresh stream if an application-level retry is required.
+
 `getObjectNativeStream` returns a single-owner native body. Application code
 may either read copied Dart chunks with `body.openRead()` or transfer the body
 directly to the Dart Edge HTTP runtime:

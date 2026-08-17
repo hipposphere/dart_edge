@@ -8,6 +8,7 @@
 library;
 
 import 'dart:ffi' as ffi;
+
 import 'package:dart_edge_native_bridge/dart_edge_native_bridge.dart' as imp$1;
 
 @ffi.Native<ffi.Int64 Function()>()
@@ -141,6 +142,22 @@ dart_edge_s3_client_put_object_bytes(
   ffi.Pointer<NativeS3PutObjectRequest> request,
   ffi.Pointer<ffi.Uint8> bytes_ptr,
   int bytes_len,
+);
+
+@ffi.Native<
+  ffi.Pointer<NativeS3PutObjectResult> Function(
+    ffi.Int64,
+    ffi.Pointer<NativeS3PutObjectRequest>,
+    ffi.Pointer<imp$1.NativeByteStream>,
+    ffi.Int64,
+  )
+>()
+external ffi.Pointer<NativeS3PutObjectResult>
+dart_edge_s3_client_put_object_native_stream(
+  int handle,
+  ffi.Pointer<NativeS3PutObjectRequest> request,
+  ffi.Pointer<imp$1.NativeByteStream> stream,
+  int content_length,
 );
 
 @ffi.Native<

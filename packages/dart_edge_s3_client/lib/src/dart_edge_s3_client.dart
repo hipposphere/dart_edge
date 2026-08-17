@@ -110,6 +110,57 @@ final class DartEdgeS3Client {
     });
   }
 
+  /// Consumes a single-owner native body and streams it directly to S3.
+  ///
+  /// The encoded payload remains outside the Dart heap. Ownership of [body]
+  /// transfers to this call immediately and the native client releases it on
+  /// success or failure. [contentLength] must exactly match the bytes emitted
+  /// by the producer because native request bodies cannot be replayed.
+  Future<S3PutObjectResult> putObjectNativeStream({
+    required String bucket,
+    required String key,
+    required core_ffi.NativeByteStreamHandle body,
+    required int contentLength,
+    String? contentType,
+    String? cacheControl,
+    String? contentDisposition,
+    String? contentEncoding,
+    String? contentLanguage,
+    Map<String, String> metadata = const <String, String>{},
+  }) {
+    _ensureActive();
+    _validateBucketAndKey(bucket, key);
+    if (contentLength < 0) {
+      throw RangeError.value(
+        contentLength,
+        'contentLength',
+        'Native upload content length must not be negative.',
+      );
+    }
+
+    final lease = body.takeDescriptor();
+    final descriptorAddress = lease.descriptor.address;
+    return Isolate.run(
+      () => DartEdgeS3ClientNative.putObjectNativeStream(
+        handle: _nativeHandle,
+        bucket: bucket,
+        key: key,
+        descriptorAddress: descriptorAddress,
+        contentLength: contentLength,
+        contentType: contentType,
+        cacheControl: cacheControl,
+        contentDisposition: contentDisposition,
+        contentEncoding: contentEncoding,
+        contentLanguage: contentLanguage,
+        metadata: metadata,
+      ),
+    ).whenComplete(() {
+      // The FFI function adopts the producer context before validating the
+      // request, so native code owns release for every returned outcome.
+      lease.markTransferred();
+    });
+  }
+
   /// Uploads a local file to S3 using the same native bytes path.
   Future<S3PutObjectResult> putObjectFile(
     S3PutObjectFileRequest request,
