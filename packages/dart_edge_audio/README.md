@@ -73,8 +73,8 @@ print(encoded.fileExtension); // m4a
 
 AAC-LC is encoded and muxed into M4A through a statically linked FFmpeg
 library. It runs in-process and writes to an in-memory AVIO buffer: no FFmpeg
-CLI process or temporary file is used. FLAC uses a pure-Rust encoder. Both run
-through the same bounded native worker pool as WAV conversion.
+CLI process or temporary file is used. FLAC uses the same in-process backend.
+Both run through the same bounded native worker pool as WAV conversion.
 
 The output format should normally be selected by server configuration rather
 than exposed as an upload or dictation request option. This keeps stored media

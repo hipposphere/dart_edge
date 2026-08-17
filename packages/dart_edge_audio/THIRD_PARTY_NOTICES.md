@@ -17,9 +17,3 @@ and build information are available from:
 - https://github.com/FFmpeg/FFmpeg/tree/release/8.1
 - https://github.com/zmwangx/rust-ffmpeg
 - https://github.com/zmwangx/rust-ffmpeg-sys
-
-## flacenc
-
-FLAC output uses `flacenc` 0.5.1, licensed under Apache-2.0:
-
-- https://github.com/yotarok/flacenc-rs
