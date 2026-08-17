@@ -286,6 +286,9 @@ impl NativeUploadBody {
     }
 
     fn next_frame(&mut self) -> Result<Option<Frame<Bytes>>, io::Error> {
+        if self.completed {
+            return Ok(None);
+        }
         let next = self
             .stream
             .next
@@ -1822,6 +1825,20 @@ mod tests {
 
         assert!(error.to_string().contains("declared content length"));
         assert!(canceled.load(Ordering::SeqCst));
+        assert!(released.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn native_upload_body_keeps_end_of_stream_idempotent() {
+        let (stream, canceled, released) = fake_upload_stream([b"done".to_vec()]);
+        let mut body = NativeUploadBody::new(stream, 4).expect("valid native upload body");
+
+        assert!(body.next_frame().expect("data frame").is_some());
+        assert!(body.next_frame().expect("first end-of-stream").is_none());
+        assert!(body.next_frame().expect("repeated end-of-stream").is_none());
+        drop(body);
+
+        assert!(!canceled.load(Ordering::SeqCst));
         assert!(released.load(Ordering::SeqCst));
     }
 }

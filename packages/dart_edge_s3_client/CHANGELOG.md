@@ -5,7 +5,8 @@
 - Enforce the declared upload length and release or cancel the producer on
   success, validation failure, stream failure, or request failure.
 - Preserve the AWS error chain when a native-stream upload fails to dispatch.
-- Bump the native artifact version to 0.1.15 for the streaming PUT ABI and
+- Treat repeated body polls after end-of-stream idempotently.
+- Bump the native artifact version to 0.1.16 for the streaming PUT ABI and
   Tokio-safe native producer composition.
 
 ## 0.3.17
