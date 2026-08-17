@@ -101,6 +101,17 @@ jobs:
           echo "missing_count=$missing_count" >> "$GITHUB_OUTPUT"
           echo "targets=$targets" >> "$GITHUB_OUTPUT"
 
+      - name: Ensure native asset release exists
+        if: ${{ steps.plan.outputs.missing_count != '0' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${{ steps.plan.outputs.package }}-native-v${{ steps.plan.outputs.version }}"
+          gh release view "$tag" >/dev/null 2>&1 || \
+            gh release create "$tag" --target "$GITHUB_SHA" --title "$tag"
+
   build:
     name: ${{ matrix.target.os }}-${{ matrix.target.arch }}
     needs: prepare
@@ -233,10 +244,23 @@ jobs:
           shasum -a 256 "artifacts/${{ matrix.target.name }}" > "artifacts/${{ matrix.target.name }}.sha256"
 
       - name: Upload release artifact
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ needs.prepare.outputs.package }}-native-v${{ needs.prepare.outputs.version }}
-          name: ${{ needs.prepare.outputs.package }}-native-v${{ needs.prepare.outputs.version }}
-          files: |
-            artifacts/${{ matrix.target.name }}
-            artifacts/${{ matrix.target.name }}.sha256
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${{ needs.prepare.outputs.package }}-native-v${{ needs.prepare.outputs.version }}"
+          files=(
+            "artifacts/${{ matrix.target.name }}"
+            "artifacts/${{ matrix.target.name }}.sha256"
+          )
+
+          for attempt in 1 2 3 4 5; do
+            if gh release upload "$tag" "${files[@]}" --clobber; then
+              exit 0
+            fi
+            if [[ "$attempt" == "5" ]]; then
+              exit 1
+            fi
+            sleep "$((attempt * 5))"
+          done
