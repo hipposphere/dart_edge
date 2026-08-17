@@ -6,10 +6,10 @@ sealed class AudioOutputSpec {
 
   const factory AudioOutputSpec.wavPcm24() = WavPcm24AudioOutputSpec;
 
-  const factory AudioOutputSpec.m4aAacLc({int bitRate = 48000}) =
+  const factory AudioOutputSpec.m4aAacLc({int bitRate}) =
       M4aAacLcAudioOutputSpec;
 
-  const factory AudioOutputSpec.flac({int compressionLevel = 5}) =
+  const factory AudioOutputSpec.flac({int compressionLevel}) =
       FlacAudioOutputSpec;
 
   String get format;
