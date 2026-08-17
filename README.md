@@ -125,6 +125,9 @@ JSON control messages continue to use the normal APIs on the same connection.
   shared Dart FFI structs and pointer helpers used by native-backed packages
 - [`packages/dart_edge_audio`](packages/dart_edge_audio): native-backed audio
   probing and WAV conversion utilities
+- [`packages/dart_edge_openai_audio_client`](packages/dart_edge_openai_audio_client):
+  native-backed OpenAI-compatible audio transcription client with direct
+  native byte-stream consumption
 - [`packages/dart_edge_s3_client`](packages/dart_edge_s3_client): native-backed
   S3 client for AWS S3 and compatible object stores with owned-bytes transfer
   support

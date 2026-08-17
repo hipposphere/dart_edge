@@ -1,0 +1,35 @@
+name: DartEdgeOpenAiAudioClientNativeBindings
+description: Generated C ABI bindings for dart_edge_openai_audio_client.
+output: ../lib/src/native/generated_bindings.dart
+headers:
+  entry-points:
+    - ../rust/include/dart_edge_openai_audio_client.h
+compiler-opts:
+  - -I../../crates/dart_edge_core/include
+import:
+  symbol-files:
+    - package:dart_edge_native_bridge/src/ffi/generated_symbols.yaml
+functions:
+  include:
+    - dart_edge_openai_audio_client_.*
+  leaf:
+    include:
+      - dart_edge_openai_audio_client_dispose
+      - dart_edge_openai_audio_client_free_create_result
+      - dart_edge_openai_audio_client_free_transcription_result
+      - dart_edge_openai_audio_client_native_abi_version
+structs:
+  include:
+    - NativeOpenAiAudioClientConfig
+    - NativeOpenAiAudioCreateResult
+    - NativeOpenAiAudioStringPair
+    - NativeOpenAiAudioTranscriptionRequest
+    - NativeOpenAiAudioTranscriptionResult
+exclude-all-by-default: true
+sort: true
+use-supported-typedefs: true
+comments: false
+preamble: |
+  // ignore_for_file: camel_case_types, non_constant_identifier_names
+ffi-native:
+  asset-id: package:dart_edge_openai_audio_client/dart_edge_openai_audio_client.dart

@@ -17,6 +17,8 @@ repository root and composed from `packages/*`, with shared Rust crates under
   native asset
 - `packages/dart_edge_native_bridge`: shared Dart FFI value types and pointer
   helpers used by native-backed packages
+- `packages/dart_edge_openai_audio_client`: native OpenAI-compatible audio
+  transcription transport with single-owner native stream input
 - `crates/dart_edge_core`: shared Rust FFI primitives used by native packages
 - `crates/dart_edge_sql_core`: shared Rust SQL wire payload types used by native packages
 - `benchmarks`: reproducible benchmark apps and the benchmark runner
@@ -156,6 +158,8 @@ repository root and composed from `packages/*`, with shared Rust crates under
 - For `dart_edge_http_server_runtime`, the asset name should stay `dart_edge_http_server_runtime.dart`.
 - For `dart_edge_auth`, the asset name should stay `dart_edge_auth.dart`.
 - For `dart_edge_sip`, the asset name should stay `dart_edge_sip.dart`.
+- For `dart_edge_openai_audio_client`, the asset name should stay
+  `dart_edge_openai_audio_client.dart`.
 - Keep the exported C ABI intentionally small and stable.
 - Treat each package's `rust/include/*.h` file as the Dart FFI source header.
 - Generate Dart FFI bindings with `ffigen`; do not hand-edit
@@ -168,6 +172,8 @@ repository root and composed from `packages/*`, with shared Rust crates under
   `dart pub -C packages/dart_edge_auth run ffigen --config tool/ffigen.yaml`
   and
   `dart pub -C packages/dart_edge_s3_client run ffigen --config tool/ffigen.yaml`
+  and
+  `dart pub -C packages/dart_edge_openai_audio_client run ffigen --config tool/ffigen.yaml`
   and
   `dart pub -C packages/dart_edge_sip run ffigen --config tool/ffigen.yaml`.
 - If a Rust-exported symbol or native struct layout changes, update the header,

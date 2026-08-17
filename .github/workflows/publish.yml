@@ -38,6 +38,7 @@ jobs:
             dart_edge_auth
             dart_edge_bluetooth_server
             dart_edge_http_server_runtime
+            dart_edge_openai_audio_client
             dart_edge_s3_client
             dart_edge_sip
             dart_edge_sql

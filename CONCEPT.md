@@ -52,6 +52,8 @@ The workspace already contains:
 - `dart_edge_native_assets`: native asset build-hook helpers used by
   native-backed packages
 - `dart_edge_audio`: native-backed audio probing and conversion utilities
+- `dart_edge_openai_audio_client`: native-backed OpenAI-compatible file
+  transcription with single-owner native audio stream consumption
 - `dart_edge_sip`: standalone native SIP runtime package for
   backend-controlled VoIP and PBX-style call handling
 - `benchmarks/*`: comparative benchmark targets and the benchmark runner
@@ -153,6 +155,7 @@ This is the newer and more important repo concept:
 - `dart_edge_sql_codegen`
 - `dart_edge_sql_migrator`
 - `dart_edge_audio`
+- `dart_edge_openai_audio_client`
 - `dart_edge_sip`
 
 The platform is not only a server runtime. It is also a home for focused
@@ -204,6 +207,11 @@ This is a stronger concept than one giant runtime package.
   Owns coarse-grained audio metadata extraction and conversion helpers backed
   by native codecs and DSP utilities. It should stay a focused utility package
   rather than pushing media-processing concerns into `dart_edge_http_server_runtime`.
+
+- `dart_edge_openai_audio_client`
+  Owns native HTTP and multipart transport for OpenAI-compatible audio
+  transcription. It accepts single-owner native streams from other Dart Edge
+  packages while leaving model selection and application orchestration in Dart.
 
 - `dart_edge_sip`
   Owns SIP-specific contracts, configs, events, and native telephony bindings.
