@@ -37,12 +37,23 @@ void main() {
       );
 
       expect(source, contains('final class UsersClient'));
+      expect(source, contains('final class GetUserOperation'));
+      expect(source, contains('GetUserOperation get getUser'));
+      expect(source, contains('DartEdgeClientOperationInfo get info'));
+      expect(source, contains("operationId: 'getUser'"));
+      expect(source, contains('method: HttpMethod.get'));
       expect(
         source,
-        contains('Future<DartEdgeClientResponseObject<UserDto>> getUser({'),
+        contains('Future<DartEdgeClientResponseObject<UserDto>> call({'),
       );
       expect(source, contains('Future<void>? abortTrigger'));
       expect(source, contains('Duration? timeout'));
+      expect(
+        source,
+        contains(
+          'DartEdgeClientRequestHandle<DartEdgeClientResponseObject<UserDto>> start({',
+        ),
+      );
       expect(source, contains('abortTrigger: abortTrigger'));
       expect(source, contains('timeout: timeout'));
       expect(source, contains("pathTemplate: '/users/<id>'"));
@@ -78,7 +89,9 @@ void main() {
         ),
       );
 
-      expect(source, contains('Future<DartEdgeClientWebSocket> connectRoom'));
+      expect(source, contains('Future<DartEdgeClientWebSocket> connect({'));
+      expect(source, contains('ConnectRoomOperation get connectRoom'));
+      expect(source, contains('kind: DartEdgeClientOperationKind.webSocket'));
       expect(source, contains("pathTemplate: '/rooms/<id>/socket'"));
       expect(source, contains('RoomQuery? query'));
       expect(source, contains('connectWebSocket<RoomPath, RoomQuery?, Never>'));
@@ -102,9 +115,15 @@ void main() {
 
       expect(
         source,
-        contains(
-          'Future<DartEdgeClientWebTransportSession> connectRoomTransport',
-        ),
+        contains('Future<DartEdgeClientWebTransportSession> connect({'),
+      );
+      expect(
+        source,
+        contains('ConnectRoomTransportOperation get connectRoomTransport'),
+      );
+      expect(
+        source,
+        contains('kind: DartEdgeClientOperationKind.webTransport'),
       );
       expect(source, contains("pathTemplate: '/rooms/<id>/transport'"));
       expect(source, contains('connectWebTransport<RoomPath, Never, Never>'));
@@ -131,13 +150,11 @@ void main() {
       expect(source, contains("import 'dart:typed_data';"));
       expect(
         source,
-        contains('Future<DartEdgeClientResponseObject<Uint8List>> getTone({'),
+        contains('Future<DartEdgeClientResponseObject<Uint8List>> call({'),
       );
       expect(
         source,
-        contains(
-          'Future<DartEdgeClientStreamedResponseObject> getToneStream({',
-        ),
+        contains('Future<DartEdgeClientStreamedResponseObject> stream({'),
       );
       expect(source, contains('DartEdgeClientResponseSpec<Uint8List>'));
       expect(source, isNot(contains('Uint8List.decode')));
@@ -166,9 +183,7 @@ void main() {
 
       expect(
         source,
-        contains(
-          'Future<DartEdgeClientStreamedResponseObject> subscribeEvents({',
-        ),
+        contains('Future<DartEdgeClientStreamedResponseObject> call({'),
       );
       expect(source, contains('invokeStream<Never, Never, Never, Never>'));
       expect(
@@ -249,7 +264,7 @@ void main() {
       expect(bindings, contains('final class UsersClient'));
       expect(
         bindings,
-        contains('Future<DartEdgeClientResponseObject<UserDto>> createUser({'),
+        contains('Future<DartEdgeClientResponseObject<UserDto>> call({'),
       );
       expect(models, contains("part of 'client.g.dart';"));
       expect(models, contains('final class UserDto implements JsonEncodable'));
@@ -758,28 +773,16 @@ void main() {
       );
       final source = const DartEdgeClientGenerator().generate(spec);
 
-      expect(
-        source,
-        contains('Future<DartEdgeClientResponseObject<String>> getHello({'),
-      );
-      expect(
-        source,
-        contains('Future<DartEdgeClientResponseObject<UserDto>> createUser({'),
-      );
-      expect(source, contains('Future<DartEdgeClientWebSocket> connectEvents'));
-      expect(
-        source,
-        contains('Future<DartEdgeClientWebSocket> connectEvents({'),
-      );
+      expect(source, contains('final class GetHelloOperation'));
+      expect(source, contains('final class CreateUserOperation'));
+      expect(source, contains('final class ConnectEventsOperation'));
+      expect(source, contains('Future<DartEdgeClientWebSocket> connect({'));
       expect(source, contains('required RoomPath params'));
       expect(source, contains('UserQuery? query'));
       expect(source, contains("pathTemplate: '/events/<id>'"));
       expect(source, contains("schemaId: 'RoomPath'"));
       expect(source, contains("schemaId: 'UserQuery'"));
-      expect(
-        source,
-        contains('Future<DartEdgeClientWebTransportSession> connectDatagrams'),
-      );
+      expect(source, contains('final class ConnectDatagramsOperation'));
       expect(source, contains('authDeleteUser'));
       expect(source, contains("pathTemplate: '/auth/delete-user'"));
       expect(
@@ -795,10 +798,7 @@ void main() {
           contains('Future<DartEdgeClientResponseObject<Object?>> updateUser'),
         ),
       );
-      expect(
-        source,
-        contains('Future<DartEdgeClientWebSocket> authConnectSession'),
-      );
+      expect(source, contains('final class AuthConnectSessionOperation'));
       expect(source, contains("pathTemplate: '/auth/session/socket'"));
     });
 
@@ -851,10 +851,7 @@ void main() {
 
       expect(
         source,
-        contains(
-          'Future<DartEdgeClientResponseObject<PhoneCallDto>> '
-          'updatePhoneCall({',
-        ),
+        contains('Future<DartEdgeClientResponseObject<PhoneCallDto>> call({'),
       );
       expect(source, contains('required PhoneCallGetParams params'));
       expect(source, contains('required UpdatePhoneCallBody body'));
@@ -908,7 +905,7 @@ void main() {
 
       expect(
         source,
-        contains('Future<DartEdgeClientResponseObject<String>> getPhoneCall({'),
+        contains('Future<DartEdgeClientResponseObject<String>> call({'),
       );
       expect(source, contains('required Map<String, Object?> params'));
       expect(
@@ -1093,20 +1090,9 @@ void main() {
       );
       final source = const DartEdgeClientGenerator().generate(spec);
 
-      expect(
-        source,
-        contains('Future<DartEdgeClientResponseObject<String>> getPublic({'),
-      );
-      expect(
-        source,
-        contains('Future<DartEdgeClientResponseObject<String>> getSame({'),
-      );
-      expect(
-        source,
-        contains(
-          'Future<DartEdgeClientResponseObject<String>> getIgnoredOther({',
-        ),
-      );
+      expect(source, contains('final class GetPublicOperation'));
+      expect(source, contains('final class GetSameOperation'));
+      expect(source, contains('final class GetIgnoredOtherOperation'));
       expect(source, isNot(contains('getOpenApiOnly')));
       expect(source, isNot(contains('getInternalHealth')));
       expect(source, isNot(contains('getIgnoredPath')));

@@ -447,7 +447,12 @@ final class DartEdgeClientGenerator {
   }
 
   List<Spec> buildSpecs(DartEdgeClientLibrarySpec spec) {
-    return <Spec>[_clientClass(spec)];
+    return <Spec>[
+      ...spec.operations.map(_httpOperationClass),
+      ...spec.webSockets.map(_webSocketOperationClass),
+      ...spec.webTransports.map(_webTransportOperationClass),
+      _clientClass(spec),
+    ];
   }
 
   List<Spec> _modelSpecs(DartEdgeClientLibrarySpec spec) {
@@ -752,17 +757,150 @@ $files
         ..extend = refer('DartEdgeHttpClientBase')
         ..constructors.add(_clientConstructor())
         ..methods.addAll([
-          ...spec.operations.expand(
-            (operation) => [
-              _operationMethod(operation),
-              if (_isBinaryOperation(operation))
-                _binaryStreamOperationMethod(operation),
-            ],
-          ),
-          ...spec.webSockets.map(_webSocketMethod),
-          ...spec.webTransports.map(_webTransportMethod),
+          ...spec.operations.map(_httpOperationGetter),
+          ...spec.webSockets.map(_webSocketOperationGetter),
+          ...spec.webTransports.map(_webTransportOperationGetter),
         ]);
     });
+  }
+
+  Class _httpOperationClass(DartEdgeClientOperation operation) {
+    return Class((builder) {
+      builder
+        ..modifier = ClassModifier.final$
+        ..name = _operationClassName(operation.resolvedMethodName)
+        ..constructors.add(
+          Constructor(
+            (builder) => builder
+              ..constant = true
+              ..requiredParameters.add(_thisParameter('_client')),
+          ),
+        )
+        ..fields.add(_clientField())
+        ..methods.addAll([
+          _operationInfoGetter(
+            operationId: operation.options.operationId!,
+            kind: 'http',
+            path: operation.path,
+            method: operation.method,
+          ),
+          _operationMethod(operation, name: 'call'),
+          _operationStartMethod(operation),
+          if (_isBinaryOperation(operation))
+            _binaryStreamOperationMethod(operation, name: 'stream'),
+        ]);
+    });
+  }
+
+  Class _webSocketOperationClass(DartEdgeClientWebSocketOperation operation) {
+    return Class((builder) {
+      builder
+        ..modifier = ClassModifier.final$
+        ..name = _operationClassName(operation.resolvedMethodName)
+        ..constructors.add(
+          Constructor(
+            (builder) => builder
+              ..constant = true
+              ..requiredParameters.add(_thisParameter('_client')),
+          ),
+        )
+        ..fields.add(_clientField())
+        ..methods.addAll([
+          _operationInfoGetter(
+            operationId: operation.operationId,
+            kind: 'webSocket',
+            path: operation.path,
+          ),
+          _webSocketMethod(operation, name: 'connect'),
+        ]);
+    });
+  }
+
+  Class _webTransportOperationClass(
+    DartEdgeClientWebTransportOperation operation,
+  ) {
+    return Class((builder) {
+      builder
+        ..modifier = ClassModifier.final$
+        ..name = _operationClassName(operation.resolvedMethodName)
+        ..constructors.add(
+          Constructor(
+            (builder) => builder
+              ..constant = true
+              ..requiredParameters.add(_thisParameter('_client')),
+          ),
+        )
+        ..fields.add(_clientField())
+        ..methods.addAll([
+          _operationInfoGetter(
+            operationId: operation.operationId,
+            kind: 'webTransport',
+            path: operation.path,
+          ),
+          _webTransportMethod(operation, name: 'connect'),
+        ]);
+    });
+  }
+
+  Field _clientField() => Field(
+    (builder) => builder
+      ..modifier = FieldModifier.final$
+      ..type = refer('DartEdgeHttpClientBase')
+      ..name = '_client',
+  );
+
+  Parameter _thisParameter(String name) => Parameter(
+    (builder) => builder
+      ..name = name
+      ..toThis = true,
+  );
+
+  Method _operationInfoGetter({
+    required String operationId,
+    required String kind,
+    required String path,
+    HttpMethod? method,
+  }) {
+    return Method(
+      (builder) => builder
+        ..type = MethodType.getter
+        ..returns = refer('DartEdgeClientOperationInfo')
+        ..name = 'info'
+        ..body = refer('DartEdgeClientOperationInfo')
+            .constInstance([], {
+              'operationId': literalString(operationId),
+              'kind': refer('DartEdgeClientOperationKind').property(kind),
+              'pathTemplate': literalString(path),
+              if (method != null)
+                'method': refer('HttpMethod').property(method.name),
+            })
+            .returned
+            .statement,
+    );
+  }
+
+  Method _httpOperationGetter(DartEdgeClientOperation operation) =>
+      _operationGetter(operation.resolvedMethodName);
+
+  Method _webSocketOperationGetter(
+    DartEdgeClientWebSocketOperation operation,
+  ) => _operationGetter(operation.resolvedMethodName);
+
+  Method _webTransportOperationGetter(
+    DartEdgeClientWebTransportOperation operation,
+  ) => _operationGetter(operation.resolvedMethodName);
+
+  Method _operationGetter(String name) {
+    final className = _operationClassName(name);
+    return Method(
+      (builder) => builder
+        ..type = MethodType.getter
+        ..returns = refer(className)
+        ..name = name
+        ..body = refer(
+          className,
+        ).newInstance([refer('this')]).returned.statement,
+    );
   }
 
   Constructor _clientConstructor() {
@@ -784,7 +922,10 @@ $files
     });
   }
 
-  Method _operationMethod(DartEdgeClientOperation operation) {
+  Method _operationMethod(
+    DartEdgeClientOperation operation, {
+    required String name,
+  }) {
     return Method((builder) {
       builder
         ..returns = _isSseOperation(operation)
@@ -794,7 +935,7 @@ $files
                   refer(operation.successType),
                 ]),
               ])
-        ..name = operation.resolvedMethodName
+        ..name = name
         ..optionalParameters.addAll(_operationParameters(operation))
         ..body =
             (_isSseOperation(operation)
@@ -805,13 +946,50 @@ $files
     });
   }
 
-  Method _binaryStreamOperationMethod(DartEdgeClientOperation operation) {
+  Method _operationStartMethod(DartEdgeClientOperation operation) {
+    final responseType = _isSseOperation(operation)
+        ? 'DartEdgeClientStreamedResponseObject'
+        : 'DartEdgeClientResponseObject<${operation.successType}>';
+    final forwarded = <String>[
+      if (operation.paramsType != null) 'params: params',
+      if (operation.queryType != null) 'query: query',
+      if (operation.headersType != null) 'headers: headers',
+      if (operation.bodyType != null) 'body: body',
+      'abortTrigger: abortTrigger',
+      if (_isMultipartOperation(operation))
+        'onUploadProgress: onUploadProgress',
+    ].join(',\n');
+    return Method(
+      (builder) => builder
+        ..returns = refer('DartEdgeClientRequestHandle<$responseType>')
+        ..name = 'start'
+        ..optionalParameters.addAll(
+          _operationParameters(
+            operation,
+          ).where((parameter) => parameter.name != 'abortTrigger'),
+        )
+        ..body = Code('''
+return startDartEdgeClientRequest<$responseType>(
+  info: info,
+  timeout: timeout,
+  run: (abortTrigger) => call(
+$forwarded,
+  ),
+);
+'''),
+    );
+  }
+
+  Method _binaryStreamOperationMethod(
+    DartEdgeClientOperation operation, {
+    required String name,
+  }) {
     return Method((builder) {
       builder
         ..returns = _type('Future', [
           refer('DartEdgeClientStreamedResponseObject'),
         ])
-        ..name = '${operation.resolvedMethodName}Stream'
+        ..name = name
         ..optionalParameters.addAll(_operationParameters(operation))
         ..body = _invokeStreamExpression(operation).returned.statement;
     });
@@ -847,11 +1025,13 @@ $files
       invocationTypes,
     );
 
-    return refer('invoke').call(
-      <Expression>[invocation],
-      const <String, Expression>{},
-      invocationTypes,
-    );
+    return refer('_client')
+        .property('invoke')
+        .call(
+          <Expression>[invocation],
+          const <String, Expression>{},
+          invocationTypes,
+        );
   }
 
   Expression _invokeStreamExpression(DartEdgeClientOperation operation) {
@@ -865,19 +1045,24 @@ $files
       invocationTypes,
     );
 
-    return refer('invokeStream').call(
-      <Expression>[invocation],
-      const <String, Expression>{},
-      invocationTypes.skip(1).toList(),
-    );
+    return refer('_client')
+        .property('invokeStream')
+        .call(
+          <Expression>[invocation],
+          const <String, Expression>{},
+          invocationTypes.skip(1).toList(),
+        );
   }
 
-  Method _webSocketMethod(DartEdgeClientWebSocketOperation operation) {
+  Method _webSocketMethod(
+    DartEdgeClientWebSocketOperation operation, {
+    required String name,
+  }) {
     final invocationTypes = _webSocketInvocationTypes(operation);
     return Method((builder) {
       builder
         ..returns = _type('Future', [refer('DartEdgeClientWebSocket')])
-        ..name = operation.resolvedMethodName
+        ..name = name
         ..optionalParameters.addAll([
           ..._webSocketParameters(operation),
           _namedParameter(
@@ -886,7 +1071,8 @@ $files
             defaultTo: const Code('const <String>[]'),
           ),
         ])
-        ..body = refer('connectWebSocket')
+        ..body = refer('_client')
+            .property('connectWebSocket')
             .call(
               [
                 refer(
@@ -950,16 +1136,20 @@ $files
     ];
   }
 
-  Method _webTransportMethod(DartEdgeClientWebTransportOperation operation) {
+  Method _webTransportMethod(
+    DartEdgeClientWebTransportOperation operation, {
+    required String name,
+  }) {
     final invocationTypes = _webTransportInvocationTypes(operation);
     return Method((builder) {
       builder
         ..returns = _type('Future', [
           refer('DartEdgeClientWebTransportSession'),
         ])
-        ..name = operation.resolvedMethodName
+        ..name = name
         ..optionalParameters.addAll(_webTransportParameters(operation))
-        ..body = refer('connectWebTransport')
+        ..body = refer('_client')
+            .property('connectWebTransport')
             .call(
               [
                 refer(
@@ -2021,4 +2211,11 @@ String _lowerCamel(String value) {
     for (final part in parts.skip(1))
       '${part[0].toUpperCase()}${part.substring(1)}',
   ].join();
+}
+
+String _operationClassName(String methodName) {
+  if (methodName.isEmpty) {
+    throw ArgumentError.value(methodName, 'methodName', 'Must not be empty.');
+  }
+  return '${methodName[0].toUpperCase()}${methodName.substring(1)}Operation';
 }
