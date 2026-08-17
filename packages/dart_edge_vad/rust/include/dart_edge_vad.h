@@ -9,7 +9,15 @@ int32_t dart_edge_vad_native_abi_version(void);
 int32_t dart_edge_vad_initialize_dart_api_dl(void* data);
 
 typedef struct DartEdgeVadStream DartEdgeVadStream;
+typedef struct DartEdgeVadTrimStream DartEdgeVadTrimStream;
 typedef struct DartEdgeVadPool DartEdgeVadPool;
+
+typedef struct DartEdgeVadTrimProcessResult {
+  uint8_t* output_ptr;
+  uintptr_t output_len;
+  uintptr_t output_capacity;
+  char* result_json;
+} DartEdgeVadTrimProcessResult;
 
 char* dart_edge_vad_detect_silero(
     const char* request_json,
@@ -25,6 +33,20 @@ char* dart_edge_vad_stream_process(
 DartEdgeVadStream* dart_edge_vad_stream_create(const char* request_json);
 
 void dart_edge_vad_stream_free(DartEdgeVadStream* stream);
+
+DartEdgeVadTrimStream* dart_edge_vad_trim_stream_create(
+    const char* request_json);
+
+DartEdgeVadTrimProcessResult* dart_edge_vad_trim_stream_process(
+    DartEdgeVadTrimStream* stream,
+    const uint8_t* input_ptr,
+    intptr_t input_len,
+    int32_t flush);
+
+void dart_edge_vad_trim_process_result_free(
+    DartEdgeVadTrimProcessResult* result);
+
+void dart_edge_vad_trim_stream_free(DartEdgeVadTrimStream* stream);
 
 DartEdgeVadPool* dart_edge_vad_pool_create(
     uintptr_t worker_count,

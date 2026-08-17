@@ -49,6 +49,8 @@ final class NativeAudioPoolMetrics {
     required this.maxObservedSpoolBytes,
     required this.pendingFinishBytes,
     required this.maxObservedPendingFinishBytes,
+    required this.reservedTransientBytes,
+    required this.maxObservedReservedTransientBytes,
   });
 
   factory NativeAudioPoolMetrics._fromJson(
@@ -56,6 +58,7 @@ final class NativeAudioPoolMetrics {
     _AudioSpoolCounters? spoolCounters,
     int? pendingFinishBytes,
     int? maxObservedPendingFinishBytes,
+    _AudioTransientCounters? transientCounters,
   }) {
     return NativeAudioPoolMetrics(
       workerCount: json['workerCount'] as int,
@@ -87,6 +90,14 @@ final class NativeAudioPoolMetrics {
           maxObservedPendingFinishBytes ??
           json['maxObservedPendingFinishBytes'] as int? ??
           0,
+      reservedTransientBytes:
+          transientCounters?.currentBytes ??
+          json['reservedTransientBytes'] as int? ??
+          0,
+      maxObservedReservedTransientBytes:
+          transientCounters?.maxObservedBytes ??
+          json['maxObservedReservedTransientBytes'] as int? ??
+          0,
     );
   }
 
@@ -114,6 +125,44 @@ final class NativeAudioPoolMetrics {
   final int maxObservedSpoolBytes;
   final int pendingFinishBytes;
   final int maxObservedPendingFinishBytes;
+  final int reservedTransientBytes;
+  final int maxObservedReservedTransientBytes;
+}
+
+/// Capacity reserved from a [NativeAudioPool] for a bounded external native
+/// audio buffer such as an incremental VAD look-behind window.
+final class NativeAudioPoolMemoryReservation {
+  NativeAudioPoolMemoryReservation._({
+    required _AudioSpoolCounters spoolCounters,
+    required _AudioTransientCounters transientCounters,
+    required this.bytes,
+  }) : _spoolCounters = spoolCounters,
+       _transientCounters = transientCounters {
+    _reservationFinalizer.attach(
+      this,
+      _AudioReservationFinalizerToken(
+        spoolCounters: spoolCounters,
+        transientCounters: transientCounters,
+        bytes: bytes,
+      ),
+      detach: this,
+    );
+  }
+
+  final _AudioSpoolCounters _spoolCounters;
+  final _AudioTransientCounters _transientCounters;
+  final int bytes;
+  var _closed = false;
+
+  bool get isClosed => _closed;
+
+  void close() {
+    if (_closed) return;
+    _closed = true;
+    _reservationFinalizer.detach(this);
+    _spoolCounters.release(bytes);
+    _transientCounters.release(bytes);
+  }
 }
 
 final class NativeAudioPool {
@@ -149,6 +198,7 @@ final class NativeAudioPool {
       workerCount: workerCount,
       maxQueueSize: resolvedQueueSize,
       spoolCounters: _AudioSpoolCounters(maxActiveSpoolBytes),
+      transientCounters: _AudioTransientCounters(),
     );
     pool._completionSubscription = completionPort.completedJobIds.listen(
       pool._handleCompletedJob,
@@ -163,6 +213,7 @@ final class NativeAudioPool {
     required this.workerCount,
     required this.maxQueueSize,
     required this._spoolCounters,
+    required this._transientCounters,
   });
 
   final int workerCount;
@@ -175,6 +226,7 @@ final class NativeAudioPool {
   final _pendingJobs = <int, _PendingAudioJob>{};
   final Set<WeakReference<NativeAudioPcm16StreamSession>> _spoolSessions = {};
   final _AudioSpoolCounters _spoolCounters;
+  final _AudioTransientCounters _transientCounters;
   var _pendingFinishBytes = 0;
   var _maxObservedPendingFinishBytes = 0;
   bool _closed = false;
@@ -199,6 +251,24 @@ final class NativeAudioPool {
       spoolCounters: _spoolCounters,
       pendingFinishBytes: _pendingFinishBytes,
       maxObservedPendingFinishBytes: _maxObservedPendingFinishBytes,
+      transientCounters: _transientCounters,
+    );
+  }
+
+  /// Reserves a hard amount of the shared native audio memory budget.
+  ///
+  /// Use this for bounded native audio buffers that live outside this package
+  /// but must participate in the same process-wide ceiling. The complete
+  /// reservation counts immediately and is released by [close] or a finalizer.
+  NativeAudioPoolMemoryReservation reserveTransientBytes(int bytes) {
+    _ensureOpen();
+    RangeError.checkValueInInterval(bytes, 1, maxActiveSpoolBytes, 'bytes');
+    _spoolCounters.reserve(bytes);
+    _transientCounters.reserve(bytes);
+    return NativeAudioPoolMemoryReservation._(
+      spoolCounters: _spoolCounters,
+      transientCounters: _transientCounters,
+      bytes: bytes,
     );
   }
 

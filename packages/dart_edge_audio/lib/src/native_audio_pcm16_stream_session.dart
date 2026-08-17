@@ -275,6 +275,40 @@ final class _AudioSpoolCounters {
   }
 }
 
+final class _AudioTransientCounters {
+  var currentBytes = 0;
+  var maxObservedBytes = 0;
+
+  void reserve(int bytes) {
+    currentBytes += bytes;
+    if (currentBytes > maxObservedBytes) maxObservedBytes = currentBytes;
+  }
+
+  void release(int bytes) {
+    currentBytes -= bytes;
+    if (currentBytes < 0) currentBytes = 0;
+  }
+}
+
+final class _AudioReservationFinalizerToken {
+  const _AudioReservationFinalizerToken({
+    required this.spoolCounters,
+    required this.transientCounters,
+    required this.bytes,
+  });
+
+  final _AudioSpoolCounters spoolCounters;
+  final _AudioTransientCounters transientCounters;
+  final int bytes;
+}
+
+final _reservationFinalizer = Finalizer<_AudioReservationFinalizerToken>((
+  token,
+) {
+  token.spoolCounters.release(token.bytes);
+  token.transientCounters.release(token.bytes);
+});
+
 final class _Pcm16SessionFinalizerToken {
   _Pcm16SessionFinalizerToken({
     required this.sessionAddress,

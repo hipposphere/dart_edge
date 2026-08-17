@@ -1,6 +1,6 @@
 name: dart_edge_webtransport
 description: WebTransport client transports for Dart Edge across browser and native platforms.
-version: 0.1.5
+version: 0.1.6
 publish_to: "https://registry.hippolabs.org/pub/internal-pub/"
 repository: https://github.com/hipposphere/dart_edge/tree/main/packages/dart_edge_webtransport
 

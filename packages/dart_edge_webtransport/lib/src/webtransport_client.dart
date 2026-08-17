@@ -15,8 +15,8 @@ abstract interface class DartEdgeWebTransportClient {
 
   /// Opens a WebTransport session.
   ///
-  /// Browser WebTransport does not expose custom handshake headers. Native
-  /// runtimes pass [headers] through to the HTTP/3 CONNECT request.
+  /// Browser and native runtimes pass [headers] through to the WebTransport
+  /// CONNECT request. Browser support follows `WebTransportOptions.headers`.
   Future<DartEdgeWebTransportSession> connect(
     Uri uri, {
     Map<String, String> headers,

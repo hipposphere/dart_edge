@@ -133,6 +133,24 @@ the pool's bounded worker queue before returning a native stream. Voice activity
 detection remains owned by `dart_edge_vad` so applications can choose whether
 and how to trim.
 
+External native audio buffers can participate in the same hard ceiling. Reserve
+their maximum size before creating them and release the token with the buffer:
+
+```dart
+final reservation = audioPool.reserveTransientBytes(256 * 1024);
+final trimmer = NativeVadTrimmingSession(maxPendingBytes: reservation.bytes);
+try {
+  // Feed and drain the bounded native trimming session.
+} finally {
+  trimmer.close();
+  reservation.close();
+}
+```
+
+`reservedTransientBytes` and `maxObservedReservedTransientBytes` distinguish
+these reservations in pool metrics while `currentSpoolBytes` continues to
+represent the complete shared budget consumption.
+
 ## Streaming PCM16 Waveforms
 
 Use `NativeAudioWaveformSession` when canonical PCM16LE audio is already

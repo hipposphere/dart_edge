@@ -13,7 +13,7 @@ use ort::session::{Session, builder::GraphOptimizationLevel};
 use ort::value::TensorRef;
 use serde::{Deserialize, Serialize};
 
-const DART_EDGE_VAD_NATIVE_ABI_VERSION: i32 = 1;
+const DART_EDGE_VAD_NATIVE_ABI_VERSION: i32 = 2;
 const SILERO_CONTEXT_SAMPLES_16KHZ: usize = 64;
 const SILERO_VAD_V6_2_1: &[u8] = include_bytes!("../models/silero_vad_v6.2.1.onnx");
 
@@ -68,6 +68,46 @@ struct NativeVadStreamResult {
     probabilities: Vec<f32>,
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct NativeVadTrimRequest {
+    #[serde(flatten)]
+    vad: SileroDetectRequest,
+    max_pending_bytes: usize,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct NativeVadTrimRange {
+    source_start_sample: usize,
+    source_end_sample: usize,
+    output_start_sample: usize,
+    output_end_sample: usize,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct NativeVadTrimResultJson {
+    sample_rate_hz: u32,
+    total_samples: usize,
+    processed_samples: usize,
+    output_samples: usize,
+    buffered_bytes: usize,
+    has_speech: bool,
+    speech_active: bool,
+    finished: bool,
+    segments: Vec<NativeVadSegment>,
+    ranges: Vec<NativeVadTrimRange>,
+}
+
+#[repr(C)]
+pub struct DartEdgeVadTrimProcessResult {
+    output_ptr: *mut u8,
+    output_len: usize,
+    output_capacity: usize,
+    result_json: *mut c_char,
+}
+
 struct SileroScratch {
     input_samples: Vec<f32>,
     sample_rate: [i64; 1],
@@ -92,6 +132,17 @@ pub struct DartEdgeVadStream {
     processed_samples: usize,
     active_start: Option<usize>,
     silence_start: Option<usize>,
+    has_speech: bool,
+    finished: bool,
+}
+
+pub struct DartEdgeVadTrimStream {
+    vad: DartEdgeVadStream,
+    pending_pcm: Vec<u8>,
+    pending_start_sample: usize,
+    last_emitted_source_end: usize,
+    output_samples: usize,
+    max_pending_bytes: usize,
     has_speech: bool,
     finished: bool,
 }
@@ -179,19 +230,7 @@ pub extern "C" fn dart_edge_vad_stream_create(
     }
 
     clear_last_error();
-    Box::into_raw(Box::new(DartEdgeVadStream {
-        request,
-        state: vec![0.0_f32; 2 * 128],
-        context: vec![0.0_f32; SILERO_CONTEXT_SAMPLES_16KHZ],
-        scratch: SileroScratch::new(512),
-        pending: Vec::new(),
-        total_samples: 0,
-        processed_samples: 0,
-        active_start: None,
-        silence_start: None,
-        has_speech: false,
-        finished: false,
-    }))
+    Box::into_raw(Box::new(create_vad_stream(request)))
 }
 
 #[unsafe(no_mangle)]
@@ -228,6 +267,99 @@ pub extern "C" fn dart_edge_vad_stream_process(
 
 #[unsafe(no_mangle)]
 pub extern "C" fn dart_edge_vad_stream_free(stream: *mut DartEdgeVadStream) {
+    if !stream.is_null() {
+        drop(unsafe { Box::from_raw(stream) });
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_vad_trim_stream_create(
+    request_json: *const c_char,
+) -> *mut DartEdgeVadTrimStream {
+    let Some(request_json) = (unsafe { read_c_string(request_json) }) else {
+        set_last_error("Missing VAD trim stream request.");
+        return std::ptr::null_mut();
+    };
+    let request = match serde_json::from_str::<NativeVadTrimRequest>(&request_json) {
+        Ok(value) => value,
+        Err(error) => {
+            set_last_error(format!("Invalid VAD trim stream request: {error}"));
+            return std::ptr::null_mut();
+        }
+    };
+    if let Err(error) = validate_silero_request(&request.vad) {
+        set_last_error(error);
+        return std::ptr::null_mut();
+    }
+    if request.max_pending_bytes == 0 || request.max_pending_bytes % 2 != 0 {
+        set_last_error("VAD trim maxPendingBytes must be a positive even number.");
+        return std::ptr::null_mut();
+    }
+
+    clear_last_error();
+    Box::into_raw(Box::new(DartEdgeVadTrimStream {
+        vad: create_vad_stream(request.vad),
+        pending_pcm: Vec::new(),
+        pending_start_sample: 0,
+        last_emitted_source_end: 0,
+        output_samples: 0,
+        max_pending_bytes: request.max_pending_bytes,
+        has_speech: false,
+        finished: false,
+    }))
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_vad_trim_stream_process(
+    stream: *mut DartEdgeVadTrimStream,
+    input_ptr: *const u8,
+    input_len: isize,
+    flush: i32,
+) -> *mut DartEdgeVadTrimProcessResult {
+    if stream.is_null() {
+        set_last_error("Missing VAD trim stream.");
+        return std::ptr::null_mut();
+    }
+    let Some(input) = (unsafe { read_bytes(input_ptr, input_len) }) else {
+        set_last_error("Missing PCM16 byte input.");
+        return std::ptr::null_mut();
+    };
+
+    match unsafe { &mut *stream }
+        .process(input, flush != 0)
+        .and_then(encode_trim_process_result)
+    {
+        Ok(value) => {
+            clear_last_error();
+            value
+        }
+        Err(error) => {
+            set_last_error(error);
+            std::ptr::null_mut()
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_vad_trim_process_result_free(
+    result: *mut DartEdgeVadTrimProcessResult,
+) {
+    if result.is_null() {
+        return;
+    }
+    let result = unsafe { Box::from_raw(result) };
+    if result.output_capacity > 0 && !result.output_ptr.is_null() {
+        drop(unsafe {
+            Vec::from_raw_parts(result.output_ptr, result.output_len, result.output_capacity)
+        });
+    }
+    if !result.result_json.is_null() {
+        drop(unsafe { CString::from_raw(result.result_json) });
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_vad_trim_stream_free(stream: *mut DartEdgeVadTrimStream) {
     if !stream.is_null() {
         drop(unsafe { Box::from_raw(stream) });
     }
@@ -629,6 +761,215 @@ fn silero_session_pool_size() -> usize {
                 .unwrap_or(1)
                 .clamp(1, 4)
         })
+}
+
+fn create_vad_stream(request: SileroDetectRequest) -> DartEdgeVadStream {
+    DartEdgeVadStream {
+        request,
+        state: vec![0.0_f32; 2 * 128],
+        context: vec![0.0_f32; SILERO_CONTEXT_SAMPLES_16KHZ],
+        scratch: SileroScratch::new(512),
+        pending: Vec::new(),
+        total_samples: 0,
+        processed_samples: 0,
+        active_start: None,
+        silence_start: None,
+        has_speech: false,
+        finished: false,
+    }
+}
+
+struct NativeVadTrimProcessOutput {
+    bytes: Vec<u8>,
+    json: NativeVadTrimResultJson,
+}
+
+impl DartEdgeVadTrimStream {
+    fn process(&mut self, input: &[u8], flush: bool) -> Result<NativeVadTrimProcessOutput, String> {
+        if self.finished {
+            return Err("VAD trim stream has already been finished.".to_string());
+        }
+        if input.len() % 2 != 0 {
+            return Err("PCM16 byte input must contain complete i16 samples.".to_string());
+        }
+        let next_pending_bytes = self
+            .pending_pcm
+            .len()
+            .checked_add(input.len())
+            .ok_or_else(|| "VAD trim pending byte length overflowed.".to_string())?;
+        if next_pending_bytes > self.max_pending_bytes {
+            return Err(format!(
+                "VAD trim pending audio would exceed its {} byte limit.",
+                self.max_pending_bytes
+            ));
+        }
+        self.pending_pcm
+            .try_reserve_exact(input.len())
+            .map_err(|error| format!("VAD trim could not reserve native input memory: {error}"))?;
+        self.pending_pcm.extend_from_slice(input);
+
+        let vad_result = self.vad.process(input, flush)?;
+        let mut output = Vec::new();
+        let mut ranges = Vec::new();
+
+        for segment in &vad_result.segments {
+            self.emit_range(
+                segment.start_sample,
+                segment.end_sample,
+                &mut output,
+                &mut ranges,
+            )?;
+        }
+
+        let min_speech_samples = millis_to_samples(
+            self.vad.request.min_speech_duration_ms,
+            self.vad.request.sample_rate_hz,
+        );
+        let speech_pad_samples = millis_to_samples(
+            self.vad.request.speech_pad_ms,
+            self.vad.request.sample_rate_hz,
+        );
+        let confirmed_active_start = self.vad.active_start.filter(|start| {
+            self.vad.processed_samples.saturating_sub(*start) >= min_speech_samples
+        });
+        if let Some(active_start) = confirmed_active_start {
+            let output_end = self
+                .vad
+                .silence_start
+                .map(|silence| silence.saturating_add(speech_pad_samples))
+                .unwrap_or(self.vad.total_samples)
+                .min(self.vad.total_samples);
+            self.emit_range(
+                active_start.saturating_sub(speech_pad_samples),
+                output_end,
+                &mut output,
+                &mut ranges,
+            )?;
+        }
+        self.has_speech |= confirmed_active_start.is_some() || !vad_result.segments.is_empty();
+
+        let discard_before = if flush {
+            self.vad.total_samples
+        } else if let Some(active_start) = self.vad.active_start {
+            if confirmed_active_start.is_some() {
+                self.last_emitted_source_end
+            } else {
+                active_start.saturating_sub(speech_pad_samples)
+            }
+        } else {
+            self.vad
+                .processed_samples
+                .saturating_sub(speech_pad_samples)
+        };
+        self.discard_before(discard_before);
+        self.finished = flush;
+
+        Ok(NativeVadTrimProcessOutput {
+            bytes: output,
+            json: NativeVadTrimResultJson {
+                sample_rate_hz: vad_result.sample_rate_hz,
+                total_samples: vad_result.total_samples,
+                processed_samples: vad_result.processed_samples,
+                output_samples: self.output_samples,
+                buffered_bytes: self.pending_pcm.len(),
+                has_speech: self.has_speech,
+                speech_active: confirmed_active_start.is_some(),
+                finished: vad_result.finished,
+                segments: vad_result.segments,
+                ranges,
+            },
+        })
+    }
+
+    fn emit_range(
+        &mut self,
+        requested_start: usize,
+        requested_end: usize,
+        output: &mut Vec<u8>,
+        ranges: &mut Vec<NativeVadTrimRange>,
+    ) -> Result<(), String> {
+        let start = requested_start
+            .max(self.pending_start_sample)
+            .max(self.last_emitted_source_end);
+        let end = requested_end.min(self.vad.total_samples);
+        if end <= start {
+            return Ok(());
+        }
+        let relative_start = start
+            .checked_sub(self.pending_start_sample)
+            .and_then(|samples| samples.checked_mul(2))
+            .ok_or_else(|| "VAD trim range start overflowed.".to_string())?;
+        let relative_end = end
+            .checked_sub(self.pending_start_sample)
+            .and_then(|samples| samples.checked_mul(2))
+            .ok_or_else(|| "VAD trim range end overflowed.".to_string())?;
+        if relative_end > self.pending_pcm.len() || relative_start > relative_end {
+            return Err("VAD trim range is outside buffered audio.".to_string());
+        }
+        let byte_length = relative_end - relative_start;
+        let peak_bytes = self
+            .pending_pcm
+            .len()
+            .checked_add(output.len())
+            .and_then(|bytes| bytes.checked_add(byte_length))
+            .ok_or_else(|| "VAD trim working byte length overflowed.".to_string())?;
+        if peak_bytes > self.max_pending_bytes {
+            return Err(format!(
+                "VAD trim working audio would exceed its {} byte limit.",
+                self.max_pending_bytes
+            ));
+        }
+        output
+            .try_reserve_exact(byte_length)
+            .map_err(|error| format!("VAD trim could not reserve native output memory: {error}"))?;
+        output.extend_from_slice(&self.pending_pcm[relative_start..relative_end]);
+        let output_start_sample = self.output_samples;
+        let emitted_samples = end - start;
+        self.output_samples = self
+            .output_samples
+            .checked_add(emitted_samples)
+            .ok_or_else(|| "VAD trim output sample count overflowed.".to_string())?;
+        ranges.push(NativeVadTrimRange {
+            source_start_sample: start,
+            source_end_sample: end,
+            output_start_sample,
+            output_end_sample: self.output_samples,
+        });
+        self.last_emitted_source_end = end;
+        Ok(())
+    }
+
+    fn discard_before(&mut self, requested_sample: usize) {
+        let end_sample = self.pending_start_sample + self.pending_pcm.len() / 2;
+        let discard_sample = requested_sample
+            .max(self.pending_start_sample)
+            .min(end_sample);
+        let discard_bytes = (discard_sample - self.pending_start_sample) * 2;
+        if discard_bytes > 0 {
+            self.pending_pcm.drain(..discard_bytes);
+            self.pending_start_sample = discard_sample;
+        }
+    }
+}
+
+fn encode_trim_process_result(
+    output: NativeVadTrimProcessOutput,
+) -> Result<*mut DartEdgeVadTrimProcessResult, String> {
+    let result_json = serde_json::to_string(&output.json)
+        .map_err(|error| format!("Failed to encode VAD trim result: {error}"))?;
+    let result_json = c_string(result_json).into_raw();
+    let mut bytes = std::mem::ManuallyDrop::new(output.bytes);
+    let (output_ptr, output_len, output_capacity) = if bytes.is_empty() {
+        (std::ptr::null_mut(), 0, 0)
+    } else {
+        (bytes.as_mut_ptr(), bytes.len(), bytes.capacity())
+    };
+    Ok(Box::into_raw(Box::new(DartEdgeVadTrimProcessResult {
+        output_ptr,
+        output_len,
+        output_capacity,
+        result_json,
+    })))
 }
 
 impl DartEdgeVadStream {

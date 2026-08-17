@@ -48,9 +48,10 @@ the incremental path. `sendStream` and `streams` remain available as
 whole-payload compatibility helpers; do not listen to `streams` and
 `incomingStreams.unidirectional` at the same time.
 
-Browser WebTransport does not support custom HTTP/3 handshake headers. Use
-browser-managed cookies, a short-lived credential in the URL, or authenticate
-over the first reliable stream. Native clients can pass custom headers.
+Configured handshake headers are forwarded through `WebTransportOptions` on
+the browser and through the native CONNECT request on native platforms. This
+allows bearer authorization without a WebSocket-style query ticket where the
+browser runtime exposes the header option.
 
 The native FFI declarations are generated from
 `rust/include/dart_edge_webtransport.h`:

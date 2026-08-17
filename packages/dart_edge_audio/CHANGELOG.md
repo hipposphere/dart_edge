@@ -1,5 +1,12 @@
 ## Unreleased
 
+## 0.3.16
+
+- Add transient native-audio memory reservations that participate in the
+  shared pool spool ceiling.
+- Report current and peak transient reservations for bounded VAD look-behind
+  and other external native audio buffers.
+
 ## 0.3.15
 
 - Add `NativeAudioPcm16StreamSession` for consuming single-owner transport

@@ -23,14 +23,10 @@ final class PlatformWebTransportClient implements DartEdgeWebTransportClient {
       );
     }
 
-    if (headers.isNotEmpty) {
-      throw const DartEdgeWebTransportException(
-        'Browser WebTransport does not support custom handshake headers. '
-        'Use browser-managed cookies, a short-lived URL credential, or '
-        'authenticate over the first reliable stream.',
-      );
-    }
-    final transport = web.WebTransport(uri.toString());
+    final options =
+        <String, Object?>{if (headers.isNotEmpty) 'headers': headers}.jsify()!
+            as web.WebTransportOptions;
+    final transport = web.WebTransport(uri.toString(), options);
 
     await transport.ready.toDart;
     return _BrowserWebTransportSession(transport);

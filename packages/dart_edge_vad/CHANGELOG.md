@@ -1,3 +1,13 @@
+## 0.2.7
+
+- Add `NativeVadTrimmingSession` for bounded incremental PCM16LE trimming.
+- Release native-owned speech chunks during active speech while retaining only
+  the uncertain silence tail and configured look-behind.
+- Include original-to-trimmed sample mappings for timestamp translation.
+- Add borrowed transport-lease and native-pointer ingestion, typed lifecycle
+  results, allocation failure handling, and abandoned-result cleanup.
+- Bump the native artifact version to 0.2.6 for the streaming trim ABI.
+
 ## 0.2.6
 
 - Add synchronous borrowed native transport-lease APIs for zero-copy streaming

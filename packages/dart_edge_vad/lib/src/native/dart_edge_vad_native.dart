@@ -50,6 +50,23 @@ abstract final class DartEdgeVadNative {
     }
   }
 
+  static Pointer<gen.DartEdgeVadTrimStream> createSileroTrimStream(
+    String requestJson,
+  ) {
+    final requestPtr = requestJson.toNativeUtf8();
+    try {
+      final streamPtr = gen.dart_edge_vad_trim_stream_create(
+        requestPtr.cast<Char>(),
+      );
+      if (streamPtr == nullptr) {
+        throw StateError(_takeLastError());
+      }
+      return streamPtr;
+    } finally {
+      calloc.free(requestPtr);
+    }
+  }
+
   static String detectSilero(String requestJson, Uint8List pcm16Bytes) {
     final requestPtr = requestJson.toNativeUtf8();
     final bytesPtr = pcm16Bytes.isEmpty
@@ -219,6 +236,60 @@ abstract final class DartEdgeVadNative {
     if (streamPtr != nullptr) {
       gen.dart_edge_vad_stream_free(streamPtr);
     }
+  }
+
+  static Pointer<gen.DartEdgeVadTrimProcessResult> processSileroTrimStream(
+    Pointer<gen.DartEdgeVadTrimStream> streamPtr,
+    Uint8List pcm16Bytes, {
+    required bool flush,
+  }) {
+    final bytesPtr = pcm16Bytes.isEmpty
+        ? nullptr
+        : calloc<Uint8>(pcm16Bytes.length);
+    try {
+      if (bytesPtr != nullptr) {
+        bytesPtr.asTypedList(pcm16Bytes.length).setAll(0, pcm16Bytes);
+      }
+      return processSileroTrimStreamPointer(
+        streamPtr,
+        bytesPtr,
+        pcm16Bytes.length,
+        flush: flush,
+      );
+    } finally {
+      if (bytesPtr != nullptr) calloc.free(bytesPtr);
+    }
+  }
+
+  static Pointer<gen.DartEdgeVadTrimProcessResult>
+  processSileroTrimStreamPointer(
+    Pointer<gen.DartEdgeVadTrimStream> streamPtr,
+    Pointer<Uint8> pcm16BytesPtr,
+    int pcm16ByteLength, {
+    required bool flush,
+  }) {
+    RangeError.checkNotNegative(pcm16ByteLength, 'pcm16ByteLength');
+    final result = gen.dart_edge_vad_trim_stream_process(
+      streamPtr,
+      pcm16BytesPtr,
+      pcm16ByteLength,
+      flush ? 1 : 0,
+    );
+    if (result == nullptr) throw StateError(_takeLastError());
+    return result;
+  }
+
+  static void freeSileroTrimProcessResult(
+    Pointer<gen.DartEdgeVadTrimProcessResult> resultPtr,
+  ) {
+    if (resultPtr != nullptr)
+      gen.dart_edge_vad_trim_process_result_free(resultPtr);
+  }
+
+  static void freeSileroTrimStream(
+    Pointer<gen.DartEdgeVadTrimStream> streamPtr,
+  ) {
+    if (streamPtr != nullptr) gen.dart_edge_vad_trim_stream_free(streamPtr);
   }
 
   static void freeSileroPool(Pointer<gen.DartEdgeVadPool> poolPtr) {

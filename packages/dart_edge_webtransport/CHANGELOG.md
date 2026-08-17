@@ -1,3 +1,8 @@
+## 0.1.6
+
+- Forward configured handshake headers through browser `WebTransportOptions`
+  so authorization can use the same CONNECT-header contract as native clients.
+
 ## 0.1.5
 
 - Add long-lived unidirectional and bidirectional stream handles on native and

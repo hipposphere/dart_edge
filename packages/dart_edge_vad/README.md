@@ -40,6 +40,8 @@ Future<void> main() async {
 - `NativeVadPoolMetrics`: native worker pool counters exposed by
   `NativeVad.metrics`
 - `NativeVadStreamingSession`: stateful chunked detector for low-latency input
+- `NativeVadTrimmingSession`: bounded native look-behind with incremental,
+  native-owned trimmed PCM output and source/output sample mappings
 - `NativePcm16Buffer`: native-memory PCM16 input buffer for avoiding wrapper
   copies before FFI
 - `NativeVadModel`: supported native model enum, currently `silero`
@@ -78,6 +80,48 @@ blocking or dropping older work.
 For live audio, use `NativeVadStreamingSession` and feed 16 kHz mono PCM16
 chunks. The native stream keeps recurrent model state between calls and only
 emits newly finalized segments.
+
+Use `NativeVadTrimmingSession` when downstream consumers need speech PCM while
+capture is still active. It releases audio immediately during confirmed speech,
+pauses during an uncertain silence tail, preserves configured speech padding
+and short pauses, and discards long silence once an endpoint is confirmed.
+
+```dart
+final trimmer = NativeVadTrimmingSession(
+  options: const NativeVadOptions(
+    minSpeechDuration: Duration.zero,
+    minSilenceDuration: Duration(milliseconds: 700),
+    speechPad: Duration(milliseconds: 300),
+  ),
+  maxPendingBytes: 256 * 1024,
+);
+
+final update = trimmer.addBorrowedLease(
+  transportLease,
+  offset: pcmOffset,
+  length: pcmLength,
+);
+final chunk = update.chunk;
+if (chunk != null) {
+  try {
+    audioSpool.addNativePcm16(
+      pcm16LeBytesPtr: chunk.bytesPtr,
+      byteLength: chunk.byteLength,
+    );
+    await realtimeProvider.addPcm16(chunk.bytesView);
+  } finally {
+    chunk.close();
+  }
+}
+```
+
+The input lease remains owned by the caller. Each output chunk is single-owner
+native memory and must be closed. `ranges` maps the emitted output samples back
+to the original input timeline for diarization and word-timestamp translation.
+Call `finish()` to flush a final active speech region, then close the session.
+`maxPendingBytes` bounds pending input and native output chunks together.
+Reserve that amount through `NativeAudioPool.reserveTransientBytes` when
+the trimmer shares a process-wide memory ceiling with `dart_edge_audio` spools.
 
 Native transport-lease methods call VAD synchronously without an intermediate
 byte copy. Use `addBorrowedLease` when the same native transport payload must

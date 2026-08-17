@@ -43,6 +43,11 @@ external ffi.Pointer<DartEdgeVadPool> dart_edge_vad_pool_create(
 @ffi.Native<ffi.Void Function(ffi.Pointer<DartEdgeVadPool>)>()
 external void dart_edge_vad_pool_free(ffi.Pointer<DartEdgeVadPool> pool);
 
+@ffi.Native<ffi.Pointer<ffi.Char> Function(ffi.Pointer<DartEdgeVadPool>)>()
+external ffi.Pointer<ffi.Char> dart_edge_vad_pool_metrics(
+  ffi.Pointer<DartEdgeVadPool> pool,
+);
+
 @ffi.Native<
   ffi.Int64 Function(
     ffi.Pointer<DartEdgeVadPool>,
@@ -64,11 +69,6 @@ external int dart_edge_vad_pool_submit_silero(
 external ffi.Pointer<ffi.Char> dart_edge_vad_pool_take_result(
   ffi.Pointer<DartEdgeVadPool> pool,
   int job_id,
-);
-
-@ffi.Native<ffi.Pointer<ffi.Char> Function(ffi.Pointer<DartEdgeVadPool>)>()
-external ffi.Pointer<ffi.Char> dart_edge_vad_pool_metrics(
-  ffi.Pointer<DartEdgeVadPool> pool,
 );
 
 @ffi.Native<ffi.Pointer<DartEdgeVadStream> Function(ffi.Pointer<ffi.Char>)>()
@@ -97,6 +97,53 @@ external ffi.Pointer<ffi.Char> dart_edge_vad_stream_process(
 @ffi.Native<ffi.Pointer<ffi.Char> Function()>()
 external ffi.Pointer<ffi.Char> dart_edge_vad_take_last_error();
 
+@ffi.Native<ffi.Void Function(ffi.Pointer<DartEdgeVadTrimProcessResult>)>()
+external void dart_edge_vad_trim_process_result_free(
+  ffi.Pointer<DartEdgeVadTrimProcessResult> result,
+);
+
+@ffi.Native<
+  ffi.Pointer<DartEdgeVadTrimStream> Function(ffi.Pointer<ffi.Char>)
+>()
+external ffi.Pointer<DartEdgeVadTrimStream> dart_edge_vad_trim_stream_create(
+  ffi.Pointer<ffi.Char> request_json,
+);
+
+@ffi.Native<ffi.Void Function(ffi.Pointer<DartEdgeVadTrimStream>)>()
+external void dart_edge_vad_trim_stream_free(
+  ffi.Pointer<DartEdgeVadTrimStream> stream,
+);
+
+@ffi.Native<
+  ffi.Pointer<DartEdgeVadTrimProcessResult> Function(
+    ffi.Pointer<DartEdgeVadTrimStream>,
+    ffi.Pointer<ffi.Uint8>,
+    ffi.IntPtr,
+    ffi.Int32,
+  )
+>()
+external ffi.Pointer<DartEdgeVadTrimProcessResult>
+dart_edge_vad_trim_stream_process(
+  ffi.Pointer<DartEdgeVadTrimStream> stream,
+  ffi.Pointer<ffi.Uint8> input_ptr,
+  int input_len,
+  int flush,
+);
+
 final class DartEdgeVadPool extends ffi.Opaque {}
 
 final class DartEdgeVadStream extends ffi.Opaque {}
+
+final class DartEdgeVadTrimProcessResult extends ffi.Struct {
+  external ffi.Pointer<ffi.Uint8> output_ptr;
+
+  @ffi.UintPtr()
+  external int output_len;
+
+  @ffi.UintPtr()
+  external int output_capacity;
+
+  external ffi.Pointer<ffi.Char> result_json;
+}
+
+final class DartEdgeVadTrimStream extends ffi.Opaque {}

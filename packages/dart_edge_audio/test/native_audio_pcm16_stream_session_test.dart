@@ -124,6 +124,28 @@ void main() {
     );
   });
 
+  test('reserves transient native audio against the shared pool ceiling', () {
+    final reservation = pool.reserveTransientBytes(256 * 1024);
+
+    expect(pool.metrics.currentSpoolBytes, 256 * 1024);
+    expect(pool.metrics.reservedTransientBytes, 256 * 1024);
+    expect(pool.metrics.maxObservedReservedTransientBytes, 256 * 1024);
+    expect(
+      () => pool.reserveTransientBytes(800 * 1024),
+      throwsA(
+        isA<AudioSpoolLimitExceededException>().having(
+          (error) => error.scope,
+          'scope',
+          AudioSpoolLimitScope.pool,
+        ),
+      ),
+    );
+
+    reservation.close();
+    expect(pool.metrics.currentSpoolBytes, 0);
+    expect(pool.metrics.reservedTransientBytes, 0);
+  });
+
   test('finish consumes an empty session when conversion fails', () async {
     final session = pool.createPcm16StreamSession(inputSampleRateHz: 16000);
 

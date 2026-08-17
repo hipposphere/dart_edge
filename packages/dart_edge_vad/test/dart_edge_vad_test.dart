@@ -219,6 +219,71 @@ void main() {
     }
   });
 
+  test('Native VAD trimming keeps silence bounded and emits no PCM', () {
+    final trimmer = NativeVadTrimmingSession(
+      options: const NativeVadOptions(
+        minSpeechDuration: Duration.zero,
+        minSilenceDuration: Duration(milliseconds: 100),
+        speechPad: Duration(milliseconds: 30),
+      ),
+      maxPendingBytes: 4096,
+    );
+    try {
+      for (var index = 0; index < 8; index += 1) {
+        final update = trimmer.addChunk(Int16List(512));
+        expect(update.chunk, isNull);
+        expect(update.ranges, isEmpty);
+        expect(update.bufferedBytes, lessThanOrEqualTo(4096));
+        expect(update.finished, isFalse);
+      }
+
+      final finished = trimmer.finish();
+      expect(finished.chunk, isNull);
+      expect(finished.hasSpeech, isFalse);
+      expect(finished.outputSamples, 0);
+      expect(finished.bufferedBytes, 0);
+      expect(finished.finished, isTrue);
+    } finally {
+      trimmer.close();
+    }
+  });
+
+  test('Native VAD trimming borrows native leases without consuming them', () {
+    final bytesPtr = calloc<Uint8>(1024);
+    var releaseCount = 0;
+    final lease = NativeBinaryPayloadLease.fromPointer(
+      bytesPtr: bytesPtr,
+      length: 1024,
+      release: () {
+        releaseCount += 1;
+        calloc.free(bytesPtr);
+      },
+    );
+    final trimmer = NativeVadTrimmingSession(maxPendingBytes: 4096);
+    try {
+      final update = trimmer.addBorrowedLease(lease);
+      expect(update.totalSamples, 512);
+      expect(lease.isClosed, isFalse);
+      expect(releaseCount, 0);
+    } finally {
+      trimmer.close();
+      lease.close();
+    }
+    expect(releaseCount, 1);
+  });
+
+  test('Native VAD trimming rejects input beyond its pending ceiling', () {
+    final trimmer = NativeVadTrimmingSession(maxPendingBytes: 1024);
+    try {
+      expect(
+        () => trimmer.addChunk(Int16List(1024)),
+        throwsA(isA<StateError>()),
+      );
+    } finally {
+      trimmer.close();
+    }
+  });
+
   test('trims PCM16 by sample segments', () {
     final pcm = Int16List.fromList([1, 2, 3, 4, 5, 6]);
 
