@@ -1,6 +1,6 @@
 [package]
 name = "dart_edge_audio"
-version = "0.1.14"
+version = "0.1.15"
 edition = "2024"
 publish = false
 
@@ -10,7 +10,8 @@ crate-type = ["staticlib", "cdylib"]
 [dependencies]
 audioadapter-buffers = "3.0"
 dart_edge_core = "0.2.0"
-ffmpeg-next = { version = "=8.1.0", default-features = false, features = ["build", "build-pic", "codec", "format"] }
+ffmpeg-next = { version = "=9.0.0", default-features = false, features = ["build", "build-pic", "codec", "format"] }
+ffmpeg-sys-next = { version = "=9.0.0", default-features = false, features = ["build-portable"] }
 hound = "3.5"
 once_cell = "1.21"
 rubato = "2.0"

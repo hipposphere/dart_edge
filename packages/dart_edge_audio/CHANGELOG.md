@@ -10,7 +10,8 @@
 - Add in-memory FFmpeg FLAC encoding with configurable compression.
 - Support compressed output from byte conversion, file conversion, native
   stream concatenation, and pooled PCM16 streaming sessions.
-- Bump the native artifact version to 0.1.14 for the new encoder backends.
+- Bump the native artifact version to 0.1.15 for the new encoder backends and
+  build bundled FFmpeg for the portable target baseline.
 
 ## 0.3.16
 
