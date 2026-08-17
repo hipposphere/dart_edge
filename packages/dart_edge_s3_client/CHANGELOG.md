@@ -4,7 +4,8 @@
   materializing the object body in Dart memory.
 - Enforce the declared upload length and release or cancel the producer on
   success, validation failure, stream failure, or request failure.
-- Bump the native artifact version to 0.1.14 for the streaming PUT ABI and
+- Preserve the AWS error chain when a native-stream upload fails to dispatch.
+- Bump the native artifact version to 0.1.15 for the streaming PUT ABI and
   Tokio-safe native producer composition.
 
 ## 0.3.17

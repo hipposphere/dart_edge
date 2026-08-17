@@ -1075,7 +1075,9 @@ async fn put_object_stream(
     let response = operation
         .send()
         .await
-        .map_err(|error| format!("Failed to stream S3 object '{bucket}/{key}': {error}"))?;
+        .map_err(|error| {
+            format!("Failed to stream S3 object '{bucket}/{key}': {error:?}")
+        })?;
 
     Ok(PutObjectResult {
         bucket,
