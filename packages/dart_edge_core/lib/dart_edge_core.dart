@@ -5,6 +5,7 @@
 library;
 
 export 'src/annotations.dart';
+export 'src/client/dart_edge_client_operation.dart';
 export 'src/client/dart_edge_client_transport.dart';
 export 'src/client/dart_edge_http_client.dart';
 export 'src/context.dart';

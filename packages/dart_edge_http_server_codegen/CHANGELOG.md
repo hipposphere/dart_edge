@@ -1,3 +1,11 @@
+## 0.4.0
+
+- **Breaking:** Generate callable HTTP operation objects with `info`, `call`,
+  and `start`, plus WebSocket and WebTransport operation objects with `info`
+  and `connect`.
+- Move binary streaming from an operation-name `Stream` suffix to the generated
+  operation object's `stream` method.
+
 ## 0.3.41
 
 - Generate an additive streamed-response method alongside each buffered

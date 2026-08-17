@@ -1,5 +1,7 @@
 ## Unreleased
 
+- Add generated-client operation metadata and cancellable request handles.
+
 ## 0.3.42
 
 - Add long-lived unidirectional and bidirectional stream handles to generated

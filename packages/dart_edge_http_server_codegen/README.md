@@ -114,17 +114,33 @@ final class _$CreateUserInput {
 
 ## Client Generation
 
-`dart_edge_http_server_codegen` contains the client-generation slice for HTTP
-routes. It is intentionally built around normalized route options and schema
-ids, not runtime reflection.
+`dart_edge_http_server_codegen` emits one typed operation object per HTTP,
+WebSocket, and WebTransport route. Operation objects expose stable route
+metadata and keep ordinary HTTP calls concise:
 
-Binary response operations generate both a buffered method and an additive
-`Stream`-suffixed method. Use the buffered method when the complete
+```dart
+final info = client.createRecording.info;
+final response = await client.createRecording(body: request);
+final started = client.createRecording.start(body: request);
+started.cancel();
+
+final socket = await client.recordingEvents.connect();
+final transport = await client.recordingTransport.connect();
+```
+
+HTTP operation objects are callable, so `client.createRecording(...)` delegates
+to `client.createRecording.call(...)`. `start(...)` begins the same request and
+returns a `DartEdgeClientRequestHandle` with lifecycle state and cancellation.
+WebSocket and WebTransport operation objects expose `connect(...)` because the
+connected socket/session is already their long-lived lifecycle handle.
+
+Binary response operations generate both a callable buffered operation and a
+`stream(...)` method. Use the buffered call when the complete
 `Uint8List` is convenient, or consume the streamed response incrementally for
 large downloads:
 
 ```dart
-final response = await client.getRecordingStream(body: request);
+final response = await client.getRecording.stream(body: request);
 await for (final chunk in response.bodyStreamWithProgress(
   onProgress: (progress) {
     print('${progress.bytesReceived}/${progress.totalBytes ?? '?'}');
