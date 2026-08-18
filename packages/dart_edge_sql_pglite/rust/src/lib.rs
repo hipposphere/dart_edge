@@ -225,7 +225,9 @@ fn open_server_with_extensions(
     open_server(|| {
         let mut builder = builder();
         if extension_names.iter().any(|name| name == "pg_textsearch") {
-            builder = builder.postgres_config("shared_preload_libraries", "pg_textsearch");
+            builder = builder
+                .startup_arg("-c")
+                .startup_arg("shared_preload_libraries=pg_textsearch");
         }
         for name in extension_names {
             let Some(extension) = extensions::by_sql_name(&name) else {

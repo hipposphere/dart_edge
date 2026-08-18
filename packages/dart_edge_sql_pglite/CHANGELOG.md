@@ -2,7 +2,7 @@
 
 - Preload `pg_textsearch` whenever `PgliteExtension.pgTextSearch` is selected,
   preserving implicit BM25 queries after reopening persistent databases.
-- Bump the native artifact version to 0.1.10 for the preload configuration.
+- Bump the native artifact version to 0.1.11 for the preload configuration.
 
 ## 0.1.18
 
