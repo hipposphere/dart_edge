@@ -1,3 +1,9 @@
+## 0.1.19
+
+- Preload `pg_textsearch` whenever `PgliteExtension.pgTextSearch` is selected,
+  preserving implicit BM25 queries after reopening persistent databases.
+- Bump the native artifact version to 0.1.10 for the preload configuration.
+
 ## 0.1.18
 
 - Release PGlite endpoints through native finalizers when a Flutter hot restart

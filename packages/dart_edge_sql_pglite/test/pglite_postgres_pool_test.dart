@@ -206,6 +206,60 @@ void main() {
     expect(result.single.read<double>('score').isFinite, isTrue);
   });
 
+  test('preloads pg_textsearch when reopening a persistent database', () async {
+    final directory = await Directory.systemTemp.createTemp(
+      'pglite-bm25-reopen-',
+    );
+
+    try {
+      final initialPool = PgliteDatabase.open(
+        directory.path,
+        extensions: const [PgliteExtension.pgTextSearch],
+      ).asPostgresPool();
+      try {
+        await initialPool.execute(
+          sql('CREATE TABLE bm25_documents (content TEXT NOT NULL)'),
+        );
+        await initialPool.execute(
+          sql(
+            "INSERT INTO bm25_documents (content) VALUES ('persistent postgres search')",
+          ),
+        );
+        await initialPool.execute(
+          sql('''
+          CREATE INDEX bm25_documents_content_idx
+          ON bm25_documents USING bm25 (content)
+          WITH (text_config = 'simple')
+          '''),
+        );
+      } finally {
+        await initialPool.close();
+      }
+
+      final reopenedPool = PgliteDatabase.open(
+        directory.path,
+        extensions: const [PgliteExtension.pgTextSearch],
+      ).asPostgresPool();
+      try {
+        final result = await reopenedPool.execute(
+          sql('''
+          SELECT content, content <@> 'postgres' AS score
+          FROM bm25_documents
+          ORDER BY score
+          LIMIT 1
+          '''),
+        );
+
+        expect(result.single.read<String>('content'), contains('postgres'));
+        expect(result.single.read<double>('score').isFinite, isTrue);
+      } finally {
+        await reopenedPool.close();
+      }
+    } finally {
+      await directory.delete(recursive: true);
+    }
+  });
+
   test('supports ranked built-in PostgreSQL full-text search', () async {
     final pool = PgliteDatabase.temporary().asPostgresPool();
     addTearDown(pool.close);
