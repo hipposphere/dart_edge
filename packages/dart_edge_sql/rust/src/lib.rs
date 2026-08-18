@@ -16,7 +16,7 @@ use sqlx::types::{Decimal, Uuid};
 use sqlx::{Column, Postgres, Row, Sqlite, TypeInfo, ValueRef};
 use tokio::runtime::{Builder, Runtime};
 
-const DART_EDGE_SQL_NATIVE_ABI_VERSION: i32 = 4;
+const DART_EDGE_SQL_NATIVE_ABI_VERSION: i32 = 5;
 
 static NEXT_HANDLE: AtomicI64 = AtomicI64::new(1);
 static RUNTIME: Lazy<Runtime> = Lazy::new(|| {
@@ -26,6 +26,8 @@ static RUNTIME: Lazy<Runtime> = Lazy::new(|| {
         .expect("Failed to create dart_edge_sql runtime")
 });
 static POOLS: Lazy<Mutex<HashMap<i64, NativePool>>> = Lazy::new(|| Mutex::new(HashMap::new()));
+static SESSIONS: Lazy<Mutex<HashMap<i64, NativeSession>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
 static TRANSACTIONS: Lazy<Mutex<HashMap<i64, NativeTransaction>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
 static CLEANUP_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
@@ -94,6 +96,11 @@ impl From<SqlValue> for SqlParameterValue {
 }
 
 struct NativeTransaction {
+    pool_handle: i64,
+    connection: NativeTransactionConnection,
+}
+
+struct NativeSession {
     pool_handle: i64,
     connection: NativeTransactionConnection,
 }
@@ -212,8 +219,10 @@ pub extern "C" fn dart_edge_sql_open_sqlite_in_memory_pool(max_sessions: i32) ->
 pub extern "C" fn dart_edge_sql_close_pool(handle: i64) {
     let _cleanup_guard = CLEANUP_LOCK.lock().unwrap();
     let pool = POOLS.lock().unwrap().remove(&handle);
+    let sessions = take_pool_sessions(handle);
     let transactions = take_pool_transactions(handle);
     RUNTIME.block_on(async move {
+        drop(sessions);
         for transaction in transactions {
             rollback_transaction(transaction).await;
         }
@@ -238,12 +247,17 @@ pub extern "C" fn dart_edge_sql_close_all_pools() {
         let mut transactions = TRANSACTIONS.lock().unwrap();
         std::mem::take(&mut *transactions)
     };
+    let sessions = {
+        let mut sessions = SESSIONS.lock().unwrap();
+        std::mem::take(&mut *sessions)
+    };
     let pools = {
         let mut pools = POOLS.lock().unwrap();
         std::mem::take(&mut *pools)
     };
 
     RUNTIME.block_on(async move {
+        drop(sessions);
         for transaction in transactions.into_values() {
             rollback_transaction(transaction).await;
         }
@@ -254,6 +268,94 @@ pub extern "C" fn dart_edge_sql_close_all_pools() {
             }
         }
     });
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_sql_open_session(pool_handle: i64) -> i64 {
+    let handle = reserve_handle();
+    let session = {
+        let pools = POOLS.lock().unwrap();
+        match pools.get(&pool_handle) {
+            Some(NativePool::Postgres(pool)) => match RUNTIME.block_on(pool.acquire()) {
+                Ok(connection) => NativeSession {
+                    pool_handle,
+                    connection: NativeTransactionConnection::Postgres(connection),
+                },
+                Err(error) => {
+                    set_last_error(format!("Failed to acquire PostgreSQL session: {error}"));
+                    return 0;
+                }
+            },
+            Some(NativePool::Sqlite(pool)) => match RUNTIME.block_on(pool.acquire()) {
+                Ok(connection) => NativeSession {
+                    pool_handle,
+                    connection: NativeTransactionConnection::Sqlite(connection),
+                },
+                Err(error) => {
+                    set_last_error(format!("Failed to acquire SQLite session: {error}"));
+                    return 0;
+                }
+            },
+            None => {
+                set_last_error("Unknown SQL pool handle.");
+                return 0;
+            }
+        }
+    };
+    SESSIONS.lock().unwrap().insert(handle, session);
+    clear_last_error();
+    handle
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_sql_execute_session(
+    handle: i64,
+    statement_json: *const c_char,
+) -> *mut c_char {
+    let Some(statement_json) = (unsafe { read_c_string(statement_json) }) else {
+        set_last_error("Missing SQL statement payload.");
+        return std::ptr::null_mut();
+    };
+    let statement = match parse_statement(&statement_json) {
+        Ok(statement) => statement,
+        Err(error) => {
+            set_last_error(error);
+            return std::ptr::null_mut();
+        }
+    };
+    let result = {
+        let mut sessions = SESSIONS.lock().unwrap();
+        match sessions.get_mut(&handle) {
+            Some(NativeSession {
+                connection: NativeTransactionConnection::Postgres(connection),
+                ..
+            }) => RUNTIME.block_on(execute_postgres_connection(connection, &statement)),
+            Some(NativeSession {
+                connection: NativeTransactionConnection::Sqlite(connection),
+                ..
+            }) => RUNTIME.block_on(execute_sqlite_connection(connection, &statement)),
+            None => Err("Unknown SQL session handle.".to_string()),
+        }
+    };
+    encode_result(result)
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_sql_close_session(handle: i64) {
+    let _cleanup_guard = CLEANUP_LOCK.lock().unwrap();
+    let session = SESSIONS.lock().unwrap().remove(&handle);
+    if let Some(session) = session {
+        // Returning a PoolConnection to SQLx requires an active Tokio context,
+        // including when this entrypoint is invoked by a Dart finalizer.
+        RUNTIME.block_on(async move {
+            drop(session);
+        });
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_sql_close_session_finalizer(handle: *mut c_void) {
+    dart_edge_sql_close_session(handle as usize as i64);
 }
 
 #[unsafe(no_mangle)]
@@ -430,6 +532,18 @@ fn take_pool_transactions(pool_handle: i64) -> Vec<NativeTransaction> {
     handles
         .into_iter()
         .filter_map(|handle| transactions.remove(&handle))
+        .collect()
+}
+
+fn take_pool_sessions(pool_handle: i64) -> Vec<NativeSession> {
+    let mut sessions = SESSIONS.lock().unwrap();
+    let handles = sessions
+        .iter()
+        .filter_map(|(handle, session)| (session.pool_handle == pool_handle).then_some(*handle))
+        .collect::<Vec<_>>();
+    handles
+        .into_iter()
+        .filter_map(|handle| sessions.remove(&handle))
         .collect()
 }
 

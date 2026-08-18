@@ -14,6 +14,7 @@ export 'src/core/sql_query_builder.dart';
 export 'src/core/sql_result.dart';
 export 'src/core/sql_row.dart';
 export 'src/core/sql_schema.dart' hide SqlRawTable;
+export 'src/core/sql_script.dart';
 export 'src/core/sql_statement.dart';
 export 'src/core/sql_value.dart';
 export 'src/core/sql_vector.dart';

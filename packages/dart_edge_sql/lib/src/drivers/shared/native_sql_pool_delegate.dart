@@ -65,14 +65,15 @@ final class NativeSqlPoolDelegate implements SqlPool, Finalizable {
     Future<T> Function(SqlSession session) action,
   ) async {
     _ensureOpen();
-    return action(
-      NativeSqlSession(
-        dialect: dialect,
-        executeStatement: (statement) {
-          return execute(statement);
-        },
-      ),
+    final session = NativeSqlSession(
+      dialect: dialect,
+      handle: DartEdgeSqlNative.openSession(_handle),
     );
+    try {
+      return await action(session);
+    } finally {
+      session.close();
+    }
   }
 
   @override
@@ -113,19 +114,23 @@ final class NativeSqlPoolDelegate implements SqlPool, Finalizable {
   }
 }
 
-final class NativeSqlSession implements SqlSession {
-  const NativeSqlSession({
-    required this.dialect,
-    required this.executeStatement,
-  });
+final class NativeSqlSession implements SqlSession, Finalizable {
+  NativeSqlSession({required this.dialect, required this._handle}) {
+    DartEdgeSqlNative.attachSessionFinalizer(this, _handle);
+  }
 
   @override
   final SqlDialect dialect;
-  final Future<SqlResult> Function(SqlStatement statement) executeStatement;
+  final int _handle;
+  var _closed = false;
 
   @override
-  Future<SqlResult> execute(SqlStatement statement) {
-    return executeStatement(statement);
+  Future<SqlResult> execute(SqlStatement statement) async {
+    _ensureOpen();
+    return DartEdgeSqlNative.executeSession(
+      _handle,
+      compileSqlStatement(dialect, statement),
+    );
   }
 
   @override
@@ -133,8 +138,19 @@ final class NativeSqlSession implements SqlSession {
     return NativePreparedSqlStatement(
       dialect: dialect,
       statement: statement,
-      executeStatement: executeStatement,
+      executeStatement: execute,
     );
+  }
+
+  void close() {
+    if (_closed) return;
+    _closed = true;
+    DartEdgeSqlNative.closeSession(_handle);
+    DartEdgeSqlNative.detachSessionFinalizer(this);
+  }
+
+  void _ensureOpen() {
+    if (_closed) throw StateError('SQL session has already been released.');
   }
 }
 

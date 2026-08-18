@@ -18,6 +18,11 @@ void dart_edge_sql_close_all_pools(void);
 
 char *dart_edge_sql_execute_pool(int64_t handle, const char *statement_json);
 
+int64_t dart_edge_sql_open_session(int64_t pool_handle);
+char *dart_edge_sql_execute_session(int64_t handle, const char *statement_json);
+void dart_edge_sql_close_session(int64_t handle);
+void dart_edge_sql_close_session_finalizer(void *handle);
+
 int64_t dart_edge_sql_begin_transaction(int64_t pool_handle);
 char *dart_edge_sql_execute_transaction(int64_t handle, const char *statement_json);
 bool dart_edge_sql_commit_transaction(int64_t handle);

@@ -21,6 +21,9 @@ abstract final class DartEdgeSqlNative {
   static final NativeFinalizer _transactionFinalizer = NativeFinalizer(
     Native.addressOf(gen.dart_edge_sql_rollback_transaction_finalizer),
   );
+  static final NativeFinalizer _sessionFinalizer = NativeFinalizer(
+    Native.addressOf(gen.dart_edge_sql_close_session_finalizer),
+  );
 
   static final Pointer<
     NativeFunction<Pointer<Char> Function(Int64, Pointer<Char>)>
@@ -108,6 +111,39 @@ abstract final class DartEdgeSqlNative {
     } finally {
       calloc.free(statementPtr.cast<Utf8>());
     }
+  }
+
+  static int openSession(int poolHandle) {
+    final handle = gen.dart_edge_sql_open_session(poolHandle);
+    if (handle <= 0) throw StateError(_takeLastError());
+    return handle;
+  }
+
+  static void attachSessionFinalizer(Finalizable owner, int handle) {
+    _sessionFinalizer.attach(
+      owner,
+      Pointer<Void>.fromAddress(handle),
+      detach: owner,
+    );
+  }
+
+  static void detachSessionFinalizer(Object owner) {
+    _sessionFinalizer.detach(owner);
+  }
+
+  static SqlResult executeSession(int handle, SqlStatement statement) {
+    final statementPtr = _encodeStatement(statement);
+    try {
+      return _execute(
+        () => gen.dart_edge_sql_execute_session(handle, statementPtr),
+      );
+    } finally {
+      calloc.free(statementPtr.cast<Utf8>());
+    }
+  }
+
+  static void closeSession(int handle) {
+    gen.dart_edge_sql_close_session(handle);
   }
 
   static int beginTransaction(int handle) {

@@ -1,3 +1,11 @@
+## 0.3.39
+
+- Reserve a physical database connection for the lifetime of `withSession`.
+- Add incremental SQL-script execution with progress, cancellation, transaction
+  policies, statement interception, and bounded source-location errors.
+- Parse large dollar-quoted and quoted values in batches, avoiding quadratic
+  substring allocation and eager statement-preview construction.
+
 ## 0.3.38
 
 - Release native SQL pools and transactions when their isolate group shuts

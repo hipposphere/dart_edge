@@ -77,4 +77,26 @@ void main() {
     final result = await pool.execute(sql('SELECT value FROM counters'));
     expect(result.single['value'], 42);
   });
+
+  test('withSession reserves one connection for the action', () async {
+    final pool = SqliteDatabase.inMemory();
+    addTearDown(pool.close);
+    await pool.execute(
+      sql('CREATE TABLE values_table (value INTEGER NOT NULL)'),
+    );
+
+    late SqlSession borrowed;
+    await pool.withSession((session) async {
+      borrowed = session;
+      await session.execute(sql('BEGIN'));
+      await session.execute(sql('INSERT INTO values_table (value) VALUES (1)'));
+      await session.execute(sql('ROLLBACK'));
+    });
+
+    expect(await pool.raw.from('values_table').selectAll().execute(), isEmpty);
+    await expectLater(
+      borrowed.execute(sql('SELECT 1')),
+      throwsA(isA<StateError>()),
+    );
+  });
 }

@@ -21,11 +21,25 @@ external void dart_edge_sql_close_pool(int handle);
 @ffi.Native<ffi.Void Function(ffi.Pointer<ffi.Void>)>()
 external void dart_edge_sql_close_pool_finalizer(ffi.Pointer<ffi.Void> handle);
 
+@ffi.Native<ffi.Void Function(ffi.Int64)>()
+external void dart_edge_sql_close_session(int handle);
+
+@ffi.Native<ffi.Void Function(ffi.Pointer<ffi.Void>)>()
+external void dart_edge_sql_close_session_finalizer(
+  ffi.Pointer<ffi.Void> handle,
+);
+
 @ffi.Native<ffi.Bool Function(ffi.Int64)>()
 external bool dart_edge_sql_commit_transaction(int handle);
 
 @ffi.Native<ffi.Pointer<ffi.Char> Function(ffi.Int64, ffi.Pointer<ffi.Char>)>()
 external ffi.Pointer<ffi.Char> dart_edge_sql_execute_pool(
+  int handle,
+  ffi.Pointer<ffi.Char> statement_json,
+);
+
+@ffi.Native<ffi.Pointer<ffi.Char> Function(ffi.Int64, ffi.Pointer<ffi.Char>)>()
+external ffi.Pointer<ffi.Char> dart_edge_sql_execute_session(
   int handle,
   ffi.Pointer<ffi.Char> statement_json,
 );
@@ -52,6 +66,9 @@ external int dart_edge_sql_open_postgres_pool_with_max_sessions(
   ffi.Pointer<ffi.Char> connection_string,
   int max_sessions,
 );
+
+@ffi.Native<ffi.Int64 Function(ffi.Int64)>()
+external int dart_edge_sql_open_session(int pool_handle);
 
 @ffi.Native<ffi.Int64 Function(ffi.Int32)>()
 external int dart_edge_sql_open_sqlite_in_memory_pool(int max_sessions);

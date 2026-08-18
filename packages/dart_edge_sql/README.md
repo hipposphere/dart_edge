@@ -115,6 +115,47 @@ final rows = await database.typed
 PostgreSQL queries additionally support `distinctOn(...)`,
 `innerJoinLateral(...)`, and `leftJoinLateral(...)`.
 
+## Streaming SQL scripts
+
+Large SQL files can be decoded, parsed, and executed incrementally without
+loading the complete file into memory:
+
+```dart
+final file = File('backup.sql');
+final operation = pool.executeScript(
+  file.openRead(),
+  dialect: SqlDialect.postgres,
+  totalBytes: await file.length(),
+  transactionMode: SqlScriptTransactionMode.preserve,
+);
+
+await for (final progress in operation.progress) {
+  print(
+    '${progress.bytesRead}/${progress.totalBytes} bytes, '
+    '${progress.statementsCompleted} statements',
+  );
+}
+
+final result = await operation.result;
+```
+
+The parser preserves statement boundaries across input chunks and understands
+quoted strings and identifiers, line and nested block comments, PostgreSQL
+escaped strings, and dollar-quoted bodies. Execution uses one reserved physical
+connection and naturally applies backpressure while a statement is running.
+
+Transaction modes are:
+
+- `preserve`: execute `BEGIN`, `COMMIT`, and related statements as written.
+- `atomic`: wrap the entire script in one transaction and reject explicit
+  transaction control.
+- `none`: add no transaction and reject explicit transaction control.
+
+Call `operation.cancel()` to stop between statements. Errors include the
+statement number, source byte offset, and a bounded SQL preview. An optional
+`onStatement` callback can inspect or skip statements without changing the
+streaming behavior.
+
 ## Native Integration
 
 Most code should import `package:dart_edge_sql/dart_edge_sql.dart`. Sibling
