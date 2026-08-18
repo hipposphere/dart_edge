@@ -13,6 +13,5 @@ export 'src/http.dart';
 export 'src/isolate_worker.dart';
 export 'src/router.dart';
 export 'src/sql.dart';
-export 'src/transport/native_binary_payload_lease.dart';
 export 'src/web_socket.dart';
 export 'src/web_transport.dart';

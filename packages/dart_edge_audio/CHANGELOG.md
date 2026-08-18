@@ -1,5 +1,11 @@
 ## Unreleased
 
+## 0.3.18
+
+- Read native transport lease pointers from the shared
+  `dart_edge_native_bridge` implementation.
+- Require `dart_edge_native_bridge` 0.1.5.
+
 ## 0.3.17
 
 - Add codec-neutral `AudioOutputSpec` conversion targets while preserving the

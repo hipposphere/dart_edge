@@ -123,7 +123,7 @@ final class NativeAudioPcm16StreamSession {
         'length',
       );
       _validateChunkLength(resolvedLength);
-      if (lease case NativeBinaryPayloadLease(:final bytesPtr)) {
+      if (lease case native_bridge.NativeBinaryPayloadLease(:final bytesPtr)) {
         addNativePcm16(
           pcm16LeBytesPtr: bytesPtr + offset,
           byteLength: resolvedLength,

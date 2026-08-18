@@ -1,3 +1,9 @@
+## 0.2.8
+
+- Read borrowed native payloads through the shared
+  `dart_edge_native_bridge` lease implementation.
+- Require `dart_edge_native_bridge` 0.1.5.
+
 ## 0.2.7
 
 - Add `NativeVadTrimmingSession` for bounded incremental PCM16LE trimming.

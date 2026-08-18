@@ -19,6 +19,7 @@ export 'src/ffi/native_value_helpers.dart'
         maybeCopyNativeBytes,
         optionalNativeString,
         requiredNativeString;
+export 'src/native_binary_payload_lease.dart' show NativeBinaryPayloadLease;
 export 'src/native_byte_stream_handle.dart'
     show
         NativeByteStreamDescriptor,

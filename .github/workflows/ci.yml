@@ -37,6 +37,12 @@ jobs:
       - name: Check package boundaries
         run: dart --disable-dart-dev tool/check_package_boundaries.dart
 
+      - name: Check dart_edge_core web compilation
+        run: >-
+          dart compile js
+          tool/web_compile_smoke.dart
+          -o /tmp/dart_edge_core_web_compile_smoke.js
+
       - name: Test Dart packages
         # Native-asset hooks share workspace locks, so package test processes
         # must not build those hooks concurrently.

@@ -4,7 +4,6 @@ import 'dart:typed_data';
 import 'package:dart_edge_native_bridge/dart_edge_native_bridge.dart'
     as core_ffi;
 
-import '../runtime/native_binary_payload_lease.dart';
 import 'generated_bindings.dart' as gen;
 
 final class NativeWebSocketConnection {
@@ -36,7 +35,7 @@ final class NativeWebSocketMessage {
   final int sessionId;
   final NativeWebSocketMessageKind kind;
   final Uint8List? body;
-  final NativeBinaryPayloadLease? bodyLease;
+  final core_ffi.NativeBinaryPayloadLease? bodyLease;
 }
 
 enum NativeWebSocketMessageKind { text, binary }
@@ -72,7 +71,7 @@ NativeWebSocketMessage decodeNativeWebSocketMessage(
     2 => NativeWebSocketMessage(
       sessionId: message.session_id,
       kind: NativeWebSocketMessageKind.binary,
-      bodyLease: NativeBinaryPayloadLease.fromPointer(
+      bodyLease: core_ffi.NativeBinaryPayloadLease.fromPointer(
         bytesPtr: message.body.ptr,
         length: message.body.len,
         release: release,

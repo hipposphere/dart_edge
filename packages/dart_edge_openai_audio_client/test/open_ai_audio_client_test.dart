@@ -5,7 +5,8 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:dart_edge_audio/dart_edge_audio.dart';
-import 'package:dart_edge_core/dart_edge_core.dart';
+import 'package:dart_edge_native_bridge/dart_edge_native_bridge.dart'
+    show NativeBinaryPayloadLease;
 import 'package:dart_edge_openai_audio_client/dart_edge_openai_audio_client.dart';
 import 'package:ffi/ffi.dart';
 import 'package:test/test.dart';

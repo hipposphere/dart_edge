@@ -1,5 +1,11 @@
 ## Unreleased
 
+## 0.3.38
+
+- Use the shared `NativeBinaryPayloadLease` from `dart_edge_native_bridge`
+  instead of exporting an HTTP-specific implementation.
+- Require `dart_edge_native_bridge` 0.1.5.
+
 ## 0.3.37
 
 - Enforce configurable pending-message and pending-byte ceilings for native

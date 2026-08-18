@@ -3,6 +3,8 @@ import 'dart:ffi';
 import 'dart:typed_data';
 
 import 'package:dart_edge_core/dart_edge_core.dart';
+import 'package:dart_edge_native_bridge/dart_edge_native_bridge.dart'
+    show NativeBinaryPayloadLease;
 import 'package:ffi/ffi.dart';
 
 import 'native/dart_edge_vad_native.dart';

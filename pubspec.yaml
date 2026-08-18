@@ -35,6 +35,12 @@ melos:
     check:boundaries:
       run: dart --disable-dart-dev tool/check_package_boundaries.dart
       description: Check Dart package dependency and import boundaries.
+    check:web:
+      run: >-
+        dart compile js
+        tool/web_compile_smoke.dart
+        -o /tmp/dart_edge_core_web_compile_smoke.js
+      description: Check that dart_edge_core remains web-compilable.
     publish:dry-run:
       run: melos publish --no-private --dry-run --yes
       description: Validate publishable packages without uploading them.

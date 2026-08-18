@@ -1,6 +1,12 @@
 ## Unreleased
 
+## 0.3.45
+
 - Add generated-client operation metadata and cancellable request handles.
+- Move the FFI-backed `NativeBinaryPayloadLease` implementation to
+  `dart_edge_native_bridge` so the core contract package remains
+  web-compilable.
+- Remove the now-unused `ffigen` development dependency.
 
 ## 0.3.42
 
