@@ -1,3 +1,9 @@
+## 0.3.38
+
+- Release native SQL pools and transactions when their isolate group shuts
+  down, including rollback of active transactions before pool shutdown.
+- Bump the native artifact version to 0.1.12 for the finalizer ABI.
+
 ## 0.3.37
 
 - Add typed CTE and derived-table relations with declared output columns.

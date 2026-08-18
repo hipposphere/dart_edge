@@ -1,10 +1,71 @@
 import 'dart:io';
+import 'dart:isolate';
 
 import 'package:dart_edge_sql/dart_edge_sql.dart';
 import 'package:dart_edge_sql_pglite/dart_edge_sql_pglite.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test('releases an endpoint when its isolate group shuts down', () async {
+    final directory = await Directory.systemTemp.createTemp(
+      'pglite-isolate-restart-',
+    );
+    final readyPort = ReceivePort();
+    final exitPort = ReceivePort();
+    final errorPort = ReceivePort();
+
+    try {
+      final fixtureUri = File('test/fixtures/orphaned_pglite_isolate.dart')
+          .absolute
+          .uri;
+      await Isolate.spawnUri(
+        fixtureUri,
+        [directory.path],
+        readyPort.sendPort,
+        onExit: exitPort.sendPort,
+        onError: errorPort.sendPort,
+        packageConfig: File('../../.dart_tool/package_config.json')
+            .absolute
+            .uri,
+        debugName: 'orphaned PGlite fixture',
+      );
+
+      final ready =
+          await Future.any<Object?>([
+            readyPort.first,
+            errorPort.first.then<Object?>(
+              (error) => throw StateError('Fixture failed: $error'),
+            ),
+          ]).timeout(
+            const Duration(seconds: 45),
+            onTimeout: () => throw StateError('Fixture did not open PGlite.'),
+          );
+      expect(ready, 'ready');
+      await exitPort.first.timeout(
+        const Duration(seconds: 20),
+        onTimeout: () =>
+            throw StateError('Fixture isolate did not finish native cleanup.'),
+      );
+
+      final restartedPool = PgliteDatabase.open(directory.path)
+          .asPostgresPool();
+      try {
+        final result = await restartedPool.execute(
+          sql('SELECT value FROM isolate_restart_test'),
+        );
+        expect(result.single.read<String>('value'), 'persisted');
+      } finally {
+        await restartedPool.close();
+      }
+    } finally {
+      readyPort.close();
+      exitPort.close();
+      errorPort.close();
+      await PgliteDatabase.closeAll();
+      await directory.delete(recursive: true);
+    }
+  }, timeout: const Timeout(Duration(minutes: 2)));
+
   test('closes orphaned endpoints before an embedder restart', () async {
     final directory = await Directory.systemTemp.createTemp('pglite-restart-');
     final firstPool = PgliteDatabase.open(directory.path).asPostgresPool();
@@ -19,9 +80,8 @@ void main() {
 
       await PgliteDatabase.closeAll();
 
-      final restartedPool = PgliteDatabase.open(
-        directory.path,
-      ).asPostgresPool();
+      final restartedPool = PgliteDatabase.open(directory.path)
+          .asPostgresPool();
       try {
         final result = await restartedPool.execute(
           sql('SELECT value FROM restart_test'),

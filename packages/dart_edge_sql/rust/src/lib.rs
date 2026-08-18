@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::ffi::{CStr, CString, c_char};
+use std::ffi::{CStr, CString, c_char, c_void};
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicI64, Ordering};
 
@@ -16,7 +16,7 @@ use sqlx::types::{Decimal, Uuid};
 use sqlx::{Column, Postgres, Row, Sqlite, TypeInfo, ValueRef};
 use tokio::runtime::{Builder, Runtime};
 
-const DART_EDGE_SQL_NATIVE_ABI_VERSION: i32 = 3;
+const DART_EDGE_SQL_NATIVE_ABI_VERSION: i32 = 4;
 
 static NEXT_HANDLE: AtomicI64 = AtomicI64::new(1);
 static RUNTIME: Lazy<Runtime> = Lazy::new(|| {
@@ -28,6 +28,7 @@ static RUNTIME: Lazy<Runtime> = Lazy::new(|| {
 static POOLS: Lazy<Mutex<HashMap<i64, NativePool>>> = Lazy::new(|| Mutex::new(HashMap::new()));
 static TRANSACTIONS: Lazy<Mutex<HashMap<i64, NativeTransaction>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
+static CLEANUP_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
 static LAST_ERROR: Lazy<Mutex<Option<CString>>> = Lazy::new(|| Mutex::new(None));
 
 #[derive(Clone)]
@@ -92,7 +93,12 @@ impl From<SqlValue> for SqlParameterValue {
     }
 }
 
-enum NativeTransaction {
+struct NativeTransaction {
+    pool_handle: i64,
+    connection: NativeTransactionConnection,
+}
+
+enum NativeTransactionConnection {
     Postgres(PoolConnection<Postgres>),
     Sqlite(PoolConnection<Sqlite>),
 }
@@ -204,26 +210,43 @@ pub extern "C" fn dart_edge_sql_open_sqlite_in_memory_pool(max_sessions: i32) ->
 
 #[unsafe(no_mangle)]
 pub extern "C" fn dart_edge_sql_close_pool(handle: i64) {
+    let _cleanup_guard = CLEANUP_LOCK.lock().unwrap();
     let pool = POOLS.lock().unwrap().remove(&handle);
-    if let Some(pool) = pool {
-        RUNTIME.block_on(async move {
+    let transactions = take_pool_transactions(handle);
+    RUNTIME.block_on(async move {
+        for transaction in transactions {
+            rollback_transaction(transaction).await;
+        }
+        if let Some(pool) = pool {
             match pool {
                 NativePool::Postgres(pool) => pool.close().await,
                 NativePool::Sqlite(pool) => pool.close().await,
             }
-        });
-    }
+        }
+    });
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_sql_close_pool_finalizer(handle: *mut c_void) {
+    dart_edge_sql_close_pool(handle as usize as i64);
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn dart_edge_sql_close_all_pools() {
-    TRANSACTIONS.lock().unwrap().clear();
+    let _cleanup_guard = CLEANUP_LOCK.lock().unwrap();
+    let transactions = {
+        let mut transactions = TRANSACTIONS.lock().unwrap();
+        std::mem::take(&mut *transactions)
+    };
     let pools = {
         let mut pools = POOLS.lock().unwrap();
         std::mem::take(&mut *pools)
     };
 
     RUNTIME.block_on(async move {
+        for transaction in transactions.into_values() {
+            rollback_transaction(transaction).await;
+        }
         for pool in pools.into_values() {
             match pool {
                 NativePool::Postgres(pool) => pool.close().await,
@@ -278,7 +301,10 @@ pub extern "C" fn dart_edge_sql_begin_transaction(pool_handle: i64) -> i64 {
         match pools.get(&pool_handle) {
             Some(NativePool::Postgres(pool)) => {
                 match RUNTIME.block_on(begin_postgres_transaction(pool)) {
-                    Ok(connection) => NativeTransaction::Postgres(connection),
+                    Ok(connection) => NativeTransaction {
+                        pool_handle,
+                        connection: NativeTransactionConnection::Postgres(connection),
+                    },
                     Err(error) => {
                         set_last_error(error);
                         return 0;
@@ -287,7 +313,10 @@ pub extern "C" fn dart_edge_sql_begin_transaction(pool_handle: i64) -> i64 {
             }
             Some(NativePool::Sqlite(pool)) => {
                 match RUNTIME.block_on(begin_sqlite_transaction(pool)) {
-                    Ok(connection) => NativeTransaction::Sqlite(connection),
+                    Ok(connection) => NativeTransaction {
+                        pool_handle,
+                        connection: NativeTransactionConnection::Sqlite(connection),
+                    },
                     Err(error) => {
                         set_last_error(error);
                         return 0;
@@ -327,12 +356,14 @@ pub extern "C" fn dart_edge_sql_execute_transaction(
     let result = {
         let mut transactions = TRANSACTIONS.lock().unwrap();
         match transactions.get_mut(&handle) {
-            Some(NativeTransaction::Postgres(connection)) => {
-                RUNTIME.block_on(execute_postgres_connection(connection, &statement))
-            }
-            Some(NativeTransaction::Sqlite(connection)) => {
-                RUNTIME.block_on(execute_sqlite_connection(connection, &statement))
-            }
+            Some(NativeTransaction {
+                connection: NativeTransactionConnection::Postgres(connection),
+                ..
+            }) => RUNTIME.block_on(execute_postgres_connection(connection, &statement)),
+            Some(NativeTransaction {
+                connection: NativeTransactionConnection::Sqlite(connection),
+                ..
+            }) => RUNTIME.block_on(execute_sqlite_connection(connection, &statement)),
             None => Err("Unknown SQL transaction handle.".to_string()),
         }
     };
@@ -342,6 +373,7 @@ pub extern "C" fn dart_edge_sql_execute_transaction(
 
 #[unsafe(no_mangle)]
 pub extern "C" fn dart_edge_sql_commit_transaction(handle: i64) -> bool {
+    let _cleanup_guard = CLEANUP_LOCK.lock().unwrap();
     let transaction = TRANSACTIONS.lock().unwrap().remove(&handle);
     let Some(transaction) = transaction else {
         set_last_error("Unknown SQL transaction handle.");
@@ -349,12 +381,12 @@ pub extern "C" fn dart_edge_sql_commit_transaction(handle: i64) -> bool {
     };
 
     let result = RUNTIME.block_on(async move {
-        match transaction {
-            NativeTransaction::Postgres(mut connection) => sqlx::query("COMMIT")
+        match transaction.connection {
+            NativeTransactionConnection::Postgres(mut connection) => sqlx::query("COMMIT")
                 .execute(&mut *connection)
                 .await
                 .map(|_| ()),
-            NativeTransaction::Sqlite(mut connection) => sqlx::query("COMMIT")
+            NativeTransactionConnection::Sqlite(mut connection) => sqlx::query("COMMIT")
                 .execute(&mut *connection)
                 .await
                 .map(|_| ()),
@@ -375,21 +407,43 @@ pub extern "C" fn dart_edge_sql_commit_transaction(handle: i64) -> bool {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn dart_edge_sql_rollback_transaction(handle: i64) {
+    let _cleanup_guard = CLEANUP_LOCK.lock().unwrap();
     let transaction = TRANSACTIONS.lock().unwrap().remove(&handle);
     if let Some(transaction) = transaction {
-        let _ = RUNTIME.block_on(async move {
-            match transaction {
-                NativeTransaction::Postgres(mut connection) => sqlx::query("ROLLBACK")
-                    .execute(&mut *connection)
-                    .await
-                    .map(|_| ()),
-                NativeTransaction::Sqlite(mut connection) => sqlx::query("ROLLBACK")
-                    .execute(&mut *connection)
-                    .await
-                    .map(|_| ()),
-            }
-        });
+        RUNTIME.block_on(rollback_transaction(transaction));
     }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_sql_rollback_transaction_finalizer(handle: *mut c_void) {
+    dart_edge_sql_rollback_transaction(handle as usize as i64);
+}
+
+fn take_pool_transactions(pool_handle: i64) -> Vec<NativeTransaction> {
+    let mut transactions = TRANSACTIONS.lock().unwrap();
+    let handles = transactions
+        .iter()
+        .filter_map(|(handle, transaction)| {
+            (transaction.pool_handle == pool_handle).then_some(*handle)
+        })
+        .collect::<Vec<_>>();
+    handles
+        .into_iter()
+        .filter_map(|handle| transactions.remove(&handle))
+        .collect()
+}
+
+async fn rollback_transaction(transaction: NativeTransaction) {
+    let _ = match transaction.connection {
+        NativeTransactionConnection::Postgres(mut connection) => sqlx::query("ROLLBACK")
+            .execute(&mut *connection)
+            .await
+            .map(|_| ()),
+        NativeTransactionConnection::Sqlite(mut connection) => sqlx::query("ROLLBACK")
+            .execute(&mut *connection)
+            .await
+            .map(|_| ()),
+    };
 }
 
 #[unsafe(no_mangle)]

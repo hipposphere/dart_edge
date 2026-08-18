@@ -15,6 +15,13 @@ import 'generated_bindings.dart' as gen;
 abstract final class DartEdgeSqlNative {
   static int get abiVersion => gen.dart_edge_sql_native_abi_version();
 
+  static final NativeFinalizer _poolFinalizer = NativeFinalizer(
+    Native.addressOf(gen.dart_edge_sql_close_pool_finalizer),
+  );
+  static final NativeFinalizer _transactionFinalizer = NativeFinalizer(
+    Native.addressOf(gen.dart_edge_sql_rollback_transaction_finalizer),
+  );
+
   static final Pointer<
     NativeFunction<Pointer<Char> Function(Int64, Pointer<Char>)>
   >
@@ -25,6 +32,9 @@ abstract final class DartEdgeSqlNative {
 
   static final Pointer<NativeFunction<Void Function(Pointer<Char>)>>
   freeStringPointer = Native.addressOf(gen.dart_edge_sql_free_string);
+
+  static final Pointer<NativeFunction<Void Function(Int64)>> closePoolPointer =
+      Native.addressOf(gen.dart_edge_sql_close_pool);
 
   static int openPostgresPool(
     String connectionString, {
@@ -73,6 +83,18 @@ abstract final class DartEdgeSqlNative {
     gen.dart_edge_sql_close_pool(handle);
   }
 
+  static void attachPoolFinalizer(Finalizable owner, int handle) {
+    _poolFinalizer.attach(
+      owner,
+      Pointer<Void>.fromAddress(handle),
+      detach: owner,
+    );
+  }
+
+  static void detachPoolFinalizer(Object owner) {
+    _poolFinalizer.detach(owner);
+  }
+
   static void closeAllPools() {
     gen.dart_edge_sql_close_all_pools();
   }
@@ -94,6 +116,18 @@ abstract final class DartEdgeSqlNative {
       throw StateError(_takeLastError());
     }
     return transactionHandle;
+  }
+
+  static void attachTransactionFinalizer(Finalizable owner, int handle) {
+    _transactionFinalizer.attach(
+      owner,
+      Pointer<Void>.fromAddress(handle),
+      detach: owner,
+    );
+  }
+
+  static void detachTransactionFinalizer(Object owner) {
+    _transactionFinalizer.detach(owner);
   }
 
   static SqlResult executeTransaction(int handle, SqlStatement statement) {
@@ -126,9 +160,9 @@ SqlResult _execute(Pointer<Char> Function() invoke) {
   }
 
   try {
-    final payload =
-        jsonDecode(resultPtr.cast<Utf8>().toDartString())
-            as Map<String, Object?>;
+    final payload = jsonDecode(
+      resultPtr.cast<Utf8>().toDartString(),
+    ) as Map<String, Object?>;
     return SqlResult(
       affectedRows: payload['affectedRows'] as int? ?? 0,
       rows: [

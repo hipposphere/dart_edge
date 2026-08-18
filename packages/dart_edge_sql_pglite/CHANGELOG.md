@@ -1,3 +1,9 @@
+## 0.1.18
+
+- Release PGlite endpoints through native finalizers when a Flutter hot restart
+  shuts down their Dart isolate group.
+- Bump the native artifact version to 0.1.9 for the finalizer ABI.
+
 ## 0.1.17
 
 - Add process-wide PGlite endpoint cleanup for Flutter hot-restart recovery.

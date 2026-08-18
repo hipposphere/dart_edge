@@ -1,16 +1,29 @@
 use std::collections::HashMap;
-use std::ffi::{CStr, CString, c_char};
+use std::ffi::{CStr, CString, c_char, c_void};
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicI64, Ordering};
 
 use once_cell::sync::Lazy;
 use pglite_oxide::{PgliteServer, PgliteServerBuilder, extensions};
 
-const DART_EDGE_SQL_PGLITE_NATIVE_ABI_VERSION: i32 = 3;
+const DART_EDGE_SQL_PGLITE_NATIVE_ABI_VERSION: i32 = 4;
 
 static NEXT_HANDLE: AtomicI64 = AtomicI64::new(1);
-static SERVERS: Lazy<Mutex<HashMap<i64, PgliteServer>>> = Lazy::new(|| Mutex::new(HashMap::new()));
+static SERVERS: Lazy<Mutex<HashMap<i64, PgliteServerEntry>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
 static LAST_ERROR: Lazy<Mutex<Option<CString>>> = Lazy::new(|| Mutex::new(None));
+
+type ClosePoolCallback = extern "C" fn(i64);
+
+struct PgliteServerEntry {
+    server: PgliteServer,
+    pool: Option<ManagedSqlPool>,
+}
+
+struct ManagedSqlPool {
+    handle: i64,
+    close: ClosePoolCallback,
+}
 
 #[unsafe(no_mangle)]
 pub extern "C" fn dart_edge_sql_pglite_native_abi_version() -> i32 {
@@ -50,12 +63,12 @@ pub extern "C" fn dart_edge_sql_pglite_open_persistent_with_extensions(
 #[unsafe(no_mangle)]
 pub extern "C" fn dart_edge_sql_pglite_connection_string(handle: i64) -> *mut c_char {
     let servers = SERVERS.lock().unwrap();
-    let Some(server) = servers.get(&handle) else {
+    let Some(entry) = servers.get(&handle) else {
         set_last_error("Unknown PGlite database handle.");
         return std::ptr::null_mut();
     };
 
-    match CString::new(server.connection_uri()) {
+    match CString::new(entry.server.connection_uri()) {
         Ok(value) => {
             clear_last_error();
             value.into_raw()
@@ -70,14 +83,31 @@ pub extern "C" fn dart_edge_sql_pglite_connection_string(handle: i64) -> *mut c_
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn dart_edge_sql_pglite_close(handle: i64) -> bool {
-    let server = SERVERS.lock().unwrap().remove(&handle);
-    let Some(server) = server else {
-        clear_last_error();
-        return true;
+pub extern "C" fn dart_edge_sql_pglite_bind_pool(
+    handle: i64,
+    pool_handle: i64,
+    close_pool: Option<ClosePoolCallback>,
+) -> bool {
+    let Some(close_pool) = close_pool else {
+        set_last_error("Missing native SQL pool cleanup callback.");
+        return false;
     };
+    let mut servers = SERVERS.lock().unwrap();
+    let Some(entry) = servers.get_mut(&handle) else {
+        set_last_error("Unknown PGlite database handle.");
+        return false;
+    };
+    entry.pool = Some(ManagedSqlPool {
+        handle: pool_handle,
+        close: close_pool,
+    });
+    clear_last_error();
+    true
+}
 
-    match server.shutdown() {
+#[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_sql_pglite_close(handle: i64) -> bool {
+    match close_server(handle) {
         Ok(_) => {
             clear_last_error();
             true
@@ -90,6 +120,11 @@ pub extern "C" fn dart_edge_sql_pglite_close(handle: i64) -> bool {
 }
 
 #[unsafe(no_mangle)]
+pub extern "C" fn dart_edge_sql_pglite_close_finalizer(handle: *mut c_void) {
+    let _ = close_server(handle as usize as i64);
+}
+
+#[unsafe(no_mangle)]
 pub extern "C" fn dart_edge_sql_pglite_close_all() -> bool {
     let servers = {
         let mut servers = SERVERS.lock().unwrap();
@@ -97,8 +132,8 @@ pub extern "C" fn dart_edge_sql_pglite_close_all() -> bool {
     };
     let mut errors = Vec::new();
 
-    for (handle, server) in servers {
-        if let Err(error) = server.shutdown() {
+    for (handle, entry) in servers {
+        if let Err(error) = close_entry(entry) {
             errors.push(format!("handle {handle}: {error}"));
         }
     }
@@ -113,6 +148,21 @@ pub extern "C" fn dart_edge_sql_pglite_close_all() -> bool {
         ));
         false
     }
+}
+
+fn close_server(handle: i64) -> Result<(), String> {
+    let entry = SERVERS.lock().unwrap().remove(&handle);
+    let Some(entry) = entry else {
+        return Ok(());
+    };
+    close_entry(entry)
+}
+
+fn close_entry(entry: PgliteServerEntry) -> Result<(), String> {
+    if let Some(pool) = entry.pool {
+        (pool.close)(pool.handle);
+    }
+    entry.server.shutdown().map_err(|error| error.to_string())
 }
 
 #[unsafe(no_mangle)]
@@ -143,7 +193,10 @@ where
     let handle = reserve_handle();
     match open() {
         Ok(server) => {
-            SERVERS.lock().unwrap().insert(handle, server);
+            SERVERS
+                .lock()
+                .unwrap()
+                .insert(handle, PgliteServerEntry { server, pool: None });
             clear_last_error();
             handle
         }

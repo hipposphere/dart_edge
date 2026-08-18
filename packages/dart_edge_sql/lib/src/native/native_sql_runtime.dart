@@ -1,7 +1,16 @@
+import 'dart:ffi';
+
 import 'dart_edge_sql_native.dart';
 
 /// Process-level lifecycle operations for the native SQL runtime.
 abstract final class NativeSqlRuntime {
+  /// Native callback that closes one SQL pool by handle.
+  ///
+  /// Managed native endpoints use this to order pool cleanup before endpoint
+  /// shutdown when their isolate group is torn down.
+  static Pointer<NativeFunction<Void Function(Int64)>> get closePoolPointer =>
+      DartEdgeSqlNative.closePoolPointer;
+
   /// Closes every native transaction and pool registered in this process.
   ///
   /// This is intended for embedders that replace their Dart isolate without

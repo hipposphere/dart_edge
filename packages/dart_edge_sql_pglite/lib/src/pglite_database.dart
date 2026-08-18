@@ -1,15 +1,19 @@
+import 'dart:ffi';
+
 import 'package:dart_edge_sql/dart_edge_sql.dart';
 
 import 'native/dart_edge_sql_pglite_native.dart';
 import 'pglite_extension.dart';
 
 /// Embedded PGlite database exposed as a PostgreSQL endpoint.
-final class PgliteDatabase implements PgliteEndpoint {
+final class PgliteDatabase implements PgliteEndpoint, Finalizable {
   PgliteDatabase._({
     required this._handle,
     required this.connectionString,
     required this.storagePath,
-  });
+  }) {
+    DartEdgeSqlPgliteNative.attachFinalizer(this, _handle);
+  }
 
   /// Starts a temporary PGlite database.
   factory PgliteDatabase.temporary({
@@ -68,14 +72,28 @@ final class PgliteDatabase implements PgliteEndpoint {
   ///
   /// The returned pool owns this endpoint. Closing the pool closes this
   /// database as well.
-  PostgresPool asPostgresPool() => PostgresPool.pglite(this);
+  PostgresPool asPostgresPool() {
+    final pool = PostgresPool.pglite(this);
+    try {
+      DartEdgeSqlPgliteNative.bindPool(
+        _handle,
+        poolHandle: pool.nativeHandle,
+        closePool: NativeSqlRuntime.closePoolPointer,
+      );
+      return pool;
+    } catch (_) {
+      pool.close().ignore();
+      rethrow;
+    }
+  }
 
   @override
   Future<void> close() async {
     if (_closed) {
       return;
     }
-    _closed = true;
     DartEdgeSqlPgliteNative.close(_handle);
+    DartEdgeSqlPgliteNative.detachFinalizer(this);
+    _closed = true;
   }
 }

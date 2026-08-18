@@ -7,6 +7,10 @@ import 'generated_bindings.dart' as gen;
 abstract final class DartEdgeSqlPgliteNative {
   static int get abiVersion => gen.dart_edge_sql_pglite_native_abi_version();
 
+  static final NativeFinalizer _databaseFinalizer = NativeFinalizer(
+    Native.addressOf(gen.dart_edge_sql_pglite_close_finalizer),
+  );
+
   static int openTemporary({Iterable<String> extensions = const []}) {
     final extensionsPtr = _extensionsToNativeUtf8(extensions);
     try {
@@ -56,11 +60,38 @@ abstract final class DartEdgeSqlPgliteNative {
     }
   }
 
+  static void bindPool(
+    int handle, {
+    required int poolHandle,
+    required Pointer<NativeFunction<Void Function(Int64)>> closePool,
+  }) {
+    final bound = gen.dart_edge_sql_pglite_bind_pool(
+      handle,
+      poolHandle,
+      closePool,
+    );
+    if (!bound) {
+      throw StateError(_takeLastError());
+    }
+  }
+
   static void close(int handle) {
     final closed = gen.dart_edge_sql_pglite_close(handle);
     if (!closed) {
       throw StateError(_takeLastError());
     }
+  }
+
+  static void attachFinalizer(Finalizable owner, int handle) {
+    _databaseFinalizer.attach(
+      owner,
+      Pointer<Void>.fromAddress(handle),
+      detach: owner,
+    );
+  }
+
+  static void detachFinalizer(Object owner) {
+    _databaseFinalizer.detach(owner);
   }
 
   static void closeAll() {

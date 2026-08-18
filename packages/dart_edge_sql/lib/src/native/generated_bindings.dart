@@ -18,6 +18,9 @@ external void dart_edge_sql_close_all_pools();
 @ffi.Native<ffi.Void Function(ffi.Int64)>(isLeaf: true)
 external void dart_edge_sql_close_pool(int handle);
 
+@ffi.Native<ffi.Void Function(ffi.Pointer<ffi.Void>)>()
+external void dart_edge_sql_close_pool_finalizer(ffi.Pointer<ffi.Void> handle);
+
 @ffi.Native<ffi.Bool Function(ffi.Int64)>()
 external bool dart_edge_sql_commit_transaction(int handle);
 
@@ -61,6 +64,11 @@ external int dart_edge_sql_open_sqlite_pool(
 
 @ffi.Native<ffi.Void Function(ffi.Int64)>(isLeaf: true)
 external void dart_edge_sql_rollback_transaction(int handle);
+
+@ffi.Native<ffi.Void Function(ffi.Pointer<ffi.Void>)>()
+external void dart_edge_sql_rollback_transaction_finalizer(
+  ffi.Pointer<ffi.Void> handle,
+);
 
 @ffi.Native<ffi.Pointer<ffi.Char> Function()>()
 external ffi.Pointer<ffi.Char> dart_edge_sql_take_last_error();

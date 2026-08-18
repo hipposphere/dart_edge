@@ -9,11 +9,30 @@ library;
 
 import 'dart:ffi' as ffi;
 
+@ffi.Native<
+  ffi.Bool Function(
+    ffi.Int64,
+    ffi.Int64,
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Int64 handle)>>,
+  )
+>()
+external bool dart_edge_sql_pglite_bind_pool(
+  int handle,
+  int pool_handle,
+  ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Int64 handle)>>
+  close_pool,
+);
+
 @ffi.Native<ffi.Bool Function(ffi.Int64)>()
 external bool dart_edge_sql_pglite_close(int handle);
 
 @ffi.Native<ffi.Bool Function()>()
 external bool dart_edge_sql_pglite_close_all();
+
+@ffi.Native<ffi.Void Function(ffi.Pointer<ffi.Void>)>()
+external void dart_edge_sql_pglite_close_finalizer(
+  ffi.Pointer<ffi.Void> handle,
+);
 
 @ffi.Native<ffi.Pointer<ffi.Char> Function(ffi.Int64)>()
 external ffi.Pointer<ffi.Char> dart_edge_sql_pglite_connection_string(

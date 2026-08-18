@@ -1,3 +1,5 @@
+import 'dart:ffi';
+
 import '../../core/sql_dialect.dart';
 import '../../core/sql_executor.dart';
 import '../../core/sql_result.dart';
@@ -5,8 +7,10 @@ import '../../core/sql_statement.dart';
 import '../../native/dart_edge_sql_native.dart';
 import 'compiled_sql_statement.dart';
 
-final class NativeSqlPoolDelegate implements SqlPool {
-  NativeSqlPoolDelegate._({required this.dialect, required this._handle});
+final class NativeSqlPoolDelegate implements SqlPool, Finalizable {
+  NativeSqlPoolDelegate._({required this.dialect, required this._handle}) {
+    DartEdgeSqlNative.attachPoolFinalizer(this, _handle);
+  }
 
   factory NativeSqlPoolDelegate.openPostgres(
     String connectionString, {
@@ -99,6 +103,7 @@ final class NativeSqlPoolDelegate implements SqlPool {
     }
     _closed = true;
     DartEdgeSqlNative.closePool(_handle);
+    DartEdgeSqlNative.detachPoolFinalizer(this);
   }
 
   void _ensureOpen() {
@@ -133,8 +138,10 @@ final class NativeSqlSession implements SqlSession {
   }
 }
 
-final class NativeSqlTransaction implements SqlTransaction {
-  NativeSqlTransaction({required this.dialect, required this._handle});
+final class NativeSqlTransaction implements SqlTransaction, Finalizable {
+  NativeSqlTransaction({required this.dialect, required this._handle}) {
+    DartEdgeSqlNative.attachTransactionFinalizer(this, _handle);
+  }
 
   @override
   final SqlDialect dialect;
@@ -166,7 +173,11 @@ final class NativeSqlTransaction implements SqlTransaction {
       return;
     }
     _closed = true;
-    DartEdgeSqlNative.commitTransaction(_handle);
+    try {
+      DartEdgeSqlNative.commitTransaction(_handle);
+    } finally {
+      DartEdgeSqlNative.detachTransactionFinalizer(this);
+    }
   }
 
   void rollback() {
@@ -175,6 +186,7 @@ final class NativeSqlTransaction implements SqlTransaction {
     }
     _closed = true;
     DartEdgeSqlNative.rollbackTransaction(_handle);
+    DartEdgeSqlNative.detachTransactionFinalizer(this);
   }
 
   void _ensureOpen() {

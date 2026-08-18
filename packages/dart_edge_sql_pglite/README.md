@@ -25,9 +25,11 @@ Future<void> main() async {
 `PostgresPool.pglite` uses one native session and closes the PGlite endpoint when
 the pool closes.
 
-Flutter hot restart replaces the Dart isolate without running normal disposal
-callbacks. An embedded debug app can release endpoints orphaned by the previous
-isolate before reopening its persistent database:
+Flutter hot restart replaces the Dart isolate without running normal Dart
+disposal callbacks. PGlite endpoints and their native SQL pools use native
+finalizers, so they are released automatically when the old isolate group shuts
+down. An embedded debug app can also explicitly release every process-owned
+endpoint before reopening its persistent database:
 
 ```dart
 await PgliteDatabase.closeAll();
