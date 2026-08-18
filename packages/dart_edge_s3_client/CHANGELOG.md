@@ -1,3 +1,12 @@
+## 0.3.19
+
+- Bound the shared native Tokio runtime to at most four workers by default so
+  high-core hosts do not create oversized S3 worker pools.
+- Add `DART_EDGE_S3_WORKER_THREADS` configuration with a bounded
+  `TOKIO_WORKER_THREADS` fallback.
+- Name native runtime threads `dart-edge-s3` for process diagnostics.
+- Bump the native artifact version to 0.1.17.
+
 ## 0.3.18
 
 - Add single-owner native-stream uploads that feed S3 directly without

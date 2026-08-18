@@ -199,7 +199,6 @@ Future<void> main(List<String> arguments) async {
   }
   final port = int.parse(arguments[portIndex + 1]);
   final server = await ServerSocket.bind(InternetAddress.loopbackIPv4, port);
-  stdout.writeln('fake pgrust listening on $port');
 
   StreamSubscription<ProcessSignal>? interruptSubscription;
   StreamSubscription<ProcessSignal>? terminateSubscription;
@@ -212,6 +211,7 @@ Future<void> main(List<String> arguments) async {
 
   interruptSubscription = ProcessSignal.sigint.watch().listen(stop);
   terminateSubscription = ProcessSignal.sigterm.watch().listen(stop);
+  stdout.writeln('fake pgrust listening on $port');
   await Completer<void>().future;
 }
 ''';

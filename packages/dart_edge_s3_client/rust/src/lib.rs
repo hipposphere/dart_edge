@@ -25,6 +25,9 @@ use once_cell::sync::Lazy;
 use tokio::runtime::{Builder, Runtime};
 
 const DART_EDGE_S3_CLIENT_NATIVE_ABI_VERSION: i32 = 7;
+const DEFAULT_RUNTIME_WORKER_THREADS: usize = 4;
+const MAX_RUNTIME_WORKER_THREADS: usize = 32;
+const RUNTIME_WORKER_THREADS_ENV: &str = "DART_EDGE_S3_WORKER_THREADS";
 
 static NEXT_HANDLE: AtomicI64 = AtomicI64::new(1);
 static NEXT_DOWNLOAD_HANDLE: AtomicI64 = AtomicI64::new(1);
@@ -36,11 +39,40 @@ static CLIENTS: Lazy<Mutex<HashMap<i64, Client>>> = Lazy::new(|| Mutex::new(Hash
 static DOWNLOADS: Lazy<Mutex<DownloadRegistry>> =
     Lazy::new(|| Mutex::new(DownloadRegistry::default()));
 static RUNTIME: Lazy<Runtime> = Lazy::new(|| {
+    let worker_threads = runtime_worker_threads();
     Builder::new_multi_thread()
+        .worker_threads(worker_threads)
+        .thread_name("dart-edge-s3")
         .enable_all()
         .build()
         .expect("Failed to create dart_edge_s3_client runtime")
 });
+
+fn runtime_worker_threads() -> usize {
+    resolve_runtime_worker_threads(
+        std::env::var(RUNTIME_WORKER_THREADS_ENV).ok().as_deref(),
+        std::env::var("TOKIO_WORKER_THREADS").ok().as_deref(),
+        std::thread::available_parallelism()
+            .map(std::num::NonZeroUsize::get)
+            .unwrap_or(1),
+    )
+}
+
+fn resolve_runtime_worker_threads(
+    package_override: Option<&str>,
+    tokio_override: Option<&str>,
+    available_parallelism: usize,
+) -> usize {
+    package_override
+        .and_then(parse_runtime_worker_threads)
+        .or_else(|| tokio_override.and_then(parse_runtime_worker_threads))
+        .unwrap_or_else(|| available_parallelism.clamp(1, DEFAULT_RUNTIME_WORKER_THREADS))
+}
+
+fn parse_runtime_worker_threads(value: &str) -> Option<usize> {
+    let value = value.trim().parse::<usize>().ok()?;
+    (value > 0).then(|| value.min(MAX_RUNTIME_WORKER_THREADS))
+}
 
 #[repr(C)]
 pub struct NativeS3StringPair {
@@ -1078,9 +1110,7 @@ async fn put_object_stream(
     let response = operation
         .send()
         .await
-        .map_err(|error| {
-            format!("Failed to stream S3 object '{bucket}/{key}': {error:?}")
-        })?;
+        .map_err(|error| format!("Failed to stream S3 object '{bucket}/{key}': {error:?}"))?;
 
     Ok(PutObjectResult {
         bucket,
@@ -1664,6 +1694,31 @@ mod tests {
 
     use super::*;
 
+    #[test]
+    fn runtime_worker_threads_are_bounded_by_default() {
+        assert_eq!(resolve_runtime_worker_threads(None, None, 1), 1);
+        assert_eq!(resolve_runtime_worker_threads(None, None, 4), 4);
+        assert_eq!(resolve_runtime_worker_threads(None, None, 128), 4);
+    }
+
+    #[test]
+    fn package_worker_override_takes_precedence_and_is_bounded() {
+        assert_eq!(resolve_runtime_worker_threads(Some("2"), Some("8"), 128), 2);
+        assert_eq!(
+            resolve_runtime_worker_threads(Some("128"), None, 128),
+            MAX_RUNTIME_WORKER_THREADS
+        );
+    }
+
+    #[test]
+    fn invalid_worker_overrides_fall_back_safely() {
+        assert_eq!(resolve_runtime_worker_threads(Some("0"), Some("3"), 128), 3);
+        assert_eq!(
+            resolve_runtime_worker_threads(Some("invalid"), None, 128),
+            4
+        );
+    }
+
     struct TrackingBytes {
         bytes: Vec<u8>,
         dropped: Arc<AtomicBool>,
@@ -1823,7 +1878,10 @@ mod tests {
             .block_on(ByteStream::from_body_1_x(body).collect())
             .expect_err("oversized body must fail");
 
-        assert!(error.to_string().contains("declared content length"));
+        assert!(
+            format!("{error:?}").contains("declared content length"),
+            "unexpected upload length error: {error:?}"
+        );
         assert!(canceled.load(Ordering::SeqCst));
         assert!(released.load(Ordering::SeqCst));
     }

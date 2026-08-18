@@ -105,6 +105,15 @@ neither mode adopts the body. When transferred to the native HTTP runtime, the
 original AWS-owned chunk allocation stays alive until Hyper finishes sending
 it; only its pointer and length cross the native ABI.
 
+## Runtime workers
+
+The native S3 client uses a shared Tokio runtime with at most four worker
+threads by default, further limited by the process's available parallelism.
+Set `DART_EDGE_S3_WORKER_THREADS` before the first client is opened to choose a
+different worker count. Values above 32 are capped at 32. The general Tokio
+`TOKIO_WORKER_THREADS` setting is used as a fallback when the package-specific
+setting is absent.
+
 For a separate-process comparison of the Dart and native HTTP paths, run:
 
 ```sh
