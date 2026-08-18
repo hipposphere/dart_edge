@@ -105,12 +105,12 @@ jobs:
               --concurrency=1 \
               --dir-exists=test \
               --scope "$PACKAGE_SCOPE" \
-              -- dart test
+              -- dart test --exclude-tags=publish-excluded
           else
             dart run melos exec \
               --concurrency=1 \
               --dir-exists=test \
-              -- dart test
+              -- dart test --exclude-tags=publish-excluded
           fi
 
       - name: Configure pub token
