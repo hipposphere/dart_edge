@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use std::sync::Arc;
 use validator::Validate;
 
@@ -60,6 +60,7 @@ impl std::fmt::Debug for EmailPasswordConfig {
 pub(crate) struct SignUpRequest {
     #[validate(length(min = 1, message = "Name is required"))]
     name: String,
+    #[serde(deserialize_with = "deserialize_normalized_email")]
     #[validate(email(message = "Invalid email address"))]
     email: String,
     #[validate(length(min = 1, message = "Password is required"))]
@@ -74,6 +75,7 @@ pub(crate) struct SignUpRequest {
 #[derive(Debug, Deserialize, Validate)]
 #[allow(dead_code)]
 pub(crate) struct SignInRequest {
+    #[serde(deserialize_with = "deserialize_normalized_email")]
     #[validate(email(message = "Invalid email address"))]
     email: String,
     #[validate(length(min = 1, message = "Password is required"))]
@@ -82,6 +84,13 @@ pub(crate) struct SignInRequest {
     callback_url: Option<String>,
     #[serde(rename = "rememberMe")]
     remember_me: Option<bool>,
+}
+
+fn deserialize_normalized_email<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    String::deserialize(deserializer).map(|email| email.trim().to_lowercase())
 }
 
 #[derive(Debug, Deserialize, Validate)]
@@ -669,6 +678,26 @@ mod tests {
             Some(body.to_string().into_bytes()),
             HashMap::new(),
         )
+    }
+
+    #[test]
+    fn test_email_requests_normalize_before_validation() {
+        let signup: SignUpRequest = serde_json::from_value(serde_json::json!({
+            "name": "Ada Lovelace",
+            "email": "  Ada@Example.COM  ",
+            "password": "password123",
+        }))
+        .unwrap();
+        signup.validate().unwrap();
+        assert_eq!(signup.email, "ada@example.com");
+
+        let sign_in: SignInRequest = serde_json::from_value(serde_json::json!({
+            "email": "  ADA@EXAMPLE.COM  ",
+            "password": "password123",
+        }))
+        .unwrap();
+        sign_in.validate().unwrap();
+        assert_eq!(sign_in.email, "ada@example.com");
     }
 
     #[tokio::test]

@@ -2,7 +2,8 @@
 
 - Normalize email addresses before persistence and use case-insensitive email
   lookups across the native SQLite and shared SQL authentication backends.
-- Bump the native artifact version to 0.1.23.
+- Normalize email signup and sign-in request values before validation.
+- Bump the native artifact version to 0.1.24.
 
 ## 0.3.40
 
