@@ -17,7 +17,7 @@ use reqwest::blocking::multipart::{Form, Part};
 use reqwest::header::{AUTHORIZATION, HeaderMap, HeaderName, HeaderValue, USER_AGENT};
 
 const NATIVE_ABI_VERSION: i32 = 2;
-const DEFAULT_USER_AGENT: &str = "dart_edge_openai_audio_client/0.1.1";
+const DEFAULT_USER_AGENT: &str = "dart_edge_openai_audio_client/0.1.2";
 const REQUEST_CANCELED_ERROR: &str = "DART_EDGE_OPENAI_AUDIO_REQUEST_CANCELED";
 
 static NEXT_HANDLE: AtomicI64 = AtomicI64::new(1);
@@ -516,12 +516,6 @@ unsafe fn read_request(
     let fields = unsafe { read_pairs(request.fields, request.fields_len, "multipart field")? };
     if filename.trim().is_empty() || content_type.trim().is_empty() {
         return Err("Filename and content type must not be empty.".to_string());
-    }
-    if !fields
-        .iter()
-        .any(|(name, value)| name == "model" && !value.trim().is_empty())
-    {
-        return Err("Transcription request requires a model field.".to_string());
     }
     Ok(TranscriptionRequest {
         filename,

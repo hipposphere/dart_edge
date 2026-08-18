@@ -225,11 +225,11 @@ void _validateConfig(OpenAiAudioClientConfig config) {
 }
 
 void _validateRequest(OpenAiAudioTranscriptionRequest request) {
-  if (request.model.trim().isEmpty) {
+  if (!request.omitModel && request.model.trim().isEmpty) {
     throw ArgumentError.value(
       request.model,
       'request.model',
-      'Model must not be empty.',
+      'Model must not be empty unless omitModel is enabled.',
     );
   }
   if (request.filename.trim().isEmpty) {

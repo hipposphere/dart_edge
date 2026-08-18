@@ -1,3 +1,8 @@
+## 0.1.2
+
+- Allow transcription requests to omit the multipart `model` field for
+  provider endpoints that select their model implicitly.
+
 ## 0.1.1
 
 - Add cancellable byte and native-stream transcription operation handles.

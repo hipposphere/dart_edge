@@ -87,6 +87,10 @@ Plain HTTP is rejected unless `allowHttp` is explicitly enabled. Use
 `additionalFields` for provider-specific multipart fields such as
 `vad_filter`, `chunking_strategy`, or repeated timestamp options.
 
+For providers that select a model from the endpoint, set `omitModel: true` on
+`OpenAiAudioTranscriptionRequest`. The client then omits the multipart `model`
+field. An empty model remains invalid unless omission is explicit.
+
 ## Native bindings
 
 - ABI header: `rust/include/dart_edge_openai_audio_client.h`

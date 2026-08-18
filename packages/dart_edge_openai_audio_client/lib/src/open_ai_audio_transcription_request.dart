@@ -10,9 +10,13 @@ final class OpenAiAudioTranscriptionRequest {
     this.prompt,
     this.responseFormat,
     this.temperature,
+    this.omitModel = false,
     this.additionalFields = const <OpenAiAudioFormField>[],
   });
 
+  /// Provider model identifier.
+  ///
+  /// Set [omitModel] when the provider selects its model from the endpoint.
   final String model;
   final String filename;
   final String contentType;
@@ -21,11 +25,17 @@ final class OpenAiAudioTranscriptionRequest {
   final String? responseFormat;
   final double? temperature;
 
+  /// Whether to omit the multipart `model` field.
+  ///
+  /// This supports OpenAI-compatible providers that bind one model to an
+  /// endpoint and reject or do not require an explicit model selector.
+  final bool omitModel;
+
   /// Provider-specific multipart fields, including repeated fields.
   final List<OpenAiAudioFormField> additionalFields;
 
   List<OpenAiAudioFormField> resolvedFields() => <OpenAiAudioFormField>[
-    OpenAiAudioFormField('model', model),
+    if (!omitModel) OpenAiAudioFormField('model', model),
     if (language case final value?) OpenAiAudioFormField('language', value),
     if (prompt case final value?) OpenAiAudioFormField('prompt', value),
     if (responseFormat case final value?)

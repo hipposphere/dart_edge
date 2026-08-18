@@ -71,6 +71,63 @@ void main() {
     }
   });
 
+  test('omits the model field when the provider selects the model', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    final receivedBody = Completer<String>();
+    server.listen((request) async {
+      receivedBody.complete(await utf8.decodeStream(request));
+      request.response
+        ..statusCode = HttpStatus.ok
+        ..headers.contentType = ContentType.json
+        ..write(jsonEncode(<String, Object?>{'text': 'default model'}));
+      await request.response.close();
+    });
+
+    final client = await OpenAiAudioClient.open(
+      OpenAiAudioClientConfig(
+        baseUrl: 'http://127.0.0.1:${server.port}',
+        allowHttp: true,
+      ),
+    );
+    try {
+      final response = await client.transcribeBytes(
+        bytes: Uint8List.fromList(utf8.encode('audio')),
+        request: const OpenAiAudioTranscriptionRequest(
+          model: '',
+          omitModel: true,
+          filename: 'recording.wav',
+          contentType: 'audio/wav',
+        ),
+      );
+
+      expect(response.text, 'default model');
+      expect(await receivedBody.future, isNot(contains('name="model"')));
+    } finally {
+      client.dispose();
+      await server.close(force: true);
+    }
+  });
+
+  test('rejects an empty model unless omission is explicit', () async {
+    final client = await OpenAiAudioClient.open(
+      const OpenAiAudioClientConfig(baseUrl: 'https://example.com'),
+    );
+    try {
+      expect(
+        () => client.startTranscribeBytes(
+          bytes: Uint8List(1),
+          request: const OpenAiAudioTranscriptionRequest(
+            model: '',
+            filename: 'recording.wav',
+          ),
+        ),
+        throwsArgumentError,
+      );
+    } finally {
+      client.dispose();
+    }
+  });
+
   test('rejects insecure endpoints unless explicitly allowed', () {
     expect(
       OpenAiAudioClient.open(
