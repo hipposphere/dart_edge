@@ -282,8 +282,9 @@ abstract final class DartEdgeVadNative {
   static void freeSileroTrimProcessResult(
     Pointer<gen.DartEdgeVadTrimProcessResult> resultPtr,
   ) {
-    if (resultPtr != nullptr)
+    if (resultPtr != nullptr) {
       gen.dart_edge_vad_trim_process_result_free(resultPtr);
+    }
   }
 
   static void freeSileroTrimStream(
